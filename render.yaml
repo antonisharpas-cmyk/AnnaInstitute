@@ -1,0 +1,59 @@
+# Render blueprint. Create the database first, then the web service.
+services:
+  - type: web
+    name: oneeleven-crm
+    runtime: node
+    region: frankfurt
+    plan: starter
+    buildCommand: npm ci && npm run db:migrate:ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /login
+    # Uploaded documents live on this disk. Without it every deploy would
+    # throw away every file that has been uploaded.
+    disk:
+      name: oneeleven-files
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: oneeleven-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: STORAGE_DIR
+        value: /var/data/storage
+      - key: SEED_ADMIN_EMAIL
+        value: info@ergonsite.com
+      - key: SEED_ADMIN_NAME
+        value: ErgonSite
+      - key: MESSAGING_FALLBACK_TO_SMS
+        value: "true"
+      # Set these in the dashboard when the accounts exist. Until then the
+      # campaign module records everything as simulated and sends nothing.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: MAIL_REPLY_TO
+        sync: false
+      - key: SMSTO_API_KEY
+        sync: false
+      - key: SMSTO_SENDER_ID
+        sync: false
+      - key: SMSTO_CALLBACK_SECRET
+        sync: false
+
+databases:
+  - name: oneeleven-db
+    region: frankfurt
+    plan: basic-256mb
+    postgresMajorVersion: "16"

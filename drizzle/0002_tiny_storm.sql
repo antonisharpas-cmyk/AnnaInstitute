@@ -1,0 +1,1 @@
+ALTER TABLE "units" ADD COLUMN "roof_garden_area" numeric(10, 2);
