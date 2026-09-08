@@ -28,9 +28,7 @@ export async function createPriceListLink(options: {
   createdByEmail: string;
 }) {
   const token = randomBytes(16).toString("base64url");
-  const expiresAt = options.days
-    ? new Date(Date.now() + options.days * 24 * 60 * 60 * 1000)
-    : null;
+  const expiresAt = options.days ? new Date(Date.now() + options.days * 24 * 60 * 60 * 1000) : null;
 
   const inserted = await db
     .insert(shareLinks)

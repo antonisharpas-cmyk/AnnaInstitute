@@ -52,7 +52,12 @@ export default function UploadForm({
         <label className="label" htmlFor={`${id}-category`}>
           Category
         </label>
-        <select id={`${id}-category`} name="category" className="select" defaultValue={defaultCategory}>
+        <select
+          id={`${id}-category`}
+          name="category"
+          className="select"
+          defaultValue={defaultCategory}
+        >
           {categories.map((c) => (
             <option key={c} value={c}>
               {CATEGORY_LABELS[c] ?? c}

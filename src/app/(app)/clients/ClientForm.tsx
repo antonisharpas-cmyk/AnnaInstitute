@@ -122,10 +122,10 @@ export default function ClientForm({
             className="select"
             defaultValue={client?.source ?? "BUYER"}
           >
-            <option value="BUYER">buyer</option>
-            <option value="ENQUIRY">enquiry</option>
-            <option value="AGENT_REFERRAL">agent referral</option>
-            <option value="OTHER">other</option>
+            <option value="BUYER">Buyer</option>
+            <option value="ENQUIRY">Enquiry</option>
+            <option value="AGENT_REFERRAL">Agent Referral</option>
+            <option value="OTHER">Other</option>
           </select>
         </div>
         <div className="sm:col-span-2">

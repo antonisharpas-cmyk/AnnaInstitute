@@ -1,23 +1,23 @@
 import { distributeCents } from "./money";
 
 /**
- * The VAT setup of a contract. Cyprus frequently charges two rates on the same
- * property: the reduced rate on part of it and the standard rate on the rest.
- * Both bases and both rates are stored per contract and are always editable.
- * Nothing here is hard coded, because the law changes.
+ * VAT on a contract: one rate on the whole price before VAT.
+ *
+ * Nothing is hard coded, because the law changes. Whether a sale attracts the
+ * reduced rate or the standard one is a decision the office makes when it
+ * writes the contract, and the rate it typed is what the schedule uses.
  */
 export type VatSetup = {
   netCents: number;
-  reducedBaseCents: number;
-  reducedRate: number;
-  standardBaseCents: number;
-  standardRate: number;
+  rate: number;
 };
 
 export type InstallmentPlanItem = {
   seq: number;
   label: string;
+  labelEl?: string | null;
   percentage: number;
+  dueDate?: Date | null;
   /** An installment with a receipt against it is locked and never recalculated. */
   locked: boolean;
   lockedNetCents?: number;
@@ -28,7 +28,9 @@ export type InstallmentPlanItem = {
 export type ScheduleLine = {
   seq: number;
   label: string;
+  labelEl?: string | null;
   percentage: number;
+  dueDate?: Date | null;
   netCents: number;
   vatCents: number;
   totalCents: number;
@@ -36,27 +38,12 @@ export type ScheduleLine = {
   locked: boolean;
 };
 
-export function vatOnBases(setup: VatSetup): number {
-  const reduced = Math.round((setup.reducedBaseCents * setup.reducedRate) / 100);
-  const standard = Math.round((setup.standardBaseCents * setup.standardRate) / 100);
-  return reduced + standard;
+export function vatOn(netCents: number, rate: number): number {
+  return Math.round((netCents * rate) / 100);
 }
 
-/** The blended rate that the two bases produce, as a percentage. */
-export function effectiveVatRate(setup: VatSetup): number {
-  if (setup.netCents <= 0) return 0;
-  return (vatOnBases(setup) / setup.netCents) * 100;
-}
-
-export function basesAreConsistent(setup: VatSetup): boolean {
-  return setup.reducedBaseCents + setup.standardBaseCents === setup.netCents;
-}
-
-/** Put the whole net price on one rate. Used when a contract has a single rate. */
-export function singleRateSetup(netCents: number, rate: number, reduced = true): VatSetup {
-  return reduced
-    ? { netCents, reducedBaseCents: netCents, reducedRate: rate, standardBaseCents: 0, standardRate: 19 }
-    : { netCents, reducedBaseCents: 0, reducedRate: 5, standardBaseCents: netCents, standardRate: rate };
+export function vatOfSetup(setup: VatSetup): number {
+  return vatOn(setup.netCents, setup.rate);
 }
 
 /**
@@ -67,11 +54,9 @@ export function singleRateSetup(netCents: number, rate: number, reduced = true):
  *  2. Anything already paid keeps the figures it was actually invoiced at, for ever.
  *
  * So locked lines are copied through untouched. The remaining net price is spread
- * across the open lines by their percentages, to the cent, and each open line is
- * charged VAT at the blended rate of the current setup.
+ * across the open lines by their percentages, to the cent.
  */
 export function buildSchedule(setup: VatSetup, plan: InstallmentPlanItem[]): ScheduleLine[] {
-  const rate = effectiveVatRate(setup);
   const locked = plan.filter((p) => p.locked);
   const open = plan.filter((p) => !p.locked);
 
@@ -83,6 +68,11 @@ export function buildSchedule(setup: VatSetup, plan: InstallmentPlanItem[]): Sch
     open.map((p) => p.percentage),
   );
 
+  // The VAT of the whole open part is worked out once and then split over the
+  // lines, so the schedule adds up to the VAT on the price exactly rather than
+  // drifting a cent or two through rounding each line on its own.
+  const openVat = distributeCents(vatOn(Math.max(remainingNet, 0), setup.rate), openNet);
+
   const byLine = new Map<number, ScheduleLine>();
 
   locked.forEach((p) => {
@@ -91,7 +81,9 @@ export function buildSchedule(setup: VatSetup, plan: InstallmentPlanItem[]): Sch
     byLine.set(p.seq, {
       seq: p.seq,
       label: p.label,
+      labelEl: p.labelEl ?? null,
       percentage: p.percentage,
+      dueDate: p.dueDate ?? null,
       netCents,
       vatCents,
       totalCents: netCents + vatCents,
@@ -102,15 +94,17 @@ export function buildSchedule(setup: VatSetup, plan: InstallmentPlanItem[]): Sch
 
   open.forEach((p, i) => {
     const netCents = openNet[i] ?? 0;
-    const vatCents = Math.round((netCents * rate) / 100);
+    const vatCents = openVat[i] ?? 0;
     byLine.set(p.seq, {
       seq: p.seq,
       label: p.label,
+      labelEl: p.labelEl ?? null,
       percentage: p.percentage,
+      dueDate: p.dueDate ?? null,
       netCents,
       vatCents,
       totalCents: netCents + vatCents,
-      rateApplied: rate,
+      rateApplied: setup.rate,
       locked: false,
     });
   });
@@ -129,12 +123,61 @@ export function scheduleTotals(lines: ScheduleLine[]) {
   );
 }
 
-/** A sensible starting plan. The office can rename, add and remove stages. */
-export const DEFAULT_STAGES: { label: string; labelEl: string; percentage: number }[] = [
+/** The classic stages of a Cyprus development contract. */
+export const DEFAULT_STAGES: {
+  label: string;
+  labelEl: string;
+  percentage: number;
+}[] = [
   { label: "Reservation", labelEl: "Κράτηση", percentage: 5 },
-  { label: "On signing of contract", labelEl: "Υπογραφή συμβολαίου", percentage: 25 },
+  {
+    label: "On signing of contract",
+    labelEl: "Υπογραφή συμβολαίου",
+    percentage: 25,
+  },
   { label: "Foundations", labelEl: "Θεμέλια", percentage: 20 },
   { label: "Frame", labelEl: "Σκελετός", percentage: 20 },
   { label: "Plastering", labelEl: "Σοβάντισμα", percentage: 20 },
   { label: "On delivery", labelEl: "Παράδοση", percentage: 10 },
 ];
+
+/**
+ * The same day of the month, n months on, clamped to the end of a short month:
+ * the 31st of January plus one month is the 28th of February, not the 3rd of
+ * March, which is what a naive date would give.
+ */
+export function addMonths(from: Date, months: number): Date {
+  const day = from.getUTCDate();
+  const target = new Date(
+    Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + months, 1, 12, 0, 0),
+  );
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0, 12, 0, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target;
+}
+
+/**
+ * Equal periodic payments: twelve monthly, eight quarterly, whatever they ask
+ * for. The amounts are split to the cent, so the parts always add up.
+ */
+export function periodicPlan(
+  netCents: number,
+  count: number,
+  periodMonths: number,
+  startDate: Date | null,
+): { label: string; labelEl: string; percentage: number; dueDate: Date | null }[] {
+  const safeCount = Math.max(1, Math.min(count, 240));
+  const parts = distributeCents(netCents, Array(safeCount).fill(1));
+
+  return parts.map((cents, i) => {
+    const dueDate = startDate ? addMonths(startDate, i * Math.max(1, periodMonths)) : null;
+    return {
+      label: `Installment ${i + 1}`,
+      labelEl: `Δόση ${i + 1}`,
+      percentage: netCents > 0 ? (cents / netCents) * 100 : 100 / safeCount,
+      dueDate,
+    };
+  });
+}

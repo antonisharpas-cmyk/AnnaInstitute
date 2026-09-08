@@ -23,8 +23,8 @@ export default async function NewUnitPage({ params }: { params: Promise<{ id: st
         <Card title={t("units.details")}>
           <UnitForm action={createUnit.bind(null, id)} cancelHref={`/projects/${id}`} t={t} />
           <p className="mt-3 text-xs text-brand-graphite/60">
-            Floor plans and photographs are added on the apartment page once it is saved, as many
-            as you like.
+            Floor plans and photographs are added on the apartment page once it is saved, as many as
+            you like.
           </p>
         </Card>
       </div>

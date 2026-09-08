@@ -1,175 +1,180 @@
 import Link from "next/link";
-import { asc, eq } from "drizzle-orm";
-import { db } from "@/db";
-import { agents, clients } from "@/db/schema";
-import { getTranslator } from "@/i18n";
-import { formatMoney, toCents } from "@/lib/money";
-import { listContracts, unitsWithoutContract } from "@/lib/contracts";
+import { getTranslator, type MessageKey } from "@/i18n";
+import { formatAmount, formatPercent } from "@/lib/money";
+import { contractStatusTone, listContracts } from "@/lib/contracts";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
-import { createContract } from "./actions";
+import SearchBox from "@/components/SearchBox";
+import Pagination, { paginate } from "@/components/Pagination";
 
-export default async function ContractsPage() {
+const PER_PAGE = 10;
+
+export default async function ContractsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+}) {
+  const params = await searchParams;
   const { locale, t } = await getTranslator();
+  const query = (params.q ?? "").trim();
+  const status = params.status ?? "";
+  const { page, perPage, offset } = paginate(params, PER_PAGE);
 
-  const [rows, units, clientList, agentList] = await Promise.all([
-    listContracts(),
-    unitsWithoutContract(),
-    db.select().from(clients).orderBy(asc(clients.lastName)),
-    db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
-  ]);
+  const { rows, total } = await listContracts({ query, status, limit: perPage, offset });
 
   return (
     <>
-      <PageHeader title={t("contracts.title")} />
+      <PageHeader
+        title={t("contracts.title")}
+        action={
+          <Link href="/contracts/new" target="_blank" rel="noreferrer" className="btn btn-primary">
+            {t("contracts.new")}
+          </Link>
+        }
+      />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Card>
-            {rows.length === 0 ? (
-              <Empty message={t("common.none")} />
-            ) : (
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>{t("contracts.reference")}</th>
-                    <th>{t("contracts.client")}</th>
-                    <th>{t("contracts.unit")}</th>
-                    <th className="num">{t("common.total")}</th>
-                    <th className="num">{t("contracts.paid")}</th>
-                    <th className="num">{t("dash.outstanding")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.contract.id}>
-                      <td>
-                        <Link href={`/contracts/${r.contract.id}`} className="font-semibold hover:underline">
-                          {r.contract.reference}
-                        </Link>
-                        <div className="mt-1">
-                          <Pill>{r.contract.status.toLowerCase()}</Pill>
+      <Card>
+        <SearchBox
+          action="/contracts"
+          query={query}
+          placeholder={t("contracts.searchPlaceholder")}
+          searchLabel={t("common.search")}
+          clearLabel={t("common.clear")}
+        >
+          <div className="w-48">
+            <label className="label" htmlFor="status">
+              {t("common.status")}
+            </label>
+            <select id="status" name="status" defaultValue={status} className="select">
+              <option value="">{t("common.all")}</option>
+              <option value="DRAFT">{t("contracts.status.DRAFT")}</option>
+              <option value="ACTIVE">{t("contracts.status.ACTIVE")}</option>
+              <option value="COMPLETED">{t("contracts.status.COMPLETED")}</option>
+              <option value="CANCELLED">{t("contracts.status.CANCELLED")}</option>
+            </select>
+          </div>
+        </SearchBox>
+
+        <div className="mt-4 overflow-x-auto">
+          {rows.length === 0 ? (
+            <Empty message={query || status ? t("contracts.noneFound") : t("common.none")} />
+          ) : (
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t("contracts.name")}</th>
+                  <th className="ctr">{t("contracts.netPrice")}</th>
+                  <th className="ctr">{t("contracts.vat")}</th>
+                  <th className="ctr">{t("contracts.installmentsCount")}</th>
+                  <th>{t("contracts.apartmentCount")}</th>
+                  <th className="ctr">{t("contracts.dueShort")}</th>
+                  <th className="ctr">{t("contracts.paid")}</th>
+                  <th className="ctr">{t("dash.outstanding")}</th>
+                  <th className="ctr">{t("common.status")}</th>
+                  <th>{t("common.actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.contract.id}>
+                    <td>
+                      <Link
+                        href={`/contracts/${r.contract.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold hover:underline"
+                      >
+                        {r.contract.reference}
+                      </Link>
+                      <div className="text-xs text-brand-graphite/60">
+                        {r.contract.contractDate
+                          ? new Date(r.contract.contractDate).toLocaleDateString(
+                              locale === "el" ? "el-GR" : "en-GB",
+                            )
+                          : ""}
+                      </div>
+                    </td>
+                    <td className="ctr">
+                      {formatAmount(Number(r.contract.netPrice) * 100, locale)}
+                    </td>
+                    <td className="ctr">{formatPercent(Number(r.contract.vatRate), locale)}</td>
+                    <td className="ctr">
+                      {r.installmentCount}
+                      <div className="text-xs text-brand-graphite/60">
+                        {r.contract.scheduleType === "PERIODIC"
+                          ? r.contract.periodMonths === 3
+                            ? t("contracts.quarterly").toLowerCase()
+                            : t("contracts.monthly").toLowerCase()
+                          : t("contracts.standardPlan").toLowerCase()}
+                      </div>
+                    </td>
+                    <td>
+                      {r.apartments === 0 ? (
+                        <span className="text-xs text-brand-graphite/50">
+                          {t("contracts.noApartments")}
+                        </span>
+                      ) : (
+                        <div className="max-w-[15rem]">
+                          <div className="text-sm font-semibold">
+                            {r.apartments} {t("contracts.apartmentCount").toLowerCase()}
+                          </div>
+                          <div className="text-xs text-brand-graphite/60">{r.places}</div>
+                          {r.buyers ? (
+                            <div className="text-xs text-brand-graphite/60">{r.buyers}</div>
+                          ) : null}
                         </div>
-                      </td>
-                      <td>
-                        {r.client.firstName} {r.client.lastName}
-                      </td>
-                      <td>
-                        {r.project.name} . {r.unit.code}
-                      </td>
-                      <td className="num">{formatMoney(r.scheduledCents, locale)}</td>
-                      <td className="num">{formatMoney(r.paidCents, locale)}</td>
-                      <td className="num font-semibold">{formatMoney(r.outstandingCents, locale)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Card>
+                      )}
+                    </td>
+                    <td className="ctr">{formatAmount(r.dueCents, locale)}</td>
+                    <td className="ctr">{formatAmount(r.paidCents, locale)}</td>
+                    <td className="ctr font-semibold">
+                      {formatAmount(r.outstandingCents, locale)}
+                    </td>
+                    <td className="ctr">
+                      <Pill
+                        tone={
+                          contractStatusTone(r.contract.status) as "good" | "warn" | "bad" | "teal"
+                        }
+                      >
+                        {t(`contracts.status.${r.contract.status}` as MessageKey)}
+                      </Pill>
+                    </td>
+                    <td>
+                      <div className="flex flex-wrap gap-1">
+                        <Link
+                          href={`/contracts/${r.contract.id}/edit`}
+                          className="btn btn-secondary !px-3 !py-1 !text-xs"
+                        >
+                          {t("common.edit")}
+                        </Link>
+                        <Link
+                          href={`/contracts/new?from=${r.contract.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-secondary !px-3 !py-1 !text-xs"
+                        >
+                          {t("contracts.copy")}
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
-        <Card title={t("contracts.new")}>
-          {units.length === 0 || clientList.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Add at least one available unit and one client first.
-            </p>
-          ) : (
-            <form action={createContract} className="space-y-3">
-              <div>
-                <label className="label" htmlFor="clientId">
-                  {t("contracts.client")}
-                </label>
-                <select id="clientId" name="clientId" required className="select">
-                  {clientList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.lastName} {c.firstName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="unitId">
-                  {t("contracts.unit")}
-                </label>
-                <select id="unitId" name="unitId" required className="select">
-                  {units.map((u) => (
-                    <option key={u.unit.id} value={u.unit.id}>
-                      {u.project.name} . {u.unit.code} .{" "}
-                      {formatMoney(toCents(u.unit.netPrice), locale)}
-                      {u.holder ? ` . held by ${u.holder.lastName}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="agentId">
-                  {t("contracts.agent")}
-                </label>
-                <select id="agentId" name="agentId" className="select">
-                  <option value="">none</option>
-                  {agentList.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({Number(a.commissionRate)}%)
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="contractDate">
-                  {t("contracts.contractDate")}
-                </label>
-                <input id="contractDate" name="contractDate" type="date" className="input" />
-              </div>
-              <div>
-                <label className="label" htmlFor="netPrice">
-                  {t("contracts.netPrice")}
-                </label>
-                <input id="netPrice" name="netPrice" required placeholder="200000" className="input" />
-              </div>
-              <div>
-                <label className="label" htmlFor="vatMode">
-                  {t("contracts.vatSetup")}
-                </label>
-                <select id="vatMode" name="vatMode" className="select" defaultValue="single_reduced">
-                  <option value="single_reduced">whole price at the reduced rate</option>
-                  <option value="single_standard">whole price at the standard rate</option>
-                  <option value="split">split between the two rates</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="label" htmlFor="reducedRate">
-                    {t("contracts.vatReducedRate")}
-                  </label>
-                  <input id="reducedRate" name="reducedRate" defaultValue="5" className="input" />
-                </div>
-                <div>
-                  <label className="label" htmlFor="standardRate">
-                    {t("contracts.vatStandardRate")}
-                  </label>
-                  <input id="standardRate" name="standardRate" defaultValue="19" className="input" />
-                </div>
-              </div>
-              <div>
-                <label className="label" htmlFor="reducedBase">
-                  {t("contracts.vatReducedBase")}
-                </label>
-                <input
-                  id="reducedBase"
-                  name="reducedBase"
-                  placeholder="only for a split, for example 150000"
-                  className="input"
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  For a split the rest of the price is charged at the standard rate.
-                </p>
-              </div>
-              <button type="submit" className="btn btn-primary w-full">
-                {t("common.add")}
-              </button>
-            </form>
-          )}
-        </Card>
-      </div>
+        <Pagination
+          basePath="/contracts"
+          params={params}
+          info={{ page, perPage, total }}
+          labels={{
+            previous: t("common.previous"),
+            next: t("common.next"),
+            showing: t("common.showing"),
+            of: t("common.of"),
+          }}
+        />
+      </Card>
     </>
   );
 }

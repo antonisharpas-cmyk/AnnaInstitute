@@ -2,25 +2,31 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, contracts, installments, payments, projects, units } from "@/db/schema";
+import {
+  clients,
+  contractUnits,
+  contracts,
+  installments,
+  payments,
+  projects,
+  units,
+} from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
-import { formatAmount, formatMoney, formatPercent, toCents } from "@/lib/money";
+import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { apartmentsByClient, assignableUnits } from "@/lib/clients";
-import { documentsForClient } from "@/lib/documents";
-import { titleWithExtension } from "@/lib/fileLabels";
-import { effectiveVatRate } from "@/lib/vat";
-import { vatSetupOf } from "@/lib/contracts";
+import { documentsForClientWithUnits } from "@/lib/documents";
+import { clientFileLabel } from "@/lib/fileLabels";
+import { contractChoices } from "@/lib/contracts";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
+import Disclosure from "@/components/Disclosure";
 import InstallmentsPanel from "./InstallmentsPanel";
 import PersonalInfo from "./PersonalInfo";
 import DocumentUpload from "./DocumentUpload";
 import {
-  addInstallment,
   assignApartment,
-  createContractForUnit,
+  attachContract,
   deleteClientDocument,
-  deleteContract,
-  setContractVatRate,
+  detachContract,
   setMarketingConsent,
   unassignApartment,
   unsubscribeClient,
@@ -44,48 +50,58 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const [assigned, choices, theirDocuments] = await Promise.all([
     apartmentsByClient([id]),
     assignableUnits(id),
-    documentsForClient(id),
+    documentsForClientWithUnits(id),
   ]);
 
   const held = assigned.get(id) ?? [];
 
-  // One contract per apartment. The rows come back with their apartment so each
-  // contract can be shown beside the apartment it belongs to.
+  // The contracts on this client's apartments. A contract belongs to itself, not
+  // to the client, so it arrives through the assignment that puts it on one of
+  // their apartments.
   const contractRows = await db
-    .select({ contract: contracts, unit: units, project: projects })
-    .from(contracts)
-    .innerJoin(units, eq(units.id, contracts.unitId))
+    .select({ assignment: contractUnits, contract: contracts, unit: units, project: projects })
+    .from(contractUnits)
+    .innerJoin(contracts, eq(contracts.id, contractUnits.contractId))
+    .innerJoin(units, eq(units.id, contractUnits.unitId))
     .innerJoin(projects, eq(projects.id, units.projectId))
-    .where(eq(contracts.clientId, id))
-    .orderBy(desc(contracts.createdAt));
+    .where(eq(contractUnits.clientId, id))
+    .orderBy(desc(contractUnits.createdAt));
 
-  const contractIds = contractRows.map((r) => r.contract.id);
+  // The schedule that matters here is the apartment's own copy, with its own
+  // dates, not the contract's plan: this buyer may have signed months later.
+  const assignmentIds = contractRows.map((r) => r.assignment.id);
 
   const [scheduleRows, paymentRows] = await Promise.all([
-    contractIds.length > 0
+    assignmentIds.length > 0
       ? db
           .select()
           .from(installments)
-          .where(inArray(installments.contractId, contractIds))
+          .where(inArray(installments.assignmentId, assignmentIds))
           .orderBy(asc(installments.seq))
       : Promise.resolve([]),
-    contractIds.length > 0
-      ? db.select().from(payments).where(inArray(payments.contractId, contractIds))
+    assignmentIds.length > 0
+      ? db.select().from(payments).where(inArray(payments.assignmentId, assignmentIds))
       : Promise.resolve([]),
   ]);
 
-  const paidByInstallment = new Map<string, number>();
+  // What this client's apartment has paid against each installment. The money
+  // belongs to the apartment, so the key is the assignment as well as the line.
+  const paidByPair = new Map<string, number>();
+  const paidByAssignment = new Map<string, number>();
   for (const p of paymentRows) {
-    if (!p.installmentId) continue;
-    paidByInstallment.set(
-      p.installmentId,
-      (paidByInstallment.get(p.installmentId) ?? 0) + toCents(p.amount),
-    );
+    const cents = toCents(p.amount);
+    if (p.assignmentId) {
+      paidByAssignment.set(p.assignmentId, (paidByAssignment.get(p.assignmentId) ?? 0) + cents);
+      if (p.installmentId) {
+        const key = `${p.assignmentId}:${p.installmentId}`;
+        paidByPair.set(key, (paidByPair.get(key) ?? 0) + cents);
+      }
+    }
   }
 
   /**
-   * One block per apartment, plus any contract whose apartment is not assigned
-   * to this client at the moment, so an older contract can never go missing.
+   * One block per apartment, plus any apartment that has one of their contracts
+   * on it but is no longer assigned to them, so nothing can go missing.
    */
   const contractSubjects = [
     ...held,
@@ -99,10 +115,17 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
         projectId: row.project.id,
         projectName: row.project.name,
         contractId: row.contract.id,
+        contractReference: row.contract.reference,
+        assignmentId: row.assignment.id,
       })),
   ];
 
-  const byCategory = (category: string) => theirDocuments.filter((d) => d.category === category);
+  // Every contract in the system can be put on an apartment, since a contract
+  // is independent of both the buyer and the building.
+  const choicesOfContract = await contractChoices();
+
+  const byCategory = (category: string) =>
+    theirDocuments.filter((row) => row.document.category === category);
 
   const documentSection = (title: string, category: string) => {
     const items = byCategory(category);
@@ -115,7 +138,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
           <p className="text-sm text-brand-graphite/50">{t("common.none")}</p>
         ) : (
           <ul className="divide-y divide-brand-line text-sm">
-            {items.map((doc) => (
+            {items.map(({ document: doc, unitCode }) => (
               <li key={doc.id} className="flex items-center justify-between gap-2 py-2">
                 <a
                   href={`/api/files/${doc.id}`}
@@ -123,7 +146,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                   rel="noreferrer"
                   className="min-w-0 truncate text-brand-teal-dark hover:underline"
                 >
-                  {titleWithExtension(doc)}
+                  {clientFileLabel(doc, unitCode)}
                 </a>
                 <div className="flex items-center gap-2 whitespace-nowrap">
                   <span className="text-xs text-brand-graphite/60">
@@ -151,7 +174,10 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
 
   return (
     <>
-      <BackLink href="/clients" label={`${t("common.backTo")} ${t("clients.title").toLowerCase()}`} />
+      <BackLink
+        href="/clients"
+        label={`${t("common.backTo")} ${t("clients.title").toLowerCase()}`}
+      />
       <PageHeader
         title={`${client.firstName} ${client.lastName}`}
         subtitle={[client.email, client.phone].filter(Boolean).join(" . ")}
@@ -193,6 +219,57 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
 
         {/* 2. The apartments they hold. */}
         <Card title={t("clients.apartmentsPlural")}>
+          {/* Assigning is behind a button, above the table, so the table is what
+              the page shows first. */}
+          <div className="mb-4">
+            <Disclosure showLabel={t("contracts.addApartment")} hideLabel={t("common.cancel")}>
+              <form
+                action={assignApartment.bind(null, id)}
+                className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-[2fr_1fr_auto]"
+              >
+                <div>
+                  <label className="label" htmlFor="unitId">
+                    {t("clients.chooseApartment")}
+                  </label>
+                  <select id="unitId" name="unitId" required className="select">
+                    <option value="">choose</option>
+                    {[...choices.entries()].map(([projectId, group]) => (
+                      <optgroup key={projectId} label={group.projectName}>
+                        {group.units.map((u) => (
+                          <option key={u.unit.id} value={u.unit.id}>
+                            {u.unit.code}
+                            {u.unit.bedrooms ? ` . ${u.unit.bedrooms} bed` : ""} .{" "}
+                            {formatAmount(toCents(u.unit.netPrice), locale)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label" htmlFor="assignStatus">
+                    {t("common.status")}
+                  </label>
+                  <select
+                    id="assignStatus"
+                    name="status"
+                    className="select"
+                    defaultValue="RESERVED"
+                  >
+                    <option value="RESERVED">{t("units.status.RESERVED")}</option>
+                    <option value="SOLD">{t("units.status.SOLD")}</option>
+                    <option value="DELIVERED">{t("units.status.DELIVERED")}</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button type="submit" className="btn btn-primary w-full">
+                    {t("common.add")}
+                  </button>
+                </div>
+              </form>
+            </Disclosure>
+          </div>
+
           {held.length === 0 ? (
             <p className="py-2 text-sm text-brand-graphite/60">{t("clients.noApartments")}</p>
           ) : (
@@ -243,7 +320,10 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                           </span>
                         ) : (
                           <form action={unassignApartment.bind(null, a.unitId, id)}>
-                            <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
+                            <button
+                              type="submit"
+                              className="btn btn-secondary !px-3 !py-1 !text-xs"
+                            >
                               {t("clients.delete")}
                             </button>
                           </form>
@@ -255,52 +335,10 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
               </table>
             </div>
           )}
-
-          <form
-            action={assignApartment.bind(null, id)}
-            className="mt-4 grid gap-3 border-t border-brand-line pt-4 sm:grid-cols-[2fr_1fr_auto]"
-          >
-            <div>
-              <label className="label" htmlFor="unitId">
-                {t("clients.chooseApartment")}
-              </label>
-              <select id="unitId" name="unitId" required className="select">
-                <option value="">choose</option>
-                {[...choices.entries()].map(([projectId, group]) => (
-                  <optgroup key={projectId} label={group.projectName}>
-                    {group.units.map((u) => (
-                      <option key={u.unit.id} value={u.unit.id}>
-                        {u.unit.code}
-                        {u.unit.bedrooms ? ` . ${u.unit.bedrooms} bed` : ""} .{" "}
-                        {formatAmount(toCents(u.unit.netPrice), locale)}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="assignStatus">
-                {t("common.status")}
-              </label>
-              <select id="assignStatus" name="status" className="select" defaultValue="RESERVED">
-                <option value="RESERVED">{t("units.status.RESERVED")}</option>
-                <option value="SOLD">{t("units.status.SOLD")}</option>
-                <option value="DELIVERED">{t("units.status.DELIVERED")}</option>
-              </select>
-            </div>
-            <div className="flex items-end">
-              <button type="submit" className="btn btn-primary w-full">
-                {t("common.add")}
-              </button>
-            </div>
-            <p className="text-xs text-brand-graphite/60 sm:col-span-3">
-              {t("clients.assignHint")}
-            </p>
-          </form>
         </Card>
 
-        {/* 3. One contract per apartment, with its schedule. */}
+        {/* 3. The contract on each apartment, with its schedule and what this
+               apartment has paid against it. */}
         <Card title={t("contracts.title")}>
           {contractSubjects.length === 0 ? (
             <Empty message={t("clients.noApartments")} />
@@ -323,19 +361,56 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                           {t("clients.noContractYet")}
                         </div>
                       </div>
-                      <form action={createContractForUnit.bind(null, id, apartment.unitId)}>
-                        <button type="submit" className="btn btn-primary !px-3 !py-1 !text-xs">
-                          {t("clients.createContract")}
-                        </button>
-                      </form>
+                      <div className="flex flex-wrap items-end gap-2">
+                        {choicesOfContract.length > 0 ? (
+                          <form
+                            action={attachContract.bind(null, id, apartment.unitId)}
+                            className="flex items-end gap-2"
+                          >
+                            <div>
+                              <label className="label" htmlFor={`contract-${apartment.unitId}`}>
+                                {t("contracts.selectExisting")}
+                              </label>
+                              <select
+                                id={`contract-${apartment.unitId}`}
+                                name="contractId"
+                                required
+                                className="select !py-1 !text-xs"
+                                defaultValue=""
+                              >
+                                <option value="">choose</option>
+                                {choicesOfContract.map((choice) => (
+                                  <option key={choice.id} value={choice.id}>
+                                    {choice.reference} .{" "}
+                                    {formatAmount(toCents(choice.netPrice), locale)} .{" "}
+                                    {choice.installmentCount}{" "}
+                                    {t("contracts.installmentsCount").toLowerCase()}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <button type="submit" className="btn btn-primary !px-3 !py-1 !text-xs">
+                              {t("contracts.attach")}
+                            </button>
+                          </form>
+                        ) : null}
+                        <Link
+                          href="/contracts/new"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-secondary !px-3 !py-1 !text-xs"
+                        >
+                          {t("clients.newContract")}
+                        </Link>
+                      </div>
                     </div>
                   );
                 }
 
-                const lines = scheduleRows.filter((l) => l.contractId === row.contract.id);
-                const blended = effectiveVatRate(vatSetupOf(row.contract));
+                const assignmentId = row.assignment.id;
+                const lines = scheduleRows.filter((l) => l.assignmentId === assignmentId);
                 const scheduled = lines.reduce((a, l) => a + toCents(l.totalAmount), 0);
-                const paid = lines.reduce((a, l) => a + (paidByInstallment.get(l.id) ?? 0), 0);
+                const paid = paidByAssignment.get(assignmentId) ?? 0;
 
                 return (
                   <div
@@ -354,22 +429,38 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                         </Link>
                         <div className="text-xs text-brand-graphite/60">
                           {row.project.name} {row.unit.code} .{" "}
-                          {formatMoney(toCents(row.contract.netPrice), locale)} before VAT .{" "}
-                          {t("contracts.effectiveRate")}{" "}
-                          {formatPercent(Number(blended.toFixed(3)), locale)}
+                          {formatAmount(toCents(row.contract.netPrice), locale)} before VAT .{" "}
+                          {t("contracts.vat")} {formatPercent(Number(row.contract.vatRate), locale)}
                         </div>
                         <div className="mt-1 text-xs text-brand-graphite/60">
-                          {formatMoney(paid, locale)} {t("contracts.paid").toLowerCase()} of{" "}
-                          {formatMoney(scheduled, locale)}
+                          {formatAmount(paid, locale)} {t("contracts.paid").toLowerCase()} of{" "}
+                          {formatAmount(scheduled, locale)}
                         </div>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        <form action={deleteContract.bind(null, row.contract.id, id)}>
-                          <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
-                            {t("clients.deleteContract")}
-                          </button>
-                        </form>
+                        <Link
+                          href={`/contracts/${row.contract.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-secondary !px-3 !py-1 !text-xs"
+                        >
+                          {t("clients.openContract")}
+                        </Link>
+                        {paid > 0 ? (
+                          <span className="text-xs text-brand-graphite/60">
+                            {t("clients.paymentsRecorded")}
+                          </span>
+                        ) : (
+                          <form action={detachContract.bind(null, assignmentId, id)}>
+                            <button
+                              type="submit"
+                              className="btn btn-secondary !px-3 !py-1 !text-xs"
+                            >
+                              {t("clients.detachContract")}
+                            </button>
+                          </form>
+                        )}
                       </div>
 
                       <InstallmentsPanel
@@ -380,7 +471,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                           <table className="data">
                             <thead>
                               <tr>
-                                <th>#</th>
+                                <th className="ctr">#</th>
                                 <th>{t("contracts.stage")}</th>
                                 <th className="ctr">{t("clients.period")}</th>
                                 <th className="ctr">{t("contracts.net")}</th>
@@ -391,31 +482,34 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                             </thead>
                             <tbody>
                               {lines.map((line) => {
-                                const paidHere = paidByInstallment.get(line.id) ?? 0;
+                                const paidHere = paidByPair.get(`${assignmentId}:${line.id}`) ?? 0;
                                 return (
                                   <tr key={line.id}>
                                     <td className="ctr">{line.seq}</td>
                                     <td>{line.label}</td>
-                                    <td className="ctr">{day(line.dueDate, locale) || "not set"}</td>
                                     <td className="ctr">
-                                      {formatMoney(toCents(line.netAmount), locale)}
+                                      {day(line.dueDate, locale) || "not set"}
                                     </td>
                                     <td className="ctr">
-                                      {formatMoney(toCents(line.vatAmount), locale)}
+                                      {formatAmount(toCents(line.netAmount), locale)}
+                                    </td>
+                                    <td className="ctr">
+                                      {formatAmount(toCents(line.vatAmount), locale)}
                                       <div className="text-xs text-brand-graphite/50">
-                                        {formatPercent(
-                                          Number(Number(line.vatRateApplied).toFixed(3)),
-                                          locale,
-                                        )}
+                                        {formatPercent(Number(line.vatRateApplied), locale)}
                                       </div>
                                     </td>
                                     <td className="ctr font-semibold">
-                                      {formatMoney(toCents(line.totalAmount), locale)}
+                                      {formatAmount(toCents(line.totalAmount), locale)}
                                     </td>
                                     <td className="ctr">
                                       {paidHere > 0 ? (
-                                        <Pill tone={line.status === "PAID" ? "good" : "warn"}>
-                                          {formatMoney(paidHere, locale)}
+                                        <Pill
+                                          tone={
+                                            paidHere >= toCents(line.totalAmount) ? "good" : "warn"
+                                          }
+                                        >
+                                          {formatAmount(paidHere, locale)}
                                         </Pill>
                                       ) : (
                                         <span className="text-xs text-brand-graphite/50">no</span>
@@ -428,50 +522,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                           </table>
                         </div>
 
-                        <div className="mt-3 flex flex-wrap items-end gap-3">
-                          <form action={addInstallment.bind(null, row.contract.id, id)}>
-                            <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
-                              {t("clients.addInstallment")}
-                            </button>
-                          </form>
-
-                          <form
-                            action={setContractVatRate.bind(null, row.contract.id, id)}
-                            className="flex items-end gap-2"
-                          >
-                            <div>
-                              <label className="label" htmlFor={`rate-${row.contract.id}`}>
-                                {t("clients.vatRate")}
-                              </label>
-                              <select
-                                id={`rate-${row.contract.id}`}
-                                name="rate"
-                                className="select !w-24 !py-1 !text-xs"
-                                defaultValue={Number(row.contract.vatRateReduced) === 19 ? "19" : "5"}
-                              >
-                                <option value="5">5%</option>
-                                <option value="19">19%</option>
-                              </select>
-                            </div>
-                            <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
-                              {t("clients.applyVat")}
-                            </button>
-                          </form>
-
-                          <Link
-                            href={`/contracts/${row.contract.id}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn btn-secondary !px-3 !py-1 !text-xs"
-                          >
-                            {t("clients.openContract")}
-                          </Link>
-                        </div>
-
                         <p className="mt-2 text-xs text-brand-graphite/60">
-                          A split between the two rates, the dates, the stage names and recording a
-                          payment are all on the contract page. Anything already paid keeps the
-                          figures it was invoiced at.
+                          {t("clients.scheduleOnContractPage")}
                         </p>
                       </InstallmentsPanel>
                     </div>
@@ -491,12 +543,21 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             <DocumentUpload
               action={uploadClientDocuments.bind(null, id)}
               idNumber={client.idNumber ?? ""}
+              apartments={contractSubjects.map((a) => ({
+                unitId: a.unitId,
+                code: a.code,
+                projectName: a.projectName,
+              }))}
               labels={{
                 category: t("common.category"),
                 number: t("clients.idNumber"),
                 title: t("common.title"),
                 files: t("common.files"),
                 add: t("common.add"),
+                apartment: t("clients.docsApartment"),
+                choose: t("clients.chooseApartmentDoc"),
+                anyApartment: t("clients.anyApartment"),
+                search: t("clients.searchPlaceholder"),
               }}
             />
           </div>

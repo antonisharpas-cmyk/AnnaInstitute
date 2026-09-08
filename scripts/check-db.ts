@@ -131,7 +131,9 @@ async function main() {
         "or set DATABASE_SSL=false in .env.local for a local server.",
       ]);
     }
-    fail(message, ["This one is not in the list above, so send me the line exactly as it appears."]);
+    fail(message, [
+      "This one is not in the list above, so send me the line exactly as it appears.",
+    ]);
   }
 
   const tables = await ask(

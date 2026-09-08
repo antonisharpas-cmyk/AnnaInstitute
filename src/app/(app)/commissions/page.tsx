@@ -1,75 +1,199 @@
 import Link from "next/link";
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, clients, commissionPayments, commissions, contracts, units } from "@/db/schema";
+import {
+  agents,
+  clients,
+  commissionPayments,
+  commissions,
+  contractUnits,
+  contracts,
+  projects,
+  units,
+} from "@/db/schema";
 import { getTranslator } from "@/i18n";
-import { formatMoney, toCents } from "@/lib/money";
-import { Card, Empty, PageHeader, Pill } from "@/components/ui";
+import { formatAmount, formatPercent, toCents } from "@/lib/money";
+import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
+import SearchBox from "@/components/SearchBox";
+import Pagination, { paginate } from "@/components/Pagination";
+import Disclosure from "@/components/Disclosure";
 import { recordCommissionPayment } from "../agents/actions";
 
-export default async function CommissionsPage() {
-  const { locale, t } = await getTranslator();
+const PER_PAGE = 10;
 
-  const rows = await db
+const day = (value: Date | null | undefined) =>
+  value ? new Date(value).toISOString().slice(0, 10) : "";
+
+export default async function CommissionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+}) {
+  const params = await searchParams;
+  const { locale, t } = await getTranslator();
+  const query = (params.q ?? "").trim().toLowerCase();
+  const status = params.status ?? "";
+  const { page, perPage, offset } = paginate(params, PER_PAGE);
+
+  /**
+   * A commission belongs to one sale: one apartment on one contract. The rows
+   * are joined through the assignment, which is where the agent is recorded.
+   */
+  const all = await db
     .select({
       commission: commissions,
       agent: agents,
       contract: contracts,
       unit: units,
+      project: projects,
       client: clients,
+      paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.commission_id = ${commissions.id}), 0)`,
     })
     .from(commissions)
     .innerJoin(agents, eq(agents.id, commissions.agentId))
-    .innerJoin(contracts, eq(contracts.id, commissions.contractId))
-    .innerJoin(units, eq(units.id, contracts.unitId))
-    .innerJoin(clients, eq(clients.id, contracts.clientId))
+    .leftJoin(contractUnits, eq(contractUnits.id, commissions.assignmentId))
+    .leftJoin(contracts, eq(contracts.id, contractUnits.contractId))
+    .leftJoin(units, eq(units.id, contractUnits.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .leftJoin(clients, eq(clients.id, contractUnits.clientId))
     .orderBy(desc(commissions.createdAt));
 
-  const paymentRows = await db
-    .select({ payment: commissionPayments, agent: agents })
-    .from(commissionPayments)
-    .innerJoin(agents, eq(agents.id, commissionPayments.agentId))
-    .orderBy(desc(commissionPayments.paidOn));
+  const matching = all.filter((r) => {
+    if (status && r.commission.status !== status) return false;
+    if (!query) return true;
+    const haystack = [
+      r.agent.name,
+      r.agent.company,
+      r.contract?.reference,
+      r.unit?.code,
+      r.project?.name,
+      r.client ? `${r.client.firstName} ${r.client.lastName}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(query);
+  });
 
-  const agentList = await db.select().from(agents).orderBy(asc(agents.name));
+  const rows = matching.slice(offset, offset + perPage);
+
+  const [paymentRows, agentList] = await Promise.all([
+    db
+      .select({ payment: commissionPayments, agent: agents })
+      .from(commissionPayments)
+      .innerJoin(agents, eq(agents.id, commissionPayments.agentId))
+      .orderBy(desc(commissionPayments.paidOn))
+      .limit(20),
+    db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
+  ]);
+
+  const generated = matching.reduce((a, r) => a + toCents(r.commission.amount), 0);
+  const settled = matching.reduce((a, r) => a + toCents(r.paid), 0);
 
   return (
     <>
-      <PageHeader title={t("nav.commissions")} />
+      <PageHeader
+        title={t("commissions.title")}
+        action={
+          <Link href="/agents" className="btn btn-secondary">
+            {t("agents.title")}
+          </Link>
+        }
+      />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          <Card title={t("agents.generated")}>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Stat label={t("agents.generated")} value={formatAmount(generated, locale)} />
+        <Stat label={t("agents.paidOut")} value={formatAmount(settled, locale)} />
+        <Stat label={t("agents.owed")} value={formatAmount(generated - settled, locale)} />
+      </div>
+
+      <div className="space-y-4">
+        <Card>
+          <SearchBox
+            action="/commissions"
+            query={params.q ?? ""}
+            placeholder={t("commissions.searchPlaceholder")}
+            searchLabel={t("common.search")}
+            clearLabel={t("common.clear")}
+          >
+            <div className="w-48">
+              <label className="label" htmlFor="status">
+                {t("common.status")}
+              </label>
+              <select id="status" name="status" defaultValue={status} className="select">
+                <option value="">{t("common.all")}</option>
+                <option value="PENDING">pending</option>
+                <option value="PARTIALLY_PAID">partially paid</option>
+                <option value="PAID">paid</option>
+                <option value="CANCELLED">cancelled</option>
+              </select>
+            </div>
+          </SearchBox>
+
+          <div className="mt-4 overflow-x-auto">
             {rows.length === 0 ? (
-              <Empty message={t("common.none")} />
+              <Empty message={query || status ? t("commissions.noneFound") : t("common.none")} />
             ) : (
               <table className="data">
                 <thead>
                   <tr>
                     <th>{t("contracts.agent")}</th>
-                    <th>{t("contracts.reference")}</th>
-                    <th className="num">Base</th>
-                    <th className="num">{t("agents.rate")}</th>
-                    <th className="num">{t("contracts.amount")}</th>
-                    <th>{t("common.status")}</th>
+                    <th>{t("contracts.title")}</th>
+                    <th>{t("commissions.sale")}</th>
+                    <th className="ctr">{t("commissions.base")}</th>
+                    <th className="ctr">{t("agents.rate")}</th>
+                    <th className="ctr">{t("contracts.amount")}</th>
+                    <th className="ctr">{t("agents.paidOut")}</th>
+                    <th className="ctr">{t("common.status")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.commission.id}>
-                      <td className="font-semibold">{r.agent.name}</td>
                       <td>
-                        <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
-                          {r.contract.reference}
+                        <Link
+                          href={`/agents/${r.agent.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold hover:underline"
+                        >
+                          {r.agent.name}
                         </Link>
-                        <div className="text-xs text-slate-500">
-                          {r.client.lastName} . {r.unit.code}
+                        <div className="text-xs text-brand-graphite/60">
+                          {r.agent.company ?? ""}
                         </div>
                       </td>
-                      <td className="num">{formatMoney(toCents(r.commission.baseAmount), locale)}</td>
-                      <td className="num">{Number(r.commission.rate)}%</td>
-                      <td className="num font-semibold">{formatMoney(toCents(r.commission.amount), locale)}</td>
                       <td>
+                        {r.contract ? (
+                          <Link
+                            href={`/contracts/${r.contract.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="hover:underline"
+                          >
+                            {r.contract.reference}
+                          </Link>
+                        ) : (
+                          ""
+                        )}
+                      </td>
+                      <td>
+                        {r.project && r.unit ? `${r.project.name} ${r.unit.code}` : ""}
+                        {r.client ? (
+                          <div className="text-xs text-brand-graphite/60">
+                            {r.client.firstName} {r.client.lastName}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="ctr">
+                        {formatAmount(toCents(r.commission.baseAmount), locale)}
+                      </td>
+                      <td className="ctr">{formatPercent(Number(r.commission.rate), locale)}</td>
+                      <td className="ctr font-semibold">
+                        {formatAmount(toCents(r.commission.amount), locale)}
+                      </td>
+                      <td className="ctr">{formatAmount(toCents(r.paid), locale)}</td>
+                      <td className="ctr">
                         <Pill
                           tone={
                             r.commission.status === "PAID"
@@ -87,91 +211,121 @@ export default async function CommissionsPage() {
                 </tbody>
               </table>
             )}
-          </Card>
+          </div>
 
-          <Card title={t("agents.paidOut")}>
-            {paymentRows.length === 0 ? (
-              <Empty message={t("common.none")} />
-            ) : (
+          <Pagination
+            basePath="/commissions"
+            params={params}
+            info={{ page, perPage, total: matching.length }}
+            labels={{
+              previous: t("common.previous"),
+              next: t("common.next"),
+              showing: t("common.showing"),
+              of: t("common.of"),
+            }}
+          />
+        </Card>
+
+        <Card title={t("commissions.paidOutTitle")}>
+          <div className="mb-4">
+            <Disclosure showLabel={t("agents.recordPayment")} hideLabel={t("common.cancel")}>
+              {agentList.length === 0 ? (
+                <p className="text-sm text-brand-graphite/60">Add an agent first.</p>
+              ) : (
+                <form
+                  action={recordCommissionPayment}
+                  className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-2"
+                >
+                  <div>
+                    <label className="label" htmlFor="agentId">
+                      {t("contracts.agent")}
+                    </label>
+                    <select id="agentId" name="agentId" required className="select">
+                      {agentList.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="commissionId">
+                      {t("commissions.sale")}
+                    </label>
+                    <select id="commissionId" name="commissionId" className="select">
+                      <option value="">not against one sale</option>
+                      {all
+                        .filter((r) => r.commission.status !== "PAID")
+                        .map((r) => (
+                          <option key={r.commission.id} value={r.commission.id}>
+                            {r.agent.name} . {r.contract?.reference ?? ""} {r.unit?.code ?? ""} .{" "}
+                            {formatAmount(toCents(r.commission.amount), locale)}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="amount">
+                      {t("contracts.amount")}
+                    </label>
+                    <input id="amount" name="amount" required className="input" />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="paidOn">
+                      {t("common.date")}
+                    </label>
+                    <input id="paidOn" name="paidOn" type="date" className="input" />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="reference">
+                      {t("commissions.reference")}
+                    </label>
+                    <input id="reference" name="reference" className="input" />
+                  </div>
+                  <div className="flex items-end">
+                    <button type="submit" className="btn btn-primary">
+                      {t("common.save")}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </Disclosure>
+          </div>
+
+          {paymentRows.length === 0 ? (
+            <Empty message={t("common.none")} />
+          ) : (
+            <div className="overflow-x-auto">
               <table className="data">
                 <thead>
                   <tr>
                     <th>{t("common.date")}</th>
                     <th>{t("contracts.agent")}</th>
-                    <th className="num">{t("contracts.amount")}</th>
-                    <th>Reference</th>
+                    <th className="ctr">{t("contracts.amount")}</th>
+                    <th>{t("commissions.reference")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paymentRows.map((r) => (
                     <tr key={r.payment.id}>
-                      <td>{new Date(r.payment.paidOn).toISOString().slice(0, 10)}</td>
-                      <td>{r.agent.name}</td>
-                      <td className="num">{formatMoney(toCents(r.payment.amount), locale)}</td>
+                      <td>{day(r.payment.paidOn)}</td>
+                      <td>
+                        <Link
+                          href={`/agents/${r.agent.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:underline"
+                        >
+                          {r.agent.name}
+                        </Link>
+                      </td>
+                      <td className="ctr">{formatAmount(toCents(r.payment.amount), locale)}</td>
                       <td>{r.payment.reference ?? ""}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </Card>
-        </div>
-
-        <Card title={t("agents.recordCommissionPayment")}>
-          {agentList.length === 0 ? (
-            <p className="text-sm text-slate-500">Add an agent first.</p>
-          ) : (
-            <form action={recordCommissionPayment} className="space-y-3">
-              <div>
-                <label className="label" htmlFor="agentId">
-                  {t("contracts.agent")}
-                </label>
-                <select id="agentId" name="agentId" required className="select">
-                  {agentList.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="commissionId">
-                  Against
-                </label>
-                <select id="commissionId" name="commissionId" className="select">
-                  <option value="">not assigned to one contract</option>
-                  {rows
-                    .filter((r) => r.commission.status !== "PAID")
-                    .map((r) => (
-                      <option key={r.commission.id} value={r.commission.id}>
-                        {r.agent.name} . {r.contract.reference} .{" "}
-                        {formatMoney(toCents(r.commission.amount), locale)}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="amount">
-                  {t("contracts.amount")}
-                </label>
-                <input id="amount" name="amount" required className="input" />
-              </div>
-              <div>
-                <label className="label" htmlFor="paidOn">
-                  {t("common.date")}
-                </label>
-                <input id="paidOn" name="paidOn" type="date" className="input" />
-              </div>
-              <div>
-                <label className="label" htmlFor="reference">
-                  Reference
-                </label>
-                <input id="reference" name="reference" className="input" />
-              </div>
-              <button type="submit" className="btn btn-primary w-full">
-                {t("common.save")}
-              </button>
-            </form>
+            </div>
           )}
         </Card>
       </div>

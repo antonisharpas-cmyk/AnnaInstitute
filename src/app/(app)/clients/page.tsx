@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, contracts } from "@/db/schema";
+import { clients, contractUnits } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { apartmentsByClient } from "@/lib/clients";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
@@ -11,11 +11,7 @@ import Pagination, { paginate } from "@/components/Pagination";
 const PER_PAGE = 10;
 
 const statusTone = (status: string) =>
-  status === "SOLD" || status === "DELIVERED"
-    ? "good"
-    : status === "RESERVED"
-      ? "warn"
-      : "neutral";
+  status === "SOLD" || status === "DELIVERED" ? "good" : status === "RESERVED" ? "warn" : "neutral";
 
 export default async function ClientsPage({
   searchParams,
@@ -42,14 +38,10 @@ export default async function ClientsPage({
     );
   }
   if (held === "yes") {
-    filters.push(
-      sql`exists (select 1 from units u where u.client_id = ${clients.id})`,
-    );
+    filters.push(sql`exists (select 1 from units u where u.client_id = ${clients.id})`);
   }
   if (held === "no") {
-    filters.push(
-      sql`not exists (select 1 from units u where u.client_id = ${clients.id})`,
-    );
+    filters.push(sql`not exists (select 1 from units u where u.client_id = ${clients.id})`);
   }
   const where = filters.length > 0 ? and(...filters) : undefined;
 
@@ -61,10 +53,10 @@ export default async function ClientsPage({
     db
       .select({
         client: clients,
-        contractCount: sql<number>`count(${contracts.id})::int`,
+        contractCount: sql<number>`count(${contractUnits.id})::int`,
       })
       .from(clients)
-      .leftJoin(contracts, eq(contracts.clientId, clients.id))
+      .leftJoin(contractUnits, eq(contractUnits.clientId, clients.id))
       .where(where)
       .groupBy(clients.id)
       .orderBy(asc(clients.lastName), asc(clients.firstName))
@@ -98,12 +90,7 @@ export default async function ClientsPage({
             <label className="label" htmlFor="held">
               {t("clients.apartmentsPlural")}
             </label>
-            <select
-              id="held"
-              name="held"
-              defaultValue={held}
-              className="select"
-            >
+            <select id="held" name="held" defaultValue={held} className="select">
               <option value="">{t("common.all")}</option>
               <option value="yes">with an apartment</option>
               <option value="no">without one</option>
@@ -113,11 +100,7 @@ export default async function ClientsPage({
 
         <div className="mt-4 overflow-x-auto">
           {rows.length === 0 ? (
-            <Empty
-              message={
-                query || held ? t("clients.noneFound") : t("common.none")
-              }
-            />
+            <Empty message={query || held ? t("clients.noneFound") : t("common.none")} />
           ) : (
             <table className="data">
               <thead>
@@ -148,12 +131,8 @@ export default async function ClientsPage({
                         </Link>
                       </td>
                       <td className="break-all">{r.client.email ?? ""}</td>
-                      <td className="whitespace-nowrap">
-                        {r.client.phone ?? ""}
-                      </td>
-                      <td className="whitespace-nowrap">
-                        {r.client.country ?? ""}
-                      </td>
+                      <td className="whitespace-nowrap">{r.client.phone ?? ""}</td>
+                      <td className="whitespace-nowrap">{r.client.country ?? ""}</td>
                       <td>
                         {held.length === 0 ? (
                           <Link
@@ -186,11 +165,7 @@ export default async function ClientsPage({
                           <ul className="space-y-1">
                             {held.map((a) => (
                               <li key={a.unitId}>
-                                <Pill
-                                  tone={
-                                    statusTone(a.status) as "good" | "warn" | "neutral"
-                                  }
-                                >
+                                <Pill tone={statusTone(a.status) as "good" | "warn" | "neutral"}>
                                   {t(`units.status.${a.status}` as MessageKey)}
                                 </Pill>
                               </li>

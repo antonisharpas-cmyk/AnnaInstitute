@@ -15,10 +15,7 @@ export function normaliseFor(channel: SuppressionChannel, value: string): string
  * The hard stop. Checked before every single send, in every channel.
  * Rows only ever go in. Nothing in the interface takes one out again.
  */
-export async function isSuppressed(
-  channel: SuppressionChannel,
-  value: string,
-): Promise<boolean> {
+export async function isSuppressed(channel: SuppressionChannel, value: string): Promise<boolean> {
   const normalised = normaliseFor(channel, value);
   if (!normalised) return true;
   const rows = await db
@@ -83,7 +80,11 @@ export async function suppressAndMarkClients(options: {
 
     await db
       .update(clients)
-      .set({ marketingOptIn: false, unsubscribedAt: new Date(), updatedAt: new Date() })
+      .set({
+        marketingOptIn: false,
+        unsubscribedAt: new Date(),
+        updatedAt: new Date(),
+      })
       .where(eq(clients.id, client.id));
     marked += 1;
   }

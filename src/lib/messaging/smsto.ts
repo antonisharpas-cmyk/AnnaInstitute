@@ -58,7 +58,10 @@ export async function sendViaSmsTo(options: {
 
   const path = pathFor(channel);
   if (!path) {
-    return { status: "SIMULATED", error: `No endpoint is configured for ${channel}.` };
+    return {
+      status: "SIMULATED",
+      error: `No endpoint is configured for ${channel}.`,
+    };
   }
 
   try {
@@ -90,7 +93,9 @@ export async function sendViaSmsTo(options: {
     }
 
     const providerId =
-      (payload.message_id as string) ?? (payload.id as string) ?? (payload.success ? "accepted" : null);
+      (payload.message_id as string) ??
+      (payload.id as string) ??
+      (payload.success ? "accepted" : null);
 
     return { status: "SENT", providerId, usedChannel: channel };
   } catch (error) {

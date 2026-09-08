@@ -44,7 +44,12 @@ export async function signIn(_prev: unknown, formData: FormData): Promise<SignIn
   }
 
   if (!user) {
-    await recordAudit({ action: "login.failed", entity: "user", detail: email, userEmail: email });
+    await recordAudit({
+      action: "login.failed",
+      entity: "user",
+      detail: email,
+      userEmail: email,
+    });
     return { error: "credentials" };
   }
 

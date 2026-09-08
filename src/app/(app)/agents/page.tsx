@@ -1,137 +1,175 @@
-import { asc, eq, sql } from "drizzle-orm";
+import Link from "next/link";
+import { and, asc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, commissionPayments, commissions } from "@/db/schema";
+import { agents, commissions } from "@/db/schema";
 import { getTranslator } from "@/i18n";
-import { formatMoney, toCents } from "@/lib/money";
+import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
-import { createAgent, updateAgentRate } from "./actions";
+import SearchBox from "@/components/SearchBox";
+import Pagination, { paginate } from "@/components/Pagination";
 
-export default async function AgentsPage() {
+const PER_PAGE = 10;
+
+export default async function AgentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; active?: string; page?: string }>;
+}) {
+  const params = await searchParams;
   const { locale, t } = await getTranslator();
+  const query = (params.q ?? "").trim();
+  const active = params.active ?? "";
+  const { page, perPage, offset } = paginate(params, PER_PAGE);
 
-  const rows = await db
-    .select({
-      agent: agents,
-      contracts: sql<number>`count(distinct ${commissions.contractId})::int`,
-      generated: sql<string>`coalesce(sum(${commissions.amount}), 0)`,
-      paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.agent_id = ${agents.id}), 0)`,
-    })
-    .from(agents)
-    .leftJoin(commissions, eq(commissions.agentId, agents.id))
-    .groupBy(agents.id)
-    .orderBy(asc(agents.name));
+  const filters: SQL[] = [];
+  if (query) {
+    filters.push(
+      or(
+        ilike(agents.name, `%${query}%`),
+        ilike(agents.company, `%${query}%`),
+        ilike(agents.email, `%${query}%`),
+        ilike(agents.phone, `%${query}%`),
+      ) as SQL,
+    );
+  }
+  if (active === "yes") filters.push(eq(agents.isActive, true));
+  if (active === "no") filters.push(eq(agents.isActive, false));
+  const where = filters.length > 0 ? and(...filters) : undefined;
 
-  void commissionPayments;
+  const [[counted], rows] = await Promise.all([
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(agents)
+      .where(where),
+    db
+      .select({
+        agent: agents,
+        sales: sql<number>`count(${commissions.id})::int`,
+        generated: sql<string>`coalesce(sum(${commissions.amount}), 0)`,
+        paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.agent_id = ${agents.id}), 0)`,
+      })
+      .from(agents)
+      .leftJoin(commissions, eq(commissions.agentId, agents.id))
+      .where(where)
+      .groupBy(agents.id)
+      .orderBy(asc(agents.name))
+      .limit(perPage)
+      .offset(offset),
+  ]);
+
+  const total = counted?.total ?? 0;
 
   return (
     <>
-      <PageHeader title={t("agents.title")} />
+      <PageHeader
+        title={t("agents.title")}
+        action={
+          <Link href="/agents/new" target="_blank" rel="noreferrer" className="btn btn-primary">
+            {t("agents.new")}
+          </Link>
+        }
+      />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Card>
-            {rows.length === 0 ? (
-              <Empty message={t("common.none")} />
-            ) : (
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>{t("common.name")}</th>
-                    <th className="num">{t("contracts.title")}</th>
-                    <th className="num">{t("agents.generated")}</th>
-                    <th className="num">{t("agents.paidOut")}</th>
-                    <th className="num">{t("agents.owed")}</th>
-                    <th>{t("agents.rate")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const generated = toCents(r.generated);
-                    const paid = toCents(r.paid);
-                    return (
-                      <tr key={r.agent.id}>
-                        <td>
-                          <div className="font-semibold">{r.agent.name}</div>
-                          <div className="text-xs text-slate-500">
-                            {[r.agent.company, r.agent.email, r.agent.phone].filter(Boolean).join(" . ")}
-                          </div>
-                          {!r.agent.isActive ? <Pill tone="warn">inactive</Pill> : null}
-                        </td>
-                        <td className="num">{r.contracts}</td>
-                        <td className="num">{formatMoney(generated, locale)}</td>
-                        <td className="num">{formatMoney(paid, locale)}</td>
-                        <td className="num font-semibold">{formatMoney(generated - paid, locale)}</td>
-                        <td>
-                          <form
-                            action={updateAgentRate.bind(null, r.agent.id)}
-                            className="flex items-center gap-1"
-                          >
-                            <input
-                              name="commissionRate"
-                              defaultValue={Number(r.agent.commissionRate).toString()}
-                              className="input !w-16 !py-1 !text-xs"
-                              aria-label={t("agents.rate")}
-                            />
-                            <label className="flex items-center gap-1 text-xs">
-                              <input type="checkbox" name="isActive" defaultChecked={r.agent.isActive} />
-                              active
-                            </label>
-                            <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
-                              {t("common.save")}
-                            </button>
-                          </form>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            <p className="mt-3 text-xs text-slate-500">
-              Changing a rate here affects contracts created afterwards. A contract can also carry its own
-              rate, set on the contract page.
-            </p>
-          </Card>
+      <Card>
+        <SearchBox
+          action="/agents"
+          query={query}
+          placeholder={t("agents.searchPlaceholder")}
+          searchLabel={t("common.search")}
+          clearLabel={t("common.clear")}
+        >
+          <div className="w-40">
+            <label className="label" htmlFor="active">
+              {t("common.status")}
+            </label>
+            <select id="active" name="active" defaultValue={active} className="select">
+              <option value="">{t("common.all")}</option>
+              <option value="yes">{t("agents.active")}</option>
+              <option value="no">{t("agents.inactive")}</option>
+            </select>
+          </div>
+        </SearchBox>
+
+        <div className="mt-4 overflow-x-auto">
+          {rows.length === 0 ? (
+            <Empty message={query || active ? t("agents.noneFound") : t("common.none")} />
+          ) : (
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t("common.name")}</th>
+                  <th>{t("agents.company")}</th>
+                  <th className="ctr">{t("agents.rate")}</th>
+                  <th className="ctr">{t("agents.sales")}</th>
+                  <th className="ctr">{t("agents.generated")}</th>
+                  <th className="ctr">{t("agents.paidOut")}</th>
+                  <th className="ctr">{t("agents.owed")}</th>
+                  <th className="ctr">{t("common.status")}</th>
+                  <th>{t("common.actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const generated = toCents(r.generated);
+                  const paid = toCents(r.paid);
+                  return (
+                    <tr key={r.agent.id}>
+                      <td>
+                        <Link
+                          href={`/agents/${r.agent.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold hover:underline"
+                        >
+                          {r.agent.name}
+                        </Link>
+                        <div className="text-xs text-brand-graphite/60">
+                          {[r.agent.email, r.agent.phone].filter(Boolean).join(" . ")}
+                        </div>
+                      </td>
+                      <td>{r.agent.company ?? ""}</td>
+                      <td className="ctr">
+                        {formatPercent(Number(r.agent.commissionRate), locale)}
+                      </td>
+                      <td className="ctr">{r.sales}</td>
+                      <td className="ctr">{formatAmount(generated, locale)}</td>
+                      <td className="ctr">{formatAmount(paid, locale)}</td>
+                      <td className="ctr font-semibold">
+                        {formatAmount(generated - paid, locale)}
+                      </td>
+                      <td className="ctr">
+                        <Pill tone={r.agent.isActive ? "good" : "warn"}>
+                          {r.agent.isActive ? t("agents.active") : t("agents.inactive")}
+                        </Pill>
+                      </td>
+                      <td>
+                        <Link
+                          href={`/agents/${r.agent.id}/edit`}
+                          className="btn btn-secondary !px-3 !py-1 !text-xs"
+                        >
+                          {t("common.edit")}
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
-        <Card title={t("agents.new")}>
-          <form action={createAgent} className="space-y-3">
-            <div>
-              <label className="label" htmlFor="name">
-                {t("common.name")}
-              </label>
-              <input id="name" name="name" required className="input" />
-            </div>
-            <div>
-              <label className="label" htmlFor="company">
-                {t("agents.company")}
-              </label>
-              <input id="company" name="company" className="input" />
-            </div>
-            <div>
-              <label className="label" htmlFor="email">
-                {t("common.email")}
-              </label>
-              <input id="email" name="email" type="email" className="input" />
-            </div>
-            <div>
-              <label className="label" htmlFor="phone">
-                {t("common.phone")}
-              </label>
-              <input id="phone" name="phone" className="input" />
-            </div>
-            <div>
-              <label className="label" htmlFor="commissionRate">
-                {t("agents.rate")}
-              </label>
-              <input id="commissionRate" name="commissionRate" defaultValue="3" className="input" />
-            </div>
-            <button type="submit" className="btn btn-primary w-full">
-              {t("common.add")}
-            </button>
-          </form>
-        </Card>
-      </div>
+        <Pagination
+          basePath="/agents"
+          params={params}
+          info={{ page, perPage, total }}
+          labels={{
+            previous: t("common.previous"),
+            next: t("common.next"),
+            showing: t("common.showing"),
+            of: t("common.of"),
+          }}
+        />
+      </Card>
     </>
   );
 }

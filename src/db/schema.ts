@@ -22,23 +22,16 @@ export const projectStatusEnum = pgEnum("project_status", [
   "UNDER_CONSTRUCTION",
   "COMPLETED",
 ]);
-export const unitStatusEnum = pgEnum("unit_status", [
-  "AVAILABLE",
-  "RESERVED",
-  "SOLD",
-  "DELIVERED",
-]);
+export const unitStatusEnum = pgEnum("unit_status", ["AVAILABLE", "RESERVED", "SOLD", "DELIVERED"]);
 export const contractStatusEnum = pgEnum("contract_status", [
   "DRAFT",
   "ACTIVE",
   "COMPLETED",
   "CANCELLED",
 ]);
-export const installmentStatusEnum = pgEnum("installment_status", [
-  "PENDING",
-  "PARTIAL",
-  "PAID",
-]);
+export const installmentStatusEnum = pgEnum("installment_status", ["PENDING", "PARTIAL", "PAID"]);
+/** How the schedule was built: the classic stages, or equal periodic payments. */
+export const scheduleTypeEnum = pgEnum("schedule_type", ["STANDARD", "PERIODIC"]);
 /** What kind of identity document the client gave us. */
 export const idTypeEnum = pgEnum("id_type", ["ID_CARD", "PASSPORT", "YELLOW_SLIP"]);
 
@@ -115,8 +108,12 @@ export const users = pgTable("users", {
   locale: text("locale").default("en").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
-  agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
-  clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+  agentId: text("agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
+  clientId: text("client_id").references(() => clients.id, {
+    onDelete: "set null",
+  }),
   createdAt: created(),
   updatedAt: updated(),
 });
@@ -152,69 +149,116 @@ export const units = pgTable(
     // The client who has reserved or bought this apartment. Assigned from the
     // client record, and independent of the contract, which comes later and
     // carries its own agreed price and payment schedule.
-    clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+    clientId: text("client_id").references(() => clients.id, {
+      onDelete: "set null",
+    }),
     floorPlanPath: text("floor_plan_path"),
     notes: text("notes"),
     createdAt: created(),
     updatedAt: updated(),
   },
-  (t) => ({ unitCodePerProject: unique("units_project_code").on(t.projectId, t.code) }),
+  (t) => ({
+    unitCodePerProject: unique("units_project_code").on(t.projectId, t.code),
+  }),
 );
 
+/**
+ * A contract is the agreement itself: a price, a VAT rate and a payment
+ * schedule. It stands on its own, with no apartment and no client on it, so the
+ * same contract can be put on several apartments across different buildings
+ * (see contractUnits). That is also what makes copying one worth doing.
+ */
 export const contracts = pgTable("contracts", {
   id: id(),
   reference: text("reference").notNull().unique(),
-  unitId: text("unit_id")
-    .notNull()
-    .references(() => units.id),
-  clientId: text("client_id")
-    .notNull()
-    .references(() => clients.id),
-  agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   contractDate: timestamp("contract_date", { withTimezone: true }),
   netPrice: money("net_price").notNull(),
+  /** One rate for the whole price. Editable, because the law changes. */
+  vatRate: rate("vat_rate").default("5").notNull(),
+  scheduleType: scheduleTypeEnum("schedule_type").default("STANDARD").notNull(),
+  /** 1 for monthly, 3 for quarterly. Only meaningful for a periodic schedule. */
+  periodMonths: integer("period_months"),
   status: contractStatusEnum("status").default("DRAFT").notNull(),
-  // VAT lives here as data. Two bases, two rates, both editable.
-  vatBaseReduced: money("vat_base_reduced").default("0").notNull(),
-  vatRateReduced: rate("vat_rate_reduced").default("5").notNull(),
-  vatBaseStandard: money("vat_base_standard").default("0").notNull(),
-  vatRateStandard: rate("vat_rate_standard").default("19").notNull(),
-  commissionRate: rate("commission_rate"),
   notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
 });
 
-export const installments = pgTable(
-  "installments",
+/**
+ * One apartment put on one contract: the sale.
+ *
+ * An apartment can only be on one contract at a time, which the unique key
+ * enforces. The buyer and the agent belong here rather than on the contract,
+ * because the same contract can serve different buyers in different buildings.
+ * Payments are recorded against this row, so apartment 101 can be at
+ * installment three while apartment 205 is still at the first one.
+ */
+export const contractUnits = pgTable(
+  "contract_units",
   {
     id: id(),
     contractId: text("contract_id")
       .notNull()
       .references(() => contracts.id, { onDelete: "cascade" }),
-    seq: integer("seq").notNull(),
-    label: text("label").notNull(),
-    labelEl: text("label_el"),
-    percentage: numeric("percentage", { precision: 7, scale: 4 }).notNull(),
-    netAmount: money("net_amount").notNull(),
-    vatAmount: money("vat_amount").notNull(),
-    totalAmount: money("total_amount").notNull(),
-    vatRateApplied: rate("vat_rate_applied").notNull(),
-    dueDate: timestamp("due_date", { withTimezone: true }),
-    trigger: text("trigger"),
-    status: installmentStatusEnum("status").default("PENDING").notNull(),
-    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    unitId: text("unit_id")
+      .notNull()
+      .references(() => units.id, { onDelete: "cascade" }),
+    clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    commissionRate: rate("commission_rate"),
+    notes: text("notes"),
     createdAt: created(),
     updatedAt: updated(),
   },
-  (t) => ({ seqPerContract: unique("installments_contract_seq").on(t.contractId, t.seq) }),
+  (t) => ({
+    oneContractPerUnit: unique("contract_units_unit").on(t.unitId),
+  }),
 );
+
+/**
+ * A line of a payment schedule.
+ *
+ * There are two kinds. A line with no assignment is part of the contract's own
+ * plan: the shape the office reuses, with amounts but no dates. A line with an
+ * assignment belongs to one apartment on that contract, and that is the one
+ * that carries dates and takes payments. Putting a contract on an apartment
+ * copies the plan across, so a buyer who signed six months later has the same
+ * stages on his own dates and can be at a different stage entirely.
+ */
+export const installments = pgTable("installments", {
+  id: id(),
+  contractId: text("contract_id")
+    .notNull()
+    .references(() => contracts.id, { onDelete: "cascade" }),
+  /** Null on the contract's own plan, set on an apartment's schedule. */
+  assignmentId: text("assignment_id").references(() => contractUnits.id, {
+    onDelete: "cascade",
+  }),
+  seq: integer("seq").notNull(),
+  label: text("label").notNull(),
+  labelEl: text("label_el"),
+  percentage: numeric("percentage", { precision: 7, scale: 4 }).notNull(),
+  netAmount: money("net_amount").notNull(),
+  vatAmount: money("vat_amount").notNull(),
+  totalAmount: money("total_amount").notNull(),
+  vatRateApplied: rate("vat_rate_applied").notNull(),
+  dueDate: timestamp("due_date", { withTimezone: true }),
+  trigger: text("trigger"),
+  status: installmentStatusEnum("status").default("PENDING").notNull(),
+  lockedAt: timestamp("locked_at", { withTimezone: true }),
+  createdAt: created(),
+  updatedAt: updated(),
+});
 
 export const payments = pgTable("payments", {
   id: id(),
   contractId: text("contract_id")
     .notNull()
     .references(() => contracts.id, { onDelete: "cascade" }),
+  /** Which apartment on the contract paid. */
+  assignmentId: text("assignment_id").references(() => contractUnits.id, {
+    onDelete: "cascade",
+  }),
   installmentId: text("installment_id").references(() => installments.id, {
     onDelete: "set null",
   }),
@@ -223,7 +267,9 @@ export const payments = pgTable("payments", {
   method: text("method"),
   receiptNumber: text("receipt_number"),
   notes: text("notes"),
-  recordedById: text("recorded_by_id").references(() => users.id, { onDelete: "set null" }),
+  recordedById: text("recorded_by_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: created(),
 });
 
@@ -260,24 +306,33 @@ export const documents = pgTable("documents", {
   filePath: text("file_path").notNull(),
   mimeType: text("mime_type"),
   sizeBytes: integer("size_bytes"),
-  clientId: text("client_id").references(() => clients.id, { onDelete: "cascade" }),
-  contractId: text("contract_id").references(() => contracts.id, { onDelete: "cascade" }),
+  clientId: text("client_id").references(() => clients.id, {
+    onDelete: "cascade",
+  }),
+  contractId: text("contract_id").references(() => contracts.id, {
+    onDelete: "cascade",
+  }),
   unitId: text("unit_id").references(() => units.id, { onDelete: "cascade" }),
-  projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "cascade",
+  }),
   changeRequestId: text("change_request_id").references(() => changeRequests.id, {
     onDelete: "cascade",
   }),
   originalName: text("original_name"),
-  uploadedById: text("uploaded_by_id").references(() => users.id, { onDelete: "set null" }),
+  uploadedById: text("uploaded_by_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   visibleToBuyer: boolean("visible_to_buyer").default(false).notNull(),
   createdAt: created(),
 });
 
 export const commissions = pgTable("commissions", {
   id: id(),
-  contractId: text("contract_id")
-    .notNull()
-    .references(() => contracts.id, { onDelete: "cascade" }),
+  /** The sale the commission is earned on: one apartment on one contract. */
+  assignmentId: text("assignment_id").references(() => contractUnits.id, {
+    onDelete: "cascade",
+  }),
   agentId: text("agent_id")
     .notNull()
     .references(() => agents.id),
@@ -331,12 +386,7 @@ export const settings = pgTable("settings", {
    it, and nothing in the interface removes a row from it.
    --------------------------------------------------------------------------- */
 
-export const messageChannelEnum = pgEnum("message_channel", [
-  "EMAIL",
-  "SMS",
-  "WHATSAPP",
-  "VIBER",
-]);
+export const messageChannelEnum = pgEnum("message_channel", ["EMAIL", "SMS", "WHATSAPP", "VIBER"]);
 
 export const messageStatusEnum = pgEnum("message_status", [
   "QUEUED",
@@ -354,10 +404,7 @@ export const campaignStatusEnum = pgEnum("campaign_status", [
   "FAILED",
 ]);
 
-export const campaignAudienceEnum = pgEnum("campaign_audience", [
-  "CLIENTS_CONSENTED",
-  "AGENTS",
-]);
+export const campaignAudienceEnum = pgEnum("campaign_audience", ["CLIENTS_CONSENTED", "AGENTS"]);
 
 export const suppressionChannelEnum = pgEnum("suppression_channel", ["EMAIL", "PHONE"]);
 
@@ -373,7 +420,9 @@ export const suppressions = pgTable(
     source: text("source"),
     createdAt: created(),
   },
-  (t) => ({ suppressionUnique: unique("suppressions_channel_value").on(t.channel, t.value) }),
+  (t) => ({
+    suppressionUnique: unique("suppressions_channel_value").on(t.channel, t.value),
+  }),
 );
 
 export const campaigns = pgTable("campaigns", {
@@ -402,16 +451,24 @@ export const campaignDocuments = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: "cascade" }),
   },
-  (t) => ({ campaignDocumentUnique: unique("campaign_documents_unique").on(t.campaignId, t.documentId) }),
+  (t) => ({
+    campaignDocumentUnique: unique("campaign_documents_unique").on(t.campaignId, t.documentId),
+  }),
 );
 
 export const messages = pgTable("messages", {
   id: id(),
-  campaignId: text("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+  campaignId: text("campaign_id").references(() => campaigns.id, {
+    onDelete: "set null",
+  }),
   channel: messageChannelEnum("channel").notNull(),
   toAddress: text("to_address").notNull(),
-  clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
-  agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  clientId: text("client_id").references(() => clients.id, {
+    onDelete: "set null",
+  }),
+  agentId: text("agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
   subject: text("subject"),
   body: text("body").notNull(),
   status: messageStatusEnum("status").default("QUEUED").notNull(),

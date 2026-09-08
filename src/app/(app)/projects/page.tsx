@@ -36,7 +36,10 @@ export default async function ProjectsPage({
   const where = filters.length > 0 ? and(...filters) : undefined;
 
   const [[counted], rows] = await Promise.all([
-    db.select({ total: sql<number>`count(*)::int` }).from(projects).where(where),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(projects)
+      .where(where),
     db
       .select({
         project: projects,
@@ -147,8 +150,7 @@ export default async function ProjectsPage({
                     <td className="ctr">
                       {formatAmount(toCents(r.soldValue), locale)}
                       <div className="text-xs text-brand-graphite/60">
-                        {r.soldCount}{" "}
-                        {r.soldCount === 1 ? t("projects.unit") : t("projects.units")}
+                        {r.soldCount} {r.soldCount === 1 ? t("projects.unit") : t("projects.units")}
                       </div>
                     </td>
                     <td>

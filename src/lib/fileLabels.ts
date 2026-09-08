@@ -50,3 +50,26 @@ export function fileLabel(
 export function isImage(mimeType: string | null | undefined): boolean {
   return Boolean(mimeType && mimeType.startsWith("image/"));
 }
+
+/** "AGENT_REFERRAL" reads as "Agent Referral" rather than shouting or whispering. */
+export function humanLabel(value: string | null | undefined): string {
+  if (!value) return "";
+  return value
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
+    .join(" ");
+}
+
+/**
+ * A client's own file. The apartment is named when the file concerns one, since a
+ * buyer of two apartments has two sets of paperwork.
+ */
+export function clientFileLabel(
+  doc: { title: string; originalName?: string | null; filePath: string },
+  unitCode?: string | null,
+): string {
+  const name = titleWithExtension(doc);
+  return unitCode ? `${name} - Apartment ${unitCode}` : name;
+}

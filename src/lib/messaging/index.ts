@@ -25,11 +25,7 @@ export function addressFor(channel: Channel, recipient: Recipient): string | nul
 }
 
 const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /**
  * Send one message and write down what happened.
@@ -81,7 +77,10 @@ export async function sendAndRecord(options: {
 
   if (!to) {
     const messageId = await record("FAILED", options.body, {
-      error: channel === "EMAIL" ? "No email address on the record." : "No telephone number on the record.",
+      error:
+        channel === "EMAIL"
+          ? "No email address on the record."
+          : "No telephone number on the record.",
     });
     return { status: "FAILED", error: "No address", messageId };
   }

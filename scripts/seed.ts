@@ -4,7 +4,7 @@
  *   npm run db:seed
  *
  * Creates the first administrator and the four One Eleven developments with
- * their units, plus one demonstration contract that shows the VAT rules at work.
+ * their units, plus one demonstration contract put on one of the apartments.
  * Safe to run more than once: it skips anything that already exists.
  */
 import { randomBytes } from "node:crypto";
@@ -13,6 +13,7 @@ import { db } from "../src/db";
 import {
   agents,
   clients,
+  contractUnits,
   contracts,
   installments,
   payments,
@@ -175,7 +176,11 @@ async function seedProjects() {
  */
 async function seedDemoContract() {
   const reference = "DEMO-2026-0001";
-  const existing = await db.select().from(contracts).where(eq(contracts.reference, reference)).limit(1);
+  const existing = await db
+    .select()
+    .from(contracts)
+    .where(eq(contracts.reference, reference))
+    .limit(1);
   if (existing[0]) {
     console.log("Demonstration contract already exists, left alone.");
     return;
@@ -213,33 +218,31 @@ async function seedDemoContract() {
     .returning({ id: clients.id });
 
   const netCents = toCents("200000");
-  const setup = {
-    netCents,
-    reducedBaseCents: toCents("150000"),
-    reducedRate: 5,
-    standardBaseCents: toCents("50000"),
-    standardRate: 19,
-  };
+  const rate = 5;
+  const setup = { netCents, rate };
 
   const contractRows = await db
     .insert(contracts)
     .values({
       reference,
-      unitId: unit.id,
-      clientId: clientRows[0].id,
-      agentId,
       contractDate: new Date(),
       netPrice: fromCents(netCents),
+      vatRate: rate.toFixed(3),
+      scheduleType: "STANDARD",
       status: "ACTIVE",
-      vatBaseReduced: fromCents(setup.reducedBaseCents),
-      vatRateReduced: "5.000",
-      vatBaseStandard: fromCents(setup.standardBaseCents),
-      vatRateStandard: "19.000",
-      notes: "Seeded example showing a split VAT rate and a locked first installment.",
+      notes: "Seeded example. One contract, put on an apartment, with the first stage paid.",
     })
     .returning({ id: contracts.id });
 
   const contractId = contractRows[0].id;
+
+  // The contract stands on its own; this row is what puts it on an apartment.
+  const assignmentRows = await db
+    .insert(contractUnits)
+    .values({ contractId, unitId: unit.id, clientId: clientRows[0].id, agentId })
+    .returning({ id: contractUnits.id });
+  const assignmentId = assignmentRows[0].id;
+
   const plan = DEFAULT_STAGES.map((s, i) => ({
     seq: i + 1,
     label: s.label,
@@ -248,6 +251,22 @@ async function seedDemoContract() {
   }));
   const lines = buildSchedule(setup, plan);
 
+  // The contract's own plan: the shape, with no dates on it.
+  await db.insert(installments).values(
+    lines.map((line, i) => ({
+      contractId,
+      seq: line.seq,
+      label: line.label,
+      labelEl: DEFAULT_STAGES[i]?.labelEl ?? null,
+      percentage: line.percentage.toFixed(4),
+      netAmount: fromCents(line.netCents),
+      vatAmount: fromCents(line.vatCents),
+      totalAmount: fromCents(line.totalCents),
+      vatRateApplied: line.rateApplied.toFixed(3),
+    })),
+  );
+
+  // The apartment's own copy, on its own dates.
   const inserted = await db
     .insert(installments)
     .values(
@@ -256,6 +275,7 @@ async function seedDemoContract() {
         due.setMonth(due.getMonth() + i * 3 - 3);
         return {
           contractId,
+          assignmentId,
           seq: line.seq,
           label: line.label,
           labelEl: DEFAULT_STAGES[i]?.labelEl ?? null,
@@ -274,6 +294,7 @@ async function seedDemoContract() {
   if (first) {
     await db.insert(payments).values({
       contractId,
+      assignmentId,
       installmentId: first.id,
       amount: first.total,
       paidOn: new Date(),
@@ -282,7 +303,7 @@ async function seedDemoContract() {
     });
     await db
       .update(installments)
-      .set({ status: "PAID", lockedAt: new Date() })
+      .set({ lockedAt: new Date() })
       .where(eq(installments.id, first.id));
   }
 

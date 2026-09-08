@@ -46,10 +46,12 @@ export function amountForInput(value: string | number): string {
 }
 
 export function formatPercent(rate: number, locale: string = "en"): string {
-  return new Intl.NumberFormat(locale === "el" ? "el-GR" : "en-GB", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 3,
-  }).format(rate) + "%";
+  return (
+    new Intl.NumberFormat(locale === "el" ? "el-GR" : "en-GB", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 3,
+    }).format(rate) + "%"
+  );
 }
 
 /**

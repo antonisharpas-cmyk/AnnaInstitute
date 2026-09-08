@@ -26,8 +26,7 @@ export async function createCampaign(formData: FormData) {
 
   const channel = String(formData.get("channel") ?? "EMAIL") as Channel;
   const audience = String(formData.get("audience") ?? "CLIENTS_CONSENTED") as
-    | "CLIENTS_CONSENTED"
-    | "AGENTS";
+    "CLIENTS_CONSENTED" | "AGENTS";
   const body = String(formData.get("body") ?? "").trim();
   if (!body) throw new Error("Write the message first.");
 
@@ -157,9 +156,15 @@ export async function sendCampaign(campaignId: string) {
       channel: campaign.channel,
       recipient,
       subject: campaign.subject
-        ? fillPlaceholders(campaign.subject, { ...recipient, priceListUrl: url })
+        ? fillPlaceholders(campaign.subject, {
+            ...recipient,
+            priceListUrl: url,
+          })
         : null,
-      body: fillPlaceholders(campaign.body, { ...recipient, priceListUrl: url }),
+      body: fillPlaceholders(campaign.body, {
+        ...recipient,
+        priceListUrl: url,
+      }),
       withOptOut: campaign.audience === "CLIENTS_CONSENTED",
       attachments,
     });

@@ -12,7 +12,10 @@ function secret(): string {
 }
 
 export function unsubscribeToken(clientId: string): string {
-  return createHmac("sha256", secret()).update(`unsubscribe:${clientId}`).digest("base64url").slice(0, 32);
+  return createHmac("sha256", secret())
+    .update(`unsubscribe:${clientId}`)
+    .digest("base64url")
+    .slice(0, 32);
 }
 
 export function verifyUnsubscribeToken(clientId: string, token: string): boolean {

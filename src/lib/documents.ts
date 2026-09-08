@@ -33,10 +33,25 @@ export async function documentsForClient(clientId: string) {
 }
 
 export async function documentsForUnit(unitId: string) {
+  // Only what belongs to the apartment itself. A client's own paperwork can name
+  // the apartment it concerns, but it stays in the client's file.
   return db
     .select()
     .from(documents)
-    .where(eq(documents.unitId, unitId))
+    .where(and(eq(documents.unitId, unitId), isNull(documents.clientId)))
+    .orderBy(desc(documents.createdAt));
+}
+
+/**
+ * A client's files with the apartment each one concerns, so a buyer with two
+ * apartments can tell their paperwork apart.
+ */
+export async function documentsForClientWithUnits(clientId: string) {
+  return db
+    .select({ document: documents, unitCode: units.code })
+    .from(documents)
+    .leftJoin(units, eq(units.id, documents.unitId))
+    .where(eq(documents.clientId, clientId))
     .orderBy(desc(documents.createdAt));
 }
 
@@ -67,12 +82,7 @@ export async function floorPlansByUnit(projectId: string) {
   const rows = await db
     .select()
     .from(documents)
-    .where(
-      and(
-        eq(documents.projectId, projectId),
-        eq(documents.category, "FLOOR_PLAN" as const),
-      ),
-    )
+    .where(and(eq(documents.projectId, projectId), eq(documents.category, "FLOOR_PLAN" as const)))
     .orderBy(asc(documents.createdAt));
 
   const grouped = new Map<string, typeof rows>();
@@ -100,7 +110,10 @@ export async function photosForProjects(projectIds: string[]) {
     .select()
     .from(documents)
     .where(
-      and(inArray(documents.projectId, projectIds), eq(documents.category, "PROGRESS_PHOTO" as const)),
+      and(
+        inArray(documents.projectId, projectIds),
+        eq(documents.category, "PROGRESS_PHOTO" as const),
+      ),
     )
     .orderBy(desc(documents.createdAt));
 }

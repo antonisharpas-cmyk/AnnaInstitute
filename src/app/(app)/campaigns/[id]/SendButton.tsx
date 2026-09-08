@@ -24,9 +24,7 @@ export default function SendButton({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-semibold">
-        Send now? This cannot be taken back once it has left.
-      </p>
+      <p className="text-sm font-semibold">Send now? This cannot be taken back once it has left.</p>
       <button
         type="button"
         className="btn btn-primary w-full"

@@ -61,7 +61,10 @@ export default async function ProjectPage({
 
   return (
     <>
-      <BackLink href="/projects" label={`${t("common.backTo")} ${t("projects.title").toLowerCase()}`} />
+      <BackLink
+        href="/projects"
+        label={`${t("common.backTo")} ${t("projects.title").toLowerCase()}`}
+      />
       <PageHeader
         title={project.name}
         subtitle={[project.location, project.completionBy].filter(Boolean).join(" . ")}
@@ -244,7 +247,10 @@ export default async function ProjectPage({
                           </Link>
                         ) : (
                           <form action={deleteProjectDocument.bind(null, row.document.id, id)}>
-                            <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                            <button
+                              type="submit"
+                              className="btn btn-secondary !px-2 !py-1 !text-xs"
+                            >
                               {t("common.delete")}
                             </button>
                           </form>

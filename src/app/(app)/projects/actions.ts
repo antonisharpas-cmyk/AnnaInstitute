@@ -183,13 +183,13 @@ export async function updateUnitPrice(unitId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const netPrice = fromCents(toCents(String(formData.get("netPrice") ?? "0")));
   const status = String(formData.get("status") ?? "AVAILABLE") as
-    | "AVAILABLE"
-    | "RESERVED"
-    | "SOLD"
-    | "DELIVERED";
+    "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED";
 
   const before = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
-  await db.update(units).set({ netPrice, status, updatedAt: new Date() }).where(eq(units.id, unitId));
+  await db
+    .update(units)
+    .set({ netPrice, status, updatedAt: new Date() })
+    .where(eq(units.id, unitId));
 
   await recordAudit({
     action: "unit.update",
@@ -206,7 +206,13 @@ export async function updateUnitPrice(unitId: string, formData: FormData) {
 export async function uploadProjectDocuments(projectId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const { files, title, category } = readUploadFields(formData);
-  await storeDocuments({ files, title, category, attachTo: { projectId }, user });
+  await storeDocuments({
+    files,
+    title,
+    category,
+    attachTo: { projectId },
+    user,
+  });
   revalidatePath(`/projects/${projectId}`);
 }
 

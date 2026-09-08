@@ -8,7 +8,10 @@ export default async function NewClientPage() {
 
   return (
     <>
-      <BackLink href="/clients" label={`${t("common.backTo")} ${t("clients.title").toLowerCase()}`} />
+      <BackLink
+        href="/clients"
+        label={`${t("common.backTo")} ${t("clients.title").toLowerCase()}`}
+      />
       <PageHeader title={t("clients.newTitle")} />
       <div className="max-w-3xl">
         <Card title={t("clients.title")}>

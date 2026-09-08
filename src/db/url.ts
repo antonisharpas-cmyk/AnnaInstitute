@@ -34,7 +34,11 @@ function raw(): string {
     );
   }
 
-  if (PLACEHOLDERS.includes(value) || /@host:\d+\//.test(value) || value.includes("user:password@")) {
+  if (
+    PLACEHOLDERS.includes(value) ||
+    /@host:\d+\//.test(value) ||
+    value.includes("user:password@")
+  ) {
     throw new DatabaseUrlError(
       'DATABASE_URL is still the example line from .env.example, so there is no database to talk to. For a local database with nothing to install, set DATABASE_URL="pglite://./.localdb". For Render, paste the External Database URL of the Postgres instance. Then run npm run db:check.',
     );
@@ -49,7 +53,11 @@ export function target(): Target {
   if (value.startsWith("pglite:") || value.startsWith("file:")) {
     const withoutScheme = value.replace(/^pglite:(\/\/)?/, "").replace(/^file:(\/\/)?/, "");
     const dataDir = path.resolve(process.cwd(), withoutScheme || "./.localdb");
-    return { kind: "pglite", dataDir, label: `a local database in ${withoutScheme || "./.localdb"}` };
+    return {
+      kind: "pglite",
+      dataDir,
+      label: `a local database in ${withoutScheme || "./.localdb"}`,
+    };
   }
 
   if (!/^postgres(ql)?:\/\//.test(value)) {
@@ -59,7 +67,11 @@ export function target(): Target {
   }
 
   const url = new URL(value);
-  return { kind: "postgres", url: value, label: `${url.hostname}:${url.port || "5432"}${url.pathname}` };
+  return {
+    kind: "postgres",
+    url: value,
+    label: `${url.hostname}:${url.port || "5432"}${url.pathname}`,
+  };
 }
 
 export function databaseUrl(): string {

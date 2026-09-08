@@ -27,7 +27,11 @@ async function unsubscribe(clientId: string, token: string) {
 
   await db
     .update(clients)
-    .set({ marketingOptIn: false, unsubscribedAt: new Date(), updatedAt: new Date() })
+    .set({
+      marketingOptIn: false,
+      unsubscribedAt: new Date(),
+      updatedAt: new Date(),
+    })
     .where(eq(clients.id, clientId));
 
   return { ok: true as const, name: client.firstName };
@@ -47,16 +51,28 @@ function page(title: string, message: string) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const result = await unsubscribe(url.searchParams.get("c") ?? "", url.searchParams.get("t") ?? "");
+  const result = await unsubscribe(
+    url.searchParams.get("c") ?? "",
+    url.searchParams.get("t") ?? "",
+  );
 
   return result.ok
-    ? page("You have been removed", "You will not receive any more messages from us. Nothing else about your purchase changes, and your account and payment schedule are untouched.")
-    : page("That link is not valid", "The link may be old or incomplete. Reply to any of our emails and we will remove you by hand.");
+    ? page(
+        "You have been removed",
+        "You will not receive any more messages from us. Nothing else about your purchase changes, and your account and payment schedule are untouched.",
+      )
+    : page(
+        "That link is not valid",
+        "The link may be old or incomplete. Reply to any of our emails and we will remove you by hand.",
+      );
 }
 
 /** Mail clients that support one click unsubscribe send a POST. */
 export async function POST(request: Request) {
   const url = new URL(request.url);
-  const result = await unsubscribe(url.searchParams.get("c") ?? "", url.searchParams.get("t") ?? "");
+  const result = await unsubscribe(
+    url.searchParams.get("c") ?? "",
+    url.searchParams.get("t") ?? "",
+  );
   return new Response(null, { status: result.ok ? 200 : 400 });
 }

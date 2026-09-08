@@ -3,7 +3,12 @@
 import { useActionState } from "react";
 import { signIn, type SignInState } from "./actions";
 
-type Labels = { email: string; password: string; submit: string; failed: string };
+type Labels = {
+  email: string;
+  password: string;
+  submit: string;
+  failed: string;
+};
 
 export default function LoginForm({ labels }: { labels: Labels }) {
   const [state, action, pending] = useActionState<SignInState, FormData>(signIn, null);

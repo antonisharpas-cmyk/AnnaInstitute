@@ -5,7 +5,11 @@ import { Empty, Pill } from "./ui";
 type Doc = typeof documentsTable.$inferSelect;
 
 const kb = (bytes: number | null) =>
-  bytes === null ? "" : bytes > 900_000 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  bytes === null
+    ? ""
+    : bytes > 900_000
+      ? `${(bytes / 1_048_576).toFixed(1)} MB`
+      : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 export default function DocumentList({
   items,

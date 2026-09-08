@@ -30,7 +30,11 @@ function getTransport() {
   return transport;
 }
 
-export type EmailAttachment = { filename: string; path: string; contentType?: string };
+export type EmailAttachment = {
+  filename: string;
+  path: string;
+  contentType?: string;
+};
 
 export async function sendEmail(options: {
   to: string;
@@ -40,7 +44,10 @@ export async function sendEmail(options: {
   attachments?: EmailAttachment[];
 }): Promise<SendResult> {
   if (!emailConfigured()) {
-    return { status: "SIMULATED", error: "SMTP is not configured, so nothing was sent." };
+    return {
+      status: "SIMULATED",
+      error: "SMTP is not configured, so nothing was sent.",
+    };
   }
 
   try {
@@ -55,6 +62,9 @@ export async function sendEmail(options: {
     });
     return { status: "SENT", providerId: info.messageId };
   } catch (error) {
-    return { status: "FAILED", error: error instanceof Error ? error.message : String(error) };
+    return {
+      status: "FAILED",
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }

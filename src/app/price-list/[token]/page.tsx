@@ -12,17 +12,21 @@ export const dynamic = "force-dynamic";
  * need an account to quote a price. It carries availability and prices only:
  * no buyer, no contract and no payment ever appears here.
  */
-export default async function PriceListPage({
-  params,
-}: {
-  params: Promise<{ token: string }>;
-}) {
+export default async function PriceListPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const link = await resolvePriceListToken(token);
   if (!link) notFound();
 
   const rows = await availableForPriceList();
-  const byProject = new Map<string, { name: string; location: string | null; completionBy: string | null; units: typeof rows }>();
+  const byProject = new Map<
+    string,
+    {
+      name: string;
+      location: string | null;
+      completionBy: string | null;
+      units: typeof rows;
+    }
+  >();
 
   for (const row of rows) {
     const current = byProject.get(row.project.id);
@@ -60,8 +64,7 @@ export default async function PriceListPage({
           <div>+357 24 342 720</div>
           {link.expiresAt ? (
             <div className="mt-1">
-              This list stops working on{" "}
-              {new Date(link.expiresAt).toLocaleDateString("en-GB")}
+              This list stops working on {new Date(link.expiresAt).toLocaleDateString("en-GB")}
             </div>
           ) : null}
         </div>
@@ -98,8 +101,12 @@ export default async function PriceListPage({
                       <td className="font-semibold">{unit.code}</td>
                       <td>{unit.floor ?? ""}</td>
                       <td className="num">{unit.bedrooms ?? ""}</td>
-                      <td className="num">{unit.coveredArea ? `${Number(unit.coveredArea)} m2` : ""}</td>
-                      <td className="num">{unit.verandaArea ? `${Number(unit.verandaArea)} m2` : ""}</td>
+                      <td className="num">
+                        {unit.coveredArea ? `${Number(unit.coveredArea)} m2` : ""}
+                      </td>
+                      <td className="num">
+                        {unit.verandaArea ? `${Number(unit.verandaArea)} m2` : ""}
+                      </td>
                       <td className="num">{unit.parkingSpaces}</td>
                       <td className="num font-semibold">{formatAmount(toCents(unit.netPrice))}</td>
                       <td>{unit.status === "RESERVED" ? "reserved" : "available"}</td>

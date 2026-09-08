@@ -1,0 +1,37 @@
+import type { MessageKey } from "@/i18n";
+
+/** The label bundle the contract form and its schedule builder need. */
+export function formLabels(t: (key: MessageKey) => string): Record<string, string> {
+  return {
+    name: t("contracts.name"),
+    contractDate: t("contracts.contractDate"),
+    netPrice: t("contracts.netPrice"),
+    vatRate: t("contracts.vatRate"),
+    status: t("common.status"),
+    statusDraft: t("contracts.status.DRAFT"),
+    statusActive: t("contracts.status.ACTIVE"),
+    statusCompleted: t("contracts.status.COMPLETED"),
+    statusCancelled: t("contracts.status.CANCELLED"),
+    notes: t("common.notes"),
+    schedule: t("contracts.schedule"),
+    standardPlan: t("contracts.standardPlan"),
+    periodicPlan: t("contracts.periodicPlan"),
+    installmentCount: t("contracts.installmentCount"),
+    every: t("contracts.every"),
+    monthly: t("contracts.monthly"),
+    quarterly: t("contracts.quarterly"),
+    firstDue: t("contracts.firstDue"),
+    generate: t("contracts.generate"),
+    stage: t("contracts.stage"),
+    net: t("contracts.net"),
+    due: t("contracts.due"),
+    addLine: t("contracts.addLine"),
+    delete: t("common.delete"),
+    total: t("common.total"),
+    remaining: t("contracts.remaining"),
+    spread: t("contracts.spread"),
+    scheduleFrozen: t("contracts.scheduleFrozen"),
+    save: t("common.save"),
+    cancel: t("common.cancel"),
+  };
+}

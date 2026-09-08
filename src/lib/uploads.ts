@@ -105,10 +105,7 @@ export async function removeDocument(documentId: string, user: SessionUser): Pro
 
   // If it was a unit's chosen floor plan, that unit no longer has one.
   if (doc.unitId) {
-    await db
-      .update(units)
-      .set({ floorPlanPath: null })
-      .where(eq(units.floorPlanPath, documentId));
+    await db.update(units).set({ floorPlanPath: null }).where(eq(units.floorPlanPath, documentId));
   }
 
   await db.delete(documents).where(eq(documents.id, documentId));

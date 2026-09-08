@@ -1,7 +1,7 @@
 import "server-only";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { contracts, projects, units } from "@/db/schema";
+import { contractUnits, contracts, projects, units } from "@/db/schema";
 
 export type AssignedApartment = {
   unitId: string;
@@ -11,6 +11,8 @@ export type AssignedApartment = {
   projectId: string;
   projectName: string;
   contractId: string | null;
+  contractReference: string | null;
+  assignmentId: string | null;
 };
 
 /** The apartments assigned to each of these clients, keyed by client. */
@@ -24,11 +26,14 @@ export async function apartmentsByClient(
     .select({
       unit: units,
       project: projects,
+      assignmentId: contractUnits.id,
       contractId: contracts.id,
+      contractReference: contracts.reference,
     })
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(contracts, eq(contracts.unitId, units.id))
+    .leftJoin(contractUnits, eq(contractUnits.unitId, units.id))
+    .leftJoin(contracts, eq(contracts.id, contractUnits.contractId))
     .where(inArray(units.clientId, clientIds))
     .orderBy(asc(projects.name), asc(units.code));
 
@@ -42,6 +47,8 @@ export async function apartmentsByClient(
       projectId: row.project.id,
       projectName: row.project.name,
       contractId: row.contractId,
+      contractReference: row.contractReference,
+      assignmentId: row.assignmentId,
     };
     const list = grouped.get(row.unit.clientId);
     if (list) list.push(entry);
@@ -62,15 +69,17 @@ export async function assignableUnits(currentClientId?: string) {
     .innerJoin(projects, eq(projects.id, units.projectId))
     .orderBy(asc(projects.name), asc(units.code));
 
-  const usable = rows.filter(
-    (r) => !r.unit.clientId || r.unit.clientId === currentClientId,
-  );
+  const usable = rows.filter((r) => !r.unit.clientId || r.unit.clientId === currentClientId);
 
   const grouped = new Map<string, { projectName: string; units: typeof usable }>();
   for (const row of usable) {
     const entry = grouped.get(row.project.id);
     if (entry) entry.units.push(row);
-    else grouped.set(row.project.id, { projectName: row.project.name, units: [row] });
+    else
+      grouped.set(row.project.id, {
+        projectName: row.project.name,
+        units: [row],
+      });
   }
   return grouped;
 }

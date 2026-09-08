@@ -60,13 +60,20 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
   return (
     <>
-      <BackLink href="/campaigns" label={`${t("common.backTo")} ${t("nav.campaigns").toLowerCase()}`} />
+      <BackLink
+        href="/campaigns"
+        label={`${t("common.backTo")} ${t("nav.campaigns").toLowerCase()}`}
+      />
       <PageHeader
         title={campaign.title}
         subtitle={`${campaign.channel.toLowerCase()} . ${
           campaign.audience === "AGENTS" ? "agents" : "clients with consent"
         }`}
-        action={<Pill tone={campaign.status === "SENT" ? "good" : "neutral"}>{campaign.status.replace(/_/g, " ").toLowerCase()}</Pill>}
+        action={
+          <Pill tone={campaign.status === "SENT" ? "good" : "neutral"}>
+            {campaign.status.replace(/_/g, " ").toLowerCase()}
+          </Pill>
+        }
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
@@ -89,7 +96,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             {campaign.subject ? (
               <p className="mb-2 text-sm font-semibold">{campaign.subject}</p>
             ) : null}
-            <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">{preview}</pre>
+            <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
+              {preview}
+            </pre>
             {campaign.audience === "CLIENTS_CONSENTED" ? (
               <p className="mt-3 border-t border-brand-line pt-3 text-xs text-brand-graphite/60">
                 {campaign.channel === "EMAIL"

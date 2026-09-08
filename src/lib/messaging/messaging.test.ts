@@ -40,7 +40,11 @@ test("Cyprus numbers are normalised to one shape so suppression cannot be dodged
 test("placeholders are filled per recipient", () => {
   const filled = fillPlaceholders(
     "Dear {{first_name}}, the September list is at {{price_list_url}}. Regards to {{name}}.",
-    { name: "Maria Georgiou", firstName: "Maria", priceListUrl: "https://example.test/p/abc" },
+    {
+      name: "Maria Georgiou",
+      firstName: "Maria",
+      priceListUrl: "https://example.test/p/abc",
+    },
   );
   assert.equal(
     filled,
@@ -49,8 +53,5 @@ test("placeholders are filled per recipient", () => {
 });
 
 test("a missing price list link leaves nothing odd behind", () => {
-  assert.equal(
-    fillPlaceholders("See {{price_list_url}}", { name: "A B", firstName: "A" }),
-    "See ",
-  );
+  assert.equal(fillPlaceholders("See {{price_list_url}}", { name: "A B", firstName: "A" }), "See ");
 });

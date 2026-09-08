@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { humanLabel } from "@/lib/fileLabels";
 import { updateClient } from "../actions";
 
 export type ClientRecord = {
@@ -125,7 +126,7 @@ export default function PersonalInfo({
           <Row label={labels.idNumber} value={client.idNumber ?? ""} />
           <Row label={labels.country} value={client.country ?? ""} />
           <Row label={labels.address} value={client.address ?? ""} />
-          <Row label={labels.source} value={client.source.replace(/_/g, " ").toLowerCase()} />
+          <Row label={labels.source} value={humanLabel(client.source)} />
           <div className="py-2">
             <span className="label">{labels.notes}</span>
             <p className="whitespace-pre-wrap text-sm">{client.notes ?? ""}</p>
@@ -179,10 +180,10 @@ export default function PersonalInfo({
             defaultValue={client.source}
             className="select max-w-sm flex-1"
           >
-            <option value="BUYER">buyer</option>
-            <option value="ENQUIRY">enquiry</option>
-            <option value="AGENT_REFERRAL">agent referral</option>
-            <option value="OTHER">other</option>
+            <option value="BUYER">Buyer</option>
+            <option value="ENQUIRY">Enquiry</option>
+            <option value="AGENT_REFERRAL">Agent Referral</option>
+            <option value="OTHER">Other</option>
           </select>
         </div>
 

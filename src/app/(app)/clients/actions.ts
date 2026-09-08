@@ -2,16 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { clients, contracts, installments, units, vatChanges } from "@/db/schema";
+import { clients, contractUnits, contracts, payments, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
 import { fromCents, toCents } from "@/lib/money";
-import { DEFAULT_STAGES, buildSchedule, singleRateSetup } from "@/lib/vat";
-import { recalculateSchedule, vatSetupOf, vatSummary } from "@/lib/contracts";
+import { resetToPlan, syncCommission } from "../contracts/actions";
 
 const clientSchema = z.object({
   firstName: z.string().min(1),
@@ -139,7 +138,11 @@ export async function unsubscribeClient(clientId: string) {
   const user = await requireUser(["ADMIN"]);
   await db
     .update(clients)
-    .set({ marketingOptIn: false, unsubscribedAt: new Date(), updatedAt: new Date() })
+    .set({
+      marketingOptIn: false,
+      unsubscribedAt: new Date(),
+      updatedAt: new Date(),
+    })
     .where(eq(clients.id, clientId));
 
   await recordAudit({
@@ -180,7 +183,9 @@ export async function uploadClientDocuments(clientId: string, formData: FormData
   if (files.length === 0) throw new Error("Choose at least one file.");
   if (!typed) throw new Error("Give the file a title first.");
 
-  const category = idType ? "IDENTIFICATION" : (chosen as "CONTRACT" | "RECEIPT" | "CHANGE_REQUEST" | "OTHER");
+  const category = idType
+    ? "IDENTIFICATION"
+    : (chosen as "CONTRACT" | "RECEIPT" | "CHANGE_REQUEST" | "OTHER");
   const title = idType ? `${typed} - ${ID_LABELS[idType]}` : typed;
 
   if (idType) {
@@ -195,7 +200,17 @@ export async function uploadClientDocuments(clientId: string, formData: FormData
       .where(eq(clients.id, clientId));
   }
 
-  await storeDocuments({ files, title, category, attachTo: { clientId }, user });
+  // A buyer with more than one apartment keeps different paperwork for each, so
+  // the file can name the apartment it concerns.
+  const unitId = String(formData.get("unitId") ?? "").trim() || null;
+
+  await storeDocuments({
+    files,
+    title,
+    category,
+    attachTo: { clientId, unitId },
+    user,
+  });
   revalidatePath(`/clients/${clientId}`);
 }
 
@@ -215,10 +230,7 @@ export async function deleteClientDocument(documentId: string, clientId: string)
 export async function assignApartment(clientId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const unitId = String(formData.get("unitId") ?? "");
-  const status = String(formData.get("status") ?? "RESERVED") as
-    | "RESERVED"
-    | "SOLD"
-    | "DELIVERED";
+  const status = String(formData.get("status") ?? "RESERVED") as "RESERVED" | "SOLD" | "DELIVERED";
 
   if (!unitId) throw new Error("Choose an apartment first.");
 
@@ -257,16 +269,16 @@ export async function unassignApartment(unitId: string, clientId: string) {
   const unit = rows[0];
   if (!unit) return;
 
-  const [contract] = await db
-    .select({ id: contracts.id })
-    .from(contracts)
-    .where(eq(contracts.unitId, unitId))
+  const [assignment] = await db
+    .select({ id: contractUnits.id })
+    .from(contractUnits)
+    .where(eq(contractUnits.unitId, unitId))
     .limit(1);
 
   // A contract has to go first, otherwise the payment schedule would be left
   // pointing at an apartment nobody holds. The page shows this as a note rather
   // than throwing, so nobody lands on an error screen.
-  if (contract) {
+  if (assignment) {
     revalidatePath(`/clients/${clientId}`);
     return;
   }
@@ -291,213 +303,108 @@ export async function unassignApartment(unitId: string, clientId: string) {
 }
 
 /**
- * Write the contract for an apartment the client already holds.
+ * Put a contract on an apartment this client holds.
  *
- * The price comes from the apartment and the whole of it starts at the reduced
- * rate, with five stages. All of that is then editable: the rate, the split
- * between the two rates, the stages and their dates.
+ * Contracts are written in the contracts section and stand on their own, so the
+ * same one can serve several apartments. Here the office only picks which
+ * contract this apartment is on.
  */
-export async function createContractForUnit(clientId: string, unitId: string) {
+export async function attachContract(clientId: string, unitId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
-
-  const unitRows = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
-  const unit = unitRows[0];
-  if (!unit) throw new Error("Apartment not found");
-  if (unit.clientId !== clientId) throw new Error("That apartment is not assigned to this client.");
-
-  const existing = await db
-    .select({ id: contracts.id })
-    .from(contracts)
-    .where(eq(contracts.unitId, unitId))
-    .limit(1);
-  if (existing[0]) return;
-
-  const netCents = toCents(unit.netPrice);
-  const setup = singleRateSetup(netCents, 5);
-
-  const reference = `C-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-
-  const inserted = await db
-    .insert(contracts)
-    .values({
-      reference,
-      unitId,
-      clientId,
-      contractDate: new Date(),
-      netPrice: fromCents(netCents),
-      status: "ACTIVE",
-      vatBaseReduced: fromCents(netCents),
-      vatRateReduced: "5.000",
-      vatBaseStandard: "0.00",
-      vatRateStandard: "19.000",
-    })
-    .returning({ id: contracts.id });
-
-  const contractId = inserted[0].id;
-  const stages = DEFAULT_STAGES.slice(0, 5);
-  const plan = stages.map((stage, i) => ({
-    seq: i + 1,
-    label: stage.label,
-    // Five equal stages to start with, which the office then adjusts.
-    percentage: 100 / stages.length,
-    locked: false,
-  }));
-  const lines = buildSchedule(setup, plan);
-
-  await db.insert(installments).values(
-    lines.map((line, i) => ({
-      contractId,
-      seq: line.seq,
-      label: line.label,
-      labelEl: stages[i]?.labelEl ?? null,
-      percentage: line.percentage.toFixed(4),
-      netAmount: fromCents(line.netCents),
-      vatAmount: fromCents(line.vatCents),
-      totalAmount: fromCents(line.totalCents),
-      vatRateApplied: line.rateApplied.toFixed(3),
-    })),
-  );
-
-  await db.update(units).set({ status: "SOLD", updatedAt: new Date() }).where(eq(units.id, unitId));
-
-  await recordAudit({
-    action: "contract.createFromClient",
-    entity: "contract",
-    entityId: contractId,
-    detail: `${reference} for apartment ${unit.code}, five stages at 5%`,
-    userId: user.id,
-    userEmail: user.email,
-  });
-
-  revalidatePath(`/clients/${clientId}`);
-  revalidatePath("/contracts");
-}
-
-/**
- * Add one more stage to a schedule.
- *
- * The new stage takes an equal share, and every stage that has not been paid is
- * recalculated. Anything already paid keeps the figures it was invoiced at.
- */
-export async function addInstallment(contractId: string, clientId: string) {
-  const user = await requireUser(["ADMIN"]);
-
-  const lines = await db
-    .select()
-    .from(installments)
-    .where(eq(installments.contractId, contractId));
-
-  const nextSeq = lines.reduce((highest, l) => Math.max(highest, l.seq), 0) + 1;
-  const share = 100 / (lines.length + 1);
-
-  await db.insert(installments).values({
-    contractId,
-    seq: nextSeq,
-    label: `Stage ${nextSeq}`,
-    percentage: share.toFixed(4),
-    netAmount: "0.00",
-    vatAmount: "0.00",
-    totalAmount: "0.00",
-    vatRateApplied: "0.000",
-  });
-
-  // Spread the percentages evenly again over everything that is still open.
-  const openLines = [...lines.filter((l) => l.status !== "PAID"), { seq: nextSeq }];
-  const paidPercentage = lines
-    .filter((l) => l.status === "PAID")
-    .reduce((total, l) => total + Number(l.percentage), 0);
-  const each = (100 - paidPercentage) / openLines.length;
-
-  for (const line of openLines) {
-    await db
-      .update(installments)
-      .set({ percentage: each.toFixed(4) })
-      .where(and(eq(installments.contractId, contractId), eq(installments.seq, line.seq)));
-  }
-
-  await recalculateSchedule(contractId, user, "installment.add");
-
-  await recordAudit({
-    action: "installment.add",
-    entity: "contract",
-    entityId: contractId,
-    detail: `now ${lines.length + 1} stages`,
-    userId: user.id,
-    userEmail: user.email,
-  });
-
-  revalidatePath(`/clients/${clientId}`);
-  revalidatePath(`/contracts/${contractId}`);
-}
-
-/** Change the VAT rate of a contract from the client page. */
-export async function setContractVatRate(
-  contractId: string,
-  clientId: string,
-  formData: FormData,
-) {
-  const user = await requireUser(["ADMIN"]);
-  const rate = Number(String(formData.get("rate") ?? "5"));
+  const contractId = String(formData.get("contractId") ?? "").trim();
+  const startDate = String(formData.get("startDate") ?? "");
+  const everyMonths = String(formData.get("everyMonths") ?? "1");
+  if (!contractId) throw new Error("Choose a contract first.");
 
   const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
   const contract = rows[0];
   if (!contract) throw new Error("Contract not found");
 
-  const before = vatSummary(vatSetupOf(contract));
-  const netCents = toCents(contract.netPrice);
-  const setup = singleRateSetup(netCents, rate);
+  const taken = await db
+    .select({ id: contractUnits.id })
+    .from(contractUnits)
+    .where(eq(contractUnits.unitId, unitId))
+    .limit(1);
+  if (taken[0]) throw new Error("That apartment is already on a contract.");
+
+  const inserted = await db
+    .insert(contractUnits)
+    .values({ contractId, unitId, clientId })
+    .returning({ id: contractUnits.id });
+
+  // The apartment takes its own copy of the contract's plan, on its own dates.
+  const dates = new FormData();
+  dates.set("startDate", startDate);
+  dates.set("everyMonths", everyMonths);
+  await resetToPlan(inserted[0].id, contractId, dates);
 
   await db
-    .update(contracts)
-    .set({
-      vatBaseReduced: fromCents(netCents),
-      vatRateReduced: rate.toFixed(3),
-      vatBaseStandard: "0.00",
-      updatedAt: new Date(),
-    })
-    .where(eq(contracts.id, contractId));
+    .update(units)
+    .set({ status: "SOLD", clientId, updatedAt: new Date() })
+    .where(eq(units.id, unitId));
 
-  const { openSeqs } = await recalculateSchedule(contractId, user, "contract.vat.change");
-
-  await db.insert(vatChanges).values({
-    contractId,
-    changedByEmail: user.email,
-    fromSummary: before,
-    toSummary: vatSummary(setup),
-    appliedToSeqs: openSeqs.length > 0 ? openSeqs.join(", ") : "none",
-  });
-
-  revalidatePath(`/clients/${clientId}`);
-  revalidatePath(`/contracts/${contractId}`);
-}
-
-
-/**
- * Delete a contract.
- *
- * Its installments, payments, VAT history and commission go with it, because
- * they only exist as part of that contract. The apartment stays with the client
- * and keeps its status, so the office can write a fresh contract or release the
- * apartment afterwards.
- */
-export async function deleteContract(contractId: string, clientId: string) {
-  const user = await requireUser(["ADMIN"]);
-
-  const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
-  const contract = rows[0];
-  if (!contract) return;
-
-  await db.delete(contracts).where(eq(contracts.id, contractId));
+  await syncCommission(inserted[0].id);
 
   await recordAudit({
-    action: "contract.delete",
+    action: "contract.attach",
     entity: "contract",
     entityId: contractId,
-    detail: `${contract.reference}, with its schedule and payments`,
+    detail: `${contract.reference} put on apartment ${unitId}`,
     userId: user.id,
     userEmail: user.email,
   });
 
   revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/contracts/${contractId}`);
+  revalidatePath("/contracts");
+}
+
+/**
+ * Take the contract off this apartment.
+ *
+ * The contract itself is left alone, because other apartments may be on it.
+ * Money already received against this apartment blocks it, so nothing is
+ * orphaned.
+ */
+export async function detachContract(assignmentId: string, clientId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  const rows = await db
+    .select()
+    .from(contractUnits)
+    .where(eq(contractUnits.id, assignmentId))
+    .limit(1);
+  const assignment = rows[0];
+  if (!assignment) return;
+
+  const [paidHere] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(eq(payments.assignmentId, assignmentId))
+    .limit(1);
+
+  // Shown on the page as a note rather than an error screen.
+  if (paidHere) {
+    revalidatePath(`/clients/${clientId}`);
+    return;
+  }
+
+  await db.delete(contractUnits).where(eq(contractUnits.id, assignmentId));
+  await db
+    .update(units)
+    .set({ status: assignment.clientId ? "RESERVED" : "AVAILABLE", updatedAt: new Date() })
+    .where(eq(units.id, assignment.unitId));
+
+  await recordAudit({
+    action: "contract.detach",
+    entity: "contract",
+    entityId: assignment.contractId,
+    detail: `taken off apartment ${assignment.unitId}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/contracts/${assignment.contractId}`);
   revalidatePath("/contracts");
 }

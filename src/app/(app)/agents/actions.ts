@@ -1,13 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { agents, commissionPayments, commissions } from "@/db/schema";
+import { agents, commissionPayments, commissions, contractUnits } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { fromCents, toCents } from "@/lib/money";
+import { syncCommission } from "../contracts/actions";
 
 const agentSchema = z.object({
   name: z.string().min(1),
@@ -18,9 +20,8 @@ const agentSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function createAgent(formData: FormData) {
-  const user = await requireUser(["ADMIN"]);
-  const parsed = agentSchema.parse({
+function read(formData: FormData) {
+  return agentSchema.parse({
     name: formData.get("name"),
     company: formData.get("company") || undefined,
     email: formData.get("email") || "",
@@ -28,6 +29,11 @@ export async function createAgent(formData: FormData) {
     commissionRate: String(formData.get("commissionRate") ?? "0"),
     notes: formData.get("notes") || undefined,
   });
+}
+
+export async function createAgent(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const parsed = read(formData);
 
   const inserted = await db
     .insert(agents)
@@ -37,6 +43,7 @@ export async function createAgent(formData: FormData) {
       email: parsed.email || null,
       phone: parsed.phone,
       commissionRate: Number(parsed.commissionRate || 0).toFixed(3),
+      isActive: String(formData.get("isActive") ?? "") === "on",
       notes: parsed.notes,
     })
     .returning({ id: agents.id });
@@ -51,29 +58,48 @@ export async function createAgent(formData: FormData) {
   });
 
   revalidatePath("/agents");
+  redirect(`/agents/${inserted[0].id}`);
 }
 
-export async function updateAgentRate(agentId: string, formData: FormData) {
+export async function updateAgent(agentId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
+  const parsed = read(formData);
   const before = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
-  const rate = Number(String(formData.get("commissionRate") ?? "0")).toFixed(3);
 
   await db
     .update(agents)
-    .set({ commissionRate: rate, isActive: String(formData.get("isActive") ?? "") === "on", updatedAt: new Date() })
+    .set({
+      name: parsed.name,
+      company: parsed.company ?? null,
+      email: parsed.email || null,
+      phone: parsed.phone ?? null,
+      commissionRate: Number(parsed.commissionRate || 0).toFixed(3),
+      isActive: String(formData.get("isActive") ?? "") === "on",
+      notes: parsed.notes ?? null,
+      updatedAt: new Date(),
+    })
     .where(eq(agents.id, agentId));
 
+  // A new rate applies to the sales this agent is on that have no rate of their own.
+  const sales = await db
+    .select({ id: contractUnits.id })
+    .from(contractUnits)
+    .where(eq(contractUnits.agentId, agentId));
+  for (const sale of sales) await syncCommission(sale.id);
+
   await recordAudit({
-    action: "agent.rate.change",
+    action: "agent.update",
     entity: "agent",
     entityId: agentId,
-    detail: `${before[0]?.commissionRate} to ${rate}`,
+    detail: `${before[0]?.commissionRate ?? "?"} to ${parsed.commissionRate}%`,
     userId: user.id,
     userEmail: user.email,
   });
 
   revalidatePath("/agents");
+  revalidatePath(`/agents/${agentId}`);
   revalidatePath("/commissions");
+  redirect(`/agents/${agentId}`);
 }
 
 export async function recordCommissionPayment(formData: FormData) {
@@ -108,7 +134,10 @@ export async function recordCommissionPayment(formData: FormData) {
     const due = toCents(rows[0]?.amount ?? "0");
     await db
       .update(commissions)
-      .set({ status: paid >= due ? "PAID" : paid > 0 ? "PARTIALLY_PAID" : "PENDING", updatedAt: new Date() })
+      .set({
+        status: paid >= due ? "PAID" : paid > 0 ? "PARTIALLY_PAID" : "PENDING",
+        updatedAt: new Date(),
+      })
       .where(eq(commissions.id, commissionId));
   }
 
@@ -123,4 +152,22 @@ export async function recordCommissionPayment(formData: FormData) {
 
   revalidatePath("/commissions");
   revalidatePath("/agents");
+  revalidatePath(`/agents/${agentId}`);
+}
+
+export async function deleteCommissionPayment(paymentId: string, agentId: string) {
+  const user = await requireUser(["ADMIN"]);
+  await db.delete(commissionPayments).where(eq(commissionPayments.id, paymentId));
+
+  await recordAudit({
+    action: "commission.payment.delete",
+    entity: "agent",
+    entityId: agentId,
+    detail: paymentId,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  revalidatePath("/commissions");
+  revalidatePath(`/agents/${agentId}`);
 }

@@ -76,5 +76,9 @@ export async function POST(request: Request) {
     source: "sms webhook",
   });
 
-  return NextResponse.json({ ok: true, action: "suppressed", clientsMarked: result.clientsMarked });
+  return NextResponse.json({
+    ok: true,
+    action: "suppressed",
+    clientsMarked: result.clientsMarked,
+  });
 }

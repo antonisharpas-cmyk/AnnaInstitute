@@ -45,15 +45,7 @@ export function Card({
   );
 }
 
-export function Stat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
+export function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="card p-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>

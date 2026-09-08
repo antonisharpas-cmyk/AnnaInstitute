@@ -27,10 +27,22 @@ export default async function CampaignsPage() {
   ]);
 
   const readiness = [
-    { label: "Email", ready: emailConfigured(), note: "SMTP_HOST and MAIL_FROM" },
+    {
+      label: "Email",
+      ready: emailConfigured(),
+      note: "SMTP_HOST and MAIL_FROM",
+    },
     { label: "SMS", ready: channelConfigured("SMS"), note: "SMSTO_API_KEY" },
-    { label: "WhatsApp", ready: channelConfigured("WHATSAPP"), note: "SMSTO_WHATSAPP_PATH" },
-    { label: "Viber", ready: channelConfigured("VIBER"), note: "SMSTO_VIBER_PATH" },
+    {
+      label: "WhatsApp",
+      ready: channelConfigured("WHATSAPP"),
+      note: "SMSTO_WHATSAPP_PATH",
+    },
+    {
+      label: "Viber",
+      ready: channelConfigured("VIBER"),
+      note: "SMSTO_VIBER_PATH",
+    },
   ];
 
   return (
@@ -119,7 +131,10 @@ export default async function CampaignsPage() {
             ) : (
               <ul className="mb-4 divide-y divide-brand-line text-sm">
                 {links.map((link) => (
-                  <li key={link.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <li
+                    key={link.id}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2"
+                  >
                     <div className="min-w-0">
                       <a
                         href={`/price-list/${link.token}`}
@@ -159,7 +174,14 @@ export default async function CampaignsPage() {
                 <label className="label" htmlFor="days">
                   Expires in days
                 </label>
-                <input id="days" name="days" type="number" min="1" placeholder="45" className="input" />
+                <input
+                  id="days"
+                  name="days"
+                  type="number"
+                  min="1"
+                  placeholder="45"
+                  className="input"
+                />
               </div>
               <div className="sm:col-span-3">
                 <button type="submit" className="btn btn-primary">
@@ -183,7 +205,12 @@ export default async function CampaignsPage() {
                 <label className="label" htmlFor="audience">
                   Audience
                 </label>
-                <select id="audience" name="audience" className="select" defaultValue="CLIENTS_CONSENTED">
+                <select
+                  id="audience"
+                  name="audience"
+                  className="select"
+                  defaultValue="CLIENTS_CONSENTED"
+                >
                   <option value="CLIENTS_CONSENTED">
                     clients with consent ({clientAudience.length})
                   </option>
@@ -233,7 +260,13 @@ export default async function CampaignsPage() {
                 <label className="label" htmlFor="files">
                   Attachments, email only
                 </label>
-                <input id="files" name="files" type="file" multiple className="input !py-1.5 text-xs" />
+                <input
+                  id="files"
+                  name="files"
+                  type="file"
+                  multiple
+                  className="input !py-1.5 text-xs"
+                />
               </div>
               <button type="submit" className="btn btn-primary w-full">
                 Save as a draft
@@ -249,11 +282,7 @@ export default async function CampaignsPage() {
               {readiness.map((r) => (
                 <li key={r.label} className="flex items-center justify-between gap-2">
                   <span>{r.label}</span>
-                  {r.ready ? (
-                    <Pill tone="good">ready</Pill>
-                  ) : (
-                    <Pill tone="warn">set {r.note}</Pill>
-                  )}
+                  {r.ready ? <Pill tone="good">ready</Pill> : <Pill tone="warn">set {r.note}</Pill>}
                 </li>
               ))}
             </ul>

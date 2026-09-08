@@ -8,10 +8,7 @@ import { storedFileStream } from "@/lib/storage";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { Readable } from "node:stream";
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return new NextResponse("Not signed in", { status: 401 });
 
@@ -38,6 +35,8 @@ export async function GET(
       },
     });
   } catch {
-    return new NextResponse("The file is missing from storage", { status: 410 });
+    return new NextResponse("The file is missing from storage", {
+      status: 410,
+    });
   }
 }
