@@ -42,10 +42,11 @@ export function looksLikeStop(text: string): boolean {
 /** Replace the placeholders an administrator can type into a message. */
 export function fillPlaceholders(
   template: string,
-  values: { name: string; firstName: string; priceListUrl?: string },
+  values: { name: string; firstName: string; priceListUrl?: string; filesUrl?: string },
 ): string {
   return template
     .replaceAll("{{name}}", values.name)
     .replaceAll("{{first_name}}", values.firstName)
-    .replaceAll("{{price_list_url}}", values.priceListUrl ?? "");
+    .replaceAll("{{price_list_url}}", values.priceListUrl ?? "")
+    .replaceAll("{{files_url}}", values.filesUrl ?? "");
 }

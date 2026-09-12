@@ -68,6 +68,34 @@ body {
   outline-offset: 1px;
 }
 
+/* Dates. The calendar the browser draws takes the brand colour, the field
+   carries a calendar mark of its own, and the whole box is clickable. */
+input[type="date"] {
+  accent-color: var(--color-brand-teal);
+  cursor: pointer;
+  min-width: 9.5rem;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.55;
+  cursor: pointer;
+  padding: 0.15rem;
+  border-radius: 0.25rem;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background: var(--color-brand-teal-soft);
+}
+
+input[type="date"]:hover {
+  border-color: var(--color-brand-teal);
+}
+
+.datefield::-webkit-datetime-edit {
+  color: var(--color-brand-ink);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -116,6 +144,40 @@ table.data {
   border-radius: 0.5rem;
   overflow: hidden;
   background: #ffffff;
+}
+
+/*
+   A wide table stays inside the page and scrolls sideways on its own, rather
+   than stretching the layout. Any table in an overflow-x-auto wrapper grows to
+   the width of its content and the wrapper carries the scrollbar, which is drawn
+   permanently so it is obvious there is more to the right.
+*/
+.overflow-x-auto > table.data {
+  width: max-content;
+  min-width: 100%;
+}
+
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #c6cfd6 #f1f4f6;
+}
+
+.overflow-x-auto::-webkit-scrollbar {
+  height: 10px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: #f1f4f6;
+  border-radius: 999px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: #c6cfd6;
+  border-radius: 999px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: var(--color-brand-teal);
 }
 
 table.data thead th {

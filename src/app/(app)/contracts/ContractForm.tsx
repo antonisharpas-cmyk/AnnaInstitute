@@ -2,12 +2,16 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
+import DateField from "@/components/DateField";
 import ScheduleBuilder, { type Row } from "./ScheduleBuilder";
 import type { ContractFormState } from "./actions";
 
 type ContractRecord = {
   id: string;
   reference: string;
+  unitId: string | null;
+  clientId: string | null;
+  agentId: string | null;
   contractDate: Date | null;
   netPrice: string;
   vatRate: string;
@@ -39,6 +43,10 @@ export default function ContractForm({
   action,
   contract,
   rows,
+  units,
+  clients,
+  agents,
+  defaults,
   cancelHref,
   frozen,
   editing,
@@ -47,6 +55,11 @@ export default function ContractForm({
   action: (prev: ContractFormState, formData: FormData) => Promise<ContractFormState>;
   contract?: ContractRecord;
   rows: Row[];
+  units: { id: string; label: string }[];
+  clients: { id: string; label: string }[];
+  agents: { id: string; label: string }[];
+  /** Preselected apartment and buyer, for a contract started from a client. */
+  defaults?: { unitId?: string; clientId?: string };
   cancelHref: string;
   frozen?: boolean;
   editing?: boolean;
@@ -66,6 +79,46 @@ export default function ContractForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
+          <label className="label" htmlFor="clientId">
+            {labels.client}
+          </label>
+          <select
+            id="clientId"
+            name="clientId"
+            required
+            defaultValue={contract?.clientId ?? defaults?.clientId ?? ""}
+            className="select"
+          >
+            <option value="">{labels.choose}</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="unitId">
+            {labels.apartment}
+          </label>
+          <select
+            id="unitId"
+            name="unitId"
+            required
+            defaultValue={contract?.unitId ?? defaults?.unitId ?? ""}
+            className="select"
+          >
+            <option value="">{labels.choose}</option>
+            {units.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
           <label className="label" htmlFor="reference">
             {labels.name}
           </label>
@@ -83,12 +136,10 @@ export default function ContractForm({
           <label className="label" htmlFor="contractDate">
             {labels.contractDate}
           </label>
-          <input
+          <DateField
             id="contractDate"
             name="contractDate"
-            type="date"
             defaultValue={day(contract?.contractDate)}
-            className="input"
           />
         </div>
 
@@ -106,6 +157,25 @@ export default function ContractForm({
             placeholder="200000"
             className="input"
           />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="agentId">
+            {labels.agent}
+          </label>
+          <select
+            id="agentId"
+            name="agentId"
+            defaultValue={contract?.agentId ?? ""}
+            className="select"
+          >
+            <option value="">{labels.noAgent}</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>

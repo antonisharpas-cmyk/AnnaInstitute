@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { documents, units } from "@/db/schema";
 import type { SessionUser } from "./auth";
@@ -17,11 +17,34 @@ export async function canReadDocument(user: SessionUser): Promise<boolean> {
 }
 
 export async function documentsForContract(contractId: string) {
+  // Invoices and receipts filed against a payment are shown with that payment,
+  // so they are left out of the contract's own file list.
   return db
     .select()
     .from(documents)
-    .where(eq(documents.contractId, contractId))
+    .where(and(eq(documents.contractId, contractId), isNull(documents.paymentId)))
     .orderBy(desc(documents.createdAt));
+}
+
+/**
+ * The invoices and receipts filed against the payments of one contract, grouped
+ * by the payment they belong to.
+ */
+export async function documentsByPayment(contractId: string) {
+  const rows = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.contractId, contractId), isNotNull(documents.paymentId)))
+    .orderBy(desc(documents.createdAt));
+
+  const byPayment = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (!row.paymentId) continue;
+    const list = byPayment.get(row.paymentId);
+    if (list) list.push(row);
+    else byPayment.set(row.paymentId, [row]);
+  }
+  return byPayment;
 }
 
 export async function documentsForClient(clientId: string) {

@@ -58,6 +58,8 @@ export const changeRequestStatusEnum = pgEnum("change_request_status", [
   "REJECTED",
   "COMPLETED",
 ]);
+/** A commission line is either the rate on the price, or something extra. */
+export const commissionKindEnum = pgEnum("commission_kind", ["RATE", "EXTRA"]);
 export const commissionStatusEnum = pgEnum("commission_status", [
   "PENDING",
   "PARTIALLY_PAID",
@@ -118,9 +120,24 @@ export const users = pgTable("users", {
   updatedAt: updated(),
 });
 
+/**
+ * The company a development is built with.
+ *
+ * One Eleven builds alongside investors, so a project belongs to one of them and
+ * the office needs to know which at a glance.
+ */
+export const companies = pgTable("companies", {
+  id: id(),
+  name: text("name").notNull().unique(),
+  notes: text("notes"),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
 export const projects = pgTable("projects", {
   id: id(),
   name: text("name").notNull(),
+  companyId: text("company_id").references(() => companies.id, { onDelete: "set null" }),
   slug: text("slug").notNull().unique(),
   location: text("location"),
   description: text("description"),
@@ -163,14 +180,28 @@ export const units = pgTable(
 );
 
 /**
- * A contract is the agreement itself: a price, a VAT rate and a payment
- * schedule. It stands on its own, with no apartment and no client on it, so the
- * same contract can be put on several apartments across different buildings
- * (see contractUnits). That is also what makes copying one worth doing.
+ * A contract: one client, one apartment, one agreed price with its VAT rate and
+ * its payment schedule.
+ *
+ * Two sales are never the same agreement even when the terms match, so each one
+ * is its own contract with its own dates and its own money. Reuse happens by
+ * copying a contract rather than by sharing one, which is why a reference can
+ * never be used twice.
  */
 export const contracts = pgTable("contracts", {
   id: id(),
   reference: text("reference").notNull().unique(),
+  /**
+   * The apartment and the buyer. Required by the form that creates a contract,
+   * left nullable in the database so an older record is never thrown away and a
+   * draft can exist for a moment without one.
+   */
+  unitId: text("unit_id")
+    .references(() => units.id)
+    .unique(),
+  clientId: text("client_id").references(() => clients.id),
+  agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  commissionRate: rate("commission_rate"),
   contractDate: timestamp("contract_date", { withTimezone: true }),
   netPrice: money("net_price").notNull(),
   /** One rate for the whole price. Editable, because the law changes. */
@@ -184,81 +215,39 @@ export const contracts = pgTable("contracts", {
   updatedAt: updated(),
 });
 
-/**
- * One apartment put on one contract: the sale.
- *
- * An apartment can only be on one contract at a time, which the unique key
- * enforces. The buyer and the agent belong here rather than on the contract,
- * because the same contract can serve different buyers in different buildings.
- * Payments are recorded against this row, so apartment 101 can be at
- * installment three while apartment 205 is still at the first one.
- */
-export const contractUnits = pgTable(
-  "contract_units",
+/** A line of a contract's payment schedule, with its own due date. */
+export const installments = pgTable(
+  "installments",
   {
     id: id(),
     contractId: text("contract_id")
       .notNull()
       .references(() => contracts.id, { onDelete: "cascade" }),
-    unitId: text("unit_id")
-      .notNull()
-      .references(() => units.id, { onDelete: "cascade" }),
-    clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
-    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
-    commissionRate: rate("commission_rate"),
-    notes: text("notes"),
+    seq: integer("seq").notNull(),
+    label: text("label").notNull(),
+    labelEl: text("label_el"),
+    percentage: numeric("percentage", { precision: 7, scale: 4 }).notNull(),
+    netAmount: money("net_amount").notNull(),
+    vatAmount: money("vat_amount").notNull(),
+    totalAmount: money("total_amount").notNull(),
+    vatRateApplied: rate("vat_rate_applied").notNull(),
+    dueDate: timestamp("due_date", { withTimezone: true }),
+    trigger: text("trigger"),
+    status: installmentStatusEnum("status").default("PENDING").notNull(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
     createdAt: created(),
     updatedAt: updated(),
   },
   (t) => ({
-    oneContractPerUnit: unique("contract_units_unit").on(t.unitId),
+    seqPerContract: unique("installments_contract_seq").on(t.contractId, t.seq),
   }),
 );
-
-/**
- * A line of a payment schedule.
- *
- * There are two kinds. A line with no assignment is part of the contract's own
- * plan: the shape the office reuses, with amounts but no dates. A line with an
- * assignment belongs to one apartment on that contract, and that is the one
- * that carries dates and takes payments. Putting a contract on an apartment
- * copies the plan across, so a buyer who signed six months later has the same
- * stages on his own dates and can be at a different stage entirely.
- */
-export const installments = pgTable("installments", {
-  id: id(),
-  contractId: text("contract_id")
-    .notNull()
-    .references(() => contracts.id, { onDelete: "cascade" }),
-  /** Null on the contract's own plan, set on an apartment's schedule. */
-  assignmentId: text("assignment_id").references(() => contractUnits.id, {
-    onDelete: "cascade",
-  }),
-  seq: integer("seq").notNull(),
-  label: text("label").notNull(),
-  labelEl: text("label_el"),
-  percentage: numeric("percentage", { precision: 7, scale: 4 }).notNull(),
-  netAmount: money("net_amount").notNull(),
-  vatAmount: money("vat_amount").notNull(),
-  totalAmount: money("total_amount").notNull(),
-  vatRateApplied: rate("vat_rate_applied").notNull(),
-  dueDate: timestamp("due_date", { withTimezone: true }),
-  trigger: text("trigger"),
-  status: installmentStatusEnum("status").default("PENDING").notNull(),
-  lockedAt: timestamp("locked_at", { withTimezone: true }),
-  createdAt: created(),
-  updatedAt: updated(),
-});
 
 export const payments = pgTable("payments", {
   id: id(),
   contractId: text("contract_id")
     .notNull()
     .references(() => contracts.id, { onDelete: "cascade" }),
-  /** Which apartment on the contract paid. */
-  assignmentId: text("assignment_id").references(() => contractUnits.id, {
-    onDelete: "cascade",
-  }),
   installmentId: text("installment_id").references(() => installments.id, {
     onDelete: "set null",
   }),
@@ -319,6 +308,8 @@ export const documents = pgTable("documents", {
   changeRequestId: text("change_request_id").references(() => changeRequests.id, {
     onDelete: "cascade",
   }),
+  /** An invoice or a receipt filed against one payment. */
+  paymentId: text("payment_id").references(() => payments.id, { onDelete: "cascade" }),
   originalName: text("original_name"),
   uploadedById: text("uploaded_by_id").references(() => users.id, {
     onDelete: "set null",
@@ -327,15 +318,26 @@ export const documents = pgTable("documents", {
   createdAt: created(),
 });
 
+/**
+ * What an agent earns on one sale.
+ *
+ * A sale has one RATE line, the percentage on the agreed price, kept in step
+ * with the contract automatically. Anything else the office decides to give is
+ * an EXTRA line with its own amount and its own name, typically the difference
+ * when an apartment went for more than it was priced at. Every line is paid on
+ * its own, so the commission generated is the sum of the lines and the
+ * commission paid is the sum of what has been settled.
+ */
 export const commissions = pgTable("commissions", {
   id: id(),
-  /** The sale the commission is earned on: one apartment on one contract. */
-  assignmentId: text("assignment_id").references(() => contractUnits.id, {
-    onDelete: "cascade",
-  }),
+  contractId: text("contract_id")
+    .notNull()
+    .references(() => contracts.id, { onDelete: "cascade" }),
   agentId: text("agent_id")
     .notNull()
     .references(() => agents.id),
+  kind: commissionKindEnum("kind").default("RATE").notNull(),
+  label: text("label"),
   baseAmount: money("base_amount").notNull(),
   rate: rate("rate").notNull(),
   amount: money("amount").notNull(),
@@ -408,7 +410,7 @@ export const campaignAudienceEnum = pgEnum("campaign_audience", ["CLIENTS_CONSEN
 
 export const suppressionChannelEnum = pgEnum("suppression_channel", ["EMAIL", "PHONE"]);
 
-export const shareLinkKindEnum = pgEnum("share_link_kind", ["PRICE_LIST"]);
+export const shareLinkKindEnum = pgEnum("share_link_kind", ["PRICE_LIST", "CAMPAIGN_FILES"]);
 
 export const suppressions = pgTable(
   "suppressions",
@@ -428,10 +430,16 @@ export const suppressions = pgTable(
 export const campaigns = pgTable("campaigns", {
   id: id(),
   title: text("title").notNull(),
+  /** Kept for the message log and for older campaigns; the two flags below decide what goes out. */
   channel: messageChannelEnum("channel").notNull(),
+  viaEmail: boolean("via_email").default(true).notNull(),
+  viaWhatsapp: boolean("via_whatsapp").default(false).notNull(),
   audience: campaignAudienceEnum("audience").notNull(),
   subject: text("subject"),
+  /** The email body. */
   body: text("body").notNull(),
+  /** The WhatsApp body, which carries a link to the files rather than the files. */
+  bodyWhatsapp: text("body_whatsapp"),
   status: campaignStatusEnum("status").default("DRAFT").notNull(),
   shareLinkId: text("share_link_id"),
   createdByEmail: text("created_by_email"),
@@ -482,9 +490,99 @@ export const shareLinks = pgTable("share_links", {
   id: id(),
   token: text("token").notNull().unique(),
   kind: shareLinkKindEnum("kind").notNull(),
+  /** The campaign whose files this link opens, for a CAMPAIGN_FILES link. */
+  campaignId: text("campaign_id"),
   note: text("note"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdByEmail: text("created_by_email"),
+  createdAt: created(),
+});
+
+/* ---------------------------------------------------------------------------
+   Leads from the website.
+
+   The website posts an enquiry to the CRM the moment somebody fills a form. A
+   lead is kept exactly as it arrived, is never a client until the office says
+   so, and carries no consent of its own: ticking a box on a website form is
+   recorded on the lead, and it only becomes marketing consent when the office
+   turns the lead into a client.
+   --------------------------------------------------------------------------- */
+
+/** Where a lead came to us. WEBSITE is what the API posts; the rest are typed in. */
+export const leadSourceEnum = pgEnum("lead_source_kind", [
+  "WEBSITE",
+  "ENQUIRY",
+  "AGENT",
+  "WHATSAPP",
+  "OTHER",
+]);
+
+export const leadStatusEnum = pgEnum("lead_status", [
+  "NEW",
+  "CONTACTED",
+  "QUALIFIED",
+  "CONVERTED",
+  "CLOSED",
+]);
+
+export const leads = pgTable("leads", {
+  id: id(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  email: text("email"),
+  phone: text("phone"),
+  message: text("message"),
+  /** What the enquiry is about, in the website's own words. */
+  interest: text("interest"),
+  /** The project the form was about, matched by name or by code where it was given. */
+  projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+  projectName: text("project_name"),
+  unitCode: text("unit_code"),
+  budget: text("budget"),
+  language: text("language"),
+  country: text("country"),
+  /** Where it came from, as one of the office's own categories. */
+  sourceKind: leadSourceEnum("source_kind").default("WEBSITE").notNull(),
+  /** The free text behind OTHER, or whatever the website called itself. */
+  source: text("source"),
+  formName: text("form_name"),
+  pageUrl: text("page_url"),
+  referrer: text("referrer"),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  /** What the form's consent box said, if it had one. Never consent on its own. */
+  consent: boolean("consent").default(false).notNull(),
+  consentText: text("consent_text"),
+  status: leadStatusEnum("status").default("NEW").notNull(),
+  /** The client this lead became, once the office accepted it. */
+  clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  /** The whole payload as it arrived, so nothing the website sends is ever lost. */
+  payload: text("payload"),
+  apiKeyId: text("api_key_id"),
+  remoteIp: text("remote_ip"),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/**
+ * A key the website uses to post leads.
+ *
+ * Only the hash is kept. The key itself is shown once, when it is made, and
+ * after that nobody, the office included, can read it back.
+ */
+export const apiKeys = pgTable("api_keys", {
+  id: id(),
+  name: text("name").notNull(),
+  /** The first characters, so a key can be recognised in a list. */
+  prefix: text("prefix").notNull(),
+  keyHash: text("key_hash").notNull().unique(),
+  scope: text("scope").default("LEADS").notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  useCount: integer("use_count").default(0).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdByEmail: text("created_by_email"),
   createdAt: created(),
 });

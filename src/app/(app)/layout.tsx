@@ -11,6 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const items = [
     { href: "/", label: t("nav.dashboard") },
+    { href: "/leads", label: t("nav.leads") },
     { href: "/projects", label: t("nav.projects") },
     { href: "/clients", label: t("nav.clients") },
     { href: "/contracts", label: t("nav.contracts") },
@@ -41,12 +42,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <header className="flex items-center justify-between gap-3 border-b border-brand-line bg-white px-4 py-3 md:hidden">
           <Logo width={104} />
           <LocaleSwitch current={locale} />
         </header>
-        <main className="mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8">{children}</main>
+        <main className="mx-auto max-w-[90rem] px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>
     </div>
   );

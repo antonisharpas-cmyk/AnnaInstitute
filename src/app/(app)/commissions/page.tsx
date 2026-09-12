@@ -1,22 +1,15 @@
 import Link from "next/link";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  agents,
-  clients,
-  commissionPayments,
-  commissions,
-  contractUnits,
-  contracts,
-  projects,
-  units,
-} from "@/db/schema";
+import { agents, commissionPayments } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
+import { allCommissionLines } from "@/lib/commissions";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import SearchBox from "@/components/SearchBox";
 import Pagination, { paginate } from "@/components/Pagination";
 import Disclosure from "@/components/Disclosure";
+import DateField from "@/components/DateField";
 import { recordCommissionPayment } from "../agents/actions";
 
 const PER_PAGE = 10;
@@ -39,27 +32,13 @@ export default async function CommissionsPage({
    * A commission belongs to one sale: one apartment on one contract. The rows
    * are joined through the assignment, which is where the agent is recorded.
    */
-  const all = await db
-    .select({
-      commission: commissions,
-      agent: agents,
-      contract: contracts,
-      unit: units,
-      project: projects,
-      client: clients,
-      paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.commission_id = ${commissions.id}), 0)`,
-    })
-    .from(commissions)
-    .innerJoin(agents, eq(agents.id, commissions.agentId))
-    .leftJoin(contractUnits, eq(contractUnits.id, commissions.assignmentId))
-    .leftJoin(contracts, eq(contracts.id, contractUnits.contractId))
-    .leftJoin(units, eq(units.id, contractUnits.unitId))
-    .leftJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(clients, eq(clients.id, contractUnits.clientId))
-    .orderBy(desc(commissions.createdAt));
+  const all = await allCommissionLines();
 
   const matching = all.filter((r) => {
-    if (status && r.commission.status !== status) return false;
+    const paidCents = toCents(r.paid);
+    const owed = toCents(r.line.amount) - paidCents;
+    if (status === "PAID" && owed > 0) return false;
+    if (status === "PENDING" && owed <= 0) return false;
     if (!query) return true;
     const haystack = [
       r.agent.name,
@@ -87,7 +66,7 @@ export default async function CommissionsPage({
     db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
   ]);
 
-  const generated = matching.reduce((a, r) => a + toCents(r.commission.amount), 0);
+  const generated = matching.reduce((a, r) => a + toCents(r.line.amount), 0);
   const settled = matching.reduce((a, r) => a + toCents(r.paid), 0);
 
   return (
@@ -122,10 +101,8 @@ export default async function CommissionsPage({
               </label>
               <select id="status" name="status" defaultValue={status} className="select">
                 <option value="">{t("common.all")}</option>
-                <option value="PENDING">pending</option>
-                <option value="PARTIALLY_PAID">partially paid</option>
-                <option value="PAID">paid</option>
-                <option value="CANCELLED">cancelled</option>
+                <option value="PENDING">{t("commissions.owed")}</option>
+                <option value="PAID">{t("commissions.settled")}</option>
               </select>
             </div>
           </SearchBox>
@@ -140,6 +117,7 @@ export default async function CommissionsPage({
                     <th>{t("contracts.agent")}</th>
                     <th>{t("contracts.title")}</th>
                     <th>{t("commissions.sale")}</th>
+                    <th>{t("commissions.line")}</th>
                     <th className="ctr">{t("commissions.base")}</th>
                     <th className="ctr">{t("agents.rate")}</th>
                     <th className="ctr">{t("contracts.amount")}</th>
@@ -149,7 +127,7 @@ export default async function CommissionsPage({
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.commission.id}>
+                    <tr key={r.line.id}>
                       <td>
                         <Link
                           href={`/agents/${r.agent.id}`}
@@ -185,26 +163,34 @@ export default async function CommissionsPage({
                           </div>
                         ) : null}
                       </td>
-                      <td className="ctr">
-                        {formatAmount(toCents(r.commission.baseAmount), locale)}
+                      <td>
+                        {r.line.kind === "RATE"
+                          ? t("commissions.onThePrice")
+                          : (r.line.label ?? t("commissions.extra"))}
                       </td>
-                      <td className="ctr">{formatPercent(Number(r.commission.rate), locale)}</td>
+                      <td className="ctr">
+                        {r.line.kind === "RATE"
+                          ? formatAmount(toCents(r.line.baseAmount), locale)
+                          : ""}
+                      </td>
+                      <td className="ctr">
+                        {r.line.kind === "RATE" ? formatPercent(Number(r.line.rate), locale) : ""}
+                      </td>
                       <td className="ctr font-semibold">
-                        {formatAmount(toCents(r.commission.amount), locale)}
+                        {formatAmount(toCents(r.line.amount), locale)}
                       </td>
                       <td className="ctr">{formatAmount(toCents(r.paid), locale)}</td>
                       <td className="ctr">
-                        <Pill
-                          tone={
-                            r.commission.status === "PAID"
-                              ? "good"
-                              : r.commission.status === "PARTIALLY_PAID"
-                                ? "warn"
-                                : "neutral"
-                          }
-                        >
-                          {r.commission.status.replace(/_/g, " ").toLowerCase()}
-                        </Pill>
+                        {(() => {
+                          const owed = toCents(r.line.amount) - toCents(r.paid);
+                          return (
+                            <Pill
+                              tone={owed <= 0 ? "good" : toCents(r.paid) > 0 ? "warn" : "neutral"}
+                            >
+                              {owed <= 0 ? t("commissions.settled") : t("commissions.owed")}
+                            </Pill>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -255,11 +241,11 @@ export default async function CommissionsPage({
                     <select id="commissionId" name="commissionId" className="select">
                       <option value="">not against one sale</option>
                       {all
-                        .filter((r) => r.commission.status !== "PAID")
+                        .filter((r) => r.line.status !== "PAID")
                         .map((r) => (
-                          <option key={r.commission.id} value={r.commission.id}>
+                          <option key={r.line.id} value={r.line.id}>
                             {r.agent.name} . {r.contract?.reference ?? ""} {r.unit?.code ?? ""} .{" "}
-                            {formatAmount(toCents(r.commission.amount), locale)}
+                            {formatAmount(toCents(r.line.amount), locale)}
                           </option>
                         ))}
                     </select>
@@ -274,7 +260,7 @@ export default async function CommissionsPage({
                     <label className="label" htmlFor="paidOn">
                       {t("common.date")}
                     </label>
-                    <input id="paidOn" name="paidOn" type="date" className="input" />
+                    <DateField id="paidOn" name="paidOn" />
                   </div>
                   <div>
                     <label className="label" htmlFor="reference">

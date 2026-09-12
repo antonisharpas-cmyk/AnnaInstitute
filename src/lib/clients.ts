@@ -1,7 +1,7 @@
 import "server-only";
 import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { contractUnits, contracts, projects, units } from "@/db/schema";
+import { contracts, projects, units } from "@/db/schema";
 
 export type AssignedApartment = {
   unitId: string;
@@ -12,7 +12,6 @@ export type AssignedApartment = {
   projectName: string;
   contractId: string | null;
   contractReference: string | null;
-  assignmentId: string | null;
 };
 
 /** The apartments assigned to each of these clients, keyed by client. */
@@ -26,14 +25,12 @@ export async function apartmentsByClient(
     .select({
       unit: units,
       project: projects,
-      assignmentId: contractUnits.id,
       contractId: contracts.id,
       contractReference: contracts.reference,
     })
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(contractUnits, eq(contractUnits.unitId, units.id))
-    .leftJoin(contracts, eq(contracts.id, contractUnits.contractId))
+    .leftJoin(contracts, eq(contracts.unitId, units.id))
     .where(inArray(units.clientId, clientIds))
     .orderBy(asc(projects.name), asc(units.code));
 
@@ -48,7 +45,6 @@ export async function apartmentsByClient(
       projectName: row.project.name,
       contractId: row.contractId,
       contractReference: row.contractReference,
-      assignmentId: row.assignmentId,
     };
     const list = grouped.get(row.unit.clientId);
     if (list) list.push(entry);

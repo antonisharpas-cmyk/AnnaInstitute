@@ -1,30 +1,37 @@
 import { notFound } from "next/navigation";
+import { asc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { agents, clients } from "@/db/schema";
 import { getTranslator } from "@/i18n";
-import { getContract } from "@/lib/contracts";
-import { amountForInput } from "@/lib/money";
+import { getContract, unitsWithoutContract } from "@/lib/contracts";
+import { amountForInput, formatAmount } from "@/lib/money";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import ContractForm from "../../ContractForm";
 import { formLabels } from "../../labels";
 import { updateContract } from "../../actions";
 import type { Row } from "../../ScheduleBuilder";
 
+const day = (value: Date | null) => (value ? new Date(value).toISOString().slice(0, 10) : "");
+
 export default async function EditContractPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { t } = await getTranslator();
+  const { locale, t } = await getTranslator();
 
   const detail = await getContract(id);
   if (!detail) notFound();
 
-  // The plan itself takes no money, so it can always be edited. Apartments that
-  // have already received payments keep their own schedule; the others follow.
-  const paidApartments = detail.assignments.filter((a) => !a.open);
+  const [free, clientList, agentList] = await Promise.all([
+    unitsWithoutContract(detail.contract.unitId ?? undefined),
+    db.select().from(clients).orderBy(asc(clients.lastName)),
+    db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
+  ]);
 
-  const rows: Row[] = detail.plan.map((l, i) => ({
+  const rows: Row[] = detail.installments.map((l, i) => ({
     key: `row-${i}`,
     label: l.label,
     labelEl: l.labelEl,
     amount: amountForInput(l.netAmount),
-    dueDate: "",
+    dueDate: day(l.dueDate),
   }));
 
   return (
@@ -34,17 +41,26 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
       <div className="max-w-4xl">
         <Card title={t("contracts.details")}>
           <p className="mb-3 text-xs text-brand-graphite/60">
-            {paidApartments.length > 0
-              ? `${t("contracts.editNotePaid")} ${paidApartments
-                  .map((a) => `${a.project.name} ${a.unit.code}`)
-                  .join(", ")}`
-              : t("contracts.editNote")}
+            {detail.open ? t("contracts.editNote") : t("contracts.scheduleFrozen")}
           </p>
           <ContractForm
             action={updateContract.bind(null, id)}
             contract={detail.contract}
             rows={rows}
+            units={free.map((u) => ({
+              id: u.unit.id,
+              label: `${u.project.name} ${u.unit.code} . ${formatAmount(
+                Number(u.unit.netPrice) * 100,
+                locale,
+              )}`,
+            }))}
+            clients={clientList.map((c) => ({ id: c.id, label: `${c.lastName} ${c.firstName}` }))}
+            agents={agentList.map((a) => ({
+              id: a.id,
+              label: `${a.name} (${Number(a.commissionRate)}%)`,
+            }))}
             cancelHref={`/contracts/${id}`}
+            frozen={!detail.open}
             editing
             labels={formLabels(t)}
           />

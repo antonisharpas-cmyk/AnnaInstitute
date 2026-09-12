@@ -1,10 +1,9 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
   clients,
-  contractUnits,
   contracts,
   installments,
   payments,
@@ -26,45 +25,39 @@ export function vatSummary(setup: VatSetup): string {
   return `${fromCents(setup.netCents)} at ${setup.rate}%`;
 }
 
-/** The apartments a contract has been put on, with the buyer and the agent. */
-export async function assignmentsOf(contractId: string) {
-  return db
+/**
+ * A contract with everything that hangs off it.
+ *
+ * One contract is one sale: this apartment, this buyer, these installments with
+ * their own dates and their own money. Two sales on the same terms are two
+ * contracts, which is what copying is for.
+ */
+export async function getContract(id: string) {
+  const rows = await db
     .select({
-      assignment: contractUnits,
+      contract: contracts,
       unit: units,
       project: projects,
       client: clients,
       agent: agents,
     })
-    .from(contractUnits)
-    .innerJoin(units, eq(units.id, contractUnits.unitId))
-    .innerJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(clients, eq(clients.id, contractUnits.clientId))
-    .leftJoin(agents, eq(agents.id, contractUnits.agentId))
-    .where(eq(contractUnits.contractId, contractId))
-    .orderBy(asc(projects.name), asc(units.code));
-}
+    .from(contracts)
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
+    .leftJoin(agents, eq(agents.id, contracts.agentId))
+    .where(eq(contracts.id, id))
+    .limit(1);
 
-/**
- * A contract with everything hanging off it.
- *
- * `plan` is the contract's own schedule, the shape the office reuses. Each
- * apartment on the contract then carries its own copy of that shape in
- * `assignments[].lines`, with its own dates and its own payments, so a buyer who
- * signed six months later sits at his own stage on his own months.
- */
-export async function getContract(id: string) {
-  const rows = await db.select().from(contracts).where(eq(contracts.id, id)).limit(1);
-  const contract = rows[0];
-  if (!contract) return null;
+  const row = rows[0];
+  if (!row) return null;
 
-  const [lines, assignments, paid, history] = await Promise.all([
+  const [lines, paid, history] = await Promise.all([
     db
       .select()
       .from(installments)
       .where(eq(installments.contractId, id))
       .orderBy(asc(installments.seq)),
-    assignmentsOf(id),
     db.select().from(payments).where(eq(payments.contractId, id)).orderBy(desc(payments.paidOn)),
     db
       .select()
@@ -74,110 +67,60 @@ export async function getContract(id: string) {
   ]);
 
   const paidByInstallment = new Map<string, number>();
-  const paidByAssignment = new Map<string, number>();
   let paidTotalCents = 0;
-
   for (const p of paid) {
     const cents = toCents(p.amount);
     paidTotalCents += cents;
     if (p.installmentId) {
       paidByInstallment.set(p.installmentId, (paidByInstallment.get(p.installmentId) ?? 0) + cents);
     }
-    if (p.assignmentId) {
-      paidByAssignment.set(p.assignmentId, (paidByAssignment.get(p.assignmentId) ?? 0) + cents);
-    }
   }
 
-  const withMoney = (line: (typeof lines)[number]) => ({
+  const schedule = lines.map((line) => ({
     ...line,
     netCents: toCents(line.netAmount),
     vatCents: toCents(line.vatAmount),
     totalCents: toCents(line.totalAmount),
     paidCents: paidByInstallment.get(line.id) ?? 0,
-  });
+  }));
 
-  const plan = lines.filter((l) => l.assignmentId === null).map(withMoney);
-
-  const planNetCents = plan.reduce((a, l) => a + l.netCents, 0);
-  const planVatCents = plan.reduce((a, l) => a + l.vatCents, 0);
-  const planTotalCents = plan.reduce((a, l) => a + l.totalCents, 0);
-
-  const withSchedules = assignments.map((a) => {
-    const own = lines.filter((l) => l.assignmentId === a.assignment.id).map(withMoney);
-    const scheduledCents = own.reduce((sum, l) => sum + l.totalCents, 0);
-    const paidHere = paidByAssignment.get(a.assignment.id) ?? 0;
-    return {
-      ...a,
-      lines: own,
-      payments: paid.filter((p) => p.assignmentId === a.assignment.id),
-      scheduledCents,
-      paidCents: paidHere,
-      outstandingCents: scheduledCents - paidHere,
-      /** Nothing receipted yet, so this apartment's schedule can be rewritten. */
-      open: own.every((l) => l.paidCents === 0 && l.lockedAt === null),
-    };
-  });
-
-  const dueCents = withSchedules.reduce((a, x) => a + x.scheduledCents, 0);
+  const scheduleNetCents = schedule.reduce((a, l) => a + l.netCents, 0);
+  const scheduleVatCents = schedule.reduce((a, l) => a + l.vatCents, 0);
+  const scheduleTotalCents = schedule.reduce((a, l) => a + l.totalCents, 0);
 
   return {
-    contract,
-    plan,
-    assignments: withSchedules,
+    ...row,
+    installments: schedule,
     payments: paid,
     vatHistory: history,
+    /** Nothing receipted yet, so the schedule can still be rewritten outright. */
+    open: schedule.every((l) => l.paidCents === 0 && l.lockedAt === null),
     totals: {
-      netCents: toCents(contract.netPrice),
-      planNetCents,
-      planVatCents,
-      planTotalCents,
-      apartments: assignments.length,
-      dueCents,
+      netCents: toCents(row.contract.netPrice),
+      scheduleNetCents,
+      scheduleVatCents,
+      scheduleTotalCents,
       paidTotalCents,
-      outstandingCents: dueCents - paidTotalCents,
+      outstandingCents: scheduleTotalCents - paidTotalCents,
     },
-    vatSetup: vatSetupOf(contract),
+    vatSetup: vatSetupOf(row.contract),
   };
 }
 
 /**
- * Move a new price or VAT rate onto a schedule, whether that is the contract's
- * own plan or one apartment's copy of it. Lines with a receipt against them keep
- * the figures they were invoiced at, for ever.
+ * Move a new price or VAT rate onto the schedule. Lines with a receipt against
+ * them keep the figures they were invoiced at, for ever.
  */
-export async function recalculateOne(
+export async function recalculateSchedule(
   contractId: string,
-  assignmentId: string | null,
-  setup: VatSetup,
+  actor: { id?: string; email: string },
+  reason: string,
 ) {
-  const rows = await db
-    .select()
-    .from(installments)
-    .where(
-      assignmentId === null
-        ? and(eq(installments.contractId, contractId), isNull(installments.assignmentId))
-        : eq(installments.assignmentId, assignmentId),
-    )
-    .orderBy(asc(installments.seq));
+  const detail = await getContract(contractId);
+  if (!detail) throw new Error("Contract not found");
 
-  if (rows.length === 0) return { openSeqs: [] as number[] };
-
-  const paidRows = await db
-    .select({ installmentId: payments.installmentId, amount: payments.amount })
-    .from(payments)
-    .where(eq(payments.contractId, contractId));
-
-  const paidByInstallment = new Map<string, number>();
-  for (const p of paidRows) {
-    if (!p.installmentId) continue;
-    paidByInstallment.set(
-      p.installmentId,
-      (paidByInstallment.get(p.installmentId) ?? 0) + toCents(p.amount),
-    );
-  }
-
-  const plan: InstallmentPlanItem[] = rows.map((l) => {
-    const locked = (paidByInstallment.get(l.id) ?? 0) > 0 || l.lockedAt !== null;
+  const plan: InstallmentPlanItem[] = detail.installments.map((l) => {
+    const locked = l.paidCents > 0 || l.lockedAt !== null;
     return {
       seq: l.seq,
       label: l.label,
@@ -185,17 +128,17 @@ export async function recalculateOne(
       percentage: Number(l.percentage),
       dueDate: l.dueDate,
       locked,
-      lockedNetCents: locked ? toCents(l.netAmount) : undefined,
-      lockedVatCents: locked ? toCents(l.vatAmount) : undefined,
+      lockedNetCents: locked ? l.netCents : undefined,
+      lockedVatCents: locked ? l.vatCents : undefined,
       lockedRate: locked ? Number(l.vatRateApplied) : undefined,
     };
   });
 
-  const built = buildSchedule(setup, plan);
+  const built = buildSchedule(detail.vatSetup, plan);
   const openSeqs: number[] = [];
 
   for (const line of built) {
-    const existing = rows.find((l) => l.seq === line.seq);
+    const existing = detail.installments.find((l) => l.seq === line.seq);
     if (!existing || line.locked) continue;
     openSeqs.push(line.seq);
     await db
@@ -210,36 +153,11 @@ export async function recalculateOne(
       .where(eq(installments.id, existing.id));
   }
 
-  return { openSeqs };
-}
-
-/** The plan and every apartment on the contract, after a change of price or VAT. */
-export async function recalculateSchedule(
-  contractId: string,
-  actor: { id?: string; email: string },
-  reason: string,
-) {
-  const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
-  const contract = rows[0];
-  if (!contract) throw new Error("Contract not found");
-  const setup = vatSetupOf(contract);
-
-  const { openSeqs } = await recalculateOne(contractId, null, setup);
-
-  const assignments = await db
-    .select({ id: contractUnits.id })
-    .from(contractUnits)
-    .where(eq(contractUnits.contractId, contractId));
-
-  for (const assignment of assignments) {
-    await recalculateOne(contractId, assignment.id, setup);
-  }
-
   await recordAudit({
     action: reason,
     entity: "contract",
     entityId: contractId,
-    detail: `Recalculated the plan and ${assignments.length} apartment schedule(s)`,
+    detail: `Recalculated installments ${openSeqs.join(", ") || "none"}`,
     userId: actor.id ?? null,
     userEmail: actor.email,
   });
@@ -283,7 +201,15 @@ export async function listContracts(options?: {
   const filters: SQL[] = [];
   const query = options?.query?.trim();
   if (query) {
-    filters.push(ilike(contracts.reference, `%${query}%`) as SQL);
+    filters.push(
+      or(
+        ilike(contracts.reference, `%${query}%`),
+        ilike(clients.firstName, `%${query}%`),
+        ilike(clients.lastName, `%${query}%`),
+        ilike(units.code, `%${query}%`),
+        ilike(projects.name, `%${query}%`),
+      ) as SQL,
+    );
   }
   const status = options?.status;
   if (
@@ -296,67 +222,55 @@ export async function listContracts(options?: {
   }
   const where = filters.length > 0 ? and(...filters) : undefined;
 
-  // The counts and sums are correlated subqueries. The table is named in full
-  // rather than interpolated, because this select has no join for the query
-  // builder to qualify the column against.
   const selection = {
     contract: contracts,
-    installmentCount: sql<number>`(select count(*) from installments i where i.contract_id = contracts.id)::int`,
-    apartments: sql<number>`(select count(*) from contract_units cu where cu.contract_id = contracts.id)::int`,
-    // What the apartments on it actually owe: each one has its own schedule.
-    dueCents: sql<string>`coalesce((select sum(i.total_amount) from installments i where i.contract_id = contracts.id and i.assignment_id is not null), 0)`,
-    paid: sql<string>`coalesce((select sum(p.amount) from payments p where p.contract_id = contracts.id), 0)`,
-    // Whose apartments they are, for the list. A contract on several apartments
-    // can carry several buyers, so the names are gathered rather than joined.
-    buyers: sql<string>`coalesce((
-      select string_agg(distinct (c.first_name || ' ' || c.last_name), ', ')
-      from contract_units cu
-      left join clients c on c.id = cu.client_id
-      where cu.contract_id = contracts.id
-    ), '')`,
-    places: sql<string>`coalesce((
-      select string_agg(distinct (pr.name || ' ' || u.code), ', ')
-      from contract_units cu
-      join units u on u.id = cu.unit_id
-      join projects pr on pr.id = u.project_id
-      where cu.contract_id = contracts.id
-    ), '')`,
+    unit: units,
+    project: projects,
+    client: clients,
+    installmentCount: sql<number>`(select count(*) from installments i where i.contract_id = ${contracts.id})::int`,
+    scheduledCents: sql<string>`coalesce((select sum(i.total_amount) from installments i where i.contract_id = ${contracts.id}), 0)`,
+    paid: sql<string>`coalesce((select sum(p.amount) from payments p where p.contract_id = ${contracts.id}), 0)`,
+    nextDue: sql<Date | null>`(select min(i.due_date) from installments i where i.contract_id = ${contracts.id} and coalesce((select sum(p.amount) from payments p where p.installment_id = i.id), 0) < i.total_amount)`,
   };
 
-  const base = db.select(selection).from(contracts).where(where).orderBy(desc(contracts.createdAt));
-
-  const rows =
-    options?.limit != null
-      ? await base.limit(options.limit).offset(options.offset ?? 0)
-      : await base;
+  const rows = await db
+    .select(selection)
+    .from(contracts)
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
+    .where(where)
+    .orderBy(desc(contracts.createdAt))
+    .limit(options?.limit ?? 1000)
+    .offset(options?.offset ?? 0);
 
   const [counted] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(contracts)
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
     .where(where);
 
   return {
     total: counted?.total ?? 0,
-    rows: rows
-      .map((r) => {
-        const due = toCents(r.dueCents);
-        const paid = toCents(r.paid);
-        return { ...r, dueCents: due, paidCents: paid, outstandingCents: due - paid };
-      })
-      // Searching by buyer or apartment as well as by reference, without a
-      // second query: the names come back with the row.
-      .filter((r) => {
-        if (!query) return true;
-        const haystack = `${r.contract.reference} ${r.buyers} ${r.places}`.toLowerCase();
-        return haystack.includes(query.toLowerCase());
-      }),
+    rows: rows.map((r) => {
+      const scheduled = toCents(r.scheduledCents);
+      const paid = toCents(r.paid);
+      return {
+        ...r,
+        scheduledCents: scheduled,
+        paidCents: paid,
+        outstandingCents: scheduled - paid,
+      };
+    }),
   };
 }
 
 /**
- * Apartments a contract can be put on: anything not already on one.
+ * Apartments a contract can be written for: anything without one.
  * `keepUnitId` keeps one apartment in the list even though it is taken, for the
- * form that is editing that very assignment.
+ * form that is editing that very contract.
  */
 export async function unitsWithoutContract(keepUnitId?: string) {
   const rows = await db
@@ -364,18 +278,18 @@ export async function unitsWithoutContract(keepUnitId?: string) {
       unit: units,
       project: projects,
       holder: clients,
-      assignmentId: contractUnits.id,
+      contractId: contracts.id,
     })
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
     .leftJoin(clients, eq(clients.id, units.clientId))
-    .leftJoin(contractUnits, eq(contractUnits.unitId, units.id))
+    .leftJoin(contracts, eq(contracts.unitId, units.id))
     .orderBy(asc(projects.name), asc(units.code));
 
-  return rows.filter((r) => r.assignmentId === null || r.unit.id === keepUnitId);
+  return rows.filter((r) => r.contractId === null || r.unit.id === keepUnitId);
 }
 
-/** Every contract, shortest possible form, for the pick lists. */
+/** Every contract, shortest possible form, for a copy list. */
 export async function contractChoices() {
   return db
     .select({
@@ -387,33 +301,6 @@ export async function contractChoices() {
     })
     .from(contracts)
     .orderBy(asc(contracts.reference));
-}
-
-/** The assignments of one client, with their contract and apartment. */
-export async function assignmentsForClient(clientId: string) {
-  return db
-    .select({
-      assignment: contractUnits,
-      contract: contracts,
-      unit: units,
-      project: projects,
-      agent: agents,
-    })
-    .from(contractUnits)
-    .innerJoin(contracts, eq(contracts.id, contractUnits.contractId))
-    .innerJoin(units, eq(units.id, contractUnits.unitId))
-    .innerJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(agents, eq(agents.id, contractUnits.agentId))
-    .where(eq(contractUnits.clientId, clientId))
-    .orderBy(desc(contractUnits.createdAt));
-}
-
-/** Assignments with no buyer recorded, which the office should tidy up. */
-export async function assignmentsWithoutClient() {
-  return db
-    .select({ id: contractUnits.id })
-    .from(contractUnits)
-    .where(isNull(contractUnits.clientId));
 }
 
 export function contractStatusTone(status: string) {

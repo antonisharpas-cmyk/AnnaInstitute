@@ -7,11 +7,13 @@ type Project = typeof projectsTable.$inferSelect;
 export default function ProjectForm({
   action,
   project,
+  companies,
   cancelHref,
   t,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   project?: Project;
+  companies: { id: string; name: string }[];
   cancelHref: string;
   t: (key: MessageKey) => string;
 }) {
@@ -30,6 +32,38 @@ export default function ProjectForm({
             placeholder="Magnum Opus Quattro"
             className="input"
           />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="companyId">
+            {t("projects.company")}
+          </label>
+          <select
+            id="companyId"
+            name="companyId"
+            defaultValue={project?.companyId ?? ""}
+            className="select"
+          >
+            <option value="">{t("projects.noCompany")}</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="newCompany">
+            {t("projects.newCompany")}
+          </label>
+          <input
+            id="newCompany"
+            name="newCompany"
+            placeholder={t("projects.newCompanyPlaceholder")}
+            className="input"
+          />
+          <p className="mt-1 text-xs text-brand-graphite/60">{t("projects.newCompanyNote")}</p>
         </div>
 
         <div>

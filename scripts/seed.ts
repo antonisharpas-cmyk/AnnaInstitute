@@ -4,7 +4,7 @@
  *   npm run db:seed
  *
  * Creates the first administrator and the four One Eleven developments with
- * their units, plus one demonstration contract put on one of the apartments.
+ * their units, plus one demonstration contract for one apartment.
  * Safe to run more than once: it skips anything that already exists.
  */
 import { randomBytes } from "node:crypto";
@@ -13,7 +13,8 @@ import { db } from "../src/db";
 import {
   agents,
   clients,
-  contractUnits,
+  commissions,
+  companies,
   contracts,
   installments,
   payments,
@@ -123,6 +124,17 @@ async function seedAdmin() {
 }
 
 async function seedProjects() {
+  // Every development is built with a partner company. Trivest to begin with,
+  // and the office adds the others as they come.
+  const existingCompany = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.name, "Trivest"))
+    .limit(1);
+  const companyId =
+    existingCompany[0]?.id ??
+    (await db.insert(companies).values({ name: "Trivest" }).returning({ id: companies.id }))[0].id;
+
   for (const p of PROJECTS) {
     const existing = await db.select().from(projects).where(eq(projects.slug, p.slug)).limit(1);
     let projectId = existing[0]?.id;
@@ -132,6 +144,7 @@ async function seedProjects() {
         .insert(projects)
         .values({
           name: p.name,
+          companyId,
           slug: p.slug,
           location: p.location,
           completionBy: p.completionBy,
@@ -225,23 +238,19 @@ async function seedDemoContract() {
     .insert(contracts)
     .values({
       reference,
+      unitId: unit.id,
+      clientId: clientRows[0].id,
+      agentId,
       contractDate: new Date(),
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),
       scheduleType: "STANDARD",
       status: "ACTIVE",
-      notes: "Seeded example. One contract, put on an apartment, with the first stage paid.",
+      notes: "Seeded example: one contract for one apartment, first stage paid.",
     })
     .returning({ id: contracts.id });
 
   const contractId = contractRows[0].id;
-
-  // The contract stands on its own; this row is what puts it on an apartment.
-  const assignmentRows = await db
-    .insert(contractUnits)
-    .values({ contractId, unitId: unit.id, clientId: clientRows[0].id, agentId })
-    .returning({ id: contractUnits.id });
-  const assignmentId = assignmentRows[0].id;
 
   const plan = DEFAULT_STAGES.map((s, i) => ({
     seq: i + 1,
@@ -251,22 +260,6 @@ async function seedDemoContract() {
   }));
   const lines = buildSchedule(setup, plan);
 
-  // The contract's own plan: the shape, with no dates on it.
-  await db.insert(installments).values(
-    lines.map((line, i) => ({
-      contractId,
-      seq: line.seq,
-      label: line.label,
-      labelEl: DEFAULT_STAGES[i]?.labelEl ?? null,
-      percentage: line.percentage.toFixed(4),
-      netAmount: fromCents(line.netCents),
-      vatAmount: fromCents(line.vatCents),
-      totalAmount: fromCents(line.totalCents),
-      vatRateApplied: line.rateApplied.toFixed(3),
-    })),
-  );
-
-  // The apartment's own copy, on its own dates.
   const inserted = await db
     .insert(installments)
     .values(
@@ -275,7 +268,6 @@ async function seedDemoContract() {
         due.setMonth(due.getMonth() + i * 3 - 3);
         return {
           contractId,
-          assignmentId,
           seq: line.seq,
           label: line.label,
           labelEl: DEFAULT_STAGES[i]?.labelEl ?? null,
@@ -294,7 +286,6 @@ async function seedDemoContract() {
   if (first) {
     await db.insert(payments).values({
       contractId,
-      assignmentId,
       installmentId: first.id,
       amount: first.total,
       paidOn: new Date(),
@@ -308,6 +299,19 @@ async function seedDemoContract() {
   }
 
   await db.update(units).set({ status: "SOLD" }).where(eq(units.id, unit.id));
+
+  // The commission the sale earns, on the price at the agent's own rate. Extras
+  // are the office's decision and are never seeded.
+  const agentRow = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
+  const commissionRate = Number(agentRow[0]?.commissionRate ?? 0);
+  await db.insert(commissions).values({
+    contractId,
+    agentId,
+    kind: "RATE",
+    baseAmount: fromCents(netCents),
+    rate: commissionRate.toFixed(3),
+    amount: fromCents(Math.round((netCents * commissionRate) / 100)),
+  });
 
   console.log(`Demonstration contract created: ${reference}`);
 }

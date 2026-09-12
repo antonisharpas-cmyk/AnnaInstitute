@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, contractUnits } from "@/db/schema";
+import { clients, contracts } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { apartmentsByClient } from "@/lib/clients";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
@@ -53,10 +53,10 @@ export default async function ClientsPage({
     db
       .select({
         client: clients,
-        contractCount: sql<number>`count(${contractUnits.id})::int`,
+        contractCount: sql<number>`count(${contracts.id})::int`,
       })
       .from(clients)
-      .leftJoin(contractUnits, eq(contractUnits.clientId, clients.id))
+      .leftJoin(contracts, eq(contracts.clientId, clients.id))
       .where(where)
       .groupBy(clients.id)
       .orderBy(asc(clients.lastName), asc(clients.firstName))

@@ -5,12 +5,10 @@ import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { clients, contractUnits, contracts, payments, units } from "@/db/schema";
+import { clients, contracts, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
-import { fromCents, toCents } from "@/lib/money";
-import { resetToPlan, syncCommission } from "../contracts/actions";
 
 const clientSchema = z.object({
   firstName: z.string().min(1),
@@ -269,16 +267,16 @@ export async function unassignApartment(unitId: string, clientId: string) {
   const unit = rows[0];
   if (!unit) return;
 
-  const [assignment] = await db
-    .select({ id: contractUnits.id })
-    .from(contractUnits)
-    .where(eq(contractUnits.unitId, unitId))
+  const [contract] = await db
+    .select({ id: contracts.id })
+    .from(contracts)
+    .where(eq(contracts.unitId, unitId))
     .limit(1);
 
   // A contract has to go first, otherwise the payment schedule would be left
   // pointing at an apartment nobody holds. The page shows this as a note rather
   // than throwing, so nobody lands on an error screen.
-  if (assignment) {
+  if (contract) {
     revalidatePath(`/clients/${clientId}`);
     return;
   }
@@ -300,111 +298,4 @@ export async function unassignApartment(unitId: string, clientId: string) {
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/clients");
   revalidatePath(`/projects/${unit.projectId}`);
-}
-
-/**
- * Put a contract on an apartment this client holds.
- *
- * Contracts are written in the contracts section and stand on their own, so the
- * same one can serve several apartments. Here the office only picks which
- * contract this apartment is on.
- */
-export async function attachContract(clientId: string, unitId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN"]);
-  const contractId = String(formData.get("contractId") ?? "").trim();
-  const startDate = String(formData.get("startDate") ?? "");
-  const everyMonths = String(formData.get("everyMonths") ?? "1");
-  if (!contractId) throw new Error("Choose a contract first.");
-
-  const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
-  const contract = rows[0];
-  if (!contract) throw new Error("Contract not found");
-
-  const taken = await db
-    .select({ id: contractUnits.id })
-    .from(contractUnits)
-    .where(eq(contractUnits.unitId, unitId))
-    .limit(1);
-  if (taken[0]) throw new Error("That apartment is already on a contract.");
-
-  const inserted = await db
-    .insert(contractUnits)
-    .values({ contractId, unitId, clientId })
-    .returning({ id: contractUnits.id });
-
-  // The apartment takes its own copy of the contract's plan, on its own dates.
-  const dates = new FormData();
-  dates.set("startDate", startDate);
-  dates.set("everyMonths", everyMonths);
-  await resetToPlan(inserted[0].id, contractId, dates);
-
-  await db
-    .update(units)
-    .set({ status: "SOLD", clientId, updatedAt: new Date() })
-    .where(eq(units.id, unitId));
-
-  await syncCommission(inserted[0].id);
-
-  await recordAudit({
-    action: "contract.attach",
-    entity: "contract",
-    entityId: contractId,
-    detail: `${contract.reference} put on apartment ${unitId}`,
-    userId: user.id,
-    userEmail: user.email,
-  });
-
-  revalidatePath(`/clients/${clientId}`);
-  revalidatePath(`/contracts/${contractId}`);
-  revalidatePath("/contracts");
-}
-
-/**
- * Take the contract off this apartment.
- *
- * The contract itself is left alone, because other apartments may be on it.
- * Money already received against this apartment blocks it, so nothing is
- * orphaned.
- */
-export async function detachContract(assignmentId: string, clientId: string) {
-  const user = await requireUser(["ADMIN"]);
-
-  const rows = await db
-    .select()
-    .from(contractUnits)
-    .where(eq(contractUnits.id, assignmentId))
-    .limit(1);
-  const assignment = rows[0];
-  if (!assignment) return;
-
-  const [paidHere] = await db
-    .select({ id: payments.id })
-    .from(payments)
-    .where(eq(payments.assignmentId, assignmentId))
-    .limit(1);
-
-  // Shown on the page as a note rather than an error screen.
-  if (paidHere) {
-    revalidatePath(`/clients/${clientId}`);
-    return;
-  }
-
-  await db.delete(contractUnits).where(eq(contractUnits.id, assignmentId));
-  await db
-    .update(units)
-    .set({ status: assignment.clientId ? "RESERVED" : "AVAILABLE", updatedAt: new Date() })
-    .where(eq(units.id, assignment.unitId));
-
-  await recordAudit({
-    action: "contract.detach",
-    entity: "contract",
-    entityId: assignment.contractId,
-    detail: `taken off apartment ${assignment.unitId}`,
-    userId: user.id,
-    userEmail: user.email,
-  });
-
-  revalidatePath(`/clients/${clientId}`);
-  revalidatePath(`/contracts/${assignment.contractId}`);
-  revalidatePath("/contracts");
 }

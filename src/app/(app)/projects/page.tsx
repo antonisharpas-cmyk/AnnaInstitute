@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, asc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { projects, units } from "@/db/schema";
+import { companies, projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
@@ -16,12 +16,13 @@ const statusTone = (status: string) =>
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; company?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
   const query = (params.q ?? "").trim();
   const status = params.status ?? "";
+  const company = params.company ?? "";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
 
   const filters: SQL[] = [];
@@ -33,9 +34,12 @@ export default async function ProjectsPage({
   if (status === "PLANNING" || status === "UNDER_CONSTRUCTION" || status === "COMPLETED") {
     filters.push(eq(projects.status, status));
   }
+  if (company) {
+    filters.push(eq(projects.companyId, company));
+  }
   const where = filters.length > 0 ? and(...filters) : undefined;
 
-  const [[counted], rows] = await Promise.all([
+  const [[counted], rows, companyList] = await Promise.all([
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(projects)
@@ -49,14 +53,17 @@ export default async function ProjectsPage({
         reservedCount: sql<number>`count(${units.id}) filter (where ${units.status} = 'RESERVED')::int`,
         totalValue: sql<string>`coalesce(sum(${units.netPrice}), 0)`,
         soldValue: sql<string>`coalesce(sum(${units.netPrice}) filter (where ${units.status} in ('SOLD','DELIVERED')), 0)`,
+        company: companies,
       })
       .from(projects)
       .leftJoin(units, eq(units.projectId, projects.id))
+      .leftJoin(companies, eq(companies.id, projects.companyId))
       .where(where)
-      .groupBy(projects.id)
+      .groupBy(projects.id, companies.id)
       .orderBy(asc(projects.name))
       .limit(perPage)
       .offset(offset),
+    db.select().from(companies).orderBy(asc(companies.name)),
   ]);
 
   const total = counted?.total ?? 0;
@@ -91,16 +98,31 @@ export default async function ProjectsPage({
               <option value="COMPLETED">{t("projects.status.COMPLETED")}</option>
             </select>
           </div>
+
+          <div className="w-48">
+            <label className="label" htmlFor="company">
+              {t("projects.company")}
+            </label>
+            <select id="company" name="company" defaultValue={company} className="select">
+              <option value="">{t("common.all")}</option>
+              {companyList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </SearchBox>
 
         <div className="mt-4 overflow-x-auto">
           {rows.length === 0 ? (
-            <Empty message={query || status ? t("projects.noneFound") : t("common.none")} />
+            <Empty message={query || status || company ? t("projects.noneFound") : t("common.none")} />
           ) : (
             <table className="data">
               <thead>
                 <tr>
                   <th>{t("common.name")}</th>
+                  <th>{t("projects.company")}</th>
                   <th>{t("projects.location")}</th>
                   <th className="ctr">{t("projects.completion")}</th>
                   <th>{t("common.status")}</th>
@@ -124,6 +146,15 @@ export default async function ProjectsPage({
                       >
                         {r.project.name}
                       </Link>
+                    </td>
+                    <td>
+                      {r.company ? (
+                        r.company.name
+                      ) : (
+                        <span className="text-xs text-brand-graphite/50">
+                          {t("projects.noCompany")}
+                        </span>
+                      )}
                     </td>
                     <td>{r.project.location ?? ""}</td>
                     <td className="ctr">{r.project.completionBy ?? ""}</td>

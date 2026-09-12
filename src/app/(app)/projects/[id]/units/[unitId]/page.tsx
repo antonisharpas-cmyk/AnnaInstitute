@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { contractUnits, contracts, projects, units } from "@/db/schema";
+import { contracts, projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import { documentsForUnit } from "@/lib/documents";
@@ -35,11 +35,7 @@ export default async function EditUnitPage({
   if (!row) notFound();
 
   const [sold, files] = await Promise.all([
-    db
-      .select({ contract: contracts })
-      .from(contractUnits)
-      .innerJoin(contracts, eq(contracts.id, contractUnits.contractId))
-      .where(eq(contractUnits.unitId, unitId)),
+    db.select({ contract: contracts }).from(contracts).where(eq(contracts.unitId, unitId)),
     documentsForUnit(unitId),
   ]);
 

@@ -18,26 +18,39 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { storeDocument } from "@/lib/uploads";
 import { resolveStored } from "@/lib/storage";
-import { fillPlaceholders, sendAndRecord, type Channel } from "@/lib/messaging";
+import { fillPlaceholders, sendAndRecord } from "@/lib/messaging";
 import { createPriceListLink, priceListUrl } from "@/lib/priceList";
+import { filesLinkFor, filesUrl } from "@/lib/campaignFiles";
 
 export async function createCampaign(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
 
-  const channel = String(formData.get("channel") ?? "EMAIL") as Channel;
   const audience = String(formData.get("audience") ?? "CLIENTS_CONSENTED") as
     "CLIENTS_CONSENTED" | "AGENTS";
+
+  const viaEmail = String(formData.get("viaEmail") ?? "") === "on";
+  const viaWhatsapp = String(formData.get("viaWhatsapp") ?? "") === "on";
+  if (!viaEmail && !viaWhatsapp) {
+    throw new Error("Choose at least one way to send it, email or WhatsApp.");
+  }
+
   const body = String(formData.get("body") ?? "").trim();
-  if (!body) throw new Error("Write the message first.");
+  const bodyWhatsapp = String(formData.get("bodyWhatsapp") ?? "").trim();
+  if (viaEmail && !body) throw new Error("Write the email first.");
+  if (viaWhatsapp && !bodyWhatsapp) throw new Error("Write the WhatsApp message first.");
 
   const inserted = await db
     .insert(campaigns)
     .values({
       title: String(formData.get("title") ?? "").trim() || "Untitled",
-      channel,
+      // The log keeps a channel per message; this one only says what it started as.
+      channel: viaEmail ? "EMAIL" : "WHATSAPP",
+      viaEmail,
+      viaWhatsapp,
       audience,
       subject: String(formData.get("subject") ?? "") || null,
-      body,
+      body: body || bodyWhatsapp,
+      bodyWhatsapp: bodyWhatsapp || null,
       shareLinkId: String(formData.get("shareLinkId") ?? "") || null,
       createdByEmail: user.email,
     })
@@ -60,11 +73,18 @@ export async function createCampaign(formData: FormData) {
     await db.insert(campaignDocuments).values({ campaignId, documentId });
   }
 
+  // A WhatsApp message cannot carry the files, so they get a link of their own.
+  if (files.length > 0 && viaWhatsapp) {
+    await filesLinkFor(campaignId, user.email);
+  }
+
   await recordAudit({
     action: "campaign.create",
     entity: "campaign",
     entityId: campaignId,
-    detail: `${channel} to ${audience}, ${files.length} attachment(s)`,
+    detail: `${[viaEmail ? "email" : null, viaWhatsapp ? "whatsapp" : null]
+      .filter(Boolean)
+      .join(" and ")} to ${audience}, ${files.length} attachment(s)`,
     userId: user.id,
     userEmail: user.email,
   });
@@ -121,14 +141,11 @@ export async function sendCampaign(campaignId: string) {
 
   await db.update(campaigns).set({ status: "SENDING" }).where(eq(campaigns.id, campaignId));
 
-  const attachmentRows =
-    campaign.channel === "EMAIL"
-      ? await db
-          .select({ document: documents })
-          .from(campaignDocuments)
-          .innerJoin(documents, eq(documents.id, campaignDocuments.documentId))
-          .where(eq(campaignDocuments.campaignId, campaignId))
-      : [];
+  const attachmentRows = await db
+    .select({ document: documents })
+    .from(campaignDocuments)
+    .innerJoin(documents, eq(documents.id, campaignDocuments.documentId))
+    .where(eq(campaignDocuments.campaignId, campaignId));
 
   const attachments = attachmentRows.map((r) => ({
     filename: r.document.originalName ?? path.basename(r.document.filePath),
@@ -146,30 +163,50 @@ export async function sendCampaign(campaignId: string) {
     if (linkRows[0]) url = priceListUrl(linkRows[0].token);
   }
 
+  // The files reach WhatsApp as a link, and the link is added to the end of the
+  // message when the office has not put {{files_url}} in it itself.
+  let files: string | undefined;
+  if (attachmentRows.length > 0 && campaign.viaWhatsapp) {
+    const link = await filesLinkFor(campaignId, user.email);
+    files = filesUrl(link.token);
+  }
+
   const recipients = await audienceFor(campaign.audience);
   let sent = 0;
   let failed = 0;
 
+  const whatsappBody = campaign.bodyWhatsapp ?? campaign.body;
+  const withFilesLink =
+    files && !whatsappBody.includes("{{files_url}}") ? `${whatsappBody}\n${files}` : whatsappBody;
+
   for (const recipient of recipients) {
-    const result = await sendAndRecord({
-      campaignId,
-      channel: campaign.channel,
-      recipient,
-      subject: campaign.subject
-        ? fillPlaceholders(campaign.subject, {
-            ...recipient,
-            priceListUrl: url,
-          })
-        : null,
-      body: fillPlaceholders(campaign.body, {
-        ...recipient,
-        priceListUrl: url,
-      }),
-      withOptOut: campaign.audience === "CLIENTS_CONSENTED",
-      attachments,
-    });
-    if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
-    else failed += 1;
+    const values = { ...recipient, priceListUrl: url, filesUrl: files };
+
+    if (campaign.viaEmail) {
+      const result = await sendAndRecord({
+        campaignId,
+        channel: "EMAIL",
+        recipient,
+        subject: campaign.subject ? fillPlaceholders(campaign.subject, values) : null,
+        body: fillPlaceholders(campaign.body, values),
+        withOptOut: campaign.audience === "CLIENTS_CONSENTED",
+        attachments,
+      });
+      if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
+      else failed += 1;
+    }
+
+    if (campaign.viaWhatsapp) {
+      const result = await sendAndRecord({
+        campaignId,
+        channel: "WHATSAPP",
+        recipient,
+        body: fillPlaceholders(withFilesLink, values),
+        withOptOut: campaign.audience === "CLIENTS_CONSENTED",
+      });
+      if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
+      else failed += 1;
+    }
   }
 
   await db

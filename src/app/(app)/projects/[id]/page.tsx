@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { projects, units } from "@/db/schema";
+import { companies, projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import { documentsForProjectWithUnits, floorPlansByUnit } from "@/lib/documents";
@@ -32,8 +32,14 @@ export default async function ProjectPage({
   const { locale, t } = await getTranslator();
   const { page, perPage, offset } = paginate(query, PER_PAGE);
 
-  const found = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-  const project = found[0];
+  const found = await db
+    .select({ project: projects, company: companies })
+    .from(projects)
+    .leftJoin(companies, eq(companies.id, projects.companyId))
+    .where(eq(projects.id, id))
+    .limit(1);
+  const project = found[0]?.project;
+  const company = found[0]?.company;
   if (!project) notFound();
 
   const [rows, [totals], allFiles, plansByUnit] = await Promise.all([
@@ -67,7 +73,9 @@ export default async function ProjectPage({
       />
       <PageHeader
         title={project.name}
-        subtitle={[project.location, project.completionBy].filter(Boolean).join(" . ")}
+        subtitle={[company?.name, project.location, project.completionBy]
+          .filter(Boolean)
+          .join(" . ")}
         action={
           <div className="flex flex-wrap gap-2">
             <Link href={`/projects/${id}/edit`} className="btn btn-secondary">

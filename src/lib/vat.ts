@@ -142,6 +142,37 @@ export const DEFAULT_STAGES: {
 ];
 
 /**
+ * The stages the office actually writes on a contract.
+ *
+ * These are offered as a dropdown wherever a stage is named, so the same six
+ * words are used on every contract and a line can still be typed by hand when a
+ * deal needs something of its own. "On completion of the apartment" is the stage
+ * that falls between the building being finished and the keys changing hands.
+ */
+export const STAGE_CHOICES: { label: string; labelEl: string }[] = [
+  ...DEFAULT_STAGES.slice(0, 5).map((s) => ({ label: s.label, labelEl: s.labelEl })),
+  { label: "On completion of the apartment", labelEl: "Ολοκλήρωση διαμερίσματος" },
+  { label: "On delivery", labelEl: "Παράδοση" },
+  { label: "On the title deed", labelEl: "Τίτλος ιδιοκτησίας" },
+];
+
+/**
+ * A stage recognised in either language.
+ *
+ * The dropdown shows Greek to a Greek user, so what comes back from the form can
+ * be either wording. Both are matched here and the pair is stored, which keeps
+ * one contract readable in both languages whoever typed it.
+ */
+export function stageFromAnyLanguage(value: string): { label: string; labelEl: string } | null {
+  const typed = value.trim().toLowerCase();
+  return (
+    STAGE_CHOICES.find(
+      (s) => s.label.toLowerCase() === typed || s.labelEl.toLowerCase() === typed,
+    ) ?? null
+  );
+}
+
+/**
  * The same day of the month, n months on, clamped to the end of a short month:
  * the 31st of January plus one month is the 28th of February, not the 3rd of
  * March, which is what a naive date would give.

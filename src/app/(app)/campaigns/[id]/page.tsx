@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaignDocuments, campaigns, documents, shareLinks } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { addressFor, channelConfigured, emailConfigured, fillPlaceholders } from "@/lib/messaging";
+import { filesUrl } from "@/lib/campaignFiles";
 import { priceListUrl } from "@/lib/priceList";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
@@ -18,7 +19,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const campaign = rows[0];
   if (!campaign) notFound();
 
-  const [attachments, recipients, log] = await Promise.all([
+  const [attachments, recipients, log, fileLinkRows] = await Promise.all([
     db
       .select({ document: documents })
       .from(campaignDocuments)
@@ -26,6 +27,11 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       .where(eq(campaignDocuments.campaignId, id)),
     audienceFor(campaign.audience),
     messagesForCampaign(id),
+    db
+      .select()
+      .from(shareLinks)
+      .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, id)))
+      .limit(1),
   ]);
 
   let url: string | undefined;
@@ -38,25 +44,43 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     if (linkRows[0]) url = priceListUrl(linkRows[0].token);
   }
 
+  // Somebody can be reachable on one channel and not the other, so each is
+  // checked on its own and the page says who will actually receive what.
   const checked = [];
   for (const recipient of recipients) {
-    const address = addressFor(campaign.channel, recipient);
-    const suppressed = address
-      ? await isSuppressed(campaign.channel === "EMAIL" ? "EMAIL" : "PHONE", address)
-      : false;
-    checked.push({ ...recipient, address, suppressed });
+    const emailAddress = campaign.viaEmail ? addressFor("EMAIL", recipient) : null;
+    const phoneAddress = campaign.viaWhatsapp ? addressFor("WHATSAPP", recipient) : null;
+    checked.push({
+      ...recipient,
+      emailAddress,
+      phoneAddress,
+      emailSuppressed: emailAddress ? await isSuppressed("EMAIL", emailAddress) : false,
+      phoneSuppressed: phoneAddress ? await isSuppressed("PHONE", phoneAddress) : false,
+    });
   }
 
-  const sendable = checked.filter((r) => r.address && !r.suppressed);
+  const willGetEmail = checked.filter((r) => r.emailAddress && !r.emailSuppressed);
+  const willGetWhatsapp = checked.filter((r) => r.phoneAddress && !r.phoneSuppressed);
+  const sendable = [...new Set([...willGetEmail, ...willGetWhatsapp])];
+
   const channelReady =
-    campaign.channel === "EMAIL" ? emailConfigured() : channelConfigured(campaign.channel);
+    (!campaign.viaEmail || emailConfigured()) &&
+    (!campaign.viaWhatsapp || channelConfigured("WHATSAPP"));
   const alreadySent = campaign.status !== "DRAFT";
 
-  const preview = fillPlaceholders(campaign.body, {
+  // The files of a campaign also live behind a link of their own, because a
+  // WhatsApp message cannot carry a PDF the way an email can.
+  const filesLink = fileLinkRows[0] ? filesUrl(fileLinkRows[0].token) : undefined;
+  const values = {
     name: checked[0]?.name ?? "Name Surname",
     firstName: checked[0]?.firstName ?? "Name",
     priceListUrl: url,
-  });
+    filesUrl: filesLink,
+  };
+  const preview = fillPlaceholders(campaign.body, values);
+  const previewWhatsapp = campaign.bodyWhatsapp
+    ? fillPlaceholders(campaign.bodyWhatsapp, values)
+    : null;
 
   return (
     <>
@@ -66,9 +90,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       />
       <PageHeader
         title={campaign.title}
-        subtitle={`${campaign.channel.toLowerCase()} . ${
-          campaign.audience === "AGENTS" ? "agents" : "clients with consent"
-        }`}
+        subtitle={`${[campaign.viaEmail ? "email" : null, campaign.viaWhatsapp ? "whatsapp" : null]
+          .filter(Boolean)
+          .join(" and ")} . ${campaign.audience === "AGENTS" ? "agents" : "clients with consent"}`}
         action={
           <Pill tone={campaign.status === "SENT" ? "good" : "neutral"}>
             {campaign.status.replace(/_/g, " ").toLowerCase()}
@@ -76,34 +100,51 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
         <Stat label="In the audience" value={String(checked.length)} />
+        <Stat label="Emails" value={String(willGetEmail.length)} hint="address, not suppressed" />
         <Stat
-          label="Will receive it"
-          value={String(sendable.length)}
-          hint="has an address and is not suppressed"
+          label="WhatsApp"
+          value={String(willGetWhatsapp.length)}
+          hint="number, not suppressed"
         />
         <Stat
           label="Skipped"
           value={String(checked.length - sendable.length)}
-          hint="no address, or on the suppression list"
+          hint="reachable on neither"
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card title="The message as one recipient will see it">
-            {campaign.subject ? (
-              <p className="mb-2 text-sm font-semibold">{campaign.subject}</p>
+            {campaign.viaEmail ? (
+              <div className="mb-4">
+                <p className="label">{t("campaigns.theEmail")}</p>
+                {campaign.subject ? (
+                  <p className="mb-2 text-sm font-semibold">{campaign.subject}</p>
+                ) : null}
+                <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
+                  {preview}
+                </pre>
+              </div>
             ) : null}
-            <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
-              {preview}
-            </pre>
+            {campaign.viaWhatsapp && previewWhatsapp ? (
+              <div className="mb-2 border-t border-brand-line pt-3">
+                <p className="label">{t("campaigns.theWhatsapp")}</p>
+                <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
+                  {previewWhatsapp}
+                </pre>
+              </div>
+            ) : null}
             {campaign.audience === "CLIENTS_CONSENTED" ? (
               <p className="mt-3 border-t border-brand-line pt-3 text-xs text-brand-graphite/60">
-                {campaign.channel === "EMAIL"
-                  ? "An unsubscribe link is added to every email automatically."
-                  : "Reply STOP to opt out is added to every message automatically, and a reply of stop suppresses that number for good."}
+                {campaign.viaEmail
+                  ? "An unsubscribe link is added to every email automatically. "
+                  : ""}
+                {campaign.viaWhatsapp
+                  ? "Reply STOP to opt out is added to every WhatsApp message, and a reply of stop suppresses that number for good."
+                  : ""}
               </p>
             ) : null}
             {attachments.length > 0 ? (
@@ -118,9 +159,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                     >
                       {a.document.title}
                     </a>
-                    {campaign.channel !== "EMAIL" ? (
+                    {campaign.viaWhatsapp ? (
                       <span className="ml-2 text-xs text-brand-graphite/60">
-                        not sent on this channel, a text message cannot carry a file
+                        attached to the email, and reachable from the WhatsApp link
                       </span>
                     ) : null}
                   </li>
@@ -134,22 +175,34 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
               <thead>
                 <tr>
                   <th>{t("common.name")}</th>
-                  <th>Address</th>
-                  <th>{t("common.status")}</th>
+                  <th>{t("campaigns.email")}</th>
+                  <th>{t("campaigns.whatsapp")}</th>
                 </tr>
               </thead>
               <tbody>
                 {checked.map((r) => (
                   <tr key={`${r.clientId ?? r.agentId}`}>
                     <td>{r.name}</td>
-                    <td className="break-all">{r.address ?? ""}</td>
-                    <td>
-                      {r.suppressed ? (
+                    <td className="break-all text-xs">
+                      {!campaign.viaEmail ? (
+                        <span className="text-brand-graphite/40">not on this campaign</span>
+                      ) : r.emailSuppressed ? (
                         <Pill tone="bad">suppressed</Pill>
-                      ) : r.address ? (
-                        <Pill tone="good">will receive</Pill>
+                      ) : r.emailAddress ? (
+                        r.emailAddress
                       ) : (
                         <Pill tone="warn">no address</Pill>
+                      )}
+                    </td>
+                    <td className="break-all text-xs">
+                      {!campaign.viaWhatsapp ? (
+                        <span className="text-brand-graphite/40">not on this campaign</span>
+                      ) : r.phoneSuppressed ? (
+                        <Pill tone="bad">suppressed</Pill>
+                      ) : r.phoneAddress ? (
+                        r.phoneAddress
+                      ) : (
+                        <Pill tone="warn">no number</Pill>
                       )}
                     </td>
                   </tr>
@@ -223,6 +276,22 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
               </>
             )}
           </Card>
+
+          {filesLink ? (
+            <Card title={t("campaigns.filesLink")}>
+              <p className="mb-2 text-xs text-brand-graphite/60">
+                {t("campaigns.filesLinkHint")}
+              </p>
+              <a
+                href={filesLink}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all font-mono text-xs text-brand-teal-dark hover:underline"
+              >
+                {filesLink}
+              </a>
+            </Card>
+          ) : null}
 
           {url ? (
             <Card title="Price list link included">

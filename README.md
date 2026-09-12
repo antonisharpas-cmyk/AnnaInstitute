@@ -23,8 +23,12 @@ Built by ErgonSite. First installation: One Eleven, Larnaca.
 * Change requests per contract, with the PDF attached, a cost and a status.
 * Agents with a commission rate, commission generated per contract, commission
   payments recorded, and a running balance of what is still owed.
+* Leads from the website, posted straight into the CRM by the site itself, kept
+  with the page and the campaign they came from, and turned into a client record
+  in one step when the office is ready.
 * Dashboard: units sold and available, money scheduled, collected and outstanding,
-  overdue installments, next payments due, recent payments.
+  overdue installments, next payments due, recent payments, and a line at the top
+  when enquiries are waiting.
 
 **Documents**
 
@@ -133,6 +137,42 @@ This was a deliberate decision and it should not be undone by accident.
 
 Run the tests for the stop keywords, the number normalising and the placeholders
 with `npm test`.
+
+## Leads from the website
+
+The website posts every enquiry straight into the CRM, so nobody has to copy an
+email into a client record by hand.
+
+```
+POST {APP_URL}/api/leads
+X-Api-Key: the key made in the CRM, under Leads, API access
+Content-Type: application/json
+```
+
+* **The key is never stored.** Only a SHA 256 of it is kept, so a copy of the
+  database is not a copy of the keys. It is shown once, on the screen where it is
+  made, and it can be revoked at any time from the same page.
+* **Server to server.** The endpoint sends no CORS headers and answers no browser
+  preflight, because a key in page JavaScript is a key anybody can read. The
+  website takes the form on its own server and posts it from there.
+* **Nothing in a payload is ever followed as an instruction.** Every field is read
+  by name, stripped of control characters, cut to length and stored. The whole
+  body is kept as text alongside the lead, so nothing the website sends is lost
+  even when we do not recognise a field.
+* **A lead is not a client.** It sits in its own section with its own statuses
+  until somebody in the office turns it into a client record. A ticked consent box
+  on a form is recorded as exactly that, and it becomes marketing consent only
+  when the office confirms it during that step.
+* **Retries are safe.** The same email or phone inside ten minutes comes back as
+  `200` with `duplicate: true` and nothing is stored twice, so a website that
+  retries after a timeout cannot create the same enquiry three times.
+* **A test that writes nothing.** Posting `{"test": true}` checks the key and
+  reads the payload back without creating a lead, which is how the website
+  developer proves the wiring before go live.
+
+The page under **Leads, API access** is written to be handed to whoever looks
+after the website: it carries the address, the key, the fields, every reply code
+and the list of what to ask them for.
 
 ## Channels, and why nothing sends by accident
 

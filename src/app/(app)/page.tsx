@@ -1,17 +1,10 @@
 import Link from "next/link";
 import { and, desc, eq, isNotNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import {
-  clients,
-  contractUnits,
-  contracts,
-  installments,
-  payments,
-  projects,
-  units,
-} from "@/db/schema";
+import { clients, contracts, installments, payments, projects, units } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
+import { newLeadCount } from "@/lib/leads";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 
 const day = (value: Date | null | undefined) =>
@@ -19,6 +12,9 @@ const day = (value: Date | null | undefined) =>
 
 export default async function DashboardPage() {
   const { locale, t } = await getTranslator();
+
+  // Enquiries from the website that nobody has picked up yet.
+  const waitingLeads = await newLeadCount();
 
   const [unitStats] = await db
     .select({
@@ -32,9 +28,7 @@ export default async function DashboardPage() {
     .select({
       // Every apartment on a contract owes the whole schedule, so the money due
       // is the schedule counted once per apartment.
-      scheduled: sql<string>`coalesce((
-        select sum(i.total_amount) from installments i where i.assignment_id is not null
-      ), 0)`,
+      scheduled: sql<string>`coalesce((select sum(i.total_amount) from installments i), 0)`,
       collected: sql<string>`coalesce((select sum(p.amount) from payments p), 0)`,
     })
     .from(contracts)
@@ -54,7 +48,6 @@ export default async function DashboardPage() {
   const dueSelection = {
     installment: installments,
     contract: contracts,
-    assignment: contractUnits,
     client: clients,
     unit: units,
     project: projects,
@@ -64,10 +57,9 @@ export default async function DashboardPage() {
     .select(dueSelection)
     .from(installments)
     .innerJoin(contracts, eq(contracts.id, installments.contractId))
-    .innerJoin(contractUnits, eq(contractUnits.id, installments.assignmentId))
-    .innerJoin(units, eq(units.id, contractUnits.unitId))
-    .innerJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(clients, eq(clients.id, contractUnits.clientId))
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
     .where(and(isNotNull(installments.dueDate), lt(installments.dueDate, new Date()), unpaidHere))
     .orderBy(installments.dueDate)
     .limit(10);
@@ -76,10 +68,9 @@ export default async function DashboardPage() {
     .select(dueSelection)
     .from(installments)
     .innerJoin(contracts, eq(contracts.id, installments.contractId))
-    .innerJoin(contractUnits, eq(contractUnits.id, installments.assignmentId))
-    .innerJoin(units, eq(units.id, contractUnits.unitId))
-    .innerJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(clients, eq(clients.id, contractUnits.clientId))
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
     .where(and(isNotNull(installments.dueDate), sql`${installments.dueDate} >= now()`, unpaidHere))
     .orderBy(installments.dueDate)
     .limit(10);
@@ -88,9 +79,8 @@ export default async function DashboardPage() {
     .select({ payment: payments, contract: contracts, client: clients, unit: units })
     .from(payments)
     .innerJoin(contracts, eq(contracts.id, payments.contractId))
-    .leftJoin(contractUnits, eq(contractUnits.id, payments.assignmentId))
-    .leftJoin(units, eq(units.id, contractUnits.unitId))
-    .leftJoin(clients, eq(clients.id, contractUnits.clientId))
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
     .orderBy(desc(payments.paidOn))
     .limit(8);
 
@@ -100,6 +90,21 @@ export default async function DashboardPage() {
   return (
     <>
       <PageHeader title={t("nav.dashboard")} />
+
+      {waitingLeads > 0 ? (
+        <div className="mb-4">
+          <Link href="/leads" className="block">
+            <Card>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-brand-ink">
+                  {waitingLeads} {waitingLeads === 1 ? t("dash.oneLead") : t("dash.manyLeads")}
+                </span>
+                <span className="btn btn-secondary !px-3 !py-1 !text-xs">{t("nav.leads")}</span>
+              </div>
+            </Card>
+          </Link>
+        </div>
+      ) : null}
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
@@ -129,7 +134,7 @@ export default async function DashboardPage() {
               </thead>
               <tbody>
                 {overdue.map((r) => (
-                  <tr key={`${r.assignment.id}-${r.installment.id}`}>
+                  <tr key={r.installment.id}>
                     <td>
                       <Pill tone="bad">{day(r.installment.dueDate)}</Pill>
                     </td>
@@ -145,7 +150,7 @@ export default async function DashboardPage() {
                           : r.contract.reference}
                       </Link>
                       <div className="text-xs text-brand-graphite/60">
-                        {r.project.name} {r.unit.code} . {r.installment.label}
+                        {r.project?.name} {r.unit?.code} . {r.installment.label}
                       </div>
                     </td>
                     <td className="num">
@@ -172,7 +177,7 @@ export default async function DashboardPage() {
               </thead>
               <tbody>
                 {upcoming.map((r) => (
-                  <tr key={`${r.assignment.id}-${r.installment.id}`}>
+                  <tr key={r.installment.id}>
                     <td>{day(r.installment.dueDate)}</td>
                     <td>
                       <Link
@@ -186,7 +191,7 @@ export default async function DashboardPage() {
                           : r.contract.reference}
                       </Link>
                       <div className="text-xs text-brand-graphite/60">
-                        {r.project.name} {r.unit.code} . {r.installment.label}
+                        {r.project?.name} {r.unit?.code} . {r.installment.label}
                       </div>
                     </td>
                     <td className="num">

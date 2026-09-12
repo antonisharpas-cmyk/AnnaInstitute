@@ -62,11 +62,12 @@ export default async function ContractsPage({
               <thead>
                 <tr>
                   <th>{t("contracts.name")}</th>
+                  <th>{t("contracts.client")}</th>
+                  <th>{t("contracts.unit")}</th>
                   <th className="ctr">{t("contracts.netPrice")}</th>
                   <th className="ctr">{t("contracts.vat")}</th>
                   <th className="ctr">{t("contracts.installmentsCount")}</th>
-                  <th>{t("contracts.apartmentCount")}</th>
-                  <th className="ctr">{t("contracts.dueShort")}</th>
+                  <th className="ctr">{t("common.total")}</th>
                   <th className="ctr">{t("contracts.paid")}</th>
                   <th className="ctr">{t("dash.outstanding")}</th>
                   <th className="ctr">{t("common.status")}</th>
@@ -93,6 +94,34 @@ export default async function ContractsPage({
                           : ""}
                       </div>
                     </td>
+                    <td>
+                      {r.client ? (
+                        <Link
+                          href={`/clients/${r.client.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:underline"
+                        >
+                          {r.client.firstName} {r.client.lastName}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-brand-graphite/50">{t("common.none")}</span>
+                      )}
+                    </td>
+                    <td>
+                      {r.project && r.unit ? (
+                        <Link
+                          href={`/projects/${r.project.id}/units/${r.unit.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:underline"
+                        >
+                          {r.project.name} {r.unit.code}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-brand-graphite/50">{t("common.none")}</span>
+                      )}
+                    </td>
                     <td className="ctr">
                       {formatAmount(Number(r.contract.netPrice) * 100, locale)}
                     </td>
@@ -107,24 +136,7 @@ export default async function ContractsPage({
                           : t("contracts.standardPlan").toLowerCase()}
                       </div>
                     </td>
-                    <td>
-                      {r.apartments === 0 ? (
-                        <span className="text-xs text-brand-graphite/50">
-                          {t("contracts.noApartments")}
-                        </span>
-                      ) : (
-                        <div className="max-w-[15rem]">
-                          <div className="text-sm font-semibold">
-                            {r.apartments} {t("contracts.apartmentCount").toLowerCase()}
-                          </div>
-                          <div className="text-xs text-brand-graphite/60">{r.places}</div>
-                          {r.buyers ? (
-                            <div className="text-xs text-brand-graphite/60">{r.buyers}</div>
-                          ) : null}
-                        </div>
-                      )}
-                    </td>
-                    <td className="ctr">{formatAmount(r.dueCents, locale)}</td>
+                    <td className="ctr">{formatAmount(r.scheduledCents, locale)}</td>
                     <td className="ctr">{formatAmount(r.paidCents, locale)}</td>
                     <td className="ctr font-semibold">
                       {formatAmount(r.outstandingCents, locale)}

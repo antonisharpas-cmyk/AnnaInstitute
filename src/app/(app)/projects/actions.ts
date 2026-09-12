@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { projects, units } from "@/db/schema";
+import { companies, projects, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { fromCents, toCents } from "@/lib/money";
@@ -38,6 +38,34 @@ function readProject(formData: FormData) {
   });
 }
 
+/**
+ * The company a development is built with.
+ *
+ * The form offers the companies already on record and a box for a new name, so
+ * a partner can be added without leaving the page. A name that already exists is
+ * reused rather than duplicated.
+ */
+async function companyFrom(formData: FormData): Promise<string | null> {
+  const typed = String(formData.get("newCompany") ?? "").trim();
+  if (typed) {
+    const existing = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(eq(companies.name, typed))
+      .limit(1);
+    if (existing[0]) return existing[0].id;
+
+    const inserted = await db
+      .insert(companies)
+      .values({ name: typed })
+      .returning({ id: companies.id });
+    return inserted[0].id;
+  }
+
+  const chosen = String(formData.get("companyId") ?? "").trim();
+  return chosen || null;
+}
+
 export async function createProject(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const parsed = readProject(formData);
@@ -46,9 +74,11 @@ export async function createProject(formData: FormData) {
   const clash = await db.select({ id: projects.id }).from(projects).where(eq(projects.slug, slug));
   if (clash.length > 0) slug = `${slug}_${Date.now().toString(36).slice(-4)}`;
 
+  const companyId = await companyFrom(formData);
+
   const inserted = await db
     .insert(projects)
-    .values({ ...parsed, slug })
+    .values({ ...parsed, slug, companyId })
     .returning({ id: projects.id });
 
   await recordAudit({
@@ -71,9 +101,11 @@ export async function updateProject(projectId: string, formData: FormData) {
   const before = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!before[0]) throw new Error("Project not found");
 
+  const companyId = await companyFrom(formData);
+
   await db
     .update(projects)
-    .set({ ...parsed, updatedAt: new Date() })
+    .set({ ...parsed, companyId, updatedAt: new Date() })
     .where(eq(projects.id, projectId));
 
   await recordAudit({

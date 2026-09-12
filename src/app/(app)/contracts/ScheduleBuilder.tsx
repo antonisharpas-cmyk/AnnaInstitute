@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import DateField from "@/components/DateField";
 
 /**
  * Building the installments of a contract.
@@ -18,6 +19,21 @@ export type Row = {
   amount: string;
   dueDate: string;
 };
+
+/** The stages offered in the dropdown on every line. */
+const CHOICES: { label: string; labelEl: string }[] = [
+  { label: "Reservation", labelEl: "Κράτηση" },
+  { label: "On signing of contract", labelEl: "Υπογραφή συμβολαίου" },
+  { label: "Foundations", labelEl: "Θεμέλια" },
+  { label: "Frame", labelEl: "Σκελετός" },
+  { label: "Plastering", labelEl: "Σοβάντισμα" },
+  { label: "On completion of the apartment", labelEl: "Ολοκλήρωση διαμερίσματος" },
+  { label: "On delivery", labelEl: "Παράδοση" },
+  { label: "On the title deed", labelEl: "Τίτλος ιδιοκτησίας" },
+];
+
+const greekFor = (label: string) =>
+  CHOICES.find((c) => c.label.toLowerCase() === label.trim().toLowerCase())?.labelEl ?? null;
 
 const STANDARD: { label: string; labelEl: string; percentage: number }[] = [
   { label: "Reservation", labelEl: "Κράτηση", percentage: 5 },
@@ -146,7 +162,9 @@ export default function ScheduleBuilder({
         label: s.label,
         labelEl: s.labelEl,
         amount: netCents > 0 ? whole(amounts[i]) : "",
-        dueDate: "",
+        // The stages take dates too when a start date is given, since a buyer
+        // signs in a particular month and the stages follow from there.
+        dueDate: start ? addMonths(start, i * period) : "",
       })),
     );
   };
@@ -251,12 +269,11 @@ export default function ScheduleBuilder({
               <label className="label" htmlFor="periodicStart">
                 {labels.startDate}
               </label>
-              <input
+              <DateField
                 id="periodicStart"
-                type="date"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
-                className="input !py-1 !text-xs"
+                className="!py-1 !text-xs"
               />
             </div>
             <button
@@ -269,6 +286,12 @@ export default function ScheduleBuilder({
           </div>
         </div>
       )}
+
+      <datalist id="stage-choices">
+        {CHOICES.map((c) => (
+          <option key={c.label} value={c.label} />
+        ))}
+      </datalist>
 
       <div className="overflow-x-auto">
         <table className="data">
@@ -291,9 +314,15 @@ export default function ScheduleBuilder({
                   <td>
                     <input
                       value={row.label}
-                      onChange={(e) => setRow(row.key, { label: e.target.value })}
+                      list="stage-choices"
+                      onChange={(e) =>
+                        setRow(row.key, {
+                          label: e.target.value,
+                          labelEl: greekFor(e.target.value) ?? row.labelEl,
+                        })
+                      }
                       disabled={frozen}
-                      className="input !py-1 !text-xs"
+                      className="input !w-56 !py-1 !text-xs"
                       aria-label={`${labels.stage} ${i + 1}`}
                     />
                   </td>
@@ -311,11 +340,10 @@ export default function ScheduleBuilder({
                     {netCents > 0 ? `${((cents / netCents) * 100).toFixed(2)}%` : ""}
                   </td>
                   <td className="ctr">
-                    <input
-                      type="date"
+                    <DateField
                       value={row.dueDate}
                       onChange={(e) => setRow(row.key, { dueDate: e.target.value })}
-                      className="input !py-1 !text-xs"
+                      className="!py-1 !text-xs"
                       aria-label={`${labels.due} ${i + 1}`}
                     />
                   </td>
