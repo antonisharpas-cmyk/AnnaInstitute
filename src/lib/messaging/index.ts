@@ -17,6 +17,7 @@ export type Recipient = {
   phone?: string | null;
   clientId?: string | null;
   agentId?: string | null;
+  subownerId?: string | null;
 };
 
 export function addressFor(channel: Channel, recipient: Recipient): string | null {
@@ -64,6 +65,7 @@ export async function sendAndRecord(options: {
         toAddress: to ?? "no address",
         clientId: recipient.clientId ?? null,
         agentId: recipient.agentId ?? null,
+        subownerId: recipient.subownerId ?? null,
         subject: options.subject ?? null,
         body,
         status,

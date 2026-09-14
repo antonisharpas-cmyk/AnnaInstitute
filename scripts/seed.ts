@@ -16,6 +16,8 @@ import {
   commissions,
   companies,
   contracts,
+  projectPartners,
+  subowners,
   installments,
   payments,
   projects,
@@ -316,6 +318,45 @@ async function seedDemoContract() {
   console.log(`Demonstration contract created: ${reference}`);
 }
 
+/**
+ * One partner, to show what the section is for.
+ *
+ * A development held with somebody else: their card, and the share they hold of
+ * the building. Deleted along with the rest of the demonstration data once the
+ * real records are in.
+ */
+async function seedPartner() {
+  const existing = await db.select().from(subowners).limit(1);
+  if (existing[0]) {
+    console.log("A partner already exists, left alone.");
+    return;
+  }
+
+  const inserted = await db
+    .insert(subowners)
+    .values({
+      name: "Demo Partner",
+      company: "Larnaca Land Holdings Ltd",
+      contactName: "Elena Kyriakou",
+      email: "partner@example.com",
+      phone: "+357 99 111111",
+      country: "Cyprus",
+      notes: "Seeded example. Delete once the real partners are in.",
+    })
+    .returning({ id: subowners.id });
+
+  const project = await db.select().from(projects).orderBy(projects.name).limit(1);
+  if (project[0]) {
+    await db.insert(projectPartners).values({
+      projectId: project[0].id,
+      subownerId: inserted[0].id,
+      sharePercent: "35.000",
+      role: "land owner",
+    });
+    console.log(`Demonstration partner added to ${project[0].name}`);
+  }
+}
+
 async function main() {
   try {
     await db.select({ id: users.id }).from(users).limit(1);
@@ -337,6 +378,7 @@ async function main() {
 
   await seedAdmin();
   await seedProjects();
+  await seedPartner();
   await seedDemoContract();
   console.log("Seed finished.");
   process.exit(0);

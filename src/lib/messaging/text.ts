@@ -39,14 +39,33 @@ export function looksLikeStop(text: string): boolean {
   return STOP_WORDS.includes(cleaned) || STOP_WORDS.some((w) => cleaned === `${w} all`);
 }
 
-/** Replace the placeholders an administrator can type into a message. */
+/**
+ * Replace the placeholders an administrator can type into a message.
+ *
+ * The four fixed ones are the person and the two links. Anything else a template
+ * needs, such as the apartment a message is about, is passed in `extras` and
+ * filled by name, so a template can say {{unit}} without this file knowing what
+ * a unit is.
+ */
 export function fillPlaceholders(
   template: string,
-  values: { name: string; firstName: string; priceListUrl?: string; filesUrl?: string },
+  values: {
+    name: string;
+    firstName: string;
+    priceListUrl?: string;
+    filesUrl?: string;
+    extras?: Record<string, string>;
+  },
 ): string {
-  return template
+  let filled = template
     .replaceAll("{{name}}", values.name)
     .replaceAll("{{first_name}}", values.firstName)
     .replaceAll("{{price_list_url}}", values.priceListUrl ?? "")
     .replaceAll("{{files_url}}", values.filesUrl ?? "");
+
+  for (const [key, value] of Object.entries(values.extras ?? {})) {
+    filled = filled.replaceAll(`{{${key}}}`, value);
+  }
+
+  return filled;
 }

@@ -17,6 +17,11 @@ const agentSchema = z.object({
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   commissionRate: z.string(),
+  address: z.string().optional(),
+  country: z.string().optional(),
+  vatNumber: z.string().optional(),
+  licenceNumber: z.string().optional(),
+  website: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -27,6 +32,11 @@ function read(formData: FormData) {
     email: formData.get("email") || "",
     phone: formData.get("phone") || undefined,
     commissionRate: String(formData.get("commissionRate") ?? "0"),
+    address: formData.get("address") || undefined,
+    country: formData.get("country") || undefined,
+    vatNumber: formData.get("vatNumber") || undefined,
+    licenceNumber: formData.get("licenceNumber") || undefined,
+    website: formData.get("website") || undefined,
     notes: formData.get("notes") || undefined,
   });
 }
@@ -43,6 +53,11 @@ export async function createAgent(formData: FormData) {
       email: parsed.email || null,
       phone: parsed.phone,
       commissionRate: Number(parsed.commissionRate || 0).toFixed(3),
+      address: parsed.address,
+      country: parsed.country,
+      vatNumber: parsed.vatNumber,
+      licenceNumber: parsed.licenceNumber,
+      website: parsed.website,
       isActive: String(formData.get("isActive") ?? "") === "on",
       notes: parsed.notes,
     })
@@ -61,6 +76,70 @@ export async function createAgent(formData: FormData) {
   redirect(`/agents/${inserted[0].id}`);
 }
 
+export type AgentState = { ok: true } | { error: string } | null;
+
+/**
+ * The agent's own card, saved in place.
+ *
+ * Same fields as the edit page, but it answers rather than redirects, so the
+ * card closes itself and the page stays where it was.
+ */
+export async function saveAgentProfile(
+  agentId: string,
+  _prev: AgentState,
+  formData: FormData,
+): Promise<AgentState> {
+  const user = await requireUser(["ADMIN"]);
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "An agent needs a name." };
+
+  const rate = Number(String(formData.get("commissionRate") ?? "0").replace(",", "."));
+  if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+    return { error: "The rate has to be a number between 0 and 100." };
+  }
+
+  await db
+    .update(agents)
+    .set({
+      name,
+      company: String(formData.get("company") ?? "").trim() || null,
+      email: String(formData.get("email") ?? "").trim() || null,
+      phone: String(formData.get("phone") ?? "").trim() || null,
+      commissionRate: rate.toFixed(3),
+      address: String(formData.get("address") ?? "").trim() || null,
+      country: String(formData.get("country") ?? "").trim() || null,
+      vatNumber: String(formData.get("vatNumber") ?? "").trim() || null,
+      licenceNumber: String(formData.get("licenceNumber") ?? "").trim() || null,
+      website: String(formData.get("website") ?? "").trim() || null,
+      isActive: String(formData.get("isActive") ?? "") === "on",
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(agents.id, agentId));
+
+  // The rate applies to the sales that carry no rate of their own.
+  const sales = await db
+    .select({ id: contracts.id })
+    .from(contracts)
+    .where(eq(contracts.agentId, agentId));
+  for (const sale of sales) await syncCommission(sale.id);
+
+  await recordAudit({
+    action: "agent.update",
+    entity: "agent",
+    entityId: agentId,
+    detail: name,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  revalidatePath(`/agents/${agentId}`);
+  revalidatePath("/agents");
+  revalidatePath("/commissions");
+  return { ok: true };
+}
+
 export async function updateAgent(agentId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const parsed = read(formData);
@@ -74,6 +153,11 @@ export async function updateAgent(agentId: string, formData: FormData) {
       email: parsed.email || null,
       phone: parsed.phone ?? null,
       commissionRate: Number(parsed.commissionRate || 0).toFixed(3),
+      address: parsed.address ?? null,
+      country: parsed.country ?? null,
+      vatNumber: parsed.vatNumber ?? null,
+      licenceNumber: parsed.licenceNumber ?? null,
+      website: parsed.website ?? null,
       isActive: String(formData.get("isActive") ?? "") === "on",
       notes: parsed.notes ?? null,
       updatedAt: new Date(),

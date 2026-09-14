@@ -4,14 +4,18 @@ import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { companies, projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
-import { formatAmount, toCents } from "@/lib/money";
+import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { documentsForProjectWithUnits, floorPlansByUnit } from "@/lib/documents";
 import { categoryLabel, fileLabel, isImage } from "@/lib/fileLabels";
+import { partnersOfProject, subownerChoices } from "@/lib/subowners";
+import { projectChecklist } from "@/lib/projectHealth";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import { LightboxGrid, LightboxLink } from "@/components/Lightbox";
 import UploadForm from "@/components/UploadForm";
+import Disclosure from "@/components/Disclosure";
 import Pagination, { paginate } from "@/components/Pagination";
-import { deleteProjectDocument, uploadProjectDocuments } from "../actions";
+import { deleteProjectDocument, markProjectChecked, uploadProjectDocuments } from "../actions";
+import { addPartner, removePartner } from "../../subowners/actions";
 
 const PER_PAGE = 25;
 
@@ -42,7 +46,7 @@ export default async function ProjectPage({
   const company = found[0]?.company;
   if (!project) notFound();
 
-  const [rows, [totals], allFiles, plansByUnit] = await Promise.all([
+  const [rows, [totals], allFiles, plansByUnit, partners, choices, check] = await Promise.all([
     db
       .select()
       .from(units)
@@ -63,6 +67,9 @@ export default async function ProjectPage({
       .where(eq(units.projectId, id)),
     documentsForProjectWithUnits(id),
     floorPlansByUnit(id),
+    partnersOfProject(id),
+    subownerChoices(),
+    projectChecklist(id),
   ]);
 
   return (
@@ -117,6 +124,157 @@ export default async function ProjectPage({
         />
       </div>
 
+      <div className="mb-4 grid gap-4 lg:grid-cols-2">
+        <Card
+          title={t("subowners.partners")}
+          action={
+            <Link
+              href={`/campaigns/new?audience=SUBOWNERS&project=${id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary !px-3 !py-1 !text-xs"
+            >
+              {t("campaigns.announce")}
+            </Link>
+          }
+        >
+          {partners.length === 0 ? (
+            <Empty message={t("subowners.noPartners")} />
+          ) : (
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t("common.name")}</th>
+                  <th className="ctr">{t("subowners.share")}</th>
+                  <th>{t("subowners.role")}</th>
+                  <th className="ctr">{t("common.actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {partners.map((row) => (
+                  <tr key={row.partner.id}>
+                    <td>
+                      <Link
+                        href={`/subowners/${row.subowner.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold hover:underline"
+                      >
+                        {row.subowner.name}
+                      </Link>
+                      {row.subowner.company ? (
+                        <div className="text-xs text-brand-graphite/60">{row.subowner.company}</div>
+                      ) : null}
+                    </td>
+                    <td className="ctr">
+                      {row.partner.sharePercent
+                        ? formatPercent(Number(row.partner.sharePercent), locale)
+                        : ""}
+                    </td>
+                    <td className="text-xs">{row.partner.role ?? ""}</td>
+                    <td className="ctr">
+                      <form action={removePartner.bind(null, row.partner.id, id)}>
+                        <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                          {t("subowners.remove")}
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <div className="mt-3">
+            <Disclosure showLabel={t("subowners.addPartner")} hideLabel={t("common.cancel")}>
+              {choices.length === 0 ? (
+                <p className="text-sm text-brand-graphite/60">
+                  <Link href="/subowners/new" className="hover:underline">
+                    {t("subowners.new")}
+                  </Link>
+                </p>
+              ) : (
+                <form
+                  action={addPartner.bind(null, id)}
+                  className="flex flex-wrap items-end gap-2 rounded border border-brand-line bg-brand-surface p-3"
+                >
+                  <div className="min-w-56 flex-1">
+                    <label className="label" htmlFor="subownerId">
+                      {t("subowners.title")}
+                    </label>
+                    <select id="subownerId" name="subownerId" required className="select">
+                      {choices.map((choice) => (
+                        <option key={choice.id} value={choice.id}>
+                          {choice.name}
+                          {choice.company ? ` . ${choice.company}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="sharePercent">
+                      {t("subowners.share")}
+                    </label>
+                    <input
+                      id="sharePercent"
+                      name="sharePercent"
+                      inputMode="decimal"
+                      className="input !w-24"
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="role">
+                      {t("subowners.role")}
+                    </label>
+                    <input
+                      id="role"
+                      name="role"
+                      placeholder={t("subowners.rolePlaceholder")}
+                      className="input !w-48"
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary">
+                    {t("common.add")}
+                  </button>
+                </form>
+              )}
+            </Disclosure>
+          </div>
+        </Card>
+
+        <Card
+          title={t("projects.record")}
+          action={
+            <form action={markProjectChecked.bind(null, id)}>
+              <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
+                {t("projects.markChecked")}
+              </button>
+            </form>
+          }
+        >
+          <p className="mb-3 text-xs text-brand-graphite/60">
+            {check.done} {t("common.of")} {check.total} {t("projects.recordDone")}
+            {check.checkedAt
+              ? ` . ${t("projects.lastChecked")} ${new Date(check.checkedAt)
+                  .toISOString()
+                  .slice(0, 10)}${check.checkedBy ? `, ${check.checkedBy}` : ""}`
+              : ` . ${t("projects.neverChecked")}`}
+          </p>
+          <ul className="divide-y divide-brand-line text-sm">
+            {check.items.map((item) => (
+              <li key={item.key} className="flex items-center justify-between gap-3 py-1.5">
+                <span className={item.done ? "text-brand-graphite/60" : "font-medium"}>
+                  {t(`projects.check.${item.key}` as MessageKey)}
+                </span>
+                <Pill tone={item.done ? "good" : item.important ? "warn" : "neutral"}>
+                  {item.done ? t("projects.checkDone") : t("projects.checkMissing")}
+                </Pill>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+
       <div className="mb-4">
         <Card title={t("units.title")}>
           {rows.length === 0 ? (
@@ -167,12 +325,23 @@ export default async function ProjectPage({
                           />
                         </td>
                         <td>
-                          <Link
-                            href={`/projects/${id}/units/${u.id}`}
-                            className="btn btn-secondary !px-3 !py-1 !text-xs"
-                          >
-                            {t("common.edit")}
-                          </Link>
+                          <div className="flex flex-wrap justify-end gap-1">
+                            <Link
+                              href={`/projects/${id}/units/${u.id}`}
+                              className="btn btn-secondary !px-3 !py-1 !text-xs"
+                            >
+                              {t("common.edit")}
+                            </Link>
+                            <Link
+                              href={`/campaigns/new?template=new_property&unit=${u.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={t("campaigns.announceNote")}
+                              className="btn btn-secondary !px-3 !py-1 !text-xs"
+                            >
+                              {t("campaigns.announce")}
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );

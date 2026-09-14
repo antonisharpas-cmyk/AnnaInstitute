@@ -281,3 +281,29 @@ export async function deleteProjectDocument(documentId: string, projectId: strin
   await removeDocument(documentId, user);
   revalidatePath(`/projects/${projectId}`);
 }
+
+/**
+ * Somebody has gone over the record and confirmed it is still right.
+ *
+ * The date is what makes the checklist meaningful: a development whose record
+ * nobody has looked at since the foundations were poured is worth knowing about.
+ */
+export async function markProjectChecked(projectId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  await db
+    .update(projects)
+    .set({ recordCheckedAt: new Date(), recordCheckedBy: user.email, updatedAt: new Date() })
+    .where(eq(projects.id, projectId));
+
+  await recordAudit({
+    action: "project.record.checked",
+    entity: "project",
+    entityId: projectId,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/projects");
+}

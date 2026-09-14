@@ -74,7 +74,39 @@ export const agents = pgTable("agents", {
   email: text("email"),
   phone: text("phone"),
   commissionRate: rate("commission_rate").default("0").notNull(),
+  /** The rest of the card: what the office needs to write them a cheque. */
+  address: text("address"),
+  country: text("country"),
+  vatNumber: text("vat_number"),
+  licenceNumber: text("licence_number"),
+  website: text("website"),
   isActive: boolean("is_active").default(true).notNull(),
+  notes: text("notes"),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/**
+ * A partner on a development.
+ *
+ * One Eleven builds alongside other owners, and some developments are held with
+ * them rather than outright. A subowner is that partner: their own card, their
+ * own contact details, and the developments they hold a share of.
+ */
+export const subowners = pgTable("subowners", {
+  id: id(),
+  name: text("name").notNull(),
+  company: text("company"),
+  contactName: text("contact_name"),
+  email: text("email"),
+  phone: text("phone"),
+  address: text("address"),
+  country: text("country"),
+  vatNumber: text("vat_number"),
+  registryNumber: text("registry_number"),
+  isActive: boolean("is_active").default(true).notNull(),
+  /** Partners are business contacts, but a stop is still a stop. */
+  unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
   notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
@@ -143,9 +175,38 @@ export const projects = pgTable("projects", {
   description: text("description"),
   status: projectStatusEnum("status").default("UNDER_CONSTRUCTION").notNull(),
   completionBy: text("completion_by"),
+  /** When somebody last went over the record and confirmed it is still right. */
+  recordCheckedAt: timestamp("record_checked_at", { withTimezone: true }),
+  recordCheckedBy: text("record_checked_by"),
   createdAt: created(),
   updatedAt: updated(),
 });
+
+/**
+ * Who holds a development with us, and for how much of it.
+ *
+ * A project can be held with one partner or several. The share is what they hold
+ * of the development, so the office can see at a glance whose building this is.
+ */
+export const projectPartners = pgTable(
+  "project_partners",
+  {
+    id: id(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    subownerId: text("subowner_id")
+      .notNull()
+      .references(() => subowners.id, { onDelete: "cascade" }),
+    sharePercent: rate("share_percent"),
+    role: text("role"),
+    notes: text("notes"),
+    createdAt: created(),
+  },
+  (t) => ({
+    partnerOnce: unique("project_partners_project_subowner").on(t.projectId, t.subownerId),
+  }),
+);
 
 export const units = pgTable(
   "units",
@@ -310,6 +371,8 @@ export const documents = pgTable("documents", {
   }),
   /** An invoice or a receipt filed against one payment. */
   paymentId: text("payment_id").references(() => payments.id, { onDelete: "cascade" }),
+  /** The invoice paper behind a company cost. */
+  expenseId: text("expense_id"),
   originalName: text("original_name"),
   uploadedById: text("uploaded_by_id").references(() => users.id, {
     onDelete: "set null",
@@ -406,7 +469,11 @@ export const campaignStatusEnum = pgEnum("campaign_status", [
   "FAILED",
 ]);
 
-export const campaignAudienceEnum = pgEnum("campaign_audience", ["CLIENTS_CONSENTED", "AGENTS"]);
+export const campaignAudienceEnum = pgEnum("campaign_audience", [
+  "CLIENTS_CONSENTED",
+  "AGENTS",
+  "SUBOWNERS",
+]);
 
 export const suppressionChannelEnum = pgEnum("suppression_channel", ["EMAIL", "PHONE"]);
 
@@ -434,7 +501,13 @@ export const campaigns = pgTable("campaigns", {
   channel: messageChannelEnum("channel").notNull(),
   viaEmail: boolean("via_email").default(true).notNull(),
   viaWhatsapp: boolean("via_whatsapp").default(false).notNull(),
+  /** Kept for older campaigns; the three flags below are what the send reads. */
   audience: campaignAudienceEnum("audience").notNull(),
+  toClients: boolean("to_clients").default(false).notNull(),
+  toAgents: boolean("to_agents").default(false).notNull(),
+  toSubowners: boolean("to_subowners").default(false).notNull(),
+  /** The template this was written from, when it came from one. */
+  templateKey: text("template_key"),
   subject: text("subject"),
   /** The email body. */
   body: text("body").notNull(),
@@ -475,6 +548,9 @@ export const messages = pgTable("messages", {
     onDelete: "set null",
   }),
   agentId: text("agent_id").references(() => agents.id, {
+    onDelete: "set null",
+  }),
+  subownerId: text("subowner_id").references(() => subowners.id, {
     onDelete: "set null",
   }),
   subject: text("subject"),
@@ -585,4 +661,75 @@ export const apiKeys = pgTable("api_keys", {
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   createdByEmail: text("created_by_email"),
   createdAt: created(),
+});
+
+/* ---------------------------------------------------------------------------
+   Ready made emails.
+
+   The office writes the same message often: a new apartment released, a price
+   list, an invitation. A template is that message kept once, with the places
+   where the details go, so a campaign starts written rather than blank.
+   --------------------------------------------------------------------------- */
+
+export const emailTemplates = pgTable("email_templates", {
+  id: id(),
+  /** Short name used in links, for example new_property. */
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  subject: text("subject"),
+  body: text("body").notNull(),
+  bodyWhatsapp: text("body_whatsapp"),
+  subjectEl: text("subject_el"),
+  bodyEl: text("body_el"),
+  bodyWhatsappEl: text("body_whatsapp_el"),
+  /** Which groups this one is normally sent to. */
+  toClients: boolean("to_clients").default(false).notNull(),
+  toAgents: boolean("to_agents").default(false).notNull(),
+  toSubowners: boolean("to_subowners").default(false).notNull(),
+  /** A template the CRM ships with. It can be edited but not deleted. */
+  isSystem: boolean("is_system").default(false).notNull(),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/* ---------------------------------------------------------------------------
+   What the company pays.
+
+   Marketing, the office, the rent, the bills. Every invoice the company is
+   billed for, with the paper behind it and whether it has been paid.
+   --------------------------------------------------------------------------- */
+
+export const expenseCategoryEnum = pgEnum("expense_category", [
+  "MARKETING",
+  "OFFICE",
+  "RENT",
+  "BILLS",
+  "LEGAL",
+  "CONSTRUCTION",
+  "OTHER",
+]);
+
+export const expenseStatusEnum = pgEnum("expense_status", ["UNPAID", "PARTIALLY_PAID", "PAID"]);
+
+export const expenses = pgTable("expenses", {
+  id: id(),
+  supplier: text("supplier").notNull(),
+  category: expenseCategoryEnum("category").default("OTHER").notNull(),
+  reference: text("reference"),
+  description: text("description"),
+  issueDate: timestamp("issue_date", { withTimezone: true }),
+  dueDate: timestamp("due_date", { withTimezone: true }),
+  netAmount: money("net_amount").default("0").notNull(),
+  vatAmount: money("vat_amount").default("0").notNull(),
+  totalAmount: money("total_amount").default("0").notNull(),
+  paidAmount: money("paid_amount").default("0").notNull(),
+  status: expenseStatusEnum("status").default("UNPAID").notNull(),
+  paidOn: timestamp("paid_on", { withTimezone: true }),
+  /** The development it belongs to, when it belongs to one. */
+  projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  recordedByEmail: text("recorded_by_email"),
+  createdAt: created(),
+  updatedAt: updated(),
 });

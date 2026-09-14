@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, clients, suppressions } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { channelConfigured, emailConfigured } from "@/lib/messaging";
 import { activePriceListLinks, priceListUrl } from "@/lib/priceList";
+import { listTemplates } from "@/lib/templates";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import { audienceFor, makePriceListLink, revokePriceListLink } from "./actions";
@@ -18,32 +19,23 @@ const statusTone = (status: string) =>
 export default async function CampaignsPage() {
   const { t } = await getTranslator();
 
-  const [[counts], [suppressed], toClients, toAgents, links, clientAudience, agentAudience] =
-    await Promise.all([
-      db
-        .select({
-          total: sql<number>`count(*)::int`,
-          consented: sql<number>`count(*) filter (where ${clients.marketingOptIn})::int`,
-          unsubscribed: sql<number>`count(*) filter (where ${clients.unsubscribedAt} is not null)::int`,
-        })
-        .from(clients),
-      db.select({ total: sql<number>`count(*)::int` }).from(suppressions),
-      db
-        .select()
-        .from(campaigns)
-        .where(eq(campaigns.audience, "CLIENTS_CONSENTED"))
-        .orderBy(desc(campaigns.createdAt))
-        .limit(15),
-      db
-        .select()
-        .from(campaigns)
-        .where(eq(campaigns.audience, "AGENTS"))
-        .orderBy(desc(campaigns.createdAt))
-        .limit(15),
-      activePriceListLinks(),
-      audienceFor("CLIENTS_CONSENTED"),
-      audienceFor("AGENTS"),
-    ]);
+  const [[counts], [suppressed], rows, links, everyone, templates] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        consented: sql<number>`count(*) filter (where ${clients.marketingOptIn})::int`,
+        unsubscribed: sql<number>`count(*) filter (where ${clients.unsubscribedAt} is not null)::int`,
+      })
+      .from(clients),
+    db.select({ total: sql<number>`count(*)::int` }).from(suppressions),
+    db.select().from(campaigns).orderBy(desc(campaigns.createdAt)).limit(30),
+    activePriceListLinks(),
+    audienceFor({ toClients: true, toAgents: true, toSubowners: true }),
+    listTemplates(),
+  ]);
+
+  const group = (name: "CLIENTS" | "AGENTS" | "SUBOWNERS") =>
+    everyone.filter((person) => person.group === name);
 
   const readiness = [
     { label: t("campaigns.email"), ready: emailConfigured(), note: "SMTP_HOST and MAIL_FROM" },
@@ -55,100 +47,50 @@ export default async function CampaignsPage() {
     { label: "SMS", ready: channelConfigured("SMS"), note: "SMSTO_API_KEY" },
   ];
 
-  /** The two sections are the same shape, so they are drawn by the same block. */
-  const section = (
-    title: string,
-    audience: "CLIENTS_CONSENTED" | "AGENTS",
-    rows: typeof toClients,
-    people: typeof clientAudience,
-  ) => (
-    <Card
-      title={title}
-      action={
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-brand-graphite/60">
-            {people.length} {t("campaigns.inTheAudience")} . {people.filter((p) => p.email).length}{" "}
-            {t("campaigns.withEmail")} . {people.filter((p) => p.phone).length}{" "}
-            {t("campaigns.withPhone")}
-          </span>
-          <Link
-            href={`/campaigns/new?audience=${audience}`}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-primary !px-3 !py-1 !text-xs"
-          >
-            {t("campaigns.new")}
-          </Link>
-        </div>
-      }
-    >
-      {rows.length === 0 ? (
-        <Empty message={t("campaigns.noneYet")} />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="data">
-            <thead>
-              <tr>
-                <th>{t("common.name")}</th>
-                <th className="ctr">{t("campaigns.howToSend")}</th>
-                <th className="ctr">{t("common.status")}</th>
-                <th className="ctr">{t("common.date")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <Link
-                      href={`/campaigns/${c.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold hover:underline"
-                    >
-                      {c.title}
-                    </Link>
-                    {c.subject ? (
-                      <div className="text-xs text-brand-graphite/60">{c.subject}</div>
-                    ) : null}
-                  </td>
-                  <td className="ctr text-xs">
-                    {[
-                      c.viaEmail ? t("campaigns.email") : null,
-                      c.viaWhatsapp ? t("campaigns.whatsapp") : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" + ")}
-                  </td>
-                  <td className="ctr">
-                    <Pill tone={statusTone(c.status) as "good" | "warn" | "bad" | "teal"}>
-                      {c.status.replace(/_/g, " ").toLowerCase()}
-                    </Pill>
-                  </td>
-                  <td className="ctr">{day(c.sentAt ?? c.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
-  );
+  const audienceLine = (name: "CLIENTS" | "AGENTS" | "SUBOWNERS", label: string) => {
+    const people = group(name);
+    return (
+      <li key={name} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+        <span className="font-medium">{label}</span>
+        <span className="text-xs text-brand-graphite/60">
+          {people.length} {t("campaigns.inTheAudience")} . {people.filter((p) => p.email).length}{" "}
+          {t("campaigns.withEmail")} . {people.filter((p) => p.phone).length}{" "}
+          {t("campaigns.withPhone")}
+        </span>
+      </li>
+    );
+  };
 
   return (
     <>
       <PageHeader
         title={t("nav.campaigns")}
         subtitle="Nothing is ever sent to somebody who is not opted in or who has said stop."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Link href="/campaigns/templates" className="btn btn-secondary">
+              {t("campaigns.templates")}
+            </Link>
+            <Link
+              href="/campaigns/new"
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-primary"
+            >
+              {t("campaigns.new")}
+            </Link>
+          </div>
+        }
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label={t("clients.title")} value={String(counts?.total ?? 0)} />
         <Stat
-          label={t("clients.marketingOn")}
-          value={String(counts?.consented ?? 0)}
-          hint="the audience for client campaigns"
+          label={t("campaigns.groupClients")}
+          value={String(group("CLIENTS").length)}
+          hint={`${counts?.total ?? 0} ${t("clients.title").toLowerCase()}`}
         />
-        <Stat label="Unsubscribed" value={String(counts?.unsubscribed ?? 0)} />
+        <Stat label={t("campaigns.groupAgents")} value={String(group("AGENTS").length)} />
+        <Stat label={t("campaigns.groupSubowners")} value={String(group("SUBOWNERS").length)} />
         <Stat
           label="On the suppression list"
           value={String(suppressed?.total ?? 0)}
@@ -157,8 +99,118 @@ export default async function CampaignsPage() {
       </div>
 
       <div className="space-y-4">
-        {section(t("campaigns.toClients"), "CLIENTS_CONSENTED", toClients, clientAudience)}
-        {section(t("campaigns.toAgents"), "AGENTS", toAgents, agentAudience)}
+        <Card title={t("campaigns.whoGetsIt")}>
+          <ul className="divide-y divide-brand-line">
+            {audienceLine("CLIENTS", t("campaigns.groupClients"))}
+            {audienceLine("AGENTS", t("campaigns.groupAgents"))}
+            {audienceLine("SUBOWNERS", t("campaigns.groupSubowners"))}
+          </ul>
+          <p className="mt-2 text-xs text-brand-graphite/60">
+            {t("campaigns.groupsNote")} {counts?.unsubscribed ?? 0} unsubscribed.
+          </p>
+        </Card>
+
+        <Card title={t("nav.campaigns")}>
+          {rows.length === 0 ? (
+            <Empty message={t("campaigns.noneYet")} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t("common.name")}</th>
+                    <th>{t("campaigns.whoGetsIt")}</th>
+                    <th className="ctr">{t("campaigns.howToSend")}</th>
+                    <th className="ctr">{t("common.status")}</th>
+                    <th className="ctr">{t("common.date")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((c) => (
+                    <tr key={c.id}>
+                      <td>
+                        <Link
+                          href={`/campaigns/${c.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold hover:underline"
+                        >
+                          {c.title}
+                        </Link>
+                        {c.subject ? (
+                          <div className="text-xs text-brand-graphite/60">{c.subject}</div>
+                        ) : null}
+                      </td>
+                      <td className="text-xs">
+                        {[
+                          c.toClients || c.audience === "CLIENTS_CONSENTED"
+                            ? t("campaigns.groupClients")
+                            : null,
+                          c.toAgents || c.audience === "AGENTS" ? t("campaigns.groupAgents") : null,
+                          c.toSubowners || c.audience === "SUBOWNERS"
+                            ? t("campaigns.groupSubowners")
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </td>
+                      <td className="ctr text-xs">
+                        {[
+                          c.viaEmail ? t("campaigns.email") : null,
+                          c.viaWhatsapp ? t("campaigns.whatsapp") : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" + ")}
+                      </td>
+                      <td className="ctr">
+                        <Pill tone={statusTone(c.status) as "good" | "warn" | "bad" | "teal"}>
+                          {c.status.replace(/_/g, " ").toLowerCase()}
+                        </Pill>
+                      </td>
+                      <td className="ctr">{day(c.sentAt ?? c.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <Card
+          title={t("campaigns.templates")}
+          action={
+            <Link href="/campaigns/templates" className="btn btn-secondary !px-3 !py-1 !text-xs">
+              {t("common.edit")}
+            </Link>
+          }
+        >
+          <p className="mb-3 text-xs text-brand-graphite/60">{t("campaigns.templatesNote")}</p>
+          <ul className="divide-y divide-brand-line text-sm">
+            {templates.map((template) => (
+              <li
+                key={template.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-2"
+              >
+                <span>
+                  <span className="font-medium">{template.name}</span>
+                  {template.description ? (
+                    <span className="ml-2 text-xs text-brand-graphite/60">
+                      {template.description}
+                    </span>
+                  ) : null}
+                </span>
+                <Link
+                  href={`/campaigns/new?template=${template.key}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-secondary !px-3 !py-1 !text-xs"
+                >
+                  {t("campaigns.useTemplate")}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
 
         <Card title={t("campaigns.priceList")}>
           <p className="mb-3 text-xs text-brand-graphite/60">
@@ -204,41 +256,43 @@ export default async function CampaignsPage() {
           {links.length === 0 ? (
             <Empty message={t("common.none")} />
           ) : (
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>{t("common.notes")}</th>
-                  <th>Address</th>
-                  <th className="ctr">Expires</th>
-                  <th className="ctr">{t("common.actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {links.map((l) => (
-                  <tr key={l.id}>
-                    <td>{l.note ?? ""}</td>
-                    <td>
-                      <a
-                        href={priceListUrl(l.token)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-brand-teal-dark hover:underline"
-                      >
-                        {priceListUrl(l.token)}
-                      </a>
-                    </td>
-                    <td className="ctr">{day(l.expiresAt) || "never"}</td>
-                    <td className="ctr">
-                      <form action={revokePriceListLink.bind(null, l.id)}>
-                        <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
-                          Revoke
-                        </button>
-                      </form>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t("common.notes")}</th>
+                    <th>Address</th>
+                    <th className="ctr">Expires</th>
+                    <th className="ctr">{t("common.actions")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {links.map((l) => (
+                    <tr key={l.id}>
+                      <td>{l.note ?? ""}</td>
+                      <td>
+                        <a
+                          href={priceListUrl(l.token)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-brand-teal-dark hover:underline"
+                        >
+                          {priceListUrl(l.token)}
+                        </a>
+                      </td>
+                      <td className="ctr">{day(l.expiresAt) || "never"}</td>
+                      <td className="ctr">
+                        <form action={revokePriceListLink.bind(null, l.id)}>
+                          <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                            Revoke
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
 

@@ -11,8 +11,10 @@ import {
   campaigns,
   clients,
   documents,
+  emailTemplates,
   messages,
   shareLinks,
+  subowners,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
@@ -25,8 +27,15 @@ import { filesLinkFor, filesUrl } from "@/lib/campaignFiles";
 export async function createCampaign(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
 
-  const audience = String(formData.get("audience") ?? "CLIENTS_CONSENTED") as
-    "CLIENTS_CONSENTED" | "AGENTS";
+  // Three groups, any combination. The old single audience column is kept in
+  // step with them so older campaigns and the two lists still read correctly.
+  const toClients = String(formData.get("toClients") ?? "") === "on";
+  const toAgents = String(formData.get("toAgents") ?? "") === "on";
+  const toSubowners = String(formData.get("toSubowners") ?? "") === "on";
+  if (!toClients && !toAgents && !toSubowners) {
+    throw new Error("Choose at least one group to send it to.");
+  }
+  const audience = toClients ? "CLIENTS_CONSENTED" : toAgents ? "AGENTS" : "SUBOWNERS";
 
   const viaEmail = String(formData.get("viaEmail") ?? "") === "on";
   const viaWhatsapp = String(formData.get("viaWhatsapp") ?? "") === "on";
@@ -48,6 +57,10 @@ export async function createCampaign(formData: FormData) {
       viaEmail,
       viaWhatsapp,
       audience,
+      toClients,
+      toAgents,
+      toSubowners,
+      templateKey: String(formData.get("templateKey") ?? "") || null,
       subject: String(formData.get("subject") ?? "") || null,
       body: body || bodyWhatsapp,
       bodyWhatsapp: bodyWhatsapp || null,
@@ -65,7 +78,9 @@ export async function createCampaign(formData: FormData) {
   for (const [index, file] of files.entries()) {
     const documentId = await storeDocument({
       file,
-      title: files.length === 1 ? `Attachment` : `Attachment ${index + 1}`,
+      // The office recognises its own file names, so the upload keeps its name
+      // rather than being listed as "Attachment 2".
+      title: file.name.replace(/\.[^.]+$/, "").trim() || `Attachment ${index + 1}`,
       category: "OTHER",
       attachTo: {},
       user,
@@ -93,40 +108,102 @@ export async function createCampaign(formData: FormData) {
   redirect(`/campaigns/${campaignId}`);
 }
 
-export async function audienceFor(audience: "CLIENTS_CONSENTED" | "AGENTS") {
-  if (audience === "AGENTS") {
+export type CampaignGroups = {
+  toClients?: boolean;
+  toAgents?: boolean;
+  toSubowners?: boolean;
+  /** Older campaigns carried one audience rather than three flags. */
+  audience?: "CLIENTS_CONSENTED" | "AGENTS" | "SUBOWNERS";
+};
+
+/**
+ * Who a campaign goes to.
+ *
+ * Clients are the careful case: only those who are opted in and have never
+ * unsubscribed, which is the whole point of the consent field. Agents and
+ * partners are business contacts, so the list is everyone still active.
+ */
+export async function audienceFor(groups: CampaignGroups) {
+  const wantsClients = groups.toClients ?? groups.audience === "CLIENTS_CONSENTED";
+  const wantsAgents = groups.toAgents ?? groups.audience === "AGENTS";
+  const wantsSubowners = groups.toSubowners ?? groups.audience === "SUBOWNERS";
+
+  const people: {
+    name: string;
+    firstName: string;
+    email: string | null;
+    phone: string | null;
+    clientId: string | null;
+    agentId: string | null;
+    subownerId: string | null;
+    group: "CLIENTS" | "AGENTS" | "SUBOWNERS";
+  }[] = [];
+
+  if (wantsClients) {
+    const rows = await db
+      .select()
+      .from(clients)
+      .where(and(eq(clients.marketingOptIn, true), isNull(clients.unsubscribedAt)))
+      .orderBy(asc(clients.lastName));
+
+    for (const c of rows) {
+      people.push({
+        name: `${c.firstName} ${c.lastName}`.trim(),
+        firstName: c.firstName,
+        email: c.email,
+        phone: c.phone,
+        clientId: c.id,
+        agentId: null,
+        subownerId: null,
+        group: "CLIENTS",
+      });
+    }
+  }
+
+  if (wantsAgents) {
     const rows = await db
       .select()
       .from(agents)
       .where(eq(agents.isActive, true))
       .orderBy(asc(agents.name));
-    return rows.map((a) => ({
-      name: a.name,
-      firstName: a.name.split(" ")[0] ?? a.name,
-      email: a.email,
-      phone: a.phone,
-      agentId: a.id,
-      clientId: null as string | null,
-    }));
+
+    for (const a of rows) {
+      people.push({
+        name: a.name,
+        firstName: a.name.split(" ")[0] ?? a.name,
+        email: a.email,
+        phone: a.phone,
+        clientId: null,
+        agentId: a.id,
+        subownerId: null,
+        group: "AGENTS",
+      });
+    }
   }
 
-  // Only clients who are opted in and have never unsubscribed. This is the whole
-  // point of the consent field: the audience is built from it, never from
-  // everybody in the database.
-  const rows = await db
-    .select()
-    .from(clients)
-    .where(and(eq(clients.marketingOptIn, true), isNull(clients.unsubscribedAt)))
-    .orderBy(asc(clients.lastName));
+  if (wantsSubowners) {
+    const rows = await db
+      .select()
+      .from(subowners)
+      .where(and(eq(subowners.isActive, true), isNull(subowners.unsubscribedAt)))
+      .orderBy(asc(subowners.name));
 
-  return rows.map((c) => ({
-    name: `${c.firstName} ${c.lastName}`.trim(),
-    firstName: c.firstName,
-    email: c.email,
-    phone: c.phone,
-    clientId: c.id,
-    agentId: null as string | null,
-  }));
+    for (const s of rows) {
+      const contact = s.contactName?.trim() || s.name;
+      people.push({
+        name: contact,
+        firstName: contact.split(" ")[0] ?? contact,
+        email: s.email,
+        phone: s.phone,
+        clientId: null,
+        agentId: null,
+        subownerId: s.id,
+        group: "SUBOWNERS",
+      });
+    }
+  }
+
+  return people;
 }
 
 export async function sendCampaign(campaignId: string) {
@@ -171,7 +248,7 @@ export async function sendCampaign(campaignId: string) {
     files = filesUrl(link.token);
   }
 
-  const recipients = await audienceFor(campaign.audience);
+  const recipients = await audienceFor(campaign);
   let sent = 0;
   let failed = 0;
 
@@ -189,7 +266,7 @@ export async function sendCampaign(campaignId: string) {
         recipient,
         subject: campaign.subject ? fillPlaceholders(campaign.subject, values) : null,
         body: fillPlaceholders(campaign.body, values),
-        withOptOut: campaign.audience === "CLIENTS_CONSENTED",
+        withOptOut: recipient.group === "CLIENTS",
         attachments,
       });
       if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
@@ -202,7 +279,7 @@ export async function sendCampaign(campaignId: string) {
         channel: "WHATSAPP",
         recipient,
         body: fillPlaceholders(withFilesLink, values),
-        withOptOut: campaign.audience === "CLIENTS_CONSENTED",
+        withOptOut: recipient.group === "CLIENTS",
       });
       if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
       else failed += 1;
@@ -228,6 +305,40 @@ export async function sendCampaign(campaignId: string) {
   });
 
   revalidatePath(`/campaigns/${campaignId}`);
+  revalidatePath("/campaigns");
+}
+
+/** Rewrite one of the ready made messages. */
+export async function saveTemplate(templateId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+
+  await db
+    .update(emailTemplates)
+    .set({
+      name: String(formData.get("name") ?? "").trim() || "Untitled",
+      description: String(formData.get("description") ?? "").trim() || null,
+      subject: String(formData.get("subject") ?? "").trim() || null,
+      body: String(formData.get("body") ?? "").trim(),
+      bodyWhatsapp: String(formData.get("bodyWhatsapp") ?? "").trim() || null,
+      subjectEl: String(formData.get("subjectEl") ?? "").trim() || null,
+      bodyEl: String(formData.get("bodyEl") ?? "").trim() || null,
+      bodyWhatsappEl: String(formData.get("bodyWhatsappEl") ?? "").trim() || null,
+      toClients: String(formData.get("toClients") ?? "") === "on",
+      toAgents: String(formData.get("toAgents") ?? "") === "on",
+      toSubowners: String(formData.get("toSubowners") ?? "") === "on",
+      updatedAt: new Date(),
+    })
+    .where(eq(emailTemplates.id, templateId));
+
+  await recordAudit({
+    action: "template.update",
+    entity: "email_template",
+    entityId: templateId,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  revalidatePath("/campaigns/templates");
   revalidatePath("/campaigns");
 }
 

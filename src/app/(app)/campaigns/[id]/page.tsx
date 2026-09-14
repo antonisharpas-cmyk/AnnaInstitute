@@ -25,7 +25,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       .from(campaignDocuments)
       .innerJoin(documents, eq(documents.id, campaignDocuments.documentId))
       .where(eq(campaignDocuments.campaignId, id)),
-    audienceFor(campaign.audience),
+    audienceFor(campaign),
     messagesForCampaign(id),
     db
       .select()
@@ -92,7 +92,19 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         title={campaign.title}
         subtitle={`${[campaign.viaEmail ? "email" : null, campaign.viaWhatsapp ? "whatsapp" : null]
           .filter(Boolean)
-          .join(" and ")} . ${campaign.audience === "AGENTS" ? "agents" : "clients with consent"}`}
+          .join(" and ")} . ${[
+          campaign.toClients || campaign.audience === "CLIENTS_CONSENTED"
+            ? t("campaigns.groupClients").toLowerCase()
+            : null,
+          campaign.toAgents || campaign.audience === "AGENTS"
+            ? t("campaigns.groupAgents").toLowerCase()
+            : null,
+          campaign.toSubowners || campaign.audience === "SUBOWNERS"
+            ? t("campaigns.groupSubowners").toLowerCase()
+            : null,
+        ]
+          .filter(Boolean)
+          .join(", ")}`}
         action={
           <Pill tone={campaign.status === "SENT" ? "good" : "neutral"}>
             {campaign.status.replace(/_/g, " ").toLowerCase()}
@@ -137,7 +149,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 </pre>
               </div>
             ) : null}
-            {campaign.audience === "CLIENTS_CONSENTED" ? (
+            {campaign.toClients || campaign.audience === "CLIENTS_CONSENTED" ? (
               <p className="mt-3 border-t border-brand-line pt-3 text-xs text-brand-graphite/60">
                 {campaign.viaEmail
                   ? "An unsubscribe link is added to every email automatically. "
@@ -181,8 +193,17 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
               </thead>
               <tbody>
                 {checked.map((r) => (
-                  <tr key={`${r.clientId ?? r.agentId}`}>
-                    <td>{r.name}</td>
+                  <tr key={`${r.clientId ?? r.agentId ?? r.subownerId}`}>
+                    <td>
+                      {r.name}
+                      <div className="text-xs text-brand-graphite/50">
+                        {r.group === "CLIENTS"
+                          ? t("campaigns.groupClients")
+                          : r.group === "AGENTS"
+                            ? t("campaigns.groupAgents")
+                            : t("campaigns.groupSubowners")}
+                      </div>
+                    </td>
                     <td className="break-all text-xs">
                       {!campaign.viaEmail ? (
                         <span className="text-brand-graphite/40">not on this campaign</span>

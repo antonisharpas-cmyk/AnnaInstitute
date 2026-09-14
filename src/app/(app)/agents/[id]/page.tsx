@@ -10,8 +10,10 @@ import { commissionTotals, salesOfAgent } from "@/lib/commissions";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
+import ProfileCard from "@/components/ProfileCard";
 import {
   addExtra,
+  saveAgentProfile,
   deleteCommissionPayment,
   payLine,
   recordCommissionPayment,
@@ -68,7 +70,47 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
         <Stat label={t("agents.owed")} value={formatAmount(totals.outstandingCents, locale)} />
       </div>
 
-      <div className="space-y-4">
+      <div className="mb-4 grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <ProfileCard
+            title={t("agents.profile")}
+            action={saveAgentProfile.bind(null, id)}
+            labels={{ edit: t("common.edit"), save: t("common.save"), cancel: t("common.cancel") }}
+            fields={[
+              { name: "name", label: t("common.name"), value: agent.name, required: true },
+              { name: "company", label: t("subowners.company"), value: agent.company ?? "" },
+              { name: "email", label: t("leads.email"), value: agent.email ?? "", kind: "email" },
+              { name: "phone", label: t("leads.phone"), value: agent.phone ?? "" },
+              {
+                name: "commissionRate",
+                label: t("agents.rate"),
+                value: String(Number(agent.commissionRate)),
+                display: formatPercent(Number(agent.commissionRate), locale),
+                kind: "number",
+              },
+              { name: "address", label: t("clients.address"), value: agent.address ?? "" },
+              { name: "country", label: t("clients.country"), value: agent.country ?? "" },
+              { name: "vatNumber", label: t("subowners.vatNumber"), value: agent.vatNumber ?? "" },
+              {
+                name: "licenceNumber",
+                label: t("agents.licenceNumber"),
+                value: agent.licenceNumber ?? "",
+              },
+              { name: "website", label: t("agents.website"), value: agent.website ?? "" },
+              {
+                name: "isActive",
+                label: t("common.status"),
+                kind: "checkbox",
+                checked: agent.isActive,
+                display: agent.isActive ? t("agents.active") : t("agents.inactive"),
+                hint: t("agents.active"),
+              },
+              { name: "notes", label: t("common.notes"), kind: "textarea", value: agent.notes ?? "" },
+            ]}
+          />
+        </div>
+
+        <div className="space-y-4 lg:col-span-2">
         {/* What he sold, and what each sale earns him. */}
         <Card title={t("agents.sales")}>
           {sales.length === 0 ? (
@@ -365,11 +407,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           )}
         </Card>
 
-        {agent.notes ? (
-          <Card title={t("common.notes")}>
-            <p className="whitespace-pre-line text-sm">{agent.notes}</p>
-          </Card>
-        ) : null}
+        </div>
       </div>
     </>
   );
