@@ -383,6 +383,7 @@ export const dictionaries = {
     "said.checked": "Record checked",
     "said.partnerAdded": "Partner added",
     "said.keyMade": "Key made. Copy it now.",
+    "said.notSaved": "That could not be saved. The server log says why.",
 
     "login.title": "Sign in",
     "login.email": "Email",
@@ -1183,6 +1184,7 @@ export const dictionaries = {
     "said.checked": "Η καρτέλα ελέγχθηκε",
     "said.partnerAdded": "Ο συνιδιοκτήτης προστέθηκε",
     "said.keyMade": "Το κλειδί δημιουργήθηκε. Αντιγράψτε το τώρα.",
+    "said.notSaved": "Δεν αποθηκεύτηκε. Ο λόγος είναι στο αρχείο καταγραφής.",
 
     "login.title": "Σύνδεση",
     "login.email": "Ηλεκτρονικό ταχυδρομείο",

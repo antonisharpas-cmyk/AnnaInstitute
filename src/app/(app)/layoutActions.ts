@@ -12,6 +12,23 @@ import {
 } from "@/lib/dashboard";
 
 /**
+ * Trying to save, and saying so plainly when it cannot be done.
+ *
+ * The only real reason a save fails is a database that has not had the
+ * migration run on it yet, and that must not throw the person out of the CRM
+ * with a server error page: they get a line at the bottom of the screen, and
+ * the detail goes to the log where a developer will look for it.
+ */
+async function attempt(work: () => Promise<void>): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    console.error("The dashboard arrangement could not be saved.", error);
+    await flash("said.notSaved", "bad");
+  }
+}
+
+/**
  * Saving a dashboard.
  *
  * The arrange panel sends the whole list back as one field, which is read
@@ -22,16 +39,20 @@ export async function saveDashboard(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const panels = layoutFromForm(String(formData.get("panels") ?? ""));
 
-  await writeLayout(user.id, panels);
-  await flash("panel.saved");
+  await attempt(async () => {
+    await writeLayout(user.id, panels);
+    await flash("panel.saved");
+  });
   revalidatePath("/");
 }
 
 /** Back to the screen everybody starts with. */
 export async function resetDashboard() {
   const user = await requireUser(["ADMIN"]);
-  await forgetLayout(user.id);
-  await flash("panel.wasReset");
+  await attempt(async () => {
+    await forgetLayout(user.id);
+    await flash("panel.wasReset");
+  });
   revalidatePath("/");
 }
 
@@ -40,9 +61,11 @@ export async function showPanel(key: string) {
   const user = await requireUser(["ADMIN"]);
   const panels = await readLayout(user.id);
 
-  await writeLayout(
-    user.id,
-    panels.map((panel) => (panel.key === key ? { ...panel, shown: true } : panel)),
+  await attempt(() =>
+    writeLayout(
+      user.id,
+      panels.map((panel) => (panel.key === key ? { ...panel, shown: true } : panel)),
+    ),
   );
   revalidatePath("/");
 }
@@ -67,7 +90,7 @@ export async function movePanel(key: string, direction: "up" | "down") {
   const [taken] = next.splice(from, 1);
   next.splice(to, 0, taken);
 
-  await writeLayout(user.id, next);
+  await attempt(() => writeLayout(user.id, next));
   revalidatePath("/");
 }
 
@@ -75,9 +98,11 @@ export async function hidePanel(key: string) {
   const user = await requireUser(["ADMIN"]);
   const panels = await readLayout(user.id);
 
-  await writeLayout(
-    user.id,
-    panels.map((panel) => (panel.key === key ? { ...panel, shown: false } : panel)),
+  await attempt(() =>
+    writeLayout(
+      user.id,
+      panels.map((panel) => (panel.key === key ? { ...panel, shown: false } : panel)),
+    ),
   );
   revalidatePath("/");
 }

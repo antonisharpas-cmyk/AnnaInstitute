@@ -153,33 +153,68 @@ export function withEveryPanel(panels: Panel[]): Panel[] {
   return [...panels, ...missing];
 }
 
+/**
+ * A stored arrangement, or the standard one.
+ *
+ * The dashboard is the first thing anybody sees, so it must never be the thing
+ * that breaks. If the table is not there yet, because the migration has not been
+ * run on this database, the standard layout is used and the reason is written to
+ * the log rather than to the screen.
+ */
 export async function readLayout(userId: string): Promise<Panel[]> {
-  const [row] = await db
-    .select()
-    .from(dashboardLayouts)
-    .where(eq(dashboardLayouts.userId, userId))
-    .limit(1);
+  try {
+    const [row] = await db
+      .select()
+      .from(dashboardLayouts)
+      .where(eq(dashboardLayouts.userId, userId))
+      .limit(1);
 
-  if (!row) return DEFAULT_LAYOUT;
+    if (!row) return DEFAULT_LAYOUT;
 
-  const stored = parse(row.panels);
-  return stored.length === 0 ? DEFAULT_LAYOUT : withEveryPanel(stored);
+    const stored = parse(row.panels);
+    return stored.length === 0 ? DEFAULT_LAYOUT : withEveryPanel(stored);
+  } catch (error) {
+    console.warn(
+      "The dashboard layout could not be read, so the standard one is being used. If this says the table is missing, run npm run db:migrate.",
+      error,
+    );
+    return DEFAULT_LAYOUT;
+  }
+}
+
+/** Saying why a save could not happen, in words somebody can act on. */
+function explain(error: unknown): Error {
+  const text = error instanceof Error ? error.message : String(error);
+  if (/dashboard_layouts/.test(text) && /exist|relation|no such table/i.test(text)) {
+    return new Error(
+      "The dashboard_layouts table is missing. Stop the server, run npm run db:migrate, then start it again.",
+    );
+  }
+  return error instanceof Error ? error : new Error(text);
 }
 
 export async function writeLayout(userId: string, panels: Panel[]): Promise<void> {
   const clean = withEveryPanel(parse(JSON.stringify(panels)));
 
-  await db
-    .insert(dashboardLayouts)
-    .values({ userId, panels: JSON.stringify(clean) })
-    .onConflictDoUpdate({
-      target: dashboardLayouts.userId,
-      set: { panels: JSON.stringify(clean), updatedAt: new Date() },
-    });
+  try {
+    await db
+      .insert(dashboardLayouts)
+      .values({ userId, panels: JSON.stringify(clean) })
+      .onConflictDoUpdate({
+        target: dashboardLayouts.userId,
+        set: { panels: JSON.stringify(clean), updatedAt: new Date() },
+      });
+  } catch (error) {
+    throw explain(error);
+  }
 }
 
 export async function forgetLayout(userId: string): Promise<void> {
-  await db.delete(dashboardLayouts).where(eq(dashboardLayouts.userId, userId));
+  try {
+    await db.delete(dashboardLayouts).where(eq(dashboardLayouts.userId, userId));
+  } catch (error) {
+    throw explain(error);
+  }
 }
 
 /** Read a layout out of what the arrange form posted. */
