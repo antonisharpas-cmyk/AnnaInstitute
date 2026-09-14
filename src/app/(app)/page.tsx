@@ -7,6 +7,23 @@ import { formatAmount, toCents } from "@/lib/money";
 import { newLeadCount } from "@/lib/leads";
 import { recentActivity } from "@/lib/activity";
 import {
+  cashByMonth,
+  leadFunnel,
+  monthLabel,
+  rangeFrom,
+  salesByMonth,
+  salesByProject,
+} from "@/lib/reports";
+import {
+  BarSeries,
+  Breakdown,
+  Funnel,
+  Meter,
+  SERIES,
+  StackedBar,
+  shortMoney,
+} from "@/components/charts";
+import {
   IconCampaigns,
   IconClients,
   IconContracts,
@@ -18,6 +35,13 @@ import { Attention, Card, Empty, PageHeader, Pill, Stat, Tile } from "@/componen
 
 const day = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
+
+/** Due inside the fortnight, which is when the office starts chasing it. */
+const soon = (value: Date | null | undefined) => {
+  if (!value) return false;
+  const days = (new Date(value).getTime() - Date.now()) / 86_400_000;
+  return days >= 0 && days <= 14;
+};
 
 /** The first of the current month, which is where the month figures start. */
 function startOfMonth(): Date {
@@ -61,6 +85,9 @@ export default async function DashboardPage() {
 
   const waitingLeads = await newLeadCount();
 
+  // The charts all read the same twelve months, so the page tells one story.
+  const { range: year } = rangeFrom({ period: "12m" });
+
   /**
    * What is late, and what is next.
    *
@@ -100,12 +127,19 @@ export default async function DashboardPage() {
     upcoming,
     recent,
     activity,
+    cash,
+    sales,
+    funnel,
+    byProject,
   ] = await Promise.all([
     db
       .select({
         total: sql<number>`count(*)::int`,
         sold: sql<number>`count(*) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
         available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
+        reserved: sql<number>`count(*) filter (where ${units.status} = 'RESERVED')::int`,
+        onlySold: sql<number>`count(*) filter (where ${units.status} = 'SOLD')::int`,
+        delivered: sql<number>`count(*) filter (where ${units.status} = 'DELIVERED')::int`,
       })
       .from(units),
     db
@@ -157,6 +191,10 @@ export default async function DashboardPage() {
       .orderBy(desc(payments.paidOn))
       .limit(8),
     recentActivity(10),
+    cashByMonth(year),
+    salesByMonth(year),
+    leadFunnel(year),
+    salesByProject(),
   ]);
 
   const unitStats = unitRows[0];
@@ -166,6 +204,16 @@ export default async function DashboardPage() {
   const late = lateRows[0]?.total ?? 0;
   const bills = billRows[0]?.total ?? 0;
   const drafts = draftRows[0]?.total ?? 0;
+
+  /**
+   * The developments worth a line on the dashboard: the ones that hold
+   * apartments, best sold first, six at most. The rest are a click away in the
+   * portfolio report.
+   */
+  const stocked = byProject
+    .filter((row) => row.total > 0)
+    .sort((a, b) => b.sellThrough - a.sellThrough || b.total - a.total)
+    .slice(0, 6);
 
   const hour = now.getHours();
   const greeting =
@@ -253,6 +301,173 @@ export default async function DashboardPage() {
           tone={late > 0 ? "bad" : "teal"}
           href="/reports/money"
         />
+      </div>
+
+      <Card className="mb-4" title={t("dash.collection")}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Meter
+            label={t("reports.collected")}
+            value={collected}
+            total={scheduled}
+            display={formatAmount(collected, locale)}
+            totalDisplay={formatAmount(scheduled, locale)}
+            tone="good"
+          />
+          <Meter
+            label={t("reports.sellThrough")}
+            value={unitStats?.sold ?? 0}
+            total={unitStats?.total ?? 0}
+            display={String(unitStats?.sold ?? 0)}
+            totalDisplay={String(unitStats?.total ?? 0)}
+          />
+        </div>
+      </Card>
+
+      <div className="mb-4 grid items-start gap-4 lg:grid-cols-3">
+        <Card
+          title={t("reports.cashflow")}
+          className="lg:col-span-2"
+          action={
+            <Link href="/reports/money" className="text-xs font-semibold text-brand-teal-dark">
+              {t("dash.seeAll")}
+            </Link>
+          }
+        >
+          <BarSeries
+            labels={cash.map((row) => monthLabel(row.month, locale))}
+            series={[
+              {
+                label: t("reports.due"),
+                colour: SERIES.secondary,
+                values: cash.map((row) => row.dueCents),
+                format: shortMoney,
+              },
+              {
+                label: t("reports.paid"),
+                colour: SERIES.primary,
+                values: cash.map((row) => row.paidCents),
+                format: shortMoney,
+              },
+            ]}
+          />
+          <details className="figures">
+            <summary>{t("dash.figures")}</summary>
+            <div className="overflow-x-auto">
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t("dash.month")}</th>
+                    <th className="num">{t("reports.due")}</th>
+                    <th className="num">{t("reports.paid")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cash.map((row) => (
+                    <tr key={row.month}>
+                      <td>{monthLabel(row.month, locale)}</td>
+                      <td className="num">{formatAmount(row.dueCents, locale)}</td>
+                      <td className="num">{formatAmount(row.paidCents, locale)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </Card>
+
+        <Card title={t("dash.stock")}>
+          <StackedBar
+            empty={t("common.none")}
+            segments={[
+              {
+                label: t("units.status.AVAILABLE"),
+                value: unitStats?.available ?? 0,
+                colour: SERIES.primary,
+              },
+              {
+                label: t("units.status.RESERVED"),
+                value: unitStats?.reserved ?? 0,
+                colour: SERIES.secondary,
+              },
+              {
+                label: t("units.status.SOLD"),
+                value: unitStats?.onlySold ?? 0,
+                colour: SERIES.third,
+              },
+              {
+                label: t("units.status.DELIVERED"),
+                value: unitStats?.delivered ?? 0,
+                colour: SERIES.fourth,
+              },
+            ]}
+          />
+        </Card>
+      </div>
+
+      <div className="mb-4 grid items-start gap-4 lg:grid-cols-4">
+        <Card
+          className="lg:col-span-2"
+          title={t("reports.monthlySales")}
+          action={
+            <Link href="/reports/sales" className="text-xs font-semibold text-brand-teal-dark">
+              {t("dash.seeAll")}
+            </Link>
+          }
+        >
+          <BarSeries
+            height={160}
+            minWidth={420}
+            labels={sales.map((row) => monthLabel(row.month, locale))}
+            series={[
+              {
+                label: t("reports.signed"),
+                colour: SERIES.third,
+                values: sales.map((row) => row.count),
+                format: (value) => String(Math.round(value)),
+              },
+            ]}
+          />
+        </Card>
+
+        <Card
+          title={t("reports.funnel")}
+          action={
+            <Link href="/reports/leads" className="text-xs font-semibold text-brand-teal-dark">
+              {t("dash.seeAll")}
+            </Link>
+          }
+        >
+          <Funnel
+            colour={SERIES.secondary}
+            steps={[
+              { label: t("reports.funnel.arrived"), value: funnel.arrived },
+              { label: t("reports.funnel.answered"), value: funnel.answered },
+              { label: t("reports.funnel.qualified"), value: funnel.qualified },
+              { label: t("reports.funnel.converted"), value: funnel.converted },
+            ]}
+          />
+        </Card>
+
+        <Card
+          title={t("dash.byProject")}
+          action={
+            <Link href="/reports/portfolio" className="text-xs font-semibold text-brand-teal-dark">
+              {t("dash.seeAll")}
+            </Link>
+          }
+        >
+          <Breakdown
+            empty={t("common.none")}
+            colour={SERIES.fourth}
+            rows={stocked.map((row) => ({
+              label: row.project.name,
+              value: row.sold,
+              display: `${row.sold} / ${row.total}`,
+              note: `${Math.round(row.sellThrough * 100)}%`,
+              href: `/projects/${row.project.id}`,
+            }))}
+          />
+        </Card>
       </div>
 
       <div className="mb-4 grid items-start gap-4 lg:grid-cols-3">
@@ -368,7 +583,13 @@ export default async function DashboardPage() {
                 <tbody>
                   {upcoming.map((r) => (
                     <tr key={r.installment.id}>
-                      <td>{day(r.installment.dueDate)}</td>
+                      <td>
+                        {soon(r.installment.dueDate) ? (
+                          <Pill tone="warn">{day(r.installment.dueDate)}</Pill>
+                        ) : (
+                          day(r.installment.dueDate)
+                        )}
+                      </td>
                       <td>
                         <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
                           {r.client

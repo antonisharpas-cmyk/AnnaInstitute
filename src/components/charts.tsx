@@ -20,7 +20,8 @@ export const SERIES = {
   secondary: "#C4671F",
   third: "#6C5BAA",
   fourth: "#2E8B57",
-  muted: "#c9d2d8",
+  /** A plain grey, for a reference line rather than a series of its own. */
+  muted: "var(--chart-muted)",
 } as const;
 
 /**
@@ -39,8 +40,13 @@ export function shortMoney(cents: number): string {
   return `${sign}€${Math.round(value)}`;
 }
 
-const AXIS = "#8a949c";
-const GRID = "#e8ecef";
+/**
+ * The chrome of a chart reads from the theme rather than from a fixed grey, so
+ * night gets a grid that sits one shade off its own surface instead of a set of
+ * white lines.
+ */
+const AXIS = "var(--label-ink)";
+const GRID = "var(--color-brand-line)";
 
 function niceMax(value: number): number {
   if (value <= 0) return 1;
@@ -71,10 +77,13 @@ export function BarSeries({
   labels,
   series,
   height = 180,
+  /** A chart in a narrow card needs a narrower floor before it scrolls. */
+  minWidth = 640,
 }: {
   labels: string[];
   series: Series[];
   height?: number;
+  minWidth?: number;
 }) {
   const width = 760;
   const padLeft = 56;
@@ -92,8 +101,20 @@ export function BarSeries({
 
   const y = (value: number) => padTop + plotHeight - (value / max) * plotHeight;
 
-  // Enough ticks to read the scale, never so many that they crowd the plot.
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((fraction) => max * fraction);
+  /**
+   * Three ticks: nothing, half, and the top. Quarters of a round number are
+   * rarely round themselves, so they printed as €63k and €188k down the side,
+   * and a count that tops out at two printed 1 twice.
+   */
+  const ticks: number[] = [];
+  const seen = new Set<string>();
+  for (const fraction of [0, 0.5, 1]) {
+    const value = max * fraction;
+    const label = series[0].format(value);
+    if (seen.has(label)) continue;
+    seen.add(label);
+    ticks.push(value);
+  }
   const everyOther = labels.length > 14;
 
   return (
@@ -102,7 +123,8 @@ export function BarSeries({
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label={series.map((s) => s.label).join(" and ")}
-        className="min-w-[640px] w-full"
+        className="w-full"
+        style={{ minWidth }}
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -314,6 +336,135 @@ export function Figure({
       </div>
       <div className={`mt-1 text-2xl font-semibold tabular-nums ${colour}`}>{value}</div>
       {hint ? <div className="mt-0.5 text-xs text-brand-graphite/60">{hint}</div> : null}
+    </div>
+  );
+}
+
+export type Segment = { label: string; value: number; colour: string; display?: string };
+
+/**
+ * One bar, split into its parts.
+ *
+ * Part of a whole at a glance, which is the only thing a pie was ever good for,
+ * without the pie: the segments sit in a fixed order, a 2px gap of the page
+ * behind them keeps two neighbours apart without an outline, and the legend
+ * under it names every part with its own figure, so nothing is carried by the
+ * colour alone. A part too narrow for its own label keeps it in the legend.
+ */
+export function StackedBar({
+  segments,
+  empty,
+  height = 26,
+}: {
+  segments: Segment[];
+  empty: string;
+  height?: number;
+}) {
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+
+  if (total <= 0) {
+    return <p className="py-6 text-center text-sm text-brand-graphite/50">{empty}</p>;
+  }
+
+  const shown = segments.filter((segment) => segment.value > 0);
+
+  return (
+    <div>
+      <div className="flex w-full gap-[2px]" style={{ height }}>
+        {shown.map((segment, index) => {
+          const share = (segment.value / total) * 100;
+          const first = index === 0;
+          const last = index === shown.length - 1;
+          return (
+            <div
+              key={segment.label}
+              title={`${segment.label}: ${segment.display ?? segment.value}`}
+              className="flex items-center justify-center overflow-hidden text-[11px] font-semibold"
+              style={{
+                width: `${share}%`,
+                background: segment.colour,
+                color: "#ffffff",
+                borderRadius: `${first ? "4px" : "0"} ${last ? "4px" : "0"} ${
+                  last ? "4px" : "0"
+                } ${first ? "4px" : "0"}`,
+              }}
+            >
+              {share >= 12 ? segment.value : ""}
+            </div>
+          );
+        })}
+      </div>
+
+      <ul className="mt-3 grid gap-1.5 sm:grid-cols-2">
+        {segments.map((segment) => (
+          <li key={segment.label} className="flex items-baseline gap-2 text-sm">
+            <span
+              aria-hidden="true"
+              className="mt-1 inline-block size-2.5 shrink-0 rounded-sm"
+              style={{ background: segment.colour }}
+            />
+            <span className="min-w-0 flex-1 truncate text-brand-graphite">{segment.label}</span>
+            <span className="tabular-nums font-medium">{segment.display ?? segment.value}</span>
+            <span className="w-10 text-right text-xs tabular-nums text-brand-graphite/60">
+              {Math.round((segment.value / total) * 100)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * How far along one number is towards another.
+ *
+ * Two figures and the share between them, which is how the office talks about
+ * money collected against money owed. The colour carries the state, and the
+ * words carry it as well, so the bar is never the only thing saying it.
+ */
+export function Meter({
+  label,
+  value,
+  total,
+  display,
+  totalDisplay,
+  tone = "teal",
+}: {
+  label: string;
+  value: number;
+  total: number;
+  display: string;
+  totalDisplay: string;
+  tone?: "teal" | "good" | "warn" | "bad";
+}) {
+  const share = total > 0 ? Math.min(100, Math.max(0, (value / total) * 100)) : 0;
+  const colour =
+    tone === "good"
+      ? "var(--color-positive)"
+      : tone === "warn"
+        ? "var(--color-warning)"
+        : tone === "bad"
+          ? "var(--color-negative)"
+          : SERIES.primary;
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="statlabel">{label}</span>
+        <span className="text-sm">
+          <span className="font-semibold tabular-nums">{display}</span>
+          <span className="text-brand-graphite/60"> / {totalDisplay}</span>
+          <span className="ml-2 font-semibold tabular-nums" style={{ color: colour }}>
+            {Math.round(share)}%
+          </span>
+        </span>
+      </div>
+      <div className="mt-1.5 h-2.5 w-full rounded-full" style={{ background: "var(--pill-bg)" }}>
+        <div
+          className="h-2.5 rounded-full"
+          style={{ width: `${Math.max(1.5, share)}%`, background: colour }}
+        />
+      </div>
     </div>
   );
 }

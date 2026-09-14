@@ -57,6 +57,7 @@
   --shadow-float: 0 12px 32px rgba(18, 17, 17, 0.14);
   --scroll-thumb: #c6cfd6;
   --scroll-track: #f1f4f6;
+  --chart-muted: #c3ced6;
   color-scheme: light;
 }
 
@@ -106,6 +107,7 @@
   --shadow-float: 0 16px 40px rgba(0, 0, 0, 0.55);
   --scroll-thumb: #39424a;
   --scroll-track: #191e21;
+  --chart-muted: #4c575f;
   color-scheme: dark;
 }
 
@@ -146,6 +148,8 @@ table.data tbody td {
 }
 
 .card {
+  /* Never let a card's contents widen the column it sits in. */
+  min-width: 0;
   background: var(--color-brand-paper);
   border: 1px solid var(--color-brand-line);
   border-radius: 0.625rem;
@@ -288,6 +292,13 @@ input[type="radio"] {
 }
 
 .overflow-x-auto {
+  /*
+    A box that scrolls must also be allowed to be narrow. Without this, a wide
+    chart or table inside a grid column stretches the column to its own width,
+    and the page scrolls sideways instead of the box.
+  */
+  min-width: 0;
+  max-width: 100%;
   scrollbar-width: thin;
   scrollbar-color: var(--scroll-thumb) var(--scroll-track);
 }
@@ -857,7 +868,6 @@ table.data tbody td.ctr {
   font-size: 1.5rem;
   line-height: 1.15;
   font-weight: 650;
-  font-variant-numeric: tabular-nums;
   color: var(--color-brand-ink);
 }
 
@@ -975,4 +985,44 @@ table.data tbody td.ctr {
   background: var(--color-brand-paper);
   color: var(--color-brand-ink);
   box-shadow: var(--shadow-raised);
+}
+
+/* The figures behind a chart, folded away until somebody wants them. */
+.figures {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--color-brand-line);
+  padding-top: 0.5rem;
+}
+
+.figures > summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--label-ink);
+  list-style: none;
+}
+
+.figures > summary::marker,
+.figures > summary::-webkit-details-marker {
+  display: none;
+}
+
+.figures > summary::before {
+  content: "+ ";
+  color: var(--color-brand-teal);
+  font-weight: 700;
+}
+
+.figures[open] > summary::before {
+  content: "- ";
+}
+
+.figures > summary:hover {
+  color: var(--color-brand-ink);
+}
+
+.figures > div {
+  margin-top: 0.5rem;
 }
