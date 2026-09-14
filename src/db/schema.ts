@@ -436,6 +436,23 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: created(),
 });
 
+/**
+ * How one person wants their dashboard.
+ *
+ * The panels in the order they like them, each with a width and a switch for
+ * whether it is on show at all. It is stored against the person rather than the
+ * company, because the woman chasing payments and the man watching stock do not
+ * want the same screen, and it follows them from the office to a laptop at home.
+ */
+export const dashboardLayouts = pgTable("dashboard_layouts", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** A JSON list of { key, width, shown }, in the order they appear. */
+  panels: text("panels").notNull(),
+  updatedAt: updated(),
+});
+
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

@@ -36,6 +36,9 @@ export type ShellLabels = {
   theme: string;
   themeDay: string;
   themeNight: string;
+  density: string;
+  densityRoomy: string;
+  densityTight: string;
   language: string;
   signOut: string;
   shortcuts: string;
@@ -50,6 +53,7 @@ export type ShellLabels = {
 };
 
 const THEME_KEY = "oe_theme";
+const DENSITY_KEY = "oe_density";
 const NAV_KEY = "oe_nav";
 
 /** True when the keystroke belongs to whatever the person is typing in. */
@@ -94,6 +98,7 @@ export default function AppShell({
   const router = useRouter();
 
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [density, setDensity] = useState<"roomy" | "tight">("roomy");
   const [narrow, setNarrow] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState(false);
@@ -115,6 +120,11 @@ export default function AppShell({
       setTheme(preferred);
       document.documentElement.dataset.theme = preferred;
       setNarrow(localStorage.getItem(NAV_KEY) === "narrow");
+      const rows = localStorage.getItem(DENSITY_KEY);
+      if (rows === "tight" || rows === "roomy") {
+        setDensity(rows);
+        document.documentElement.dataset.density = rows;
+      }
     } catch {
       // A browser with storage switched off simply starts light and wide.
     }
@@ -131,6 +141,23 @@ export default function AppShell({
       }
       return next;
     });
+  }, []);
+
+  /**
+   * How much air the rows get.
+   *
+   * Somebody reading a long table all day wants more of it on the screen at
+   * once; somebody entering figures wants room to aim at. It is written on the
+   * document like the theme, so no component needs to know about it.
+   */
+  const switchDensity = useCallback((next: "roomy" | "tight") => {
+    setDensity(next);
+    document.documentElement.dataset.density = next;
+    try {
+      localStorage.setItem(DENSITY_KEY, next);
+    } catch {
+      // Not remembering it is better than failing to set it.
+    }
   }, []);
 
   const switchWidth = useCallback(() => {
@@ -419,6 +446,22 @@ export default function AppShell({
                           {code === "en" ? "EN" : "ΕΛ"}
                         </button>
                       </form>
+                    ))}
+                  </div>
+                  <div className="my-1 border-t border-brand-line" />
+                  <p className="palette-group">{labels.density}</p>
+                  <div className="flex gap-1 px-2 pb-2">
+                    {(["roomy", "tight"] as const).map((choice) => (
+                      <button
+                        key={choice}
+                        type="button"
+                        onClick={() => switchDensity(choice)}
+                        className={`btn !px-3 !py-1 !text-xs ${
+                          density === choice ? "btn-primary" : "btn-secondary"
+                        }`}
+                      >
+                        {choice === "roomy" ? labels.densityRoomy : labels.densityTight}
+                      </button>
                     ))}
                   </div>
                   <div className="my-1 border-t border-brand-line" />

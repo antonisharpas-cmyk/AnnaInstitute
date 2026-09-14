@@ -85,6 +85,13 @@
       "when": 1789370998857,
       "tag": "0011_subowners_templates_invoices",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789393342951,
+      "tag": "0012_dashboard_layout",
+      "breakpoints": true
     }
   ]
 }

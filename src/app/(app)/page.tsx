@@ -1,8 +1,10 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, contracts, expenses, installments, payments, projects, units } from "@/db/schema";
 import { getTranslator } from "@/i18n";
+import { requireUser } from "@/lib/auth";
 import { formatAmount, toCents } from "@/lib/money";
 import { newLeadCount } from "@/lib/leads";
 import { recentActivity } from "@/lib/activity";
@@ -14,6 +16,15 @@ import {
   salesByMonth,
   salesByProject,
 } from "@/lib/reports";
+import {
+  PANEL_NOTE,
+  PANEL_TITLE,
+  WIDTHS,
+  WIDTH_LABEL,
+  widthClass,
+  readLayout,
+  type PanelKey,
+} from "@/lib/dashboard";
 import {
   BarSeries,
   Breakdown,
@@ -29,9 +40,20 @@ import {
   IconContracts,
   IconInvoices,
   IconLeads,
+  IconPlus,
   IconReports,
 } from "@/components/icons";
 import { Attention, Card, Empty, PageHeader, Pill, Stat, Tile } from "@/components/ui";
+import DashboardArrange from "@/components/DashboardArrange";
+import PanelMenu from "@/components/PanelMenu";
+import {
+  hidePanel,
+  movePanel,
+  resetDashboard,
+  saveDashboard,
+  setPanelWidth,
+  showPanel,
+} from "./layoutActions";
 
 const day = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
@@ -70,20 +92,32 @@ function ago(at: Date, locale: string): string {
   return format.format(-Math.round(amount), "year");
 }
 
+/** Only the panels on show are worth a query. */
+const when = <T,>(needed: boolean, run: () => Promise<T>, fallback: T): Promise<T> =>
+  needed ? run() : Promise.resolve(fallback);
+
 /**
- * The screen people leave open all day.
+ * The screen people leave open all day, in the order they put it.
  *
- * It answers three questions in the order they are asked in the morning: what
- * do I need to deal with, what is the business worth this month, and what has
- * everyone else been doing. Everything on it is a link into the record itself,
- * so nothing here is a dead end.
+ * The page is a list of panels rather than a fixed layout: what is on it, how
+ * wide each piece is and which order they come in is stored against the person
+ * signed in, and the Arrange button opens the list that changes it. A panel
+ * that is put away costs nothing, because the queries behind it are only run
+ * when it is on show.
  */
 export default async function DashboardPage() {
+  const user = await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
   const now = new Date();
   const monthStart = startOfMonth();
 
-  const waitingLeads = await newLeadCount();
+  const layout = await readLayout(user.id);
+  const on = new Set(layout.filter((panel) => panel.shown).map((panel) => panel.key));
+  const putAway = layout.filter((panel) => !panel.shown);
+  const onShow = layout.filter((panel) => panel.shown);
+
+  const needUnits = on.has("figures") || on.has("meters") || on.has("stock");
+  const needMoney = on.has("figures") || on.has("meters");
 
   // The charts all read the same twelve months, so the page tells one story.
   const { range: year } = rangeFrom({ period: "12m" });
@@ -123,6 +157,7 @@ export default async function DashboardPage() {
     lateRows,
     billRows,
     draftRows,
+    waitingLeads,
     overdue,
     upcoming,
     recent,
@@ -132,69 +167,121 @@ export default async function DashboardPage() {
     funnel,
     byProject,
   ] = await Promise.all([
-    db
-      .select({
-        total: sql<number>`count(*)::int`,
-        sold: sql<number>`count(*) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
-        available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
-        reserved: sql<number>`count(*) filter (where ${units.status} = 'RESERVED')::int`,
-        onlySold: sql<number>`count(*) filter (where ${units.status} = 'SOLD')::int`,
-        delivered: sql<number>`count(*) filter (where ${units.status} = 'DELIVERED')::int`,
-      })
-      .from(units),
-    db
-      .select({
-        scheduled: sql<string>`coalesce((select sum(i.total_amount) from installments i), 0)`,
-        collected: sql<string>`coalesce((select sum(p.amount) from payments p), 0)`,
-      })
-      .from(units)
-      .limit(1),
-    db
-      .select({
-        collected: sql<string>`coalesce(sum(${payments.amount}), 0)`,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(payments)
-      .where(gte(payments.paidOn, monthStart)),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(installments)
-      .where(and(isNotNull(installments.dueDate), lt(installments.dueDate, now), unpaidHere)),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(expenses)
-      .where(
-        and(
-          isNotNull(expenses.dueDate),
-          lt(expenses.dueDate, now),
-          sql`${expenses.status} <> 'PAID'`,
-        ),
-      ),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(contracts)
-      .where(eq(contracts.status, "DRAFT")),
-    dueQuery()
-      .where(and(isNotNull(installments.dueDate), lt(installments.dueDate, now), unpaidHere))
-      .orderBy(installments.dueDate)
-      .limit(8),
-    dueQuery()
-      .where(and(isNotNull(installments.dueDate), gte(installments.dueDate, now), unpaidHere))
-      .orderBy(installments.dueDate)
-      .limit(8),
-    db
-      .select({ payment: payments, contract: contracts, client: clients, unit: units })
-      .from(payments)
-      .innerJoin(contracts, eq(contracts.id, payments.contractId))
-      .leftJoin(units, eq(units.id, contracts.unitId))
-      .leftJoin(clients, eq(clients.id, contracts.clientId))
-      .orderBy(desc(payments.paidOn))
-      .limit(8),
-    recentActivity(10),
-    cashByMonth(year),
-    salesByMonth(year),
-    leadFunnel(year),
-    salesByProject(),
+    when(
+      needUnits,
+      () =>
+        db
+          .select({
+            total: sql<number>`count(*)::int`,
+            sold: sql<number>`count(*) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
+            available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
+            reserved: sql<number>`count(*) filter (where ${units.status} = 'RESERVED')::int`,
+            onlySold: sql<number>`count(*) filter (where ${units.status} = 'SOLD')::int`,
+            delivered: sql<number>`count(*) filter (where ${units.status} = 'DELIVERED')::int`,
+          })
+          .from(units),
+      [],
+    ),
+    when(
+      needMoney,
+      () =>
+        db
+          .select({
+            scheduled: sql<string>`coalesce((select sum(i.total_amount) from installments i), 0)`,
+            collected: sql<string>`coalesce((select sum(p.amount) from payments p), 0)`,
+          })
+          .from(units)
+          .limit(1),
+      [],
+    ),
+    when(
+      on.has("figures"),
+      () =>
+        db
+          .select({
+            collected: sql<string>`coalesce(sum(${payments.amount}), 0)`,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(payments)
+          .where(gte(payments.paidOn, monthStart)),
+      [],
+    ),
+    when(
+      on.has("figures") || on.has("attention"),
+      () =>
+        db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(installments)
+          .where(and(isNotNull(installments.dueDate), lt(installments.dueDate, now), unpaidHere)),
+      [],
+    ),
+    when(
+      on.has("attention"),
+      () =>
+        db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(expenses)
+          .where(
+            and(
+              isNotNull(expenses.dueDate),
+              lt(expenses.dueDate, now),
+              sql`${expenses.status} <> 'PAID'`,
+            ),
+          ),
+      [],
+    ),
+    when(
+      on.has("attention"),
+      () =>
+        db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(contracts)
+          .where(eq(contracts.status, "DRAFT")),
+      [],
+    ),
+    when(on.has("attention"), () => newLeadCount(), 0),
+    when(
+      on.has("overdue"),
+      () =>
+        dueQuery()
+          .where(and(isNotNull(installments.dueDate), lt(installments.dueDate, now), unpaidHere))
+          .orderBy(installments.dueDate)
+          .limit(8),
+      [],
+    ),
+    when(
+      on.has("upcoming"),
+      () =>
+        dueQuery()
+          .where(and(isNotNull(installments.dueDate), gte(installments.dueDate, now), unpaidHere))
+          .orderBy(installments.dueDate)
+          .limit(8),
+      [],
+    ),
+    when(
+      on.has("payments"),
+      () =>
+        db
+          .select({ payment: payments, contract: contracts, client: clients, unit: units })
+          .from(payments)
+          .innerJoin(contracts, eq(contracts.id, payments.contractId))
+          .leftJoin(units, eq(units.id, contracts.unitId))
+          .leftJoin(clients, eq(clients.id, contracts.clientId))
+          .orderBy(desc(payments.paidOn))
+          .limit(8),
+      [],
+    ),
+    when(on.has("activity"), () => recentActivity(10), []),
+    when(on.has("cash"), () => cashByMonth(year), []),
+    when(on.has("sales"), () => salesByMonth(year), []),
+    when(on.has("funnel"), () => leadFunnel(year), {
+      arrived: 0,
+      answered: 0,
+      qualified: 0,
+      converted: 0,
+      bought: 0,
+    }),
+    when(on.has("projects"), () => salesByProject(), []),
   ]);
 
   const unitStats = unitRows[0];
@@ -260,11 +347,16 @@ export default async function DashboardPage() {
     },
   ].filter((row) => row.count > 0);
 
-  return (
-    <>
-      <PageHeader title={greeting} subtitle={today} />
+  const seeAll = (href: string) => (
+    <Link href={href} className="text-xs font-semibold text-brand-teal-dark">
+      {t("dash.seeAll")}
+    </Link>
+  );
 
-      <div className="mb-5">
+  /** Every panel the dashboard can show, drawn once and placed by the layout. */
+  const panels: Record<PanelKey, ReactNode> = {
+    tiles: (
+      <div>
         <p className="statlabel mb-2">{t("dash.quick")}</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {tiles.map((tile) => (
@@ -272,8 +364,10 @@ export default async function DashboardPage() {
           ))}
         </div>
       </div>
+    ),
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    figures: (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat
           label={t("dash.units")}
           value={String(unitStats?.total ?? 0)}
@@ -302,8 +396,10 @@ export default async function DashboardPage() {
           href="/reports/money"
         />
       </div>
+    ),
 
-      <Card className="mb-4" title={t("dash.collection")}>
+    meters: (
+      <Card title={t("dash.collection")}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Meter
             label={t("reports.collected")}
@@ -322,335 +418,402 @@ export default async function DashboardPage() {
           />
         </div>
       </Card>
+    ),
 
-      <div className="mb-4 grid items-start gap-4 lg:grid-cols-3">
-        <Card
-          title={t("reports.cashflow")}
-          className="lg:col-span-2"
-          action={
-            <Link href="/reports/money" className="text-xs font-semibold text-brand-teal-dark">
-              {t("dash.seeAll")}
-            </Link>
-          }
-        >
-          <BarSeries
-            labels={cash.map((row) => monthLabel(row.month, locale))}
-            series={[
-              {
-                label: t("reports.due"),
-                colour: SERIES.secondary,
-                values: cash.map((row) => row.dueCents),
-                format: shortMoney,
-              },
-              {
-                label: t("reports.paid"),
-                colour: SERIES.primary,
-                values: cash.map((row) => row.paidCents),
-                format: shortMoney,
-              },
-            ]}
-          />
-          <details className="figures">
-            <summary>{t("dash.figures")}</summary>
-            <div className="overflow-x-auto">
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>{t("dash.month")}</th>
-                    <th className="num">{t("reports.due")}</th>
-                    <th className="num">{t("reports.paid")}</th>
+    cash: (
+      <Card title={t("reports.cashflow")} action={seeAll("/reports/money")}>
+        <BarSeries
+          labels={cash.map((row) => monthLabel(row.month, locale))}
+          series={[
+            {
+              label: t("reports.due"),
+              colour: SERIES.secondary,
+              values: cash.map((row) => row.dueCents),
+              format: shortMoney,
+            },
+            {
+              label: t("reports.paid"),
+              colour: SERIES.primary,
+              values: cash.map((row) => row.paidCents),
+              format: shortMoney,
+            },
+          ]}
+        />
+        <details className="figures">
+          <summary>{t("dash.figures")}</summary>
+          <div className="overflow-x-auto">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t("dash.month")}</th>
+                  <th className="num">{t("reports.due")}</th>
+                  <th className="num">{t("reports.paid")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cash.map((row) => (
+                  <tr key={row.month}>
+                    <td>{monthLabel(row.month, locale)}</td>
+                    <td className="num">{formatAmount(row.dueCents, locale)}</td>
+                    <td className="num">{formatAmount(row.paidCents, locale)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {cash.map((row) => (
-                    <tr key={row.month}>
-                      <td>{monthLabel(row.month, locale)}</td>
-                      <td className="num">{formatAmount(row.dueCents, locale)}</td>
-                      <td className="num">{formatAmount(row.paidCents, locale)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </Card>
+    ),
 
-        <Card title={t("dash.stock")}>
-          <StackedBar
-            empty={t("common.none")}
-            segments={[
-              {
-                label: t("units.status.AVAILABLE"),
-                value: unitStats?.available ?? 0,
-                colour: SERIES.primary,
-              },
-              {
-                label: t("units.status.RESERVED"),
-                value: unitStats?.reserved ?? 0,
-                colour: SERIES.secondary,
-              },
-              {
-                label: t("units.status.SOLD"),
-                value: unitStats?.onlySold ?? 0,
-                colour: SERIES.third,
-              },
-              {
-                label: t("units.status.DELIVERED"),
-                value: unitStats?.delivered ?? 0,
-                colour: SERIES.fourth,
-              },
-            ]}
-          />
-        </Card>
-      </div>
+    stock: (
+      <Card title={t("dash.stock")}>
+        <StackedBar
+          empty={t("common.none")}
+          segments={[
+            {
+              label: t("units.status.AVAILABLE"),
+              value: unitStats?.available ?? 0,
+              colour: SERIES.primary,
+            },
+            {
+              label: t("units.status.RESERVED"),
+              value: unitStats?.reserved ?? 0,
+              colour: SERIES.secondary,
+            },
+            {
+              label: t("units.status.SOLD"),
+              value: unitStats?.onlySold ?? 0,
+              colour: SERIES.third,
+            },
+            {
+              label: t("units.status.DELIVERED"),
+              value: unitStats?.delivered ?? 0,
+              colour: SERIES.fourth,
+            },
+          ]}
+        />
+      </Card>
+    ),
 
-      <div className="mb-4 grid items-start gap-4 lg:grid-cols-4">
-        <Card
-          className="lg:col-span-2"
-          title={t("reports.monthlySales")}
-          action={
-            <Link href="/reports/sales" className="text-xs font-semibold text-brand-teal-dark">
-              {t("dash.seeAll")}
-            </Link>
-          }
-        >
-          <BarSeries
-            height={160}
-            minWidth={420}
-            labels={sales.map((row) => monthLabel(row.month, locale))}
-            series={[
-              {
-                label: t("reports.signed"),
-                colour: SERIES.third,
-                values: sales.map((row) => row.count),
-                format: (value) => String(Math.round(value)),
-              },
-            ]}
-          />
-        </Card>
+    sales: (
+      <Card title={t("reports.monthlySales")} action={seeAll("/reports/sales")}>
+        <BarSeries
+          height={160}
+          minWidth={420}
+          labels={sales.map((row) => monthLabel(row.month, locale))}
+          series={[
+            {
+              label: t("reports.signed"),
+              colour: SERIES.third,
+              values: sales.map((row) => row.count),
+              format: (value) => String(Math.round(value)),
+            },
+          ]}
+        />
+      </Card>
+    ),
 
-        <Card
-          title={t("reports.funnel")}
-          action={
-            <Link href="/reports/leads" className="text-xs font-semibold text-brand-teal-dark">
-              {t("dash.seeAll")}
-            </Link>
-          }
-        >
-          <Funnel
-            colour={SERIES.secondary}
-            steps={[
-              { label: t("reports.funnel.arrived"), value: funnel.arrived },
-              { label: t("reports.funnel.answered"), value: funnel.answered },
-              { label: t("reports.funnel.qualified"), value: funnel.qualified },
-              { label: t("reports.funnel.converted"), value: funnel.converted },
-            ]}
-          />
-        </Card>
+    funnel: (
+      <Card title={t("reports.funnel")} action={seeAll("/reports/leads")}>
+        <Funnel
+          colour={SERIES.secondary}
+          steps={[
+            { label: t("reports.funnel.arrived"), value: funnel.arrived },
+            { label: t("reports.funnel.answered"), value: funnel.answered },
+            { label: t("reports.funnel.qualified"), value: funnel.qualified },
+            { label: t("reports.funnel.converted"), value: funnel.converted },
+          ]}
+        />
+      </Card>
+    ),
 
-        <Card
-          title={t("dash.byProject")}
-          action={
-            <Link href="/reports/portfolio" className="text-xs font-semibold text-brand-teal-dark">
-              {t("dash.seeAll")}
-            </Link>
-          }
-        >
-          <Breakdown
-            empty={t("common.none")}
-            colour={SERIES.fourth}
-            rows={stocked.map((row) => ({
-              label: row.project.name,
-              value: row.sold,
-              display: `${row.sold} / ${row.total}`,
-              note: `${Math.round(row.sellThrough * 100)}%`,
-              href: `/projects/${row.project.id}`,
-            }))}
-          />
-        </Card>
-      </div>
+    projects: (
+      <Card title={t("dash.byProject")} action={seeAll("/reports/portfolio")}>
+        <Breakdown
+          empty={t("common.none")}
+          colour={SERIES.fourth}
+          rows={stocked.map((row) => ({
+            label: row.project.name,
+            value: row.sold,
+            display: `${row.sold} / ${row.total}`,
+            note: `${Math.round(row.sellThrough * 100)}%`,
+            href: `/projects/${row.project.id}`,
+          }))}
+        />
+      </Card>
+    ),
 
-      <div className="mb-4 grid items-start gap-4 lg:grid-cols-3">
-        <Card title={t("dash.attention")}>
-          {attention.length === 0 ? (
-            <Empty message={t("dash.allClear")} />
-          ) : (
-            <div className="grid gap-2">
-              {attention.map((row) => (
-                <Attention
-                  key={row.href + row.label}
-                  href={row.href}
-                  label={row.label}
-                  count={row.count}
-                  tone={row.tone}
-                />
-              ))}
-            </div>
-          )}
-        </Card>
+    attention: (
+      <Card title={t("dash.attention")}>
+        {attention.length === 0 ? (
+          <Empty message={t("dash.allClear")} />
+        ) : (
+          <div className="grid gap-2">
+            {attention.map((row) => (
+              <Attention
+                key={row.href + row.label}
+                href={row.href}
+                label={row.label}
+                count={row.count}
+                tone={row.tone}
+              />
+            ))}
+          </div>
+        )}
+      </Card>
+    ),
 
-        <Card title={t("dash.activity")} className="lg:col-span-2">
-          {activity.length === 0 ? (
-            <Empty message={t("act.nothing")} />
-          ) : (
-            <ul className="feed">
-              {activity.map((line) => (
-                <li key={line.id}>
-                  <span className="font-semibold">{line.who}</span> {t(line.verb)}
-                  {line.subject ? (
-                    line.href ? (
-                      <>
-                        {" "}
-                        <Link href={line.href} className="text-brand-teal-dark hover:underline">
-                          {t(line.subject)}
-                        </Link>
-                      </>
-                    ) : (
-                      ` ${t(line.subject)}`
-                    )
-                  ) : null}
-                  <span className="when"> . {ago(line.at, locale)}</span>
-                  {line.detail ? <div className="when truncate">{line.detail}</div> : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+    activity: (
+      <Card title={t("dash.activity")}>
+        {activity.length === 0 ? (
+          <Empty message={t("act.nothing")} />
+        ) : (
+          <ul className="feed">
+            {activity.map((line) => (
+              <li key={line.id}>
+                <span className="font-semibold">{line.who}</span> {t(line.verb)}
+                {line.subject ? (
+                  line.href ? (
+                    <>
+                      {" "}
+                      <Link href={line.href} className="text-brand-teal-dark hover:underline">
+                        {t(line.subject)}
+                      </Link>
+                    </>
+                  ) : (
+                    ` ${t(line.subject)}`
+                  )
+                ) : null}
+                <span className="when"> . {ago(line.at, locale)}</span>
+                {line.detail ? <div className="when truncate">{line.detail}</div> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    ),
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Card
-          title={t("dash.overdue")}
-          flush
-          action={
-            <Link href="/reports/money" className="text-xs font-semibold text-brand-teal-dark">
-              {t("dash.seeAll")}
-            </Link>
-          }
-        >
-          {overdue.length === 0 ? (
-            <Empty message={t("common.none")} />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>{t("contracts.due")}</th>
-                    <th>{t("contracts.client")}</th>
-                    <th className="num">{t("common.total")}</th>
+    overdue: (
+      <Card title={t("dash.overdue")} flush action={seeAll("/reports/money")}>
+        {overdue.length === 0 ? (
+          <Empty message={t("common.none")} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t("contracts.due")}</th>
+                  <th>{t("contracts.client")}</th>
+                  <th className="num">{t("common.total")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overdue.map((r) => (
+                  <tr key={r.installment.id}>
+                    <td>
+                      <Pill tone="bad">{day(r.installment.dueDate)}</Pill>
+                    </td>
+                    <td>
+                      <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
+                        {r.client
+                          ? `${r.client.lastName} ${r.client.firstName}`
+                          : r.contract.reference}
+                      </Link>
+                      <div className="text-xs text-brand-graphite/60">
+                        {r.project?.name} {r.unit?.code} . {r.installment.label}
+                      </div>
+                    </td>
+                    <td className="num">
+                      {formatAmount(toCents(r.installment.totalAmount), locale)}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {overdue.map((r) => (
-                    <tr key={r.installment.id}>
-                      <td>
-                        <Pill tone="bad">{day(r.installment.dueDate)}</Pill>
-                      </td>
-                      <td>
-                        <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
-                          {r.client
-                            ? `${r.client.lastName} ${r.client.firstName}`
-                            : r.contract.reference}
-                        </Link>
-                        <div className="text-xs text-brand-graphite/60">
-                          {r.project?.name} {r.unit?.code} . {r.installment.label}
-                        </div>
-                      </td>
-                      <td className="num">
-                        {formatAmount(toCents(r.installment.totalAmount), locale)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    ),
 
-        <Card title={t("dash.nextPayments")} flush>
-          {upcoming.length === 0 ? (
-            <Empty message={t("common.none")} />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>{t("contracts.due")}</th>
-                    <th>{t("contracts.client")}</th>
-                    <th className="num">{t("common.total")}</th>
+    upcoming: (
+      <Card title={t("dash.nextPayments")} flush>
+        {upcoming.length === 0 ? (
+          <Empty message={t("common.none")} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t("contracts.due")}</th>
+                  <th>{t("contracts.client")}</th>
+                  <th className="num">{t("common.total")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {upcoming.map((r) => (
+                  <tr key={r.installment.id}>
+                    <td>
+                      {soon(r.installment.dueDate) ? (
+                        <Pill tone="warn">{day(r.installment.dueDate)}</Pill>
+                      ) : (
+                        day(r.installment.dueDate)
+                      )}
+                    </td>
+                    <td>
+                      <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
+                        {r.client
+                          ? `${r.client.lastName} ${r.client.firstName}`
+                          : r.contract.reference}
+                      </Link>
+                      <div className="text-xs text-brand-graphite/60">
+                        {r.project?.name} {r.unit?.code} . {r.installment.label}
+                      </div>
+                    </td>
+                    <td className="num">
+                      {formatAmount(toCents(r.installment.totalAmount), locale)}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {upcoming.map((r) => (
-                    <tr key={r.installment.id}>
-                      <td>
-                        {soon(r.installment.dueDate) ? (
-                          <Pill tone="warn">{day(r.installment.dueDate)}</Pill>
-                        ) : (
-                          day(r.installment.dueDate)
-                        )}
-                      </td>
-                      <td>
-                        <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
-                          {r.client
-                            ? `${r.client.lastName} ${r.client.firstName}`
-                            : r.contract.reference}
-                        </Link>
-                        <div className="text-xs text-brand-graphite/60">
-                          {r.project?.name} {r.unit?.code} . {r.installment.label}
-                        </div>
-                      </td>
-                      <td className="num">
-                        {formatAmount(toCents(r.installment.totalAmount), locale)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    ),
 
-        <Card title={t("dash.recentPayments")} className="lg:col-span-2" flush>
-          {recent.length === 0 ? (
-            <Empty message={t("common.none")} />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>{t("common.date")}</th>
-                    <th>{t("contracts.client")}</th>
-                    <th>{t("contracts.reference")}</th>
-                    <th>{t("contracts.receipt")}</th>
-                    <th className="num">{t("contracts.amount")}</th>
+    payments: (
+      <Card title={t("dash.recentPayments")} flush>
+        {recent.length === 0 ? (
+          <Empty message={t("common.none")} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t("common.date")}</th>
+                  <th>{t("contracts.client")}</th>
+                  <th>{t("contracts.reference")}</th>
+                  <th>{t("contracts.receipt")}</th>
+                  <th className="num">{t("contracts.amount")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((r) => (
+                  <tr key={r.payment.id}>
+                    <td>{day(r.payment.paidOn)}</td>
+                    <td>
+                      {r.client ? `${r.client.lastName} ${r.client.firstName}` : ""}
+                      {r.unit ? (
+                        <div className="text-xs text-brand-graphite/60">{r.unit.code}</div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
+                        {r.contract.reference}
+                      </Link>
+                    </td>
+                    <td>{r.payment.receiptNumber ?? ""}</td>
+                    <td className="num">{formatAmount(toCents(r.payment.amount), locale)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {recent.map((r) => (
-                    <tr key={r.payment.id}>
-                      <td>{day(r.payment.paidOn)}</td>
-                      <td>
-                        {r.client ? `${r.client.lastName} ${r.client.firstName}` : ""}
-                        {r.unit ? (
-                          <div className="text-xs text-brand-graphite/60">{r.unit.code}</div>
-                        ) : null}
-                      </td>
-                      <td>
-                        <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
-                          {r.contract.reference}
-                        </Link>
-                      </td>
-                      <td>{r.payment.receiptNumber ?? ""}</td>
-                      <td className="num">{formatAmount(toCents(r.payment.amount), locale)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    ),
+  };
+
+  const names = Object.fromEntries(
+    layout.map((panel) => [panel.key, t(PANEL_TITLE[panel.key])]),
+  ) as Record<string, string>;
+  const notes = Object.fromEntries(
+    layout.map((panel) => [panel.key, t(PANEL_NOTE[panel.key])]),
+  ) as Record<string, string>;
+  const widths = Object.fromEntries(
+    WIDTHS.map((width) => [String(width), t(WIDTH_LABEL[width])]),
+  ) as Record<string, string>;
+
+  return (
+    <>
+      <PageHeader
+        title={greeting}
+        subtitle={today}
+        action={
+          <DashboardArrange
+            layout={layout}
+            widthChoices={WIDTHS}
+            save={saveDashboard}
+            reset={resetDashboard}
+            labels={{
+              arrange: t("panel.arrange"),
+              title: t("panel.arrangeTitle"),
+              note: t("panel.arrangeNote"),
+              save: t("panel.done"),
+              close: t("panel.close"),
+              reset: t("panel.reset"),
+              up: t("panel.up"),
+              down: t("panel.down"),
+              show: t("panel.show"),
+              hide: t("panel.hide"),
+              width: t("panel.width"),
+              hidden: t("panel.hidden"),
+              onShow: t("panel.onShow"),
+              dragHint: t("panel.dragHint"),
+              preview: t("panel.preview"),
+              names,
+              notes,
+              widths,
+            }}
+          />
+        }
+      />
+
+      {on.size === 0 ? (
+        <Card>
+          <Empty message={t("panel.nothing")} />
         </Card>
-      </div>
+      ) : (
+        <div className="grid items-start gap-4 lg:grid-cols-6">
+          {onShow.map((panel, index) => (
+            <div key={panel.key} className={`panel-wrap min-w-0 ${widthClass(panel.width)}`}>
+              <PanelMenu
+                panelKey={panel.key}
+                width={panel.width}
+                first={index === 0}
+                last={index === onShow.length - 1}
+                widths={[...WIDTHS]}
+                move={movePanel}
+                hide={hidePanel}
+                setWidth={setPanelWidth}
+                labels={{
+                  handle: t("panel.handle"),
+                  up: t("panel.up"),
+                  down: t("panel.down"),
+                  hide: t("panel.hide"),
+                  width: t("panel.width"),
+                  widths,
+                }}
+              />
+              {panels[panel.key]}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {putAway.length > 0 ? (
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <span className="statlabel">{t("panel.hidden")}</span>
+          {putAway.map((panel) => (
+            <form key={panel.key} action={showPanel.bind(null, panel.key)}>
+              <button type="submit" className="putaway" title={t("panel.show")}>
+                <IconPlus size={13} />
+                {t(PANEL_TITLE[panel.key])}
+              </button>
+            </form>
+          ))}
+        </div>
+      ) : null}
     </>
   );
 }

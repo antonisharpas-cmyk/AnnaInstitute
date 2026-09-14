@@ -170,6 +170,42 @@ export const IconClock = (p: Props) => (
   </Svg>
 );
 
+export const IconGrip = (p: Props) => (
+  <Svg {...p}>
+    <path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01" strokeWidth="2.4" />
+  </Svg>
+);
+
+export const IconUp = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 19V5M6 11l6-6 6 6" />
+  </Svg>
+);
+
+export const IconDown = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 5v14M6 13l6 6 6-6" />
+  </Svg>
+);
+
+export const IconEye = (p: Props) => (
+  <Svg {...p}>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6" />
+  </Svg>
+);
+
+export const IconEyeOff = (p: Props) => (
+  <Svg {...p}>
+    <path d="M4 4l16 16M9.9 5.8A8.6 8.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 0 1-2.6 3.3M6.6 8.2A16 16 0 0 0 2.5 12S6 18.5 12 18.5c.8 0 1.5-.1 2.2-.3M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+  </Svg>
+);
+
+export const IconLayout = (p: Props) => (
+  <Svg {...p}>
+    <path d="M3 4h18v16H3zM3 9h18M9 9v11" />
+  </Svg>
+);
+
 /** The icon each section of the CRM wears, keyed by its address. */
 export const SECTION_ICONS: Record<string, (p: Props) => React.ReactElement> = {
   "/": IconDashboard,

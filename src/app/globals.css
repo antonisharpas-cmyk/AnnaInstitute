@@ -1026,3 +1026,226 @@ table.data tbody td.ctr {
 .figures > div {
   margin-top: 0.5rem;
 }
+
+/* ---------------------------------------------------------------------------
+   ARRANGING THE DASHBOARD
+
+   The list where somebody puts their own screen in order. The row lifts a
+   little while it is being dragged and the row it is about to land on shows a
+   line above it, which is the whole of the feedback: no animation to wait for.
+   --------------------------------------------------------------------------- */
+
+.arrange {
+  width: min(46rem, 100%);
+  max-height: min(80vh, 44rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-brand-paper);
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+
+.arrange-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.5rem;
+  list-style: none;
+  counter-reset: none;
+}
+
+.arrange-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: var(--color-brand-paper);
+}
+
+.arrange-row:hover {
+  background: var(--color-brand-raised);
+}
+
+.arrange-row[data-dragging="true"] {
+  opacity: 0.45;
+  border-color: var(--color-brand-teal);
+}
+
+.arrange-row[data-over="true"] {
+  box-shadow: inset 0 2px 0 0 var(--color-brand-teal);
+}
+
+.arrange-row[data-off="true"] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-brand-raised),
+    var(--color-brand-raised) 6px,
+    var(--color-brand-paper) 6px,
+    var(--color-brand-paper) 12px
+  );
+}
+
+.arrange-row[data-off="true"] .arrange-grip,
+.arrange-row[data-off="true"] span {
+  color: var(--label-ink);
+}
+
+.arrange-grip {
+  cursor: grab;
+  color: var(--label-ink);
+  padding: 0.25rem 0.1rem;
+}
+
+.arrange-grip:active {
+  cursor: grabbing;
+}
+
+.arrange-row .iconbtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* A panel put away, offered back at the foot of the dashboard. */
+.putaway {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px dashed var(--field-border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--color-brand-graphite);
+  background: var(--color-brand-paper);
+}
+
+.putaway:hover {
+  border-style: solid;
+  border-color: var(--color-brand-teal);
+  color: var(--color-brand-ink);
+}
+
+/* ---------------------------------------------------------------------------
+   TIGHT ROWS
+
+   The same screens with less air, for somebody reading long tables all day.
+   Nothing changes size except the padding, so no layout moves sideways.
+   --------------------------------------------------------------------------- */
+
+[data-density="tight"] table.data thead th {
+  padding-block: 0.3rem;
+}
+
+[data-density="tight"] table.data tbody td,
+[data-density="tight"] table.data tfoot td {
+  padding-block: 0.32rem;
+}
+
+[data-density="tight"] .card > div {
+  padding: 0.75rem;
+}
+
+[data-density="tight"] .card > header {
+  padding-block: 0.4rem;
+}
+
+[data-density="tight"] .tile {
+  padding: 0.5rem 0.65rem;
+}
+
+[data-density="tight"] .statcard {
+  padding: 0.65rem 0.8rem;
+}
+
+[data-density="tight"] .statvalue {
+  font-size: 1.3rem;
+}
+
+[data-density="tight"] .feed li {
+  padding-block: 0.25rem;
+}
+
+[data-density="tight"] .attention {
+  padding: 0.45rem 0.7rem;
+}
+
+/* The map of the arrangement, which redraws as a row is moved. */
+.arrange-preview {
+  padding: 0.75rem 1rem 0.5rem;
+  border-bottom: 1px solid var(--color-brand-line);
+  background: var(--color-brand-raised);
+}
+
+.preview-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.6rem;
+  padding: 0 0.35rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--teal-pill-border);
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
+  font-size: 0.625rem;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.preview-block[data-lit="true"] {
+  background: var(--color-brand-teal);
+  border-color: var(--color-brand-teal);
+  color: var(--on-teal);
+}
+
+/* The handle on a dashboard panel, and the small menu it opens. */
+.panel-wrap {
+  position: relative;
+}
+
+.panel-handle {
+  position: absolute;
+  top: -0.6rem;
+  left: 0.55rem;
+  z-index: 20;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.panel-wrap:hover .panel-handle,
+.panel-wrap:focus-within .panel-handle,
+.panel-handle[data-open="true"] {
+  opacity: 1;
+}
+
+.panel-grip {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.2rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--color-brand-line);
+  background: var(--color-brand-paper);
+  color: var(--label-ink);
+  box-shadow: var(--shadow-raised);
+  cursor: grab;
+}
+
+.panel-grip:hover {
+  border-color: var(--color-brand-teal);
+  color: var(--color-brand-teal-dark);
+}
+
+.panel-menu {
+  position: absolute;
+  top: 1.6rem;
+  left: 0;
+  width: 13.5rem;
+}
+
+.panel-menu .menuitem:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
