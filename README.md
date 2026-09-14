@@ -23,6 +23,8 @@ Built by ErgonSite. First installation: One Eleven, Larnaca.
 * Change requests per contract, with the PDF attached, a cost and a status.
 * Agents with a commission rate, commission generated per contract, commission
   payments recorded, and a running balance of what is still owed.
+* Reports: sales, money, commission, leads, marketing, costs and the portfolio,
+  each over a period you choose and each downloadable as a CSV.
 * Leads from the website, posted straight into the CRM by the site itself, kept
   with the page and the campaign they came from, and turned into a client record
   in one step when the office is ready.
@@ -54,6 +56,38 @@ Built by ErgonSite. First installation: One Eleven, Larnaca.
   can expire and can be revoked.
 * Every message is recorded per recipient with the provider reference or the
   error, so there is proof of what went where.
+
+## Reports
+
+Every figure in the reports section is worked out from the records themselves at
+the moment the page is opened. There is no summary table to rebuild and nothing
+to go stale, so a report can never disagree with the page its numbers came from.
+
+Seven reports, each with its own period and its own CSV:
+
+* **Sales**: contracts a month, what they signed for, development by development
+  with sell through and price per square metre, and a ranking by agent.
+* **Money**: what the schedules say is due against what actually came in, the
+  ageing of every unpaid installment in 30 day steps, the oldest unpaid lines by
+  name, and what is due over the next twelve months.
+* **Agents and commission**: sales, commission generated, paid and still owed.
+* **Leads**: enquiries a month, where they came from, and the funnel from enquiry
+  to signed contract.
+* **Marketing**: who can be written to, what went out per channel and what
+  happened to it, campaign by campaign.
+* **Costs**: billed against paid by month, and by category.
+* **The portfolio**: stock by development and what each partner's share is worth.
+
+The charts are SVG drawn on the server: no charting library, no client side
+JavaScript, so they print and cannot fail to load. The two series colours were
+checked against the page background for colour blindness rather than picked by
+eye, the scale is written down the side, and every figure appears again in a
+table or beside its own bar, so nothing is readable only by colour.
+
+`npm run db:demo` writes a year of sample sales, enquiries and invoices so the
+reports can be seen with something in them. Everything it writes is marked
+SAMPLE or (sample) so it can be found and deleted again. Never run it on the
+office database once that is live.
 
 ## Deliberately not here
 
@@ -284,7 +318,8 @@ No access to their website, their hosting or their scripts is required.
 | `npm run db:check` | say why the database is not working, in words |
 | `npm run db:generate` | write a new SQL migration after changing the schema |
 | `npm run db:migrate` | apply migrations |
-| `npm run db:seed` | create the administrator and the sample data |
+| `npm run db:seed` | create the administrator, the developments and one demonstration contract |
+| `npm run db:demo` | write a year of sample sales, enquiries and invoices, so the reports have something in them |
 | `npm run db:studio` | browse the data in a local UI |
 
 ## How it is put together

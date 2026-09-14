@@ -89,7 +89,14 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PageHeader title={t("nav.dashboard")} />
+      <PageHeader
+        title={t("nav.dashboard")}
+        action={
+          <Link href="/reports" className="btn btn-secondary">
+            {t("nav.reports")}
+          </Link>
+        }
+      />
 
       {waitingLeads > 0 ? (
         <div className="mb-4">

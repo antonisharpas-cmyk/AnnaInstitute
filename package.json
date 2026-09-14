@@ -15,7 +15,8 @@
     "db:migrate": "node --env-file=.env.local --import tsx scripts/migrate.ts",
     "db:migrate:ci": "tsx scripts/migrate.ts",
     "db:seed:ci": "tsx scripts/seed.ts",
-    "db:check": "node --env-file=.env.local --import tsx scripts/check-db.ts"
+    "db:check": "node --env-file=.env.local --import tsx scripts/check-db.ts",
+    "db:demo": "node --env-file=.env.local --import tsx scripts/demo.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
