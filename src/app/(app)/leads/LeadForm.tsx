@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import SubmitButton from "@/components/SubmitButton";
 
 /**
  * A lead typed in by hand.
@@ -119,9 +120,7 @@ export default function LeadForm({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button type="submit" className="btn btn-primary">
-          {labels.save}
-        </button>
+        <SubmitButton>{labels.save}</SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">
           {labels.cancel}
         </Link>

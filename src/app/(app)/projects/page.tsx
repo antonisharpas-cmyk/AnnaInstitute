@@ -116,7 +116,9 @@ export default async function ProjectsPage({
 
         <div className="mt-4 overflow-x-auto">
           {rows.length === 0 ? (
-            <Empty message={query || status || company ? t("projects.noneFound") : t("common.none")} />
+            <Empty
+              message={query || status || company ? t("projects.noneFound") : t("common.none")}
+            />
           ) : (
             <table className="data">
               <thead>

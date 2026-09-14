@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { clients as clientsTable } from "@/db/schema";
 import type { MessageKey } from "@/i18n";
+import SubmitButton from "@/components/SubmitButton";
 
 type Client = typeof clientsTable.$inferSelect;
 
@@ -143,9 +144,7 @@ export default function ClientForm({
       </div>
 
       <div className="flex flex-wrap gap-2 border-t border-brand-line pt-4">
-        <button type="submit" className="btn btn-primary">
-          {t("common.save")}
-        </button>
+        <SubmitButton>{t("common.save")}</SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">
           {t("common.cancel")}
         </Link>

@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { companies, projects, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
 import { readUploadFields, removeDocument, storeDocuments } from "@/lib/uploads";
 
@@ -304,6 +305,7 @@ export async function markProjectChecked(projectId: string) {
     userEmail: user.email,
   });
 
+  await flash("said.checked");
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");
 }

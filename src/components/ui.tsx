@@ -1,6 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+/**
+ * The handful of shapes every screen is built from.
+ *
+ * They hold no colours of their own: each one reads the brand variables in
+ * globals.css, which is why the night theme needs nothing changed here.
+ */
+
 export function PageHeader({
   title,
   subtitle,
@@ -11,12 +18,14 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-xl font-semibold text-brand-900">{title}</h1>
-        {subtitle ? <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p> : null}
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="truncate text-[1.35rem] font-semibold tracking-tight text-brand-ink">
+          {title}
+        </h1>
+        {subtitle ? <p className="mt-0.5 text-sm text-brand-graphite/75">{subtitle}</p> : null}
       </div>
-      {action}
+      {action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
     </div>
   );
 }
@@ -26,37 +35,77 @@ export function Card({
   action,
   children,
   className = "",
+  flush = false,
 }: {
   title?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Let a table reach the edges of the card instead of sitting in padding. */
+  flush?: boolean;
 }) {
   return (
     <section className={`card ${className}`}>
       {title ? (
-        <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600">{title}</h2>
+        <header className="flex items-center justify-between gap-3 border-b border-brand-line px-4 py-2.5">
+          <h2 className="text-[0.6875rem] font-bold uppercase tracking-[0.06em] text-brand-graphite/80">
+            {title}
+          </h2>
           {action}
         </header>
       ) : null}
-      <div className="p-4">{children}</div>
+      <div className={flush ? "" : "p-4"}>{children}</div>
     </section>
   );
 }
 
-export function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+export function Stat({
+  label,
+  value,
+  hint,
+  tone = "teal",
+  href,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "teal" | "good" | "warn" | "bad";
+  href?: string;
+}) {
+  const body = (
+    <>
+      <div className="statlabel">{label}</div>
+      <div className="statvalue">{value}</div>
+      {hint ? <div className="stathint">{hint}</div> : null}
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        data-tone={tone}
+        className="card statcard transition hover:border-brand-teal"
+      >
+        {body}
+      </Link>
+    );
+  }
+
   return (
-    <div className="card p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums text-brand-900">{value}</div>
-      {hint ? <div className="mt-0.5 text-xs text-slate-500">{hint}</div> : null}
+    <div data-tone={tone} className="card statcard">
+      {body}
     </div>
   );
 }
 
-export function Empty({ message }: { message: string }) {
-  return <p className="py-6 text-center text-sm text-slate-400">{message}</p>;
+export function Empty({ message, action }: { message: string; action?: ReactNode }) {
+  return (
+    <div className="py-8 text-center">
+      <p className="text-sm text-brand-graphite/60">{message}</p>
+      {action ? <div className="mt-3 flex justify-center">{action}</div> : null}
+    </div>
+  );
 }
 
 export function Pill({
@@ -78,8 +127,47 @@ export function Pill({
 
 export function BackLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} className="text-sm text-slate-500 hover:text-brand-900">
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1 text-sm text-brand-graphite/75 hover:text-brand-ink"
+    >
+      <span aria-hidden="true">&larr;</span>
       {label}
+    </Link>
+  );
+}
+
+/** A button sized tile for the things people press first thing in the morning. */
+export function Tile({ href, label, icon }: { href: string; label: string; icon?: ReactNode }) {
+  return (
+    <Link href={href} className="tile">
+      {icon ? <span className="tile-mark">{icon}</span> : null}
+      <span className="min-w-0 truncate">{label}</span>
+    </Link>
+  );
+}
+
+/** One line of the attention strip: a count, what it is, and where to see it. */
+export function Attention({
+  href,
+  label,
+  count,
+  tone = "neutral",
+}: {
+  href: string;
+  label: string;
+  count: number;
+  tone?: "neutral" | "warn" | "bad";
+}) {
+  return (
+    <Link href={href} className="attention" data-tone={tone}>
+      <span className="min-w-0">
+        <span className="attention-count">{count}</span>{" "}
+        <span className="text-brand-graphite">{label}</span>
+      </span>
+      <span aria-hidden="true" className="text-brand-graphite/60">
+        &rarr;
+      </span>
     </Link>
   );
 }

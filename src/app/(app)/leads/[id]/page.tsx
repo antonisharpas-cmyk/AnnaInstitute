@@ -182,7 +182,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                   />
                 </div>
                 <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" name="optIn" defaultChecked={lead.consent} className="mt-0.5" />
+                  <input
+                    type="checkbox"
+                    name="optIn"
+                    defaultChecked={lead.consent}
+                    className="mt-0.5"
+                  />
                   <span>{t("clients.marketingOn")}</span>
                 </label>
                 <p className="text-xs text-brand-graphite/60">{t("leads.consentNote")}</p>

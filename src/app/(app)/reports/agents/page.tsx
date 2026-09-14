@@ -99,9 +99,13 @@ export default async function AgentsReportPage({
                       >
                         {row.agent.name}
                       </Link>
-                      <div className="text-xs text-brand-graphite/60">{row.agent.company ?? ""}</div>
+                      <div className="text-xs text-brand-graphite/60">
+                        {row.agent.company ?? ""}
+                      </div>
                     </td>
-                    <td className="ctr">{formatPercent(Number(row.agent.commissionRate), locale)}</td>
+                    <td className="ctr">
+                      {formatPercent(Number(row.agent.commissionRate), locale)}
+                    </td>
                     <td className="ctr">{row.sales}</td>
                     <td className="ctr">{money(row.valueCents)}</td>
                     <td className="ctr">{money(row.generatedCents)}</td>

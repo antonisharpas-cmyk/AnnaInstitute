@@ -300,9 +300,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
           {filesLink ? (
             <Card title={t("campaigns.filesLink")}>
-              <p className="mb-2 text-xs text-brand-graphite/60">
-                {t("campaigns.filesLinkHint")}
-              </p>
+              <p className="mb-2 text-xs text-brand-graphite/60">{t("campaigns.filesLinkHint")}</p>
               <a
                 href={filesLink}
                 target="_blank"

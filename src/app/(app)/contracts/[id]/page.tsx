@@ -27,6 +27,7 @@ import {
   updateLine,
   uploadContractDocuments,
 } from "../actions";
+import SubmitButton from "@/components/SubmitButton";
 
 const dateFor = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
@@ -242,7 +243,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                           <input
                             name="label"
                             list="stage-choices"
-                            defaultValue={locale === "el" ? (line.labelEl ?? line.label) : line.label}
+                            defaultValue={
+                              locale === "el" ? (line.labelEl ?? line.label) : line.label
+                            }
                             className="input !w-56 !py-1 !text-xs"
                             aria-label={t("contracts.stage")}
                           />
@@ -403,9 +406,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 />
               </div>
               <div className="flex items-end">
-                <button type="submit" className="btn btn-primary">
-                  {t("common.save")}
-                </button>
+                <SubmitButton>{t("common.save")}</SubmitButton>
               </div>
             </form>
           </Disclosure>
@@ -574,9 +575,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 />
               </div>
               <div className="flex items-end sm:col-span-2">
-                <button type="submit" className="btn btn-primary">
-                  {t("common.add")}
-                </button>
+                <SubmitButton>{t("common.add")}</SubmitButton>
               </div>
             </form>
           </Disclosure>

@@ -8,11 +8,23 @@ import Disclosure from "@/components/Disclosure";
 import { killApiKey, makeApiKey } from "../actions";
 
 const FIELDS: { name: string; also: string; what: string }[] = [
-  { name: "email", also: "your-email, mail", what: "The address they gave. Email or phone is required." },
+  {
+    name: "email",
+    also: "your-email, mail",
+    what: "The address they gave. Email or phone is required.",
+  },
   { name: "phone", also: "tel, mobile, your-phone", what: "Their number, in any format." },
-  { name: "name", also: "firstName and lastName, your-name", what: "One box or two, both are read." },
+  {
+    name: "name",
+    also: "firstName and lastName, your-name",
+    what: "One box or two, both are read.",
+  },
   { name: "message", also: "comments, your-message", what: "What they wrote." },
-  { name: "project", also: "development, building", what: "Matched against our developments by name." },
+  {
+    name: "project",
+    also: "development, building",
+    what: "Matched against our developments by name.",
+  },
   { name: "unit", also: "apartment", what: "The apartment code, when the form knows it." },
   { name: "budget", also: "priceRange", what: "Whatever the form offers." },
   { name: "language", also: "locale", what: "The language of the page, en or el." },
@@ -27,8 +39,15 @@ const FIELDS: { name: string; also: string; what: string }[] = [
 
 const ANSWERS: { code: string; meaning: string }[] = [
   { code: "201", meaning: "The lead was stored. The body carries its id." },
-  { code: "200 with duplicate true", meaning: "The same person already wrote in the last ten minutes. Nothing was stored twice, so a retry is safe." },
-  { code: "400", meaning: "The body was not readable, or it carried neither an email nor a phone." },
+  {
+    code: "200 with duplicate true",
+    meaning:
+      "The same person already wrote in the last ten minutes. Nothing was stored twice, so a retry is safe.",
+  },
+  {
+    code: "400",
+    meaning: "The body was not readable, or it carried neither an email nor a phone.",
+  },
   { code: "401", meaning: "The key is missing, wrong, or revoked." },
   { code: "405", meaning: "Something other than POST was used." },
   { code: "413", meaning: "The body is over 64 KB." },
@@ -93,8 +112,8 @@ export default async function LeadsApiPage({
           <p className="mt-1 text-xs text-brand-graphite/60">{t("leads.endpointNote")}</p>
           <p className="mt-3 text-xs text-brand-graphite/60">
             POST only, with the key in an X-Api-Key header and a JSON body. Server to server: the
-            key belongs on the website server itself and must never appear in page JavaScript,
-            which is why this endpoint answers no browser calls.
+            key belongs on the website server itself and must never appear in page JavaScript, which
+            is why this endpoint answers no browser calls.
           </p>
           <pre className="mt-3 overflow-x-auto rounded border border-brand-line bg-brand-surface p-3 font-mono text-xs">
             {sample}
@@ -149,7 +168,9 @@ export default async function LeadsApiPage({
                       <td className="ctr">{k.useCount}</td>
                       <td className="text-xs">
                         {k.lastUsedAt
-                          ? new Date(k.lastUsedAt).toLocaleString(locale === "el" ? "el-GR" : "en-GB")
+                          ? new Date(k.lastUsedAt).toLocaleString(
+                              locale === "el" ? "el-GR" : "en-GB",
+                            )
                           : t("leads.never")}
                       </td>
                       <td>
@@ -160,7 +181,10 @@ export default async function LeadsApiPage({
                       <td>
                         {k.revokedAt ? null : (
                           <form action={killApiKey.bind(null, k.id)}>
-                            <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                            <button
+                              type="submit"
+                              className="btn btn-secondary !px-2 !py-1 !text-xs"
+                            >
                               {t("leads.revoke")}
                             </button>
                           </form>

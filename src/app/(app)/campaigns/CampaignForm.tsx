@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import SubmitButton from "@/components/SubmitButton";
 
 export type TemplateChoice = {
   key: string;
@@ -285,9 +286,7 @@ export default function CampaignForm({
       </div>
 
       <div className="flex flex-wrap gap-2 border-t border-brand-line pt-4">
-        <button type="submit" className="btn btn-primary">
-          {labels.save}
-        </button>
+        <SubmitButton>{labels.save}</SubmitButton>
         <Link href="/campaigns" className="btn btn-secondary">
           {labels.cancel}
         </Link>

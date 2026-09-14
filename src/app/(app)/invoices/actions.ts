@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { documents, expenses } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
 import { EXPENSE_CATEGORIES, statusFor, type ExpenseCategory } from "@/lib/expenses";
@@ -76,6 +77,7 @@ export async function createExpense(formData: FormData) {
     userEmail: user.email,
   });
 
+  await flash("said.invoiceSaved");
   revalidatePath("/invoices");
   redirect(`/invoices/${inserted[0].id}`);
 }
@@ -112,6 +114,7 @@ export async function updateExpense(expenseId: string, formData: FormData) {
     userEmail: user.email,
   });
 
+  await flash("said.invoiceSaved");
   revalidatePath(`/invoices/${expenseId}`);
   revalidatePath("/invoices");
 }
@@ -148,6 +151,7 @@ export async function markExpensePaid(expenseId: string, formData: FormData) {
     userEmail: user.email,
   });
 
+  await flash("said.invoicePaid");
   revalidatePath(`/invoices/${expenseId}`);
   revalidatePath("/invoices");
 }

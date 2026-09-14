@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { clients, contracts, documents, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { flash } from "@/lib/flash";
 import { removeDocument } from "@/lib/uploads";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeys";
 
@@ -65,6 +66,7 @@ export async function createLead(formData: FormData) {
     userEmail: user.email,
   });
 
+  await flash("said.leadCreated");
   revalidatePath("/leads");
   redirect(`/leads/${inserted[0].id}`);
 }
@@ -156,6 +158,7 @@ export async function convertLead(leadId: string, formData: FormData) {
     userEmail: user.email,
   });
 
+  await flash("said.leadConverted");
   revalidatePath("/leads");
   revalidatePath("/clients");
   redirect(`/clients/${inserted[0].id}`);
@@ -210,6 +213,7 @@ export async function undoConversion(clientId: string) {
     userEmail: user.email,
   });
 
+  await flash("said.leadReturned");
   revalidatePath("/clients");
   revalidatePath("/leads");
   redirect(lead ? `/leads/${lead.id}` : "/leads");
@@ -249,6 +253,7 @@ export async function makeApiKey(formData: FormData) {
     userEmail: user.email,
   });
 
+  await flash("said.keyMade");
   revalidatePath("/leads/api");
   redirect(`/leads/api?key=${encodeURIComponent(key)}`);
 }

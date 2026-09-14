@@ -1,14 +1,7 @@
 import Link from "next/link";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount } from "@/lib/money";
-import {
-  ageing,
-  cashByMonth,
-  headline,
-  monthLabel,
-  rangeFrom,
-  salesByMonth,
-} from "@/lib/reports";
+import { ageing, cashByMonth, headline, monthLabel, rangeFrom, salesByMonth } from "@/lib/reports";
 import { Card, PageHeader } from "@/components/ui";
 import { BarSeries, Figure, SERIES, shortMoney } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";

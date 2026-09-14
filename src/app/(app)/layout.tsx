@@ -1,57 +1,156 @@
+import { and, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { db } from "@/db";
+import { expenses, installments, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { getTranslator } from "@/i18n";
-import Nav from "@/components/Nav";
-import LocaleSwitch from "@/components/LocaleSwitch";
-import Logo from "@/components/Logo";
-import { signOut } from "@/app/actions";
+import { readFlash } from "@/lib/flash";
+import { getTranslator, type MessageKey } from "@/i18n";
+import AppShell, { type Alert, type NavItem } from "@/components/AppShell";
+import Toaster from "@/components/Toaster";
+import { setLocale, signOut } from "@/app/actions";
 
+/**
+ * Everything behind the login.
+ *
+ * The shell itself is a client component, because a sidebar that remembers its
+ * width, a theme that survives a reload and a search box on Control K all need
+ * to live in the browser. What the server does here is decide what goes in it:
+ * the sections, what needs attention today, and who is signed in.
+ */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
 
-  const items = [
-    { href: "/", label: t("nav.dashboard") },
-    { href: "/leads", label: t("nav.leads") },
-    { href: "/projects", label: t("nav.projects") },
-    { href: "/clients", label: t("nav.clients") },
-    { href: "/contracts", label: t("nav.contracts") },
-    { href: "/agents", label: t("nav.agents") },
-    { href: "/subowners", label: t("nav.subowners") },
-    { href: "/commissions", label: t("nav.commissions") },
-    { href: "/campaigns", label: t("nav.campaigns") },
-    { href: "/invoices", label: t("nav.invoices") },
-    { href: "/reports", label: t("nav.reports") },
+  // The three figures the bell counts. One query each, all at once.
+  const unpaidHere = sql`coalesce((
+      select sum(p.amount) from payments p where p.installment_id = installments.id
+    ), 0) < ${installments.totalAmount}`;
+
+  const [[late], [waiting], [bills], said] = await Promise.all([
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(installments)
+      .where(
+        and(isNotNull(installments.dueDate), lt(installments.dueDate, new Date()), unpaidHere),
+      ),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(leads)
+      .where(and(eq(leads.status, "NEW"), isNull(leads.clientId))),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(expenses)
+      .where(
+        and(
+          isNotNull(expenses.dueDate),
+          lt(expenses.dueDate, new Date()),
+          sql`${expenses.status} <> 'PAID'`,
+        ),
+      ),
+    readFlash(),
+  ]);
+
+  const items: NavItem[] = [
+    { href: "/", label: t("nav.dashboard"), group: "everyDay" },
+    { href: "/leads", label: t("nav.leads"), group: "everyDay", count: waiting?.total ?? 0 },
+    { href: "/clients", label: t("nav.clients"), group: "everyDay" },
+    { href: "/projects", label: t("nav.projects"), group: "everyDay" },
+    { href: "/contracts", label: t("nav.contracts"), group: "everyDay" },
+    { href: "/agents", label: t("nav.agents"), group: "people" },
+    { href: "/subowners", label: t("nav.subowners"), group: "people" },
+    { href: "/campaigns", label: t("nav.campaigns"), group: "people" },
+    { href: "/commissions", label: t("nav.commissions"), group: "money" },
+    { href: "/invoices", label: t("nav.invoices"), group: "money", count: bills?.total ?? 0 },
+    { href: "/reports", label: t("nav.reports"), group: "insight" },
   ];
 
-  return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-brand-line bg-white px-4 py-5 md:flex">
-        <div className="mb-6 px-2">
-          <Logo width={130} />
-          <div className="mt-2 text-xs text-brand-graphite/70">{t("app.subtitle")}</div>
-        </div>
-        <Nav items={items} />
-        <div className="mt-auto space-y-3 pt-6">
-          <LocaleSwitch current={locale} />
-          <div className="border-t border-brand-line pt-3">
-            <div className="truncate text-xs font-semibold text-brand-graphite">{user.name}</div>
-            <div className="truncate text-xs text-brand-graphite/60">{user.email}</div>
-            <form action={signOut} className="mt-2">
-              <button type="submit" className="text-xs text-brand-teal hover:text-brand-teal-dark">
-                {t("nav.signOut")}
-              </button>
-            </form>
-          </div>
-        </div>
-      </aside>
+  const creates = [
+    { href: "/leads/new", label: t("shell.newLead") },
+    { href: "/clients/new", label: t("shell.newClient") },
+    { href: "/contracts/new", label: t("shell.newContract") },
+    { href: "/projects/new", label: t("shell.newProject") },
+    { href: "/invoices/new", label: t("shell.newInvoice") },
+    { href: "/campaigns/new", label: t("shell.newCampaign") },
+    { href: "/agents/new", label: t("shell.newAgent") },
+    { href: "/subowners/new", label: t("shell.newPartner") },
+  ];
 
-      <div className="min-w-0 flex-1">
-        <header className="flex items-center justify-between gap-3 border-b border-brand-line bg-white px-4 py-3 md:hidden">
-          <Logo width={104} />
-          <LocaleSwitch current={locale} />
-        </header>
-        <main className="mx-auto max-w-[90rem] px-4 py-6 md:px-8 md:py-8">{children}</main>
-      </div>
-    </div>
+  const alerts: Alert[] = (
+    [
+      {
+        label: t("shell.alertOverdue"),
+        href: "/reports/money",
+        count: late?.total ?? 0,
+        tone: "bad",
+      },
+      {
+        label: t("shell.alertLeads"),
+        href: "/leads?status=NEW",
+        count: waiting?.total ?? 0,
+        tone: "warn",
+      },
+      {
+        label: t("shell.alertBills"),
+        href: "/invoices?status=UNPAID",
+        count: bills?.total ?? 0,
+        tone: "warn",
+      },
+    ] satisfies Alert[]
+  ).filter((alert) => alert.count > 0);
+
+  return (
+    <>
+      <AppShell
+        user={{ name: user.name, email: user.email }}
+        locale={locale}
+        items={items}
+        alerts={alerts}
+        creates={creates}
+        signOut={signOut}
+        setLocale={setLocale}
+        labels={{
+          subtitle: t("app.subtitle"),
+          search: t("shell.search"),
+          searchHint: t("shell.searchHint"),
+          nothing: t("shell.nothingFound"),
+          goTo: t("shell.goTo"),
+          create: t("shell.create"),
+          groups: {
+            everyDay: t("shell.groupEveryDay"),
+            people: t("shell.groupPeople"),
+            money: t("shell.groupMoney"),
+            insight: t("shell.groupInsight"),
+            clients: t("nav.clients"),
+            projects: t("nav.projects"),
+            units: t("units.title"),
+            contracts: t("nav.contracts"),
+            leads: t("nav.leads"),
+            agents: t("nav.agents"),
+            subowners: t("nav.subowners"),
+            invoices: t("nav.invoices"),
+          },
+          quickAdd: t("shell.quickAdd"),
+          alerts: t("shell.alerts"),
+          noAlerts: t("shell.noAlerts"),
+          theme: t("shell.theme"),
+          themeDay: t("shell.themeDay"),
+          themeNight: t("shell.themeNight"),
+          language: t("shell.language"),
+          signOut: t("nav.signOut"),
+          shortcuts: t("shell.shortcuts"),
+          shortcutsTitle: t("shell.shortcutsTitle"),
+          shortcutSearch: t("shell.shortcutSearch"),
+          shortcutNew: t("shell.shortcutNew"),
+          shortcutTheme: t("shell.shortcutTheme"),
+          shortcutHelp: t("shell.shortcutHelp"),
+          shortcutClose: t("shell.shortcutClose"),
+          menu: t("shell.menu"),
+          collapse: t("shell.collapse"),
+        }}
+      >
+        {children}
+      </AppShell>
+
+      {said ? <Toaster message={t(said.message as MessageKey)} tone={said.tone} /> : null}
+    </>
   );
 }

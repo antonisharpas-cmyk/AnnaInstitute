@@ -9,6 +9,10 @@
      #121111  the near black of their headings
      #F9FAF9  their page background
    The darker and lighter steps below are shades of those same colours.
+
+   Everything the interface draws reads these variables and nothing hardcodes a
+   colour, which is what makes the night theme further down a redefinition of
+   eleven values rather than a second stylesheet.
    --------------------------------------------------------------------------- */
 @theme {
   --color-brand-teal: #4da1b9;
@@ -19,6 +23,8 @@
   --color-brand-ink: #121111;
   --color-brand-surface: #f9faf9;
   --color-brand-line: #e3e5e8;
+  --color-brand-paper: #ffffff;
+  --color-brand-raised: #f2f5f6;
 
   --color-positive: #1f6f43;
   --color-warning: #8a6100;
@@ -27,16 +33,123 @@
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
+:root {
+  --on-teal: #ffffff;
+  --field-border: #d3d7dd;
+  --label-ink: #6b7280;
+  --head-bg: #eef4f7;
+  --head-ink: #3c4a57;
+  --row-even: #fbfcfd;
+  --pill-bg: #f4f7f9;
+  --pill-border: #e2e7ec;
+  --pill-ink: #4a5765;
+  --good-bg: #e9f6ee;
+  --good-border: #c3e5d1;
+  --good-ink: #1c6b40;
+  --warn-bg: #fdf5e5;
+  --warn-border: #f0dcb4;
+  --warn-ink: #8a6100;
+  --bad-bg: #fceceb;
+  --bad-border: #f0c9c6;
+  --bad-ink: #8a2f2f;
+  --teal-pill-border: #bcdde7;
+  --shadow-raised: 0 1px 2px rgba(18, 17, 17, 0.04);
+  --shadow-float: 0 12px 32px rgba(18, 17, 17, 0.14);
+  --scroll-thumb: #c6cfd6;
+  --scroll-track: #f1f4f6;
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------
+   NIGHT
+
+   Somebody in this CRM for eight hours asked for it, and the office in Larnaca
+   is bright until late. The same eleven brand variables are restated darker, so
+   every screen follows without a single component knowing about it.
+   --------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  --color-brand-teal: #5fb6cf;
+  --color-brand-teal-dark: #8bcfe3;
+  --color-brand-teal-soft: #17323b;
+  --color-brand-graphite: #b9c0c6;
+  --color-brand-graphite-dark: #d4dade;
+  --color-brand-ink: #eceff1;
+  --color-brand-surface: #101315;
+  --color-brand-line: #262b30;
+  --color-brand-paper: #171b1e;
+  --color-brand-raised: #1e2327;
+
+  --color-positive: #74c69b;
+  --color-warning: #e0b874;
+  --color-negative: #e79a9a;
+
+  --on-teal: #0a1114;
+  --field-border: #333a40;
+  --label-ink: #9aa2a9;
+  --head-bg: #1c2226;
+  --head-ink: #b6c2cb;
+  --row-even: #1a1e21;
+  --pill-bg: #1e2429;
+  --pill-border: #2d343a;
+  --pill-ink: #b9c2ca;
+  --good-bg: #14271d;
+  --good-border: #24503a;
+  --good-ink: #86cfa6;
+  --warn-bg: #2a2216;
+  --warn-border: #55442a;
+  --warn-ink: #e0b874;
+  --bad-bg: #2b1a1a;
+  --bad-border: #57302f;
+  --bad-ink: #e79a9a;
+  --teal-pill-border: #28505d;
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --scroll-thumb: #39424a;
+  --scroll-track: #191e21;
+  color-scheme: dark;
+}
+
 html,
 body {
   background: var(--color-brand-surface);
   color: var(--color-brand-ink);
 }
 
+/* One transition for the theme swap, so night does not arrive as a flash. */
+body,
+.card,
+.btn,
+.input,
+.select,
+.textarea,
+table.data thead th,
+table.data tbody td {
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Keyboard focus is visible everywhere, because half the office will drive this
+   with the keyboard once the shortcuts are there. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-teal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .card {
-  background: #ffffff;
+  background: var(--color-brand-paper);
   border: 1px solid var(--color-brand-line);
-  border-radius: 0.5rem;
+  border-radius: 0.625rem;
+  box-shadow: var(--shadow-raised);
 }
 
 .label {
@@ -45,7 +158,7 @@ body {
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--label-ink);
   margin-bottom: 0.35rem;
 }
 
@@ -53,12 +166,17 @@ body {
 .select,
 .textarea {
   width: 100%;
-  border: 1px solid #d3d7dd;
+  border: 1px solid var(--field-border);
   border-radius: 0.375rem;
-  background: #ffffff;
+  background: var(--color-brand-paper);
   padding: 0.5rem 0.65rem;
   font-size: 0.875rem;
   color: var(--color-brand-ink);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: color-mix(in srgb, var(--color-brand-graphite) 55%, transparent);
 }
 
 .input:focus,
@@ -92,8 +210,19 @@ input[type="date"]:hover {
   border-color: var(--color-brand-teal);
 }
 
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
 .datefield::-webkit-datetime-edit {
   color: var(--color-brand-ink);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-brand-teal);
+  width: 1rem;
+  height: 1rem;
 }
 
 .btn {
@@ -108,11 +237,12 @@ input[type="date"]:hover {
   cursor: pointer;
   border: 1px solid transparent;
   text-align: center;
+  white-space: nowrap;
 }
 
 .btn-primary {
   background: var(--color-brand-teal);
-  color: #ffffff;
+  color: var(--on-teal);
 }
 
 .btn-primary:hover {
@@ -120,30 +250,30 @@ input[type="date"]:hover {
 }
 
 .btn-secondary {
-  background: #ffffff;
-  border-color: #d3d7dd;
+  background: var(--color-brand-paper);
+  border-color: var(--field-border);
   color: var(--color-brand-graphite);
 }
 
 .btn-secondary:hover {
   border-color: var(--color-brand-teal);
   color: var(--color-brand-teal-dark);
+  background: var(--color-brand-teal-soft);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-brand-graphite);
+}
+
+.btn-ghost:hover {
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
 }
 
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-table.data {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 0.875rem;
-  border: 1px solid var(--color-brand-line);
-  border-radius: 0.5rem;
-  overflow: hidden;
-  background: #ffffff;
 }
 
 /*
@@ -159,7 +289,7 @@ table.data {
 
 .overflow-x-auto {
   scrollbar-width: thin;
-  scrollbar-color: #c6cfd6 #f1f4f6;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
 }
 
 .overflow-x-auto::-webkit-scrollbar {
@@ -167,12 +297,12 @@ table.data {
 }
 
 .overflow-x-auto::-webkit-scrollbar-track {
-  background: #f1f4f6;
+  background: var(--scroll-track);
   border-radius: 999px;
 }
 
 .overflow-x-auto::-webkit-scrollbar-thumb {
-  background: #c6cfd6;
+  background: var(--scroll-thumb);
   border-radius: 999px;
 }
 
@@ -180,9 +310,24 @@ table.data {
   background: var(--color-brand-teal);
 }
 
+table.data {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--color-brand-paper);
+}
+
+/* The header stays put while a long list scrolls under it. */
 table.data thead th {
-  background: #eef4f7;
-  color: #3c4a57;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--head-bg);
+  color: var(--head-ink);
   text-align: left;
   font-weight: 700;
   font-size: 0.7rem;
@@ -194,13 +339,13 @@ table.data thead th {
 }
 
 table.data tbody td {
-  border-bottom: 1px solid #eff2f5;
+  border-bottom: 1px solid var(--color-brand-line);
   padding: 0.6rem 0.7rem;
   vertical-align: middle;
 }
 
 table.data tbody tr:nth-child(even) td {
-  background: #fbfcfd;
+  background: var(--row-even);
 }
 
 table.data tbody tr:hover td {
@@ -212,7 +357,7 @@ table.data tbody tr:last-child td {
 }
 
 table.data tfoot td {
-  background: #f6f9fa;
+  background: var(--color-brand-raised);
   border-top: 2px solid var(--color-brand-line);
   padding: 0.6rem 0.7rem;
   font-weight: 700;
@@ -249,42 +394,49 @@ table.data tbody td.ctr {
   letter-spacing: 0.02em;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
-  border: 1px solid #e2e7ec;
-  background: #f4f7f9;
-  color: #4a5765;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-ink);
   white-space: nowrap;
 }
 
 .pill-good {
-  background: #e9f6ee;
-  border-color: #c3e5d1;
-  color: #1c6b40;
+  background: var(--good-bg);
+  border-color: var(--good-border);
+  color: var(--good-ink);
 }
 
 .pill-warn {
-  background: #fdf5e5;
-  border-color: #f0dcb4;
-  color: #8a6100;
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn-ink);
 }
 
 .pill-bad {
-  background: #fceceb;
-  border-color: #f0c9c6;
-  color: #8a2f2f;
+  background: var(--bad-bg);
+  border-color: var(--bad-border);
+  color: var(--bad-ink);
 }
 
 .pill-teal {
   background: var(--color-brand-teal-soft);
-  border-color: #bcdde7;
+  border-color: var(--teal-pill-border);
   color: var(--color-brand-teal-dark);
 }
 
+/* ---------------------------------------------------------------------------
+   THE SHELL
+   --------------------------------------------------------------------------- */
+
 .navlink {
-  display: block;
-  border-radius: 999px;
-  padding: 0.5rem 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.7rem;
   font-size: 0.875rem;
   color: var(--color-brand-graphite);
+  position: relative;
 }
 
 .navlink:hover {
@@ -293,14 +445,312 @@ table.data tbody td.ctr {
 }
 
 .navlink-active {
-  background: var(--color-brand-teal);
-  color: #ffffff;
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
   font-weight: 600;
 }
 
-.navlink-active:hover {
-  background: var(--color-brand-teal-dark);
-  color: #ffffff;
+/* The bar on the left of the section you are in, so the eye finds it without
+   reading. */
+.navlink-active::before {
+  content: "";
+  position: absolute;
+  left: -0.45rem;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--color-brand-teal);
+}
+
+.navlink svg {
+  flex: none;
+  opacity: 0.75;
+}
+
+.navlink-active svg {
+  opacity: 1;
+}
+
+.navgroup {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-brand-graphite) 60%, transparent);
+  padding: 0.75rem 0.7rem 0.3rem;
+}
+
+.navcount {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--color-brand-teal);
+  color: var(--on-teal);
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: color-mix(in srgb, var(--color-brand-paper) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--color-brand-line);
+}
+
+.searchbutton {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+  max-width: 26rem;
+  border: 1px solid var(--field-border);
+  background: var(--color-brand-surface);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--color-brand-graphite) 80%, transparent);
+  cursor: pointer;
+  text-align: left;
+}
+
+.searchbutton:hover {
+  border-color: var(--color-brand-teal);
+  color: var(--color-brand-teal-dark);
+}
+
+.kbd {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.68rem;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-ink);
+  border-radius: 0.3rem;
+  padding: 0.05rem 0.35rem;
+  white-space: nowrap;
+}
+
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--color-brand-graphite);
+  cursor: pointer;
+  background: transparent;
+  position: relative;
+}
+
+.iconbtn:hover {
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
+}
+
+.dot {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--color-negative);
+  border: 1.5px solid var(--color-brand-paper);
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  min-width: 14rem;
+  background: var(--color-brand-paper);
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.6rem;
+  box-shadow: var(--shadow-float);
+  padding: 0.35rem;
+  z-index: 40;
+}
+
+.menuitem {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-brand-ink);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.menuitem:hover,
+.menuitem[data-active="true"] {
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex: none;
+}
+
+/* ---------------------------------------------------------------------------
+   THE SEARCH BOX THAT OPENS OVER EVERYTHING
+   --------------------------------------------------------------------------- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: color-mix(in srgb, var(--color-brand-ink) 45%, transparent);
+  display: flex;
+  justify-content: center;
+  padding: 8vh 1rem 1rem;
+}
+
+.palette {
+  width: 100%;
+  max-width: 40rem;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-brand-paper);
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+
+.palette input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--color-brand-line);
+  background: transparent;
+  color: var(--color-brand-ink);
+  padding: 0.9rem 1rem;
+  font-size: 1rem;
+}
+
+.palette input:focus {
+  outline: none;
+}
+
+.palette-list {
+  overflow-y: auto;
+  padding: 0.35rem;
+}
+
+.palette-group {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--label-ink);
+  padding: 0.55rem 0.6rem 0.25rem;
+}
+
+/* ---------------------------------------------------------------------------
+   WHAT JUST HAPPENED
+   --------------------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--color-brand-ink);
+  color: var(--color-brand-surface);
+  border-radius: 999px;
+  padding: 0.6rem 1.1rem;
+  font-size: 0.875rem;
+  box-shadow: var(--shadow-float);
+  animation: toast-in 0.18s ease-out;
+  max-width: min(92vw, 32rem);
+}
+
+.toast-good svg {
+  color: #7fd3a3;
+}
+
+.toast-bad svg {
+  color: #f0a7a7;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   WAITING
+   --------------------------------------------------------------------------- */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-brand-line) 25%,
+    var(--color-brand-raised) 37%,
+    var(--color-brand-line) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+  border-radius: 0.375rem;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+.spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media print {
@@ -316,8 +766,213 @@ table.data tbody td.ctr {
 .lightbox {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 80;
   display: flex;
   flex-direction: column;
   background: rgba(18, 17, 17, 0.92);
+}
+
+/* ---------------------------------------------------------------------------
+   THE DAILY SCREENS
+
+   Pieces that only the dashboard and the section headers use: the tiles people
+   press first thing in the morning, the attention strip, and the feed of what
+   the office did today. All of it reads the same brand variables, so night
+   needs nothing added here.
+   --------------------------------------------------------------------------- */
+
+.tile {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--color-brand-paper);
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.625rem;
+  box-shadow: var(--shadow-raised);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-brand-ink);
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.tile:hover {
+  border-color: var(--color-brand-teal);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-float);
+}
+
+.tile-mark {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border-radius: 0.5rem;
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
+}
+
+/* The row of numbers at the top of a section. */
+.statcard {
+  position: relative;
+  padding: 0.95rem 1rem;
+  overflow: hidden;
+}
+
+.statcard::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--color-brand-teal);
+  opacity: 0.85;
+}
+
+.statcard[data-tone="good"]::after {
+  background: var(--color-positive);
+}
+
+.statcard[data-tone="warn"]::after {
+  background: var(--color-warning);
+}
+
+.statcard[data-tone="bad"]::after {
+  background: var(--color-negative);
+}
+
+.statlabel {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--label-ink);
+}
+
+.statvalue {
+  margin-top: 0.2rem;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-brand-ink);
+}
+
+.stathint {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--label-ink);
+}
+
+/* One line of the attention strip: what is late, what is waiting. */
+.attention {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  font-size: 0.8125rem;
+  color: var(--color-brand-ink);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.attention:hover {
+  border-color: var(--color-brand-teal);
+}
+
+.attention[data-tone="bad"] {
+  border-color: var(--bad-border);
+  background: var(--bad-bg);
+}
+
+.attention[data-tone="warn"] {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+}
+
+.attention-count {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the office did, newest first. */
+.feed {
+  position: relative;
+  margin: 0;
+  padding: 0 0 0 1.1rem;
+  list-style: none;
+}
+
+.feed::before {
+  content: "";
+  position: absolute;
+  top: 0.45rem;
+  bottom: 0.45rem;
+  left: 0.25rem;
+  width: 1px;
+  background: var(--color-brand-line);
+}
+
+.feed li {
+  position: relative;
+  padding: 0.4rem 0;
+  font-size: 0.8125rem;
+  color: var(--color-brand-ink);
+}
+
+.feed li::before {
+  content: "";
+  position: absolute;
+  top: 0.78rem;
+  left: -0.95rem;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--color-brand-teal);
+  box-shadow: 0 0 0 3px var(--color-brand-paper);
+}
+
+.feed .when {
+  color: var(--label-ink);
+  font-size: 0.75rem;
+}
+
+/* The bar of tabs some sections use instead of a second menu. */
+.segment {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.55rem;
+  background: var(--color-brand-raised);
+}
+
+.segment a,
+.segment button {
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.4rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-brand-graphite);
+}
+
+.segment a:hover,
+.segment button:hover {
+  color: var(--color-brand-ink);
+}
+
+.segment [aria-current="true"],
+.segment [data-active="true"] {
+  background: var(--color-brand-paper);
+  color: var(--color-brand-ink);
+  box-shadow: var(--shadow-raised);
 }

@@ -1,5 +1,6 @@
 import { CATEGORY_LABELS } from "@/lib/fileLabels";
 import type { DocumentCategory } from "@/lib/uploads";
+import SubmitButton from "@/components/SubmitButton";
 
 export default function UploadForm({
   action,
@@ -65,9 +66,7 @@ export default function UploadForm({
           ))}
         </select>
       </div>
-      <button type="submit" className="btn btn-primary w-full">
-        {submitLabel}
-      </button>
+      <SubmitButton className="btn btn-primary w-full">{submitLabel}</SubmitButton>
       {hint ? <p className="text-xs text-brand-graphite/60">{hint}</p> : null}
     </form>
   );

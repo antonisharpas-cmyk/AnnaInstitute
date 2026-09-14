@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { projectPartners, subowners } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { flash } from "@/lib/flash";
 
 export type SubownerState = { ok: true } | { error: string } | null;
 
@@ -119,6 +120,7 @@ export async function addPartner(projectId: string, formData: FormData) {
     userEmail: user.email,
   });
 
+  await flash("said.partnerAdded");
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/subowners/${subownerId}`);
 }

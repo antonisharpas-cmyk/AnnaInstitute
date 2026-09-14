@@ -30,7 +30,10 @@ export default async function SalesReportPage({
 
   return (
     <>
-      <BackLink href="/reports" label={`${t("common.backTo")} ${t("reports.title").toLowerCase()}`} />
+      <BackLink
+        href="/reports"
+        label={`${t("common.backTo")} ${t("reports.title").toLowerCase()}`}
+      />
       <PageHeader title={t("reports.sales")} subtitle={t("reports.salesNote")} />
 
       <PeriodPicker

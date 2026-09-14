@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { agents, commissionPayments, commissions, contracts } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
 import { syncCommission } from "../contracts/actions";
 
@@ -134,6 +135,7 @@ export async function saveAgentProfile(
     userEmail: user.email,
   });
 
+  await flash("said.saved");
   revalidatePath(`/agents/${agentId}`);
   revalidatePath("/agents");
   revalidatePath("/commissions");

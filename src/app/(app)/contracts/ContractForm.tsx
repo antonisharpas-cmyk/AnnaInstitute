@@ -5,6 +5,7 @@ import Link from "next/link";
 import DateField from "@/components/DateField";
 import ScheduleBuilder, { type Row } from "./ScheduleBuilder";
 import type { ContractFormState } from "./actions";
+import SubmitButton from "@/components/SubmitButton";
 
 type ContractRecord = {
   id: string;
@@ -251,9 +252,7 @@ export default function ContractForm({
       />
 
       <div className="flex flex-wrap gap-2 border-t border-brand-line pt-4">
-        <button type="submit" className="btn btn-primary">
-          {labels.save}
-        </button>
+        <SubmitButton>{labels.save}</SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">
           {labels.cancel}
         </Link>

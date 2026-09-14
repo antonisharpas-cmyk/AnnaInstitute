@@ -1,5 +1,6 @@
 import Link from "next/link";
 import DateField from "@/components/DateField";
+import SubmitButton from "@/components/SubmitButton";
 
 export type ExpenseRecord = {
   supplier: string;
@@ -105,7 +106,11 @@ export default function ExpenseForm({
           <label className="label" htmlFor="issueDate">
             {labels.issued}
           </label>
-          <DateField id="issueDate" name="issueDate" defaultValue={day(expense?.issueDate ?? null)} />
+          <DateField
+            id="issueDate"
+            name="issueDate"
+            defaultValue={day(expense?.issueDate ?? null)}
+          />
         </div>
         <div>
           <label className="label" htmlFor="dueDate">
@@ -216,9 +221,7 @@ export default function ExpenseForm({
       </div>
 
       <div className="flex flex-wrap gap-2 border-t border-brand-line pt-4">
-        <button type="submit" className="btn btn-primary">
-          {labels.save}
-        </button>
+        <SubmitButton>{labels.save}</SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">
           {labels.cancel}
         </Link>

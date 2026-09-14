@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
-import { EXPENSE_CATEGORIES, expenseStatusTone, expensesByCategory, listExpenses } from "@/lib/expenses";
+import {
+  EXPENSE_CATEGORIES,
+  expenseStatusTone,
+  expensesByCategory,
+  listExpenses,
+} from "@/lib/expenses";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import SearchBox from "@/components/SearchBox";
 import Pagination, { paginate } from "@/components/Pagination";
