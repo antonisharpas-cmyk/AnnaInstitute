@@ -21,6 +21,7 @@ export default function SchemaGap({
     stop: string;
     run: string;
     start: string;
+    runNote: string;
     warn: string;
   };
 }) {
@@ -45,12 +46,13 @@ export default function SchemaGap({
         </ul>
 
         <p className="statlabel mt-5">{labels.how}</p>
-        <ol className="mt-1 space-y-1.5 text-sm">
-          <li>1. {labels.stop}</li>
+        <ol className="mt-1 ml-5 list-decimal space-y-1.5 text-sm">
+          <li>{labels.stop}</li>
           <li>
-            2. <code className="kbd">npm run db:migrate</code>
+            <code className="kbd">{labels.run}</code>
+            <span className="ml-2 text-xs text-brand-graphite/70">{labels.runNote}</span>
           </li>
-          <li>3. {labels.start}</li>
+          <li>{labels.start}</li>
         </ol>
 
         <p className="mt-4 text-xs text-brand-graphite/70">{labels.warn}</p>

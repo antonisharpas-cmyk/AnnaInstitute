@@ -41,7 +41,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           missing: t("gap.missing"),
           how: t("gap.how"),
           stop: t("gap.stop"),
-          run: "npm run db:migrate",
+          run: "npm run db:fix",
+          runNote: t("gap.runNote"),
           start: t("gap.start"),
           warn: t("gap.warn"),
         }}

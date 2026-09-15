@@ -15,6 +15,7 @@
     "db:migrate": "node --env-file=.env.local --import tsx scripts/migrate.ts",
     "db:migrate:ci": "tsx scripts/migrate.ts",
     "db:seed:ci": "tsx scripts/seed.ts",
+    "db:fix": "node --env-file=.env.local --import tsx scripts/fix-db.ts",
     "db:check": "node --env-file=.env.local --import tsx scripts/check-db.ts",
     "db:demo": "node --env-file=.env.local --import tsx scripts/demo.ts"
   },

@@ -392,6 +392,7 @@ export const dictionaries = {
       "A new part of the CRM needs a change to the database that has not been made yet. Nothing is lost and nothing is broken: the change takes a few seconds.",
     "gap.missing": "What is missing",
     "gap.how": "What to do",
+    "gap.runNote": "it checks itself and says what it found",
     "gap.stop": "Stop the app, so nothing else is holding the database.",
     "gap.start": "Start it again.",
     "gap.warn":
@@ -1282,6 +1283,7 @@ export const dictionaries = {
       "Ένα νέο μέρος του CRM χρειάζεται μια αλλαγή στη βάση που δεν έχει γίνει ακόμη. Δεν χάνεται τίποτα: η αλλαγή θέλει δευτερόλεπτα.",
     "gap.missing": "Τι λείπει",
     "gap.how": "Τι να κάνετε",
+    "gap.runNote": "ελέγχει μόνο του και λέει τι βρήκε",
     "gap.stop": "Σταματήστε την εφαρμογή, ώστε να μην κρατά κανείς τη βάση.",
     "gap.start": "Ξεκινήστε την ξανά.",
     "gap.warn":
