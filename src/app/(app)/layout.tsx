@@ -2,11 +2,13 @@ import { and, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { expenses, installments, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { ensureSchema } from "@/lib/health";
 import { readFlash } from "@/lib/flash";
 import { readUndo } from "@/lib/undo";
 import { getTranslator, type MessageKey } from "@/i18n";
 import AppShell, { type Alert, type NavItem } from "@/components/AppShell";
 import Toaster from "@/components/Toaster";
+import SchemaGap from "@/components/SchemaGap";
 import { setLocale, signOut, undoLast } from "@/app/actions";
 
 /**
@@ -20,6 +22,32 @@ import { setLocale, signOut, undoLast } from "@/app/actions";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
+
+  /**
+   * Nothing else can work if the database is behind the code, so it is checked
+   * once here, before the first query. If something is missing the CRM brings
+   * the database up to date itself, on this very connection, and only if that
+   * cannot be done does it say so on the screen instead of throwing a query
+   * at somebody.
+   */
+  const gaps = await ensureSchema();
+  if (gaps.length > 0) {
+    return (
+      <SchemaGap
+        gaps={gaps}
+        labels={{
+          title: t("gap.title"),
+          note: t("gap.note"),
+          missing: t("gap.missing"),
+          how: t("gap.how"),
+          stop: t("gap.stop"),
+          run: "npm run db:migrate",
+          start: t("gap.start"),
+          warn: t("gap.warn"),
+        }}
+      />
+    );
+  }
 
   // The three figures the bell counts. One query each, all at once.
   const unpaidHere = sql`coalesce((

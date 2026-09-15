@@ -14,8 +14,6 @@ function listFrom(value: unknown): ListKey {
   throw new Error(`Unknown list: ${name}`);
 }
 
-const address = (list: ListKey, query: string) => (query ? `/${list}?${query}` : `/${list}?all=1`);
-
 /** Name what is on screen, so it can be come back to in one click. */
 export async function createSavedView(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
@@ -25,7 +23,8 @@ export async function createSavedView(formData: FormData) {
 
   if (!name) {
     await flash("said.viewNeedsName", "bad");
-    redirect(address(list, query));
+    revalidatePath(`/${list}`);
+    return;
   }
 
   await saveView({
@@ -46,7 +45,6 @@ export async function createSavedView(formData: FormData) {
 
   await flash("said.viewSaved");
   revalidatePath(`/${list}`);
-  redirect(address(list, query));
 }
 
 /** Keep the changed filters against the view that is open. */
@@ -59,7 +57,6 @@ export async function updateSavedView(formData: FormData) {
   await updateView(id, query);
   await flash("said.viewSaved");
   revalidatePath(`/${list}`);
-  redirect(`${address(list, query)}${query ? "&" : ""}view=${id}`);
 }
 
 export async function deleteSavedView(formData: FormData) {
@@ -77,9 +74,6 @@ export async function saveListColumns(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const list = listFrom(formData.get("list"));
   const hidden = formData.getAll("hidden").map(String);
-  const back = String(formData.get("back") ?? `/${list}`);
-
   await saveColumns(user.id, list, hidden);
   revalidatePath(`/${list}`);
-  redirect(back);
 }

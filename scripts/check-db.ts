@@ -25,6 +25,19 @@ const EXPECTED_TABLES = [
   "campaigns",
   "messages",
   "suppressions",
+  "leads",
+  "subowners",
+  "expenses",
+  "email_templates",
+  "dashboard_layouts",
+  "saved_views",
+  "list_settings",
+];
+
+/** Columns added by a later migration, which are the usual thing to be missing. */
+const EXPECTED_COLUMNS: [string, string][] = [
+  ["leads", "deleted_at"],
+  ["clients", "deleted_at"],
 ];
 
 type Rows = Record<string, unknown>[];
@@ -154,11 +167,38 @@ async function main() {
     await close();
     fail(`these tables are missing: ${missing.join(", ")}`, [
       "The migrations are behind the code.",
-      "Run: npm run db:migrate",
+      "1. Stop the app, so nothing else is holding the database.",
+      "2. Run: npm run db:migrate",
+      "3. Start it again.",
     ]);
   }
 
   console.log(`  Tables:   ${present.size} present, nothing missing`);
+
+  /**
+   * A migration that adds a column to a table that already exists is the easy
+   * one to miss, because every table is present and the app still fails.
+   */
+  const columnRows = await ask(
+    `select table_name, column_name from information_schema.columns
+      where table_schema = 'public' and column_name = 'deleted_at'`,
+  );
+  const columns = new Set(columnRows.map((r) => `${r.table_name}.${r.column_name}`));
+  const missingColumns = EXPECTED_COLUMNS.filter(
+    ([table, column]) => !columns.has(`${table}.${column}`),
+  );
+
+  if (missingColumns.length > 0) {
+    await close();
+    fail(`these columns are missing: ${missingColumns.map(([t, c]) => `${t}.${c}`).join(", ")}`, [
+      "The migrations are behind the code.",
+      "1. Stop the app, so nothing else is holding the database.",
+      "2. Run: npm run db:migrate",
+      "3. Start it again.",
+    ]);
+  }
+
+  console.log(`  Columns:  the later migrations are in`);
 
   const [counted] = await ask("select count(*)::text as count from users");
   if (String(counted.count) === "0") {

@@ -110,7 +110,6 @@ export default async function ContractsPage({
             restored={Boolean(params.saved)}
             columns={COLUMNS.contracts}
             hidden={away}
-            backTo={here()}
             labels={{
               all: t("list.all"),
               saveAs: t("list.saveAs"),

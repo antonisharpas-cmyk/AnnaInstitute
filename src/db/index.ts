@@ -55,3 +55,21 @@ export const db = new Proxy({} as Database, {
 });
 
 export { schema };
+
+/**
+ * The client underneath, for the one job that needs it.
+ *
+ * Bringing the schema up to date has to happen on the very connection the app
+ * is already holding: a local database can only be opened by one process at a
+ * time, so a migration run from anywhere else while the app is up is either
+ * refused or, worse, applied to a copy that is then thrown away. Nothing else
+ * should reach past the query builder.
+ */
+export function driver():
+  { kind: "pglite"; client: PGlite } | { kind: "postgres"; client: ReturnType<typeof postgres> } {
+  getDb();
+
+  if (globalForDb.pglite) return { kind: "pglite", client: globalForDb.pglite };
+  if (globalForDb.sql) return { kind: "postgres", client: globalForDb.sql };
+  throw new Error("The database has not been opened yet.");
+}

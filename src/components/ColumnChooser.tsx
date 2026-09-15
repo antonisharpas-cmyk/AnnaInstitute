@@ -17,13 +17,11 @@ export default function ColumnChooser({
   list,
   columns,
   hidden,
-  backTo,
   labels,
 }: {
   list: ListKey;
   columns: { key: string; label: string; fixed: boolean }[];
   hidden: string[];
-  backTo: string;
   labels: { columns: string; hint: string; done: string; always: string };
 }) {
   const [open, setOpen] = useState(false);
@@ -70,9 +68,14 @@ export default function ColumnChooser({
       </button>
 
       {open ? (
-        <form action={saveListColumns} className="menu columnmenu">
+        <form
+          action={async (data: FormData) => {
+            setOpen(false);
+            await saveListColumns(data);
+          }}
+          className="menu columnmenu"
+        >
           <input type="hidden" name="list" value={list} />
-          <input type="hidden" name="back" value={backTo} />
           <p className="palette-group">{labels.hint}</p>
 
           {columns.map((column) => {

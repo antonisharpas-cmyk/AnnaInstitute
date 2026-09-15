@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { getTranslator } from "@/i18n";
 import { IconCheck, IconClose, IconPlus } from "@/components/icons";
 import RememberFilters from "@/components/RememberFilters";
@@ -46,7 +45,6 @@ export default async function ViewsBar({
   columns,
   hidden,
   labels,
-  backTo,
 }: {
   list: ListKey;
   views: View[];
@@ -58,7 +56,6 @@ export default async function ViewsBar({
   columns: Column[];
   hidden: Set<string>;
   labels: ViewsLabels;
-  backTo: string;
 }) {
   // The column names are looked up here, so every list passes its own columns
   // and none of them has to translate them first.
@@ -74,12 +71,18 @@ export default async function ViewsBar({
       <RememberFilters list={list} query={query} />
 
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-        <Link href={`/${list}?all=1`} className="viewchip" data-on={onAll}>
+        {/*
+          Plain links throughout this bar. Every one of them is the same list
+          with a different query string, which is the one move the app router
+          sometimes fetches and then declines to show. A view chip that does
+          nothing when pressed would be the worst bug on the page.
+        */}
+        <a href={`/${list}?all=1`} className="viewchip" data-on={onAll}>
           {labels.all}
-        </Link>
+        </a>
 
         {views.map((view) => (
-          <Link
+          <a
             key={view.id}
             href={href(view)}
             className="viewchip"
@@ -88,7 +91,7 @@ export default async function ViewsBar({
           >
             {view.name}
             {view.mine ? null : <span className="viewchip-shared">{labels.shared}</span>}
-          </Link>
+          </a>
         ))}
 
         {/* Naming what is on screen. A details element, so it needs no script. */}
@@ -126,9 +129,9 @@ export default async function ViewsBar({
         {restored ? (
           <span className="viewnote">
             {labels.restored}
-            <Link href={`/${list}?all=1`} className="underline">
+            <a href={`/${list}?all=1`} className="underline">
               {labels.showAll}
-            </Link>
+            </a>
           </span>
         ) : null}
 
@@ -143,9 +146,9 @@ export default async function ViewsBar({
                 {labels.update}
               </button>
             </form>
-            <Link href={href(currentView)} className="btn btn-ghost !px-2.5 !py-1 !text-xs">
+            <a href={href(currentView)} className="btn btn-ghost !px-2.5 !py-1 !text-xs">
               {labels.reset}
-            </Link>
+            </a>
           </>
         ) : null}
 
@@ -172,7 +175,6 @@ export default async function ViewsBar({
             fixed: Boolean(column.fixed),
           }))}
           hidden={[...hidden]}
-          backTo={backTo}
           labels={{
             columns: labels.columns,
             hint: labels.columnsHint,

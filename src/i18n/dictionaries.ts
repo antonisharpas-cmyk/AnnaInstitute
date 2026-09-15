@@ -387,6 +387,15 @@ export const dictionaries = {
     "said.undone": "Put back",
     "said.nothingToUndo": "There is nothing left to undo",
     "said.undo": "Undo",
+    "gap.title": "The database is behind the code",
+    "gap.note":
+      "A new part of the CRM needs a change to the database that has not been made yet. Nothing is lost and nothing is broken: the change takes a few seconds.",
+    "gap.missing": "What is missing",
+    "gap.how": "What to do",
+    "gap.stop": "Stop the app, so nothing else is holding the database.",
+    "gap.start": "Start it again.",
+    "gap.warn":
+      "The local database can only be opened by one program at a time, so a migration run while the app is up can be lost. That is why it is stopped first.",
     "list.all": "All",
     "clients.withApartment": "with an apartment",
     "clients.withoutApartment": "without one",
@@ -1268,6 +1277,15 @@ export const dictionaries = {
     "said.undone": "Επανήλθε",
     "said.nothingToUndo": "Δεν υπάρχει κάτι να αναιρεθεί",
     "said.undo": "Αναίρεση",
+    "gap.title": "Η βάση είναι πίσω από τον κώδικα",
+    "gap.note":
+      "Ένα νέο μέρος του CRM χρειάζεται μια αλλαγή στη βάση που δεν έχει γίνει ακόμη. Δεν χάνεται τίποτα: η αλλαγή θέλει δευτερόλεπτα.",
+    "gap.missing": "Τι λείπει",
+    "gap.how": "Τι να κάνετε",
+    "gap.stop": "Σταματήστε την εφαρμογή, ώστε να μην κρατά κανείς τη βάση.",
+    "gap.start": "Ξεκινήστε την ξανά.",
+    "gap.warn":
+      "Η τοπική βάση ανοίγει από ένα πρόγραμμα τη φορά, οπότε μια μετάπτωση με την εφαρμογή ανοιχτή μπορεί να χαθεί. Γι' αυτό σταματά πρώτα.",
     "list.all": "Όλα",
     "clients.withApartment": "με διαμέρισμα",
     "clients.withoutApartment": "χωρίς",

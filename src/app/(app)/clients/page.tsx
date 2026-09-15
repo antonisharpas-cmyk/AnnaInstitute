@@ -146,7 +146,6 @@ export default async function ClientsPage({
             restored={Boolean(params.saved)}
             columns={COLUMNS.clients}
             hidden={away}
-            backTo={here()}
             labels={{
               all: t("list.all"),
               saveAs: t("list.saveAs"),

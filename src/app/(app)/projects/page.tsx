@@ -161,7 +161,6 @@ export default async function ProjectsPage({
             restored={Boolean(params.saved)}
             columns={COLUMNS.projects}
             hidden={away}
-            backTo={here()}
             labels={{
               all: t("list.all"),
               saveAs: t("list.saveAs"),

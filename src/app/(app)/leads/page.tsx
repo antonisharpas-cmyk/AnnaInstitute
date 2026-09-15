@@ -163,7 +163,6 @@ export default async function LeadsPage({
             restored={Boolean(params.saved)}
             columns={COLUMNS.leads}
             hidden={away}
-            backTo={here()}
             labels={{
               all: t("list.all"),
               saveAs: t("list.saveAs"),
