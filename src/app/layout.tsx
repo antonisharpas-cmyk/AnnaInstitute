@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 /*
-  The interface face, shipped with the app rather than fetched from anybody
-  else: nothing to fail on a slow morning, and nothing about who is using the
-  CRM leaves the building. The file carries every subset with its own unicode
-  range, so a browser downloads the Latin and Greek cuts and ignores the rest.
+  The interface face lives in the project itself, in public/fonts, and is
+  declared at the top of globals.css. It is not fetched from anybody else and
+  it is not pulled out of node_modules either, so a fresh copy of this folder
+  builds with no extra install and nothing about who is using the CRM leaves
+  the building.
 */
-import "@fontsource-variable/inter/index.css";
 import "./globals.css";
 import { getLocale } from "@/i18n";
 

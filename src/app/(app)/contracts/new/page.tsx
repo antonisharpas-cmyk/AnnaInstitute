@@ -10,8 +10,6 @@ import { formLabels } from "../labels";
 import { createContract } from "../actions";
 import type { Row } from "../ScheduleBuilder";
 
-const day = (value: Date | null) => (value ? new Date(value).toISOString().slice(0, 10) : "");
-
 /**
  * A new contract, or a copy of one.
  *
