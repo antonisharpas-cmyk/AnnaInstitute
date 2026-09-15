@@ -1,4 +1,11 @@
 import type { Metadata } from "next";
+/*
+  The interface face, shipped with the app rather than fetched from anybody
+  else: nothing to fail on a slow morning, and nothing about who is using the
+  CRM leaves the building. The file carries every subset with its own unicode
+  range, so a browser downloads the Latin and Greek cuts and ignores the rest.
+*/
+import "@fontsource-variable/inter/index.css";
 import "./globals.css";
 import { getLocale } from "@/i18n";
 

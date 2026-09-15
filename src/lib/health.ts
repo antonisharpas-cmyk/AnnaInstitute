@@ -97,9 +97,7 @@ export async function ensureSchema(): Promise<Missing[]> {
 
   if (outcome !== "done") {
     if (outcome === "skipped") {
-      console.warn(
-        "  The database is behind the code. Stop the app and run npm run db:migrate.",
-      );
+      console.warn("  The database is behind the code. Stop the app and run npm run db:migrate.");
     }
     return gaps;
   }

@@ -371,6 +371,7 @@ export default async function DashboardPage() {
         <Stat
           label={t("dash.units")}
           value={String(unitStats?.total ?? 0)}
+          count={{ amount: unitStats?.total ?? 0, locale }}
           hint={`${unitStats?.sold ?? 0} ${t("dash.sold").toLowerCase()}, ${
             unitStats?.available ?? 0
           } ${t("dash.available").toLowerCase()}`}
@@ -379,6 +380,7 @@ export default async function DashboardPage() {
         <Stat
           label={t("dash.thisMonth")}
           value={formatAmount(thisMonth, locale)}
+          count={{ amount: thisMonth / 100, locale, money: true }}
           hint={`${monthRows[0]?.count ?? 0} ${t("dash.recentPayments").toLowerCase()}`}
           tone="good"
           href="/reports/money"
@@ -386,12 +388,14 @@ export default async function DashboardPage() {
         <Stat
           label={t("dash.collected")}
           value={formatAmount(collected, locale)}
+          count={{ amount: collected / 100, locale, money: true }}
           hint={formatAmount(scheduled, locale)}
           href="/reports/money"
         />
         <Stat
           label={t("dash.outstanding")}
           value={formatAmount(scheduled - collected, locale)}
+          count={{ amount: (scheduled - collected) / 100, locale, money: true }}
           tone={late > 0 ? "bad" : "teal"}
           href="/reports/money"
         />

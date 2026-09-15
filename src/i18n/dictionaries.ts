@@ -387,6 +387,9 @@ export const dictionaries = {
     "said.undone": "Put back",
     "said.nothingToUndo": "There is nothing left to undo",
     "said.undo": "Undo",
+    "login.side": "Every apartment, every buyer, every payment, in one place.",
+    "login.sideNote": "Larnaca, and the developments One Eleven builds there.",
+    "login.hint": "Use the address the office gave you.",
     "gap.title": "The database is behind the code",
     "gap.note":
       "A new part of the CRM needs a change to the database that has not been made yet. Nothing is lost and nothing is broken: the change takes a few seconds.",
@@ -1278,6 +1281,9 @@ export const dictionaries = {
     "said.undone": "Επανήλθε",
     "said.nothingToUndo": "Δεν υπάρχει κάτι να αναιρεθεί",
     "said.undo": "Αναίρεση",
+    "login.side": "Κάθε διαμέρισμα, κάθε αγοραστής, κάθε πληρωμή, σε ένα μέρος.",
+    "login.sideNote": "Λάρνακα, και τα έργα που κτίζει εκεί η One Eleven.",
+    "login.hint": "Χρησιμοποιήστε τη διεύθυνση που σας έδωσε το γραφείο.",
     "gap.title": "Η βάση είναι πίσω από τον κώδικα",
     "gap.note":
       "Ένα νέο μέρος του CRM χρειάζεται μια αλλαγή στη βάση που δεν έχει γίνει ακόμη. Δεν χάνεται τίποτα: η αλλαγή θέλει δευτερόλεπτα.",

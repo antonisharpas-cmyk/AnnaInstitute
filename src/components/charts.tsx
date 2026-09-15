@@ -154,12 +154,20 @@ export function BarSeries({
                 return (
                   <rect
                     key={s.label}
+                    className="bar"
                     x={x}
                     y={padTop + plotHeight - barHeight}
                     width={barWidth}
                     height={barHeight}
                     rx={barHeight > 6 ? 3 : 1}
                     fill={s.colour}
+                    /*
+                      Each month starts a beat after the one before it, so the
+                      chart draws itself across rather than appearing whole. The
+                      delay is capped, because the last bar of a long year should
+                      not keep somebody waiting.
+                    */
+                    style={{ animationDelay: `${Math.min(index * 26, 420)}ms` }}
                   >
                     <title>{`${label} . ${s.label} . ${s.format(value)}`}</title>
                   </rect>
@@ -252,7 +260,7 @@ export function Breakdown({
           </div>
           <div className="mt-1 h-2 w-full rounded-full bg-brand-line">
             <div
-              className="h-2 rounded-full"
+              className="meter-fill h-2 rounded-full"
               style={{
                 width: `${Math.max(2, (row.value / max) * 100)}%`,
                 background: colour,
@@ -282,7 +290,7 @@ export function Funnel({
 
   return (
     <ul className="space-y-2">
-      {steps.map((step) => (
+      {steps.map((step, index) => (
         <li key={step.label}>
           <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
             <span className="font-medium">{step.label}</span>
@@ -295,10 +303,11 @@ export function Funnel({
           </div>
           <div className="mt-1 h-3 w-full rounded bg-brand-line">
             <div
-              className="h-3 rounded"
+              className="meter-fill h-3 rounded"
               style={{
                 width: `${Math.max(2, (step.value / first) * 100)}%`,
                 background: colour,
+                animationDelay: `${index * 90}ms`,
               }}
             />
           </div>
@@ -379,8 +388,9 @@ export function StackedBar({
             <div
               key={segment.label}
               title={`${segment.label}: ${segment.display ?? segment.value}`}
-              className="flex items-center justify-center overflow-hidden text-[11px] font-semibold"
+              className="stacked-part flex items-center justify-center overflow-hidden text-[11px] font-semibold"
               style={{
+                animationDelay: `${index * 70}ms`,
                 width: `${share}%`,
                 background: segment.colour,
                 color: "#ffffff",
@@ -461,7 +471,7 @@ export function Meter({
       </div>
       <div className="mt-1.5 h-2.5 w-full rounded-full" style={{ background: "var(--pill-bg)" }}>
         <div
-          className="h-2.5 rounded-full"
+          className="meter-fill h-2.5 rounded-full"
           style={{ width: `${Math.max(1.5, share)}%`, background: colour }}
         />
       </div>

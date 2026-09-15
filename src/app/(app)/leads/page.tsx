@@ -137,17 +137,20 @@ export default async function LeadsPage({
         <Stat
           label={t("leads.fresh")}
           value={String(counts.fresh)}
+          count={{ amount: counts.fresh, locale }}
           tone="warn"
           href="/leads?status=NEW"
         />
         <Stat
           label={t("leads.working")}
           value={String(counts.working)}
+          count={{ amount: counts.working, locale }}
           href="/leads?status=CONTACTED"
         />
         <Stat
           label={t("leads.convertedCount")}
           value={String(counts.converted)}
+          count={{ amount: counts.converted, locale }}
           tone="good"
           href="/leads?status=CONVERTED"
         />

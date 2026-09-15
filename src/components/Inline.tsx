@@ -13,6 +13,24 @@ import { useEffect, useRef, useState, useTransition } from "react";
  * message box somewhere else on the screen.
  */
 
+/**
+ * A cell that has just been saved is worth a moment of green.
+ *
+ * It is the only way somebody changing a run of statuses can tell, at a
+ * glance, which rows they have already done.
+ */
+function useJustSaved(): [boolean, () => void] {
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    if (!on) return;
+    const timer = setTimeout(() => setOn(false), 1100);
+    return () => clearTimeout(timer);
+  }, [on]);
+
+  return [on, () => setOn(true)];
+}
+
 export function InlineSelect({
   value,
   options,
@@ -27,11 +45,16 @@ export function InlineSelect({
   const [shown, setShown] = useState(value);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [saved, saySaved] = useJustSaved();
 
   useEffect(() => setShown(value), [value]);
 
   return (
-    <span className="inline-cell" data-pending={pending} data-bad={error !== null}>
+    <span
+      className={`inline-cell ${saved ? "just-saved" : ""}`}
+      data-pending={pending}
+      data-bad={error !== null}
+    >
       <select
         aria-label={label}
         value={shown}
@@ -47,6 +70,8 @@ export function InlineSelect({
             if (answer && "error" in answer && answer.error) {
               setShown(before);
               setError(answer.error);
+            } else {
+              saySaved();
             }
           });
         }}

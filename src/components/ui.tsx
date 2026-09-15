@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import CountUp from "@/components/CountUp";
 
 /**
  * The handful of shapes every screen is built from.
@@ -65,17 +66,30 @@ export function Stat({
   hint,
   tone = "teal",
   href,
+  count,
 }: {
   label: string;
   value: string;
   hint?: string;
   tone?: "teal" | "good" | "warn" | "bad";
   href?: string;
+  /**
+   * The number behind the text, when it should count up to itself. Leave it
+   * out and the figure is simply drawn, which is right for anything that is
+   * not a quantity.
+   */
+  count?: { amount: number; locale: string; money?: boolean };
 }) {
   const body = (
     <>
       <div className="statlabel">{label}</div>
-      <div className="statvalue">{value}</div>
+      <div className="statvalue">
+        {count ? (
+          <CountUp value={count.amount} text={value} locale={count.locale} money={count.money} />
+        ) : (
+          value
+        )}
+      </div>
       {hint ? <div className="stathint">{hint}</div> : null}
     </>
   );
