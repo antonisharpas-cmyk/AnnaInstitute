@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, contracts, documents, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
+import { offerUndo } from "@/lib/undo";
+import { listLeads } from "@/lib/leads";
 import { removeDocument } from "@/lib/uploads";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeys";
 
@@ -219,18 +221,165 @@ export async function undoConversion(clientId: string) {
   redirect(lead ? `/leads/${lead.id}` : "/leads");
 }
 
+/**
+ * Deleting an enquiry, which is not the same as destroying it.
+ *
+ * It goes to the recycle bin, disappears from every list and count, and can be
+ * put back from the line at the bottom of the screen or from the bin itself for
+ * the next thirty days.
+ */
 export async function deleteLead(leadId: string) {
   const user = await requireUser(["ADMIN"]);
-  await db.delete(leads).where(eq(leads.id, leadId));
+
+  await db
+    .update(leads)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(eq(leads.id, leadId));
+
   await recordAudit({
-    action: "lead.delete",
+    action: "lead.binned",
     entity: "lead",
     entityId: leadId,
     userId: user.id,
     userEmail: user.email,
   });
+
+  await offerUndo({ kind: "lead.deleted", was: [{ id: leadId }] });
+  await flash("said.movedToBin");
   revalidatePath("/leads");
   redirect("/leads");
+}
+
+/**
+ * The status changed from the list itself.
+ *
+ * It answers with an error rather than throwing, because the cell that called
+ * it shows the reason under itself and puts the old value back.
+ */
+export async function setLeadStatusInline(
+  leadId: string,
+  status: string,
+): Promise<{ error?: string }> {
+  const user = await requireUser(["ADMIN"]);
+  if (!STATUSES.includes(status as LeadStatus)) return { error: "Unknown status" };
+
+  const [before] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  if (!before) return { error: "That enquiry is gone" };
+
+  if (before.status === "CONVERTED" && status !== "CONVERTED" && before.clientId) {
+    // Undoing a conversion is its own action, with its own checks.
+    return { error: "Use undo the conversion on the client" };
+  }
+
+  await db
+    .update(leads)
+    .set({ status: status as LeadStatus, updatedAt: new Date() })
+    .where(eq(leads.id, leadId));
+
+  await recordAudit({
+    action: "lead.status",
+    entity: "lead",
+    entityId: leadId,
+    detail: status,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await offerUndo({ kind: "lead.status", was: [{ id: leadId, value: before.status }] });
+  await flash("said.statusSet");
+  revalidatePath("/leads");
+  return {};
+}
+
+/**
+ * The same two things, done to everything chosen.
+ *
+ * The bar sends either the ticked ids or, when somebody escalated to the whole
+ * filtered set, the filters themselves. Sending the filters rather than three
+ * thousand ids is what makes "all matching" honest: the server works out the
+ * set the same way the list did.
+ */
+async function chosenLeadIds(formData: FormData): Promise<string[]> {
+  if (String(formData.get("scope") ?? "page") === "all") {
+    const { rows } = await listLeads({
+      query: String(formData.get("q") ?? ""),
+      status: String(formData.get("status") ?? ""),
+      source: String(formData.get("source") ?? ""),
+      limit: 5000,
+      offset: 0,
+    });
+    return rows.map((row) => row.lead.id);
+  }
+  return formData.getAll("ids").map(String).filter(Boolean);
+}
+
+export async function bulkLeadStatus(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const status = String(formData.get("newStatus") ?? "");
+  const ids = await chosenLeadIds(formData);
+
+  if (!STATUSES.includes(status as LeadStatus) || ids.length === 0) {
+    await flash("said.nothingChosen", "bad");
+    revalidatePath("/leads");
+    return;
+  }
+
+  // What each one was, so the whole change can be taken back in one go.
+  const before = await db.select().from(leads).where(inArray(leads.id, ids));
+  const movable = before.filter((row) => row.status !== "CONVERTED");
+
+  await db
+    .update(leads)
+    .set({ status: status as LeadStatus, updatedAt: new Date() })
+    .where(
+      inArray(
+        leads.id,
+        movable.map((row) => row.id),
+      ),
+    );
+
+  await recordAudit({
+    action: "lead.status.bulk",
+    entity: "lead",
+    detail: `${movable.length} set to ${status}, ${before.length - movable.length} left alone`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await offerUndo({
+    kind: "lead.status",
+    was: movable.map((row) => ({ id: row.id, value: row.status })),
+  });
+  await flash("said.statusSet");
+  revalidatePath("/leads");
+}
+
+export async function bulkLeadBin(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const ids = await chosenLeadIds(formData);
+
+  if (ids.length === 0) {
+    await flash("said.nothingChosen", "bad");
+    revalidatePath("/leads");
+    return;
+  }
+
+  await db
+    .update(leads)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(inArray(leads.id, ids));
+
+  await recordAudit({
+    action: "lead.binned.bulk",
+    entity: "lead",
+    detail: `${ids.length} moved to the bin`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await offerUndo({ kind: "lead.deleted", was: ids.map((id) => ({ id })) });
+  await flash("said.movedToBin");
+  revalidatePath("/leads");
 }
 
 /**

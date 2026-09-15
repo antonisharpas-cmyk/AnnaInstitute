@@ -92,6 +92,13 @@
       "when": 1789393342951,
       "tag": "0012_dashboard_layout",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789457541152,
+      "tag": "0013_views_settings_bin",
+      "breakpoints": true
     }
   ]
 }

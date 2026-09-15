@@ -312,3 +312,14 @@ export function contractStatusTone(status: string) {
         ? "warn"
         : "teal";
 }
+
+/**
+ * The ids of every contract the current filters match, in the order they show.
+ *
+ * The side panel walks this, so previous and next move through the filtered set
+ * rather than only the page on screen.
+ */
+export async function contractIdsFor(options?: { query?: string; status?: string }) {
+  const { rows } = await listContracts({ ...options, limit: 2000, offset: 0 });
+  return rows.map((row) => row.contract.id);
+}

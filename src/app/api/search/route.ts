@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, ilike, or, sql } from "drizzle-orm";
+import { and, eq, ilike, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
@@ -49,12 +49,15 @@ export async function GET(request: Request) {
       .select()
       .from(clients)
       .where(
-        or(
-          ilike(clients.firstName, like),
-          ilike(clients.lastName, like),
-          ilike(clients.email, like),
-          ilike(clients.phone, like),
-          ilike(clients.idNumber, like),
+        and(
+          isNull(clients.deletedAt),
+          or(
+            ilike(clients.firstName, like),
+            ilike(clients.lastName, like),
+            ilike(clients.email, like),
+            ilike(clients.phone, like),
+            ilike(clients.idNumber, like),
+          ),
         ),
       )
       .limit(LIMIT),
@@ -81,13 +84,13 @@ export async function GET(request: Request) {
       .from(leads)
       .where(
         and(
+          isNull(leads.deletedAt),
           or(
             ilike(leads.firstName, like),
             ilike(leads.lastName, like),
             ilike(leads.email, like),
             ilike(leads.phone, like),
           ),
-          sql`true`,
         ),
       )
       .limit(LIMIT),

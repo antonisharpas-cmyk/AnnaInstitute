@@ -2,13 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { clients, contracts, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
+import { flash } from "@/lib/flash";
+import { offerUndo } from "@/lib/undo";
+import { matchingClientIds } from "@/lib/clients";
 
 const clientSchema = z.object({
   firstName: z.string().min(1),
@@ -298,4 +301,162 @@ export async function unassignApartment(unitId: string, clientId: string) {
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/clients");
   revalidatePath(`/projects/${unit.projectId}`);
+}
+
+/* ---------------------------------------------------------------------------
+   From the list itself
+   --------------------------------------------------------------------------- */
+
+/**
+ * A telephone number or an email address, corrected where it is read.
+ *
+ * Most corrections to a client record are one of these two fields, and walking
+ * to the record and back for a digit is the sort of friction that makes people
+ * stop correcting things at all.
+ */
+export async function setClientField(
+  clientId: string,
+  field: "phone" | "email",
+  value: string,
+): Promise<{ error?: string }> {
+  const user = await requireUser(["ADMIN"]);
+  const clean = value.trim();
+
+  if (field === "email" && clean && !/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(clean)) {
+    return { error: "That is not an email address" };
+  }
+  if (field === "phone" && clean && !/^[+()\d\s.-]{6,24}$/.test(clean)) {
+    return { error: "That is not a telephone number" };
+  }
+
+  await db
+    .update(clients)
+    .set({ [field]: clean || null, updatedAt: new Date() })
+    .where(eq(clients.id, clientId));
+
+  await recordAudit({
+    action: "client.update",
+    entity: "client",
+    entityId: clientId,
+    detail: `${field} changed from the list`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.saved");
+  revalidatePath("/clients");
+  return {};
+}
+
+/** The ids the selection bar sent, or every client the filters match. */
+async function chosenClientIds(formData: FormData): Promise<string[]> {
+  if (String(formData.get("scope") ?? "page") === "all") {
+    const rows = await matchingClientIds({
+      query: String(formData.get("q") ?? ""),
+      held: String(formData.get("held") ?? ""),
+    });
+    return rows;
+  }
+  return formData.getAll("ids").map(String).filter(Boolean);
+}
+
+export async function bulkClientMarketing(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const wanted = String(formData.get("marketing") ?? "on") === "on";
+  const ids = await chosenClientIds(formData);
+
+  if (ids.length === 0) {
+    await flash("said.nothingChosen", "bad");
+    revalidatePath("/clients");
+    return;
+  }
+
+  const before = await db.select().from(clients).where(inArray(clients.id, ids));
+
+  /**
+   * An unsubscribe is the client's own decision and outranks the office, so
+   * those records are left exactly as they are and counted separately.
+   */
+  const allowed = before.filter((row) => !wanted || row.unsubscribedAt === null);
+
+  await db
+    .update(clients)
+    .set({
+      marketingOptIn: wanted,
+      marketingOptInAt: wanted ? new Date() : null,
+      marketingOptInSource: wanted ? "office, from the list" : null,
+      updatedAt: new Date(),
+    })
+    .where(
+      inArray(
+        clients.id,
+        allowed.map((row) => row.id),
+      ),
+    );
+
+  await recordAudit({
+    action: "client.marketing.bulk",
+    entity: "client",
+    detail: `${allowed.length} set to ${wanted ? "allowed" : "stopped"}, ${
+      before.length - allowed.length
+    } left alone because they unsubscribed`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await offerUndo({
+    kind: "client.marketing",
+    was: allowed.map((row) => ({ id: row.id, value: row.marketingOptIn ? "on" : "off" })),
+  });
+  await flash("said.marketingSet");
+  revalidatePath("/clients");
+}
+
+/**
+ * Clients to the recycle bin.
+ *
+ * A client who has signed something is not deleted at all: the contract, the
+ * money and the apartment all point at them, so those are named in the message
+ * and left where they are.
+ */
+export async function bulkClientBin(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const ids = await chosenClientIds(formData);
+
+  if (ids.length === 0) {
+    await flash("said.nothingChosen", "bad");
+    revalidatePath("/clients");
+    return;
+  }
+
+  const signed = await db
+    .select({ clientId: contracts.clientId })
+    .from(contracts)
+    .where(inArray(contracts.clientId, ids));
+
+  const locked = new Set(signed.map((row) => row.clientId).filter(Boolean) as string[]);
+  const removable = ids.filter((id) => !locked.has(id));
+
+  if (removable.length > 0) {
+    await db
+      .update(clients)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(inArray(clients.id, removable));
+
+    await offerUndo({ kind: "client.deleted", was: removable.map((id) => ({ id })) });
+  }
+
+  await recordAudit({
+    action: "client.binned.bulk",
+    entity: "client",
+    detail: `${removable.length} moved to the bin, ${locked.size} kept because they have a contract`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash(
+    removable.length > 0 ? "said.movedToBin" : "said.clientHasContract",
+    removable.length > 0 ? "good" : "bad",
+  );
+  revalidatePath("/clients");
 }

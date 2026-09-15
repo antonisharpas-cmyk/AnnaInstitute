@@ -151,7 +151,8 @@ export async function listLeads({
   limit?: number;
   offset?: number;
 }) {
-  const filters: SQL[] = [];
+  // Anything in the recycle bin is out of every list and every count.
+  const filters: SQL[] = [isNull(leads.deletedAt) as SQL];
   if (query) {
     filters.push(
       or(
@@ -170,7 +171,7 @@ export async function listLeads({
   if ((LEAD_SOURCES as readonly string[]).includes(source)) {
     filters.push(eq(leads.sourceKind, source as LeadSource));
   }
-  const where = filters.length > 0 ? and(...filters) : undefined;
+  const where = and(...filters);
 
   const [rows, [counted]] = await Promise.all([
     db
@@ -199,7 +200,8 @@ export async function leadCounts() {
       working: sql<number>`count(*) filter (where status in ('CONTACTED','QUALIFIED'))::int`,
       converted: sql<number>`count(*) filter (where status = 'CONVERTED')::int`,
     })
-    .from(leads);
+    .from(leads)
+    .where(isNull(leads.deletedAt));
   return row ?? { total: 0, fresh: 0, working: 0, converted: 0 };
 }
 
@@ -208,7 +210,7 @@ export async function newLeadCount() {
   const [row] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(leads)
-    .where(and(eq(leads.status, "NEW"), isNull(leads.clientId)));
+    .where(and(eq(leads.status, "NEW"), isNull(leads.clientId), isNull(leads.deletedAt)));
   return row?.total ?? 0;
 }
 
@@ -220,3 +222,23 @@ export const leadStatusTone = (status: string) =>
       : status === "CLOSED"
         ? "neutral"
         : "neutral";
+
+/**
+ * The ids of every enquiry the current filters match, in the order they show.
+ *
+ * The side panel needs this to say "eleven of forty two" and to walk to the
+ * next record without going back to the list, and it is only ids, so it stays
+ * cheap enough to run on every page load.
+ */
+export async function leadIdsFor({
+  query = "",
+  status = "",
+  source = "",
+}: {
+  query?: string;
+  status?: string;
+  source?: string;
+}): Promise<string[]> {
+  const { rows } = await listLeads({ query, status, source, limit: 2000, offset: 0 });
+  return rows.map((row) => row.lead.id);
+}

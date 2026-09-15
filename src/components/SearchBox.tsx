@@ -11,6 +11,7 @@ export default function SearchBox({
   searchLabel,
   clearLabel,
   children,
+  keep,
 }: {
   action: string;
   query: string;
@@ -18,9 +19,17 @@ export default function SearchBox({
   searchLabel: string;
   clearLabel: string;
   children?: React.ReactNode;
+  /**
+   * Fields the search must not lose: the saved view being looked at, above
+   * all, because losing it is how a list forgets which view it is on.
+   */
+  keep?: Record<string, string | undefined>;
 }) {
   return (
     <form action={action} method="get">
+      {Object.entries(keep ?? {}).map(([name, value]) =>
+        value ? <input key={name} type="hidden" name={name} value={value} /> : null,
+      )}
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-56 flex-1">
           <label className="label" htmlFor="q">
@@ -33,7 +42,7 @@ export default function SearchBox({
           {searchLabel}
         </button>
         {query ? (
-          <Link href={action} className="btn btn-secondary">
+          <Link href={`${action}?all=1`} className="btn btn-secondary">
             {clearLabel}
           </Link>
         ) : null}

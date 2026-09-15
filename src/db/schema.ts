@@ -4,6 +4,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -129,6 +130,13 @@ export const clients = pgTable("clients", {
   marketingOptInSource: text("marketing_opt_in_source"),
   unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
   notes: text("notes"),
+  /**
+   * In the recycle bin rather than gone.
+   *
+   * Nothing the office deletes by hand is destroyed on the spot: the record is
+   * dated here, disappears from every list, and can be put back for thirty days.
+   */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: created(),
   updatedAt: updated(),
 });
@@ -437,6 +445,42 @@ export const auditLogs = pgTable("audit_logs", {
 });
 
 /**
+ * A list, filtered the way somebody keeps needing it.
+ *
+ * A saved view is nothing but a name on a set of filters, which is why it is
+ * stored as the address the list already understands. A view with no owner
+ * belongs to the whole office; one with an owner is that person's own.
+ */
+export const savedViews = pgTable("saved_views", {
+  id: id(),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  /** Which list it belongs to: clients, contracts, leads or projects. */
+  list: text("list").notNull(),
+  name: text("name").notNull(),
+  /** The query string, exactly as the list reads it: status=NEW&source=WEBSITE */
+  query: text("query").notNull(),
+  pinned: boolean("pinned").default(true).notNull(),
+  position: integer("position").default(0).notNull(),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/** Which columns one person wants to see on one list. */
+export const listSettings = pgTable(
+  "list_settings",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    list: text("list").notNull(),
+    /** A JSON list of the column keys this person has put away. */
+    hidden: text("hidden").default("[]").notNull(),
+    updatedAt: updated(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.list] })],
+);
+
+/**
  * How one person wants their dashboard.
  *
  * The panels in the order they like them, each with a width and a switch for
@@ -656,6 +700,8 @@ export const leads = pgTable("leads", {
   payload: text("payload"),
   apiKeyId: text("api_key_id"),
   remoteIp: text("remote_ip"),
+  /** In the recycle bin rather than gone. See the note on clients. */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: created(),
   updatedAt: updated(),
 });

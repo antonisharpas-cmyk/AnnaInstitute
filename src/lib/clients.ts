@@ -1,7 +1,7 @@
 import "server-only";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { contracts, projects, units } from "@/db/schema";
+import { clients, contracts, projects, units } from "@/db/schema";
 
 export type AssignedApartment = {
   unitId: string;
@@ -78,4 +78,45 @@ export async function assignableUnits(currentClientId?: string) {
       });
   }
   return grouped;
+}
+
+/* ---------------------------------------------------------------------------
+   The clients list, in one place
+   --------------------------------------------------------------------------- */
+
+/** The filters the list understands, written once so the page and the bulk
+ * actions cannot drift apart: "all matching" has to mean the same set that is
+ * on screen, and the only way to be sure of that is to build it here. */
+export function clientFilters({ query = "", held = "" }: { query?: string; held?: string }) {
+  const parts: SQL[] = [isNull(clients.deletedAt) as SQL];
+
+  if (query) {
+    parts.push(
+      or(
+        ilike(clients.firstName, `%${query}%`),
+        ilike(clients.lastName, `%${query}%`),
+        ilike(clients.email, `%${query}%`),
+        ilike(clients.phone, `%${query}%`),
+        sql`concat(${clients.firstName}, ' ', ${clients.lastName}) ilike ${`%${query}%`}`,
+      ) as SQL,
+    );
+  }
+  if (held === "yes") {
+    parts.push(sql`exists (select 1 from units u where u.client_id = ${clients.id})`);
+  }
+  if (held === "no") {
+    parts.push(sql`not exists (select 1 from units u where u.client_id = ${clients.id})`);
+  }
+
+  return and(...parts);
+}
+
+export async function matchingClientIds(input: { query?: string; held?: string }) {
+  const rows = await db
+    .select({ id: clients.id })
+    .from(clients)
+    .where(clientFilters(input))
+    .orderBy(asc(clients.lastName), asc(clients.firstName))
+    .limit(5000);
+  return rows.map((row) => row.id);
 }

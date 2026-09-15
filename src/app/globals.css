@@ -1249,3 +1249,525 @@ table.data tbody td.ctr {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* The Undo button, and the dismiss, on the line at the bottom of the screen. */
+.toast-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.4rem;
+  border: 1px solid currentColor;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.toast-undo:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.toast-close {
+  margin-left: 0.15rem;
+  padding: 0 0.25rem;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   LISTS THE OFFICE LIVES IN
+
+   The bar of saved views, the row of chosen records, the cell that can be
+   edited where it sits, and the panel that shows a record beside its list.
+   --------------------------------------------------------------------------- */
+
+.viewsbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.65rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-brand-line);
+}
+
+.viewchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-brand-line);
+  background: var(--color-brand-paper);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-brand-graphite);
+  white-space: nowrap;
+}
+
+.viewchip:hover {
+  border-color: var(--color-brand-teal);
+  color: var(--color-brand-ink);
+}
+
+.viewchip[data-on="true"] {
+  background: var(--color-brand-teal);
+  border-color: var(--color-brand-teal);
+  color: var(--on-teal);
+}
+
+.viewchip-shared {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.viewchip-new {
+  border-style: dashed;
+  cursor: pointer;
+  list-style: none;
+}
+
+.viewchip-new::-webkit-details-marker {
+  display: none;
+}
+
+.viewnew {
+  position: relative;
+}
+
+.viewform {
+  position: absolute;
+  top: 2rem;
+  left: 0;
+  z-index: 30;
+  width: 15rem;
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-brand-line);
+  background: var(--color-brand-paper);
+  box-shadow: var(--shadow-float);
+}
+
+.viewnote {
+  font-size: 0.75rem;
+  color: var(--label-ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.columnmenu {
+  position: absolute;
+  top: 2rem;
+  right: 0;
+  width: 15rem;
+  padding: 0.35rem 0.5rem 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.columnrow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.columnrow:hover {
+  background: var(--color-brand-raised);
+}
+
+.columnrow[data-off="true"] {
+  color: var(--label-ink);
+}
+
+.columnrow:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+/*
+  The row of chosen records.
+
+  Fixed to the bottom of the screen rather than the bottom of the table: a list
+  of forty rows is taller than the window, and a bar that scrolls away with the
+  table is a bar nobody can reach while choosing rows.
+*/
+.bulkbar {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--color-brand-teal);
+  background: var(--color-brand-paper);
+  box-shadow: var(--shadow-float);
+}
+
+.bulkcount {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-brand-ink);
+}
+
+.bulklink {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-brand-teal-dark);
+  text-decoration: underline;
+}
+
+.bulkscope {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+/* A chosen row, and the row the keyboard is holding. */
+table.data tbody tr[data-chosen="true"] td {
+  background: var(--color-brand-teal-soft);
+}
+
+table.data tbody tr[data-hot="true"] td {
+  box-shadow: inset 0 0 0 1px var(--color-brand-teal);
+}
+
+table.data tbody tr[data-peeked="true"] td {
+  background: var(--color-brand-teal-soft);
+  font-weight: 500;
+}
+
+/* The identifying column stays put while the rest of the table scrolls. */
+.freeze table.data thead th:first-child,
+.freeze table.data tbody td:first-child,
+.freeze table.data tfoot td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--color-brand-paper);
+}
+
+.freeze table.data thead th:first-child {
+  z-index: 5;
+  background: var(--head-bg);
+}
+
+.freeze table.data tbody tr:nth-child(even) td:first-child {
+  background: var(--row-even);
+}
+
+.freeze table.data tbody tr:hover td:first-child,
+.freeze table.data tbody tr[data-chosen="true"] td:first-child,
+.freeze table.data tbody tr[data-peeked="true"] td:first-child {
+  background: var(--color-brand-teal-soft);
+}
+
+.freeze table.data th.pick,
+.freeze table.data td.pick {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+}
+
+/* With a chooser column in front, the identifying column is the second one. */
+.freeze table.data th.pick + th,
+.freeze table.data td.pick + td {
+  position: sticky;
+  left: 2.25rem;
+  z-index: 3;
+  background: var(--color-brand-paper);
+}
+
+.freeze table.data th.pick + th {
+  z-index: 5;
+  background: var(--head-bg);
+}
+
+.freeze table.data tbody tr:nth-child(even) td.pick + td {
+  background: var(--row-even);
+}
+
+.freeze table.data tbody tr:hover td.pick + td,
+.freeze table.data tbody tr[data-chosen="true"] td.pick + td,
+.freeze table.data tbody tr[data-peeked="true"] td.pick + td {
+  background: var(--color-brand-teal-soft);
+}
+
+table.data th.pick,
+table.data td.pick {
+  width: 2.25rem;
+  padding-right: 0;
+  text-align: center;
+  background: var(--color-brand-paper);
+}
+
+table.data thead th.pick {
+  background: var(--head-bg);
+}
+
+/* Editing a cell in place. */
+.inline-cell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+}
+
+.inline-select,
+.inline-input {
+  font: inherit;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.35rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-brand-ink);
+  max-width: 12rem;
+}
+
+.inline-select:hover,
+.inline-input:hover,
+.inline-read:hover {
+  border-color: var(--field-border);
+  background: var(--color-brand-paper);
+}
+
+.inline-select:focus,
+.inline-input:focus {
+  outline: none;
+  border-color: var(--color-brand-teal);
+  background: var(--color-brand-paper);
+  box-shadow: 0 0 0 3px var(--color-brand-teal-soft);
+}
+
+.inline-read {
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.35rem;
+  border: 1px solid transparent;
+  border-bottom-style: dashed;
+  border-bottom-color: var(--field-border);
+  text-align: left;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-empty {
+  color: var(--label-ink);
+}
+
+.inline-cell[data-pending="true"] {
+  opacity: 0.65;
+}
+
+.inline-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--color-brand-teal);
+  animation: inline-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes inline-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.inline-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  margin-top: 0.15rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--bad-border);
+  background: var(--bad-bg);
+  color: var(--bad-ink);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.inline-cell[data-bad="true"] .inline-select,
+.inline-cell[data-bad="true"] .inline-read {
+  border-color: var(--bad-border);
+  background: var(--bad-bg);
+}
+
+/* The record beside its list. */
+.peeklayout {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (min-width: 1280px) {
+  .peeklayout[data-open="true"] {
+    grid-template-columns: minmax(0, 1fr) 25rem;
+  }
+}
+
+.peek {
+  position: sticky;
+  top: 4.5rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.625rem;
+  background: var(--color-brand-paper);
+  box-shadow: var(--shadow-raised);
+}
+
+.peekhead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--color-brand-line);
+  background: var(--color-brand-paper);
+}
+
+.peekwhere {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--label-ink);
+  white-space: nowrap;
+}
+
+.peekbody {
+  padding: 0.85rem;
+}
+
+.peekrow {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--color-brand-line);
+  font-size: 0.8125rem;
+}
+
+.peekrow:last-child {
+  border-bottom: 0;
+}
+
+.peekrow dt {
+  color: var(--label-ink);
+  white-space: nowrap;
+}
+
+.peekrow dd {
+  text-align: right;
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* On a narrow screen the panel comes over the list instead of beside it. */
+@media (max-width: 1279px) {
+  .peek {
+    position: fixed;
+    inset: auto 0 0 0;
+    top: 3.5rem;
+    z-index: 45;
+    max-height: none;
+    border-radius: 0.75rem 0.75rem 0 0;
+    box-shadow: var(--shadow-float);
+  }
+}
+
+/* Two different empty screens: nothing here yet, and nothing matched. */
+.nothing {
+  padding: 2.25rem 1rem;
+  text-align: center;
+}
+
+.nothing-mark {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: 0 auto 0.65rem;
+  border-radius: 999px;
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
+}
+
+.nothing h3 {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  color: var(--color-brand-ink);
+}
+
+.nothing p {
+  margin: 0.25rem auto 0;
+  max-width: 28rem;
+  font-size: 0.8125rem;
+  color: var(--color-brand-graphite);
+}
+
+.nothing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 0.85rem;
+}
+
+/* The way back, kept in the top bar while the offer lasts. */
+.undochip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-brand-teal);
+  background: var(--color-brand-teal-soft);
+  color: var(--color-brand-teal-dark);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.undochip:hover {
+  background: var(--color-brand-teal);
+  color: var(--on-teal);
+}

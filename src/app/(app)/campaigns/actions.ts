@@ -144,7 +144,13 @@ export async function audienceFor(groups: CampaignGroups) {
     const rows = await db
       .select()
       .from(clients)
-      .where(and(eq(clients.marketingOptIn, true), isNull(clients.unsubscribedAt)))
+      .where(
+        and(
+          eq(clients.marketingOptIn, true),
+          isNull(clients.unsubscribedAt),
+          isNull(clients.deletedAt),
+        ),
+      )
       .orderBy(asc(clients.lastName));
 
     for (const c of rows) {

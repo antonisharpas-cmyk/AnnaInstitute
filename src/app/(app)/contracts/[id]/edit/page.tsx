@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, clients } from "@/db/schema";
 import { getTranslator } from "@/i18n";
@@ -22,7 +22,7 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
 
   const [free, clientList, agentList] = await Promise.all([
     unitsWithoutContract(detail.contract.unitId ?? undefined),
-    db.select().from(clients).orderBy(asc(clients.lastName)),
+    db.select().from(clients).where(isNull(clients.deletedAt)).orderBy(asc(clients.lastName)),
     db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
   ]);
 

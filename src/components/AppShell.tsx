@@ -16,9 +16,16 @@ import {
   IconPlus,
   IconSearch,
   IconSun,
+  IconUp,
   SECTION_ICONS,
 } from "@/components/icons";
 
+/*
+  Every link in the shell asks the server for its page only when it is used.
+  Next prefetches links by default, which on a list of twenty rows means twenty
+  extra renders of other pages the moment the list appears, and a browser busy
+  with those occasionally drops the navigation somebody actually asked for.
+*/
 export type NavItem = { href: string; label: string; group: string; count?: number };
 export type Alert = { label: string; href: string; count: number; tone: "bad" | "warn" };
 
@@ -81,6 +88,7 @@ export default function AppShell({
   creates,
   signOut,
   setLocale,
+  undo,
   labels,
   children,
 }: {
@@ -92,6 +100,8 @@ export default function AppShell({
   signOut: () => void | Promise<void>;
   setLocale: (formData: FormData) => void | Promise<void>;
   labels: ShellLabels;
+  /** Offered while the last action can still be taken back. */
+  undo?: { label: string; title: string; action: () => Promise<void> };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -252,6 +262,7 @@ export default function AppShell({
                   className={`navlink ${active(item.href) ? "navlink-active" : ""} ${
                     narrow ? "justify-center" : ""
                   }`}
+                  prefetch={false}
                 >
                   <Icon size={17} />
                   {narrow ? null : <span className="truncate">{item.label}</span>}
@@ -274,11 +285,11 @@ export default function AppShell({
       >
         <div className={`mb-3 flex items-center gap-2 ${narrow ? "justify-center px-2" : "px-4"}`}>
           {narrow ? (
-            <Link href="/" aria-label="One Eleven" className="avatar">
+            <Link href="/" aria-label="One Eleven" className="avatar" prefetch={false}>
               11
             </Link>
           ) : (
-            <Link href="/" className="min-w-0">
+            <Link href="/" className="min-w-0" prefetch={false}>
               <Logo width={124} />
               <span className="mt-1 block truncate text-xs text-brand-graphite/70">
                 {labels.subtitle}
@@ -358,7 +369,12 @@ export default function AppShell({
                 <div className="menu">
                   <p className="palette-group">{labels.create}</p>
                   {creates.map((create) => (
-                    <Link key={create.href} href={create.href} className="menuitem">
+                    <Link
+                      key={create.href}
+                      href={create.href}
+                      className="menuitem"
+                      prefetch={false}
+                    >
                       <IconPlus size={15} />
                       {create.label}
                     </Link>
@@ -366,6 +382,20 @@ export default function AppShell({
                 </div>
               ) : null}
             </div>
+
+            {/*
+              The way back from the last thing that was done.
+              It stays here for two minutes, so somebody who has moved on to
+              another screen can still take back a status change or a delete.
+            */}
+            {undo ? (
+              <form action={undo.action}>
+                <button type="submit" className="undochip" title={undo.title}>
+                  <IconUp size={14} />
+                  {undo.label}
+                </button>
+              </form>
+            ) : null}
 
             {/* What needs attention, counted. */}
             <div className="relative" data-menu>
@@ -386,7 +416,12 @@ export default function AppShell({
                     <p className="px-3 py-3 text-sm text-brand-graphite/60">{labels.noAlerts}</p>
                   ) : (
                     alerts.map((alert) => (
-                      <Link key={alert.href + alert.label} href={alert.href} className="menuitem">
+                      <Link
+                        key={alert.href + alert.label}
+                        href={alert.href}
+                        className="menuitem"
+                        prefetch={false}
+                      >
                         <IconAlert
                           size={15}
                           className={

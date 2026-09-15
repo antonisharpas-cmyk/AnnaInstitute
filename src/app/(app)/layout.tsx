@@ -3,10 +3,11 @@ import { db } from "@/db";
 import { expenses, installments, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { readFlash } from "@/lib/flash";
+import { readUndo } from "@/lib/undo";
 import { getTranslator, type MessageKey } from "@/i18n";
 import AppShell, { type Alert, type NavItem } from "@/components/AppShell";
 import Toaster from "@/components/Toaster";
-import { setLocale, signOut } from "@/app/actions";
+import { setLocale, signOut, undoLast } from "@/app/actions";
 
 /**
  * Everything behind the login.
@@ -25,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       select sum(p.amount) from payments p where p.installment_id = installments.id
     ), 0) < ${installments.totalAmount}`;
 
-  const [[late], [waiting], [bills], said] = await Promise.all([
+  const [[late], [waiting], [bills], said, undo] = await Promise.all([
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(installments)
@@ -35,7 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(leads)
-      .where(and(eq(leads.status, "NEW"), isNull(leads.clientId))),
+      .where(and(eq(leads.status, "NEW"), isNull(leads.clientId), isNull(leads.deletedAt))),
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(expenses)
@@ -47,6 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ),
       ),
     readFlash(),
+    readUndo(),
   ]);
 
   const items: NavItem[] = [
@@ -107,6 +109,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         creates={creates}
         signOut={signOut}
         setLocale={setLocale}
+        undo={
+          undo
+            ? { label: t("said.undo"), title: t("shell.undoTitle"), action: undoLast }
+            : undefined
+        }
         labels={{
           subtitle: t("app.subtitle"),
           search: t("shell.search"),
@@ -153,7 +160,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
       </AppShell>
 
-      {said ? <Toaster message={t(said.message as MessageKey)} tone={said.tone} /> : null}
+      {said ? (
+        <Toaster
+          message={t(said.message as MessageKey)}
+          tone={said.tone}
+          undo={undo ? { label: t("said.undo"), action: undoLast } : undefined}
+        />
+      ) : null}
     </>
   );
 }

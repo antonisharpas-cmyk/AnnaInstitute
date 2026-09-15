@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, sql } from "drizzle-orm";
+import { desc, sql, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, clients, suppressions } from "@/db/schema";
 import { getTranslator } from "@/i18n";
@@ -26,7 +26,8 @@ export default async function CampaignsPage() {
         consented: sql<number>`count(*) filter (where ${clients.marketingOptIn})::int`,
         unsubscribed: sql<number>`count(*) filter (where ${clients.unsubscribedAt} is not null)::int`,
       })
-      .from(clients),
+      .from(clients)
+      .where(isNull(clients.deletedAt)),
     db.select({ total: sql<number>`count(*)::int` }).from(suppressions),
     db.select().from(campaigns).orderBy(desc(campaigns.createdAt)).limit(30),
     activePriceListLinks(),
