@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, leads, projects } from "@/db/schema";
+import { agents, clients, leads, projects } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { leadStatusTone, notesForLead } from "@/lib/leads";
 import { BackLink, Card, PageHeader, Pill } from "@/components/ui";
@@ -29,16 +29,17 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const { locale, t } = await getTranslator();
 
   const found = await db
-    .select({ lead: leads, project: projects, client: clients })
+    .select({ lead: leads, project: projects, client: clients, introducer: agents })
     .from(leads)
     .leftJoin(projects, eq(projects.id, leads.projectId))
     .leftJoin(clients, eq(clients.id, leads.clientId))
+    .leftJoin(agents, eq(agents.id, leads.agentId))
     .where(eq(leads.id, id))
     .limit(1);
 
   const row = found[0];
   if (!row) notFound();
-  const { lead, project, client } = row;
+  const { lead, project, client, introducer } = row;
 
   const notes = await notesForLead(id);
 
@@ -111,6 +112,23 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 <span className="break-all font-mono text-xs">{lead.referrer}</span>
               </Line>
             ) : null}
+            {introducer ? (
+              <Line label={t("leads.agentIntroduced")}>
+                <Link
+                  href={`/agents/${introducer.id}`}
+                  className="text-brand-teal-dark hover:underline"
+                >
+                  {introducer.name}
+                </Link>
+              </Line>
+            ) : null}
+            <Line label={t("clients.marketing")}>
+              {lead.consent ? (
+                <Pill tone="good">{t("clients.marketingOn")}</Pill>
+              ) : (
+                <Pill tone="warn">{t("clients.marketingOff")}</Pill>
+              )}
+            </Line>
             {lead.utmSource || lead.utmMedium || lead.utmCampaign ? (
               <Line label={t("leads.campaign")}>
                 {[lead.utmSource, lead.utmMedium, lead.utmCampaign].filter(Boolean).join(" . ")}
@@ -179,6 +197,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 <option value="CONTACTED">{t("leads.status.CONTACTED")}</option>
                 <option value="QUALIFIED">{t("leads.status.QUALIFIED")}</option>
                 <option value="CLOSED">{t("leads.status.CLOSED")}</option>
+                {/* Choosing this makes the client and leaves the enquiries list. */}
+                {lead.clientId ? null : (
+                  <option value="CONVERTED">{t("leads.status.CONVERTED")}</option>
+                )}
               </select>
               <button type="submit" className="btn btn-secondary">
                 {t("common.save")}

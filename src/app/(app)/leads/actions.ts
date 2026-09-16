@@ -44,6 +44,18 @@ export async function createLead(formData: FormData) {
     throw new Error("Give the lead an email or a phone number, or there is no way to reply.");
   }
 
+  /**
+   * Consent said out loud is consent.
+   *
+   * Somebody who agrees on the telephone has agreed, and making the office go
+   * to another screen afterwards to record it is how a campaign list ends up
+   * with people on it who never said yes, or without people who did. It is
+   * written on the enquiry with a note saying where it came from, and it
+   * travels to the client record when the enquiry becomes a buyer.
+   */
+  const consented = String(formData.get("consent") ?? "") === "on";
+  const agentId = String(formData.get("agentId") ?? "").trim() || null;
+
   const inserted = await db
     .insert(leads)
     .values({
@@ -55,6 +67,11 @@ export async function createLead(formData: FormData) {
       sourceKind,
       source: sourceKind === "OTHER" ? other || "other" : sourceKind.toLowerCase(),
       projectName: String(formData.get("projectName") ?? "").trim() || null,
+      // Only meaningful when the enquiry came from an agent, and ignored
+      // otherwise, so changing the source does not leave a stray name behind.
+      agentId: sourceKind === "AGENT" ? agentId : null,
+      consent: consented,
+      consentText: consented ? "Given to the office when the enquiry was taken" : null,
       status: "NEW",
     })
     .returning({ id: leads.id });
@@ -77,6 +94,23 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const status = String(formData.get("status") ?? "");
   if (!STATUSES.includes(status as LeadStatus)) return;
+
+  /**
+   * Became a client is not a status, it is a move.
+   *
+   * Setting it here does what the button on the enquiry does: the client record
+   * is created from everything the enquiry knows, the enquiry leaves the
+   * enquiries list, and the office lands on the new profile ready to assign an
+   * apartment. Anything already converted is left alone rather than doubled.
+   */
+  if (status === "CONVERTED") {
+    const clientId = await makeClient(leadId, user);
+    if (clientId) {
+      await flash("said.leadConverted");
+      redirect(`/clients/${clientId}`);
+    }
+    return;
+  }
 
   await db
     .update(leads)
@@ -165,20 +199,43 @@ export async function removeLeadNote(leadId: string, formData: FormData) {
  * is carried over only when the office confirms it here. Everything else the
  * form said is copied into the client's notes rather than thrown away.
  */
-export async function convertLead(leadId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN"]);
-
+/**
+ * Make a client out of an enquiry.
+ *
+ * Written once and called from two places, because the office asked for both:
+ * the button on the enquiry, where the name can be corrected and consent
+ * confirmed first, and the status "Became a client", which is the way somebody
+ * working down a list thinks about it. Whichever is used, the same thing
+ * happens, and the enquiry leaves the enquiries list the moment it does.
+ *
+ * Everything the enquiry knew goes with it: the name, the contact details, what
+ * they asked about, consent if it was given, and the agent who introduced them,
+ * which the contract later picks up so the commission has an owner.
+ */
+async function makeClient(
+  leadId: string,
+  who: { id: string; email: string },
+  chosen?: { firstName?: string; lastName?: string; optIn?: boolean },
+): Promise<string | null> {
   const rows = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
   const lead = rows[0];
-  if (!lead) return;
-  if (lead.clientId) redirect(`/clients/${lead.clientId}`);
+  if (!lead) return null;
+  if (lead.clientId) return lead.clientId;
 
-  const firstName = String(formData.get("firstName") ?? "").trim() || lead.firstName || "Enquiry";
-  const lastName = String(formData.get("lastName") ?? "").trim() || lead.lastName || "";
-  const optIn = String(formData.get("optIn") ?? "") === "on";
+  const firstName = chosen?.firstName?.trim() || lead.firstName || "Enquiry";
+  const lastName = chosen?.lastName?.trim() || lead.lastName || "";
+
+  /**
+   * Consent carries over, and can only be added by somebody saying so.
+   *
+   * The enquiry may already carry it, from the website's own box or from the
+   * office ticking it while taking the call. The conversion form can confirm it
+   * as well. Neither can take it away silently, and nothing here invents it.
+   */
+  const optIn = chosen?.optIn ?? lead.consent;
 
   const notes = [
-    lead.message ? `From the website: ${lead.message}` : null,
+    lead.message ? `From the enquiry: ${lead.message}` : null,
     lead.projectName ? `Asked about ${lead.projectName}` : null,
     lead.pageUrl ? `Page: ${lead.pageUrl}` : null,
   ]
@@ -193,10 +250,10 @@ export async function convertLead(leadId: string, formData: FormData) {
       email: lead.email,
       phone: lead.phone,
       country: lead.country,
-      source: "ENQUIRY",
+      source: lead.sourceKind === "AGENT" ? "AGENT_REFERRAL" : "ENQUIRY",
       marketingOptIn: optIn,
       marketingOptInAt: optIn ? new Date() : null,
-      marketingOptInSource: optIn ? "website form" : null,
+      marketingOptInSource: optIn ? (lead.consentText ?? "the enquiry") : null,
       notes: notes || null,
     })
     .returning({ id: clients.id });
@@ -211,14 +268,28 @@ export async function convertLead(leadId: string, formData: FormData) {
     entity: "lead",
     entityId: leadId,
     detail: `${firstName} ${lastName}`.trim(),
-    userId: user.id,
-    userEmail: user.email,
+    userId: who.id,
+    userEmail: who.email,
   });
 
-  await flash("said.leadConverted");
   revalidatePath("/leads");
   revalidatePath("/clients");
-  redirect(`/clients/${inserted[0].id}`);
+  return inserted[0].id;
+}
+
+export async function convertLead(leadId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+
+  const clientId = await makeClient(leadId, user, {
+    firstName: String(formData.get("firstName") ?? ""),
+    lastName: String(formData.get("lastName") ?? ""),
+    optIn: String(formData.get("optIn") ?? "") === "on",
+  });
+
+  if (!clientId) return;
+
+  await flash("said.leadConverted");
+  redirect(`/clients/${clientId}`);
 }
 
 /**
@@ -324,6 +395,19 @@ export async function setLeadStatusInline(
   if (before.status === "CONVERTED" && status !== "CONVERTED" && before.clientId) {
     // Undoing a conversion is its own action, with its own checks.
     return { error: "Use undo the conversion on the client" };
+  }
+
+  /**
+   * Chosen from the list itself, Became a client does the same move, and the
+   * row disappears from the list because a client is not an enquiry any more.
+   */
+  if (status === "CONVERTED") {
+    const clientId = await makeClient(leadId, user);
+    if (!clientId) return { error: "That enquiry is gone" };
+    await flash("said.leadConverted");
+    revalidatePath("/leads");
+    revalidatePath("/clients");
+    return {};
   }
 
   await db

@@ -6,9 +6,7 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
-  agents,
   changeRequests,
-  commissions,
   contracts,
   documents,
   installments,
@@ -35,6 +33,7 @@ import {
   vatSummary,
 } from "@/lib/contracts";
 import { followTheApartments, followTheMoney } from "@/lib/statuses";
+import { recalculateCommission } from "@/lib/commissions";
 
 const detailsSchema = z.object({
   reference: z.string().min(1),
@@ -812,57 +811,13 @@ export async function setChangeRequestStatus(
 }
 
 /** Keep the agent commission in step with the contract price and the rate. */
+/**
+ * Keep the agent's commission in step with this contract.
+ *
+ * The rule itself lives in the library, because the same recalculation has to
+ * happen when a payment moves an apartment to sold, and that path is also
+ * walked by a command line script that cannot load a server action module.
+ */
 export async function syncCommission(contractId: string) {
-  const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
-  const contract = rows[0];
-  if (!contract) return;
-
-  // Only the rate line is maintained here. Extras are the office's own decision
-  // and are never touched by a change of price or rate.
-  const existing = await db
-    .select()
-    .from(commissions)
-    .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")))
-    .limit(1);
-
-  if (!contract.agentId) {
-    await db
-      .delete(commissions)
-      .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")));
-    return;
-  }
-
-  const agentRows = await db.select().from(agents).where(eq(agents.id, contract.agentId)).limit(1);
-
-  const rate = Number(contract.commissionRate ?? agentRows[0]?.commissionRate ?? 0);
-  const baseCents = toCents(contract.netPrice);
-  const amountCents = Math.round((baseCents * rate) / 100);
-
-  await db
-    .update(commissions)
-    .set({ agentId: contract.agentId })
-    .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "EXTRA")));
-
-  if (existing[0]) {
-    await db
-      .update(commissions)
-      .set({
-        agentId: contract.agentId,
-        baseAmount: fromCents(baseCents),
-        rate: rate.toFixed(3),
-        amount: fromCents(amountCents),
-        updatedAt: new Date(),
-      })
-      .where(eq(commissions.id, existing[0].id));
-    return;
-  }
-
-  await db.insert(commissions).values({
-    contractId,
-    agentId: contract.agentId,
-    kind: "RATE",
-    baseAmount: fromCents(baseCents),
-    rate: rate.toFixed(3),
-    amount: fromCents(amountCents),
-  });
+  await recalculateCommission(contractId);
 }

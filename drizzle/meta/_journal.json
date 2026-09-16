@@ -113,6 +113,20 @@
       "when": 1789560173455,
       "tag": "0015_lead_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789573738675,
+      "tag": "0016_lead_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789575689677,
+      "tag": "0017_project_file_categories",
+      "breakpoints": true
     }
   ]
 }

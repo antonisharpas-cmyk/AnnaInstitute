@@ -32,6 +32,7 @@ const NEEDED_COLUMNS = [
   ["clients", "deleted_at", "0013"],
   ["units", "status_by_hand_at", "0014"],
   ["projects", "status_by_hand_at", "0014"],
+  ["leads", "agent_id", "0016"],
 ] as const;
 
 type Ask = (text: string) => Promise<Record<string, unknown>[]>;

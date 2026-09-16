@@ -14,6 +14,10 @@ export type DocumentCategory =
   | "CHANGE_REQUEST"
   | "PROGRESS_PHOTO"
   | "PRICE_LIST"
+  | "PICTURES"
+  | "ARCHITECTURAL"
+  | "BROCHURE"
+  | "TECHNICAL_SPEC"
   | "OTHER";
 
 export type AttachTo = {

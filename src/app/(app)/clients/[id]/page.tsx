@@ -625,6 +625,7 @@ export default async function ClientPage({
                               <th>{t("contracts.receipt")}</th>
                               <th>{t("contracts.method")}</th>
                               <th>{t("clients.docsReceipts")}</th>
+                              <th className="ctr">{t("common.actions")}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -652,6 +653,18 @@ export default async function ClientPage({
                                   {paid.notes ? (
                                     <div className="text-brand-graphite/55">{paid.notes}</div>
                                   ) : null}
+                                </td>
+                                <td className="ctr">
+                                  {/*
+                                    The receipt for this payment, which opens to
+                                    be read and is only emailed from there.
+                                  */}
+                                  <Link
+                                    href={`/clients/${id}/receipt/${paid.id}`}
+                                    className="btn btn-secondary !px-2 !py-1 !text-xs"
+                                  >
+                                    {t("receipts.open")}
+                                  </Link>
                                 </td>
                               </tr>
                             ))}

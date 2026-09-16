@@ -10,7 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
-import { syncCommission } from "../contracts/actions";
+import { recalculateCommission } from "@/lib/commissions";
 
 const agentSchema = z.object({
   name: z.string().min(1),
@@ -124,7 +124,7 @@ export async function saveAgentProfile(
     .select({ id: contracts.id })
     .from(contracts)
     .where(eq(contracts.agentId, agentId));
-  for (const sale of sales) await syncCommission(sale.id);
+  for (const sale of sales) await recalculateCommission(sale.id);
 
   await recordAudit({
     action: "agent.update",
@@ -172,7 +172,7 @@ export async function updateAgent(agentId: string, formData: FormData) {
     .select({ id: contracts.id })
     .from(contracts)
     .where(eq(contracts.agentId, agentId));
-  for (const sale of sales) await syncCommission(sale.id);
+  for (const sale of sales) await recalculateCommission(sale.id);
 
   await recordAudit({
     action: "agent.update",
@@ -389,7 +389,7 @@ export async function setSaleRate(contractId: string, agentId: string, formData:
     .set({ commissionRate: rate, updatedAt: new Date() })
     .where(eq(contracts.id, contractId));
 
-  await syncCommission(contractId);
+  await recalculateCommission(contractId);
 
   await recordAudit({
     action: "commission.rate",
@@ -400,6 +400,57 @@ export async function setSaleRate(contractId: string, agentId: string, formData:
     userEmail: user.email,
   });
 
+  revalidatePath(`/agents/${agentId}`);
+  revalidatePath(`/contracts/${contractId}`);
+  revalidatePath("/commissions");
+}
+
+/**
+ * Record a sale against an agent.
+ *
+ * The office asked for a button rather than only the automatic route, and both
+ * answer the same question from different ends. Usually the agent is named on
+ * the contract and the commission appears by itself the moment the first
+ * installment lands. Sometimes the contract was written without naming anybody,
+ * and somebody has to say afterwards that this sale was theirs.
+ *
+ * So this takes an apartment that already has a contract, puts the agent on it,
+ * and takes the rate for that sale if one was agreed, leaving the agent's own
+ * standard rate to apply when it is left empty. The commission line itself is
+ * never written here: it is worked out from the contract and the apartment's
+ * status, so a sale recorded before the first payment waits, exactly as one
+ * that came in the ordinary way would.
+ */
+export async function recordSale(agentId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const contractId = String(formData.get("contractId") ?? "").trim();
+
+  if (!contractId) {
+    await flash("said.chooseApartment", "bad");
+    revalidatePath(`/agents/${agentId}`);
+    return;
+  }
+
+  const typed = String(formData.get("rate") ?? "").trim();
+  const rate = typed === "" ? null : Number(typed).toFixed(3);
+
+  await db
+    .update(contracts)
+    .set({ agentId, commissionRate: rate, updatedAt: new Date() })
+    .where(eq(contracts.id, contractId));
+
+  await recalculateCommission(contractId);
+
+  await recordAudit({
+    action: "commission.sale",
+    entity: "contract",
+    entityId: contractId,
+    detail: `sale recorded for agent ${agentId}${rate ? ` at ${rate}%` : ""}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.saleRecorded");
   revalidatePath(`/agents/${agentId}`);
   revalidatePath(`/contracts/${contractId}`);
   revalidatePath("/commissions");

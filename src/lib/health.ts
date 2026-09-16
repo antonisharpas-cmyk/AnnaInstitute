@@ -58,6 +58,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the lead_notes table",
     migration: "0015",
   },
+  {
+    probe: "select agent_id from leads limit 1",
+    what: "the agent_id column on leads",
+    migration: "0016",
+  },
 ];
 
 let answer: Missing[] | null = null;

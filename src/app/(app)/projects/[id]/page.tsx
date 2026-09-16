@@ -12,6 +12,7 @@ import { projectChecklist } from "@/lib/projectHealth";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import { LightboxGrid, LightboxLink } from "@/components/Lightbox";
 import UploadForm from "@/components/UploadForm";
+import { PROJECT_FILE_CATEGORIES } from "@/lib/projectFiles";
 import Disclosure from "@/components/Disclosure";
 import Pagination, { paginate } from "@/components/Pagination";
 import { deleteProjectDocument, markProjectChecked, uploadProjectDocuments } from "../actions";
@@ -24,6 +25,54 @@ const statusTone = (status: string) =>
   status === "AVAILABLE" ? "good" : status === "RESERVED" ? "warn" : "neutral";
 
 const area = (value: string | null) => (value ? `${Number(value)} m2` : "");
+
+/**
+ * The development's files, under the four headings the office uses.
+ *
+ * The four come first and always in the same order, so somebody looking for the
+ * brochure looks in the same place every time. Anything filed against an
+ * apartment, a floor plan for instance, is gathered after them: it is that
+ * apartment's paper rather than the building's, and burying it among the
+ * pictures is how it gets lost. An empty heading is left out rather than shown
+ * empty, since a heading with nothing under it only makes the card longer.
+ */
+type FileRow = {
+  document: { id: string; category: string; title: string };
+  unitCode: string | null;
+};
+
+/**
+ * Pictures read in the order they were numbered.
+ *
+ * Thirteen pictures called 1 to 13 are meant to be looked at in that order, and
+ * plain alphabetical puts 10 second. Numbers inside a title are compared as
+ * numbers so they do not have to be typed as 01.
+ */
+const inOrder = (a: FileRow, b: FileRow) =>
+  a.document.title.localeCompare(b.document.title, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+
+function groupProjectFiles<T extends FileRow>(rows: T[]) {
+  const groups: { key: string; category: string; rows: T[] }[] = [];
+
+  for (const category of PROJECT_FILE_CATEGORIES) {
+    const mine = rows
+      .filter((row) => row.document.category === category && !row.unitCode)
+      .sort(inOrder);
+    if (mine.length > 0) groups.push({ key: category, category, rows: mine });
+  }
+
+  const rest = rows.filter(
+    (row) =>
+      row.unitCode ||
+      !(PROJECT_FILE_CATEGORIES as readonly string[]).includes(row.document.category),
+  );
+  if (rest.length > 0) groups.push({ key: "rest", category: "APARTMENTS", rows: rest });
+
+  return groups;
+}
 
 export default async function ProjectPage({
   params,
@@ -411,76 +460,89 @@ export default async function ProjectPage({
             {allFiles.length === 0 ? (
               <Empty message={t("common.none")} />
             ) : (
-              <>
-                <LightboxGrid
-                  items={allFiles.map((row) => ({
-                    id: row.document.id,
-                    label: fileLabel(row.document, row.unitCode),
-                    isImage: isImage(row.document.mimeType),
-                  }))}
-                />
+              <div className="space-y-6">
+                {groupProjectFiles(allFiles).map((group) => (
+                  <section key={group.key}>
+                    <h3 className="mb-2 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wide text-brand-graphite/70">
+                      {group.category === "APARTMENTS"
+                        ? t("projects.apartmentFiles")
+                        : categoryLabel(group.category)}
+                      <span className="text-brand-graphite/40">{group.rows.length}</span>
+                    </h3>
 
-                <ul className="mt-3 divide-y divide-brand-line text-sm">
-                  {allFiles.map((row) => (
-                    <li
-                      key={row.document.id}
-                      className="flex flex-wrap items-center justify-between gap-2 py-2"
-                    >
-                      <div className="min-w-0">
-                        <a
-                          href={`/api/files/${row.document.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-medium text-brand-teal-dark hover:underline"
+                    <LightboxGrid
+                      items={group.rows.map((row) => ({
+                        id: row.document.id,
+                        label: fileLabel(row.document, row.unitCode),
+                        isImage: isImage(row.document.mimeType),
+                      }))}
+                    />
+
+                    <ul className="mt-3 divide-y divide-brand-line text-sm">
+                      {group.rows.map((row) => (
+                        <li
+                          key={row.document.id}
+                          className="flex flex-wrap items-center justify-between gap-2 py-2"
                         >
-                          {fileLabel(row.document, row.unitCode)}
-                        </a>
-                        <div className="text-xs text-brand-graphite/60">
-                          {new Date(row.document.createdAt).toLocaleDateString(
-                            locale === "el" ? "el-GR" : "en-GB",
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Pill>{categoryLabel(row.document.category)}</Pill>
-                        <a
-                          href={`/api/files/${row.document.id}?download=1`}
-                          className="btn btn-secondary !px-2 !py-1 !text-xs"
-                        >
-                          {t("common.download")}
-                        </a>
-                        {row.document.unitId ? (
-                          <Link
-                            href={`/projects/${id}/units/${row.document.unitId}`}
-                            className="btn btn-secondary !px-2 !py-1 !text-xs"
-                          >
-                            {t("common.edit")}
-                          </Link>
-                        ) : (
-                          <form action={deleteProjectDocument.bind(null, row.document.id, id)}>
-                            <button
-                              type="submit"
+                          <div className="min-w-0">
+                            <a
+                              href={`/api/files/${row.document.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-medium text-brand-teal-dark hover:underline"
+                            >
+                              {fileLabel(row.document, row.unitCode)}
+                            </a>
+                            <div className="text-xs text-brand-graphite/60">
+                              {new Date(row.document.createdAt).toLocaleDateString(
+                                locale === "el" ? "el-GR" : "en-GB",
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {group.category === "APARTMENTS" ? (
+                              <Pill>{categoryLabel(row.document.category)}</Pill>
+                            ) : null}
+                            <a
+                              href={`/api/files/${row.document.id}?download=1`}
                               className="btn btn-secondary !px-2 !py-1 !text-xs"
                             >
-                              {t("common.delete")}
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </>
+                              {t("common.download")}
+                            </a>
+                            {row.document.unitId ? (
+                              <Link
+                                href={`/projects/${id}/units/${row.document.unitId}`}
+                                className="btn btn-secondary !px-2 !py-1 !text-xs"
+                              >
+                                {t("common.edit")}
+                              </Link>
+                            ) : (
+                              <form action={deleteProjectDocument.bind(null, row.document.id, id)}>
+                                <button
+                                  type="submit"
+                                  className="btn btn-secondary !px-2 !py-1 !text-xs"
+                                >
+                                  {t("common.delete")}
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
             )}
 
             <div className="mt-4 border-t border-brand-line pt-4">
               <UploadForm
                 action={uploadProjectDocuments.bind(null, id)}
-                categories={["PROGRESS_PHOTO", "OTHER"]}
-                defaultCategory="PROGRESS_PHOTO"
-                titlePlaceholder="Site works September"
+                categories={PROJECT_FILE_CATEGORIES}
+                defaultCategory="PICTURES"
+                titlePlaceholder="Exterior and interior"
                 submitLabel={t("common.add")}
-                hint="A file added here belongs to the whole project. Files added on an apartment show here too, named after that apartment."
+                hint="A file added here belongs to the whole development. Files added on an apartment show at the end, under the apartment they belong to."
               />
             </div>
           </Card>

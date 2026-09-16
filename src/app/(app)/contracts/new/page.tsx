@@ -1,6 +1,6 @@
 import { asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, clients } from "@/db/schema";
+import { agents, clients, leads } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { getContract, unitsWithoutContract } from "@/lib/contracts";
 import { amountForInput, formatAmount } from "@/lib/money";
@@ -24,6 +24,23 @@ export default async function NewContractPage({
   searchParams: Promise<{ from?: string; client?: string; unit?: string }>;
 }) {
   const { from, client, unit } = await searchParams;
+
+  /**
+   * The agent who introduced this buyer, taken from the enquiry they came from.
+   *
+   * The office named the agent when the enquiry was taken, so the contract
+   * should not ask again: it arrives chosen, and can be changed if the sale
+   * actually came through somebody else.
+   */
+  const introducedBy = client
+    ? ((
+        await db
+          .select({ agentId: leads.agentId })
+          .from(leads)
+          .where(eq(leads.clientId, client))
+          .limit(1)
+      )[0]?.agentId ?? undefined)
+    : undefined;
   const { locale, t } = await getTranslator();
 
   const [source, free, clientList, agentList] = await Promise.all([
@@ -91,7 +108,7 @@ export default async function NewContractPage({
                   id: a.id,
                   label: `${a.name} (${Number(a.commissionRate)}%)`,
                 }))}
-                defaults={{ unitId: unit, clientId: client }}
+                defaults={{ unitId: unit, clientId: client, agentId: introducedBy }}
                 cancelHref="/contracts"
                 labels={formLabels(t)}
               />

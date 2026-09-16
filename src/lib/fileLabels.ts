@@ -15,6 +15,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
   RECEIPT: "Receipt",
   CHANGE_REQUEST: "Change Request",
   PRICE_LIST: "Price List",
+  PICTURES: "Pictures: Exterior and Interior",
+  ARCHITECTURAL: "Architectural Drawings",
+  BROCHURE: "Brochure",
+  TECHNICAL_SPEC: "Technical Specifications",
   OTHER: "Other",
 };
 

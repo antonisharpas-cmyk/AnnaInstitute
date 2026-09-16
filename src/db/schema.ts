@@ -52,6 +52,18 @@ export const documentCategoryEnum = pgEnum("document_category", [
   "CHANGE_REQUEST",
   "PROGRESS_PHOTO",
   "PRICE_LIST",
+  /**
+   * The four kinds of paper a development carries.
+   *
+   * A development is sold on its pictures, its drawings, its brochure and its
+   * specification, so those are the only four the project page offers. Keeping
+   * the list short is the point: a picker with ten choices gets a brochure
+   * filed under Other and then nobody can find it.
+   */
+  "PICTURES",
+  "ARCHITECTURAL",
+  "BROCHURE",
+  "TECHNICAL_SPEC",
   "OTHER",
 ]);
 export const changeRequestStatusEnum = pgEnum("change_request_status", [
@@ -718,6 +730,15 @@ export const leads = pgTable("leads", {
   consent: boolean("consent").default(false).notNull(),
   consentText: text("consent_text"),
   status: leadStatusEnum("status").default("NEW").notNull(),
+  /**
+   * The agent who brought this enquiry, when one did.
+   *
+   * Written on the enquiry rather than worked out later, because the person
+   * taking the telephone call is the one who knows. It travels to the contract
+   * when the sale is written, which is where the commission is calculated from,
+   * so nobody has to remember who introduced a buyer six months ago.
+   */
+  agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   /** The client this lead became, once the office accepted it. */
   clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
   notes: text("notes"),

@@ -41,6 +41,7 @@ const EXPECTED_COLUMNS: [string, string][] = [
   ["clients", "deleted_at"],
   ["units", "status_by_hand_at"],
   ["projects", "status_by_hand_at"],
+  ["leads", "agent_id"],
 ];
 
 type Rows = Record<string, unknown>[];

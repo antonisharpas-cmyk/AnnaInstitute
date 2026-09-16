@@ -6,9 +6,10 @@ import { agents, commissionPayments } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { amountForInput } from "@/lib/money";
-import { commissionTotals, salesOfAgent } from "@/lib/commissions";
+import { commissionTotals, salesOfAgent, salesWithoutAnAgent } from "@/lib/commissions";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
+import SubmitButton from "@/components/SubmitButton";
 import DateField from "@/components/DateField";
 import ProfileCard from "@/components/ProfileCard";
 import {
@@ -17,6 +18,7 @@ import {
   deleteCommissionPayment,
   payLine,
   recordCommissionPayment,
+  recordSale,
   removeCommissionLine,
   setSaleRate,
 } from "../actions";
@@ -32,7 +34,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   const agent = found[0];
   if (!agent) notFound();
 
-  const [sales, paidOut, totals] = await Promise.all([
+  const [sales, paidOut, totals, unclaimed] = await Promise.all([
     salesOfAgent(id),
     db
       .select()
@@ -40,6 +42,9 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       .where(eq(commissionPayments.agentId, id))
       .orderBy(desc(commissionPayments.paidOn)),
     commissionTotals(id),
+    // Contracts nobody is named on yet, which is what a sale recorded by hand
+    // attaches to.
+    salesWithoutAnAgent(),
   ]);
 
   return (
@@ -118,6 +123,51 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
         <div className="space-y-4 lg:col-span-2">
           {/* What he sold, and what each sale earns him. */}
           <Card title={t("agents.sales")}>
+            {/*
+              A sale recorded by hand, for the apartments whose contract was
+              written without naming anybody. The commission itself still waits
+              for the first installment, exactly as it does for a sale that came
+              in the ordinary way.
+            */}
+            <div className="mb-4">
+              <Disclosure showLabel={t("agents.recordSale")} hideLabel={t("common.cancel")}>
+                <form
+                  action={recordSale.bind(null, id)}
+                  className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-3"
+                >
+                  <div className="sm:col-span-2">
+                    <label className="label" htmlFor="contractId">
+                      {t("agents.saleApartment")}
+                    </label>
+                    <select id="contractId" name="contractId" required className="select">
+                      <option value="">{t("agents.chooseSale")}</option>
+                      {unclaimed.map((one) => (
+                        <option key={one.contractId} value={one.contractId}>
+                          {one.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="saleRate">
+                      {t("agents.rateOnThisSale")}
+                    </label>
+                    <input
+                      id="saleRate"
+                      name="rate"
+                      inputMode="decimal"
+                      placeholder={String(Number(agent.commissionRate))}
+                      className="input"
+                    />
+                  </div>
+                  <div className="sm:col-span-3 flex flex-wrap items-center gap-3">
+                    <SubmitButton>{t("common.save")}</SubmitButton>
+                    <p className="text-xs text-brand-graphite/60">{t("agents.saleNote")}</p>
+                  </div>
+                </form>
+              </Disclosure>
+            </div>
+
             {sales.length === 0 ? (
               <Empty message={t("agents.noSales")} />
             ) : (
@@ -401,11 +451,26 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                       <td className="ctr">{formatAmount(toCents(p.amount), locale)}</td>
                       <td>{p.reference ?? ""}</td>
                       <td className="ctr">
-                        <form action={deleteCommissionPayment.bind(null, p.id, id)}>
-                          <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
-                            {t("common.delete")}
-                          </button>
-                        </form>
+                        <div className="flex flex-wrap items-center justify-center gap-1">
+                          {/*
+                            The receipt for this payment. It opens to be read,
+                            and the email goes only from there, on a button.
+                          */}
+                          <Link
+                            href={`/agents/${id}/receipt/${p.id}`}
+                            className="btn btn-secondary !px-2 !py-1 !text-xs"
+                          >
+                            {t("receipts.open")}
+                          </Link>
+                          <form action={deleteCommissionPayment.bind(null, p.id, id)}>
+                            <button
+                              type="submit"
+                              className="btn btn-secondary !px-2 !py-1 !text-xs"
+                            >
+                              {t("common.delete")}
+                            </button>
+                          </form>
+                        </div>
                       </td>
                     </tr>
                   ))}

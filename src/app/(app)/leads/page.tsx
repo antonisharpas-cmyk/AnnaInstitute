@@ -30,14 +30,14 @@ import { bulkLeadBin, bulkLeadStatus, setLeadStatusInline } from "./actions";
 
 const PER_PAGE = 20;
 /**
- * The statuses an enquiry can be in while it is still an enquiry.
+ * The statuses an enquiry can be in, including the one that ends it.
  *
- * Became a client is not among them. It is not a status somebody sets any more:
- * making a client out of an enquiry is a button on the enquiry itself, and the
- * moment it is pressed the enquiry belongs to the clients list rather than to
- * this one.
+ * Became a client is offered here because that is how somebody working down the
+ * list thinks about it, but it is not stored as a state the list then has to
+ * carry: choosing it creates the client record and the enquiry leaves this list
+ * for the clients list, which is the office's own rule.
  */
-const STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CLOSED"] as const;
+const STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "CLOSED"] as const;
 
 const when = (value: Date, locale: string) =>
   new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB", {
@@ -452,7 +452,8 @@ export default async function LeadsPage({
               <label className="flex items-center gap-1.5 text-xs font-semibold">
                 {t("list.setStatus")}
                 <select name="newStatus" className="select !w-auto !py-1 !text-xs">
-                  {STATUSES.map((one) => (
+                  {/* A conversion is a record at a time, so it is not offered here. */}
+                  {STATUSES.filter((one) => one !== "CONVERTED").map((one) => (
                     <option key={one} value={one}>
                       {t(`leads.status.${one}` as MessageKey)}
                     </option>

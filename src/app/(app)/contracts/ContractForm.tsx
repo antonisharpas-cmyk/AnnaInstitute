@@ -60,7 +60,7 @@ export default function ContractForm({
   clients: { id: string; label: string }[];
   agents: { id: string; label: string }[];
   /** Preselected apartment and buyer, for a contract started from a client. */
-  defaults?: { unitId?: string; clientId?: string };
+  defaults?: { unitId?: string; clientId?: string; agentId?: string };
   cancelHref: string;
   frozen?: boolean;
   editing?: boolean;
@@ -167,7 +167,7 @@ export default function ContractForm({
           <select
             id="agentId"
             name="agentId"
-            defaultValue={contract?.agentId ?? ""}
+            defaultValue={contract?.agentId ?? defaults?.agentId ?? ""}
             className="select"
           >
             <option value="">{labels.noAgent}</option>

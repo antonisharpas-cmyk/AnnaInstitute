@@ -1,5 +1,10 @@
-import "server-only";
-import { asc, desc, eq, inArray, sql } from "drizzle-orm";
+/*
+ * No server-only marker here: the commission rule below is also reached from
+ * the payments path, which a command line script walks when it brings older
+ * records into line. Nothing in this file is safe for a browser anyway, since
+ * it talks to the database directly.
+ */
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
@@ -10,7 +15,7 @@ import {
   projects,
   units,
 } from "@/db/schema";
-import { toCents } from "./money";
+import { fromCents, toCents } from "./money";
 
 export type CommissionLine = {
   id: string;
@@ -141,4 +146,134 @@ export async function commissionTotals(agentId: string) {
   const generatedCents = toCents(generated?.total ?? "0");
   const paidCents = toCents(paid?.total ?? "0");
   return { generatedCents, paidCents, outstandingCents: generatedCents - paidCents };
+}
+
+/* ---------------------------------------------------------------------------
+   Keeping a commission in step with its sale
+   --------------------------------------------------------------------------- */
+
+export async function recalculateCommission(contractId: string) {
+  const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
+  const contract = rows[0];
+  if (!contract) return;
+
+  /**
+   * A commission exists once the apartment is sold, and not before.
+   *
+   * The office was clear about when an agent has earned something: the
+   * apartment is sold when the first installment has been received, and that is
+   * the moment the commission becomes real. A contract signed last week with
+   * nothing paid against it is not a commission yet, and showing one would put
+   * money on the commissions page that nobody owes.
+   *
+   * So the line follows the apartment's status, which the payments themselves
+   * move. When the status goes back, because a payment was recorded in error
+   * and removed, the line goes with it, and an extra the office granted by hand
+   * is left alone either way.
+   */
+  const sold = contract.unitId
+    ? (
+        await db
+          .select({ status: units.status })
+          .from(units)
+          .where(eq(units.id, contract.unitId))
+          .limit(1)
+      )[0]?.status
+    : undefined;
+
+  const earned = sold === "SOLD" || sold === "DELIVERED";
+
+  if (!earned) {
+    await db
+      .delete(commissions)
+      .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")));
+    return;
+  }
+
+  // Only the rate line is maintained here. Extras are the office's own decision
+  // and are never touched by a change of price or rate.
+  const existing = await db
+    .select()
+    .from(commissions)
+    .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")))
+    .limit(1);
+
+  if (!contract.agentId) {
+    await db
+      .delete(commissions)
+      .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")));
+    return;
+  }
+
+  const agentRows = await db.select().from(agents).where(eq(agents.id, contract.agentId)).limit(1);
+
+  const rate = Number(contract.commissionRate ?? agentRows[0]?.commissionRate ?? 0);
+  const baseCents = toCents(contract.netPrice);
+  const amountCents = Math.round((baseCents * rate) / 100);
+
+  await db
+    .update(commissions)
+    .set({ agentId: contract.agentId })
+    .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "EXTRA")));
+
+  if (existing[0]) {
+    await db
+      .update(commissions)
+      .set({
+        agentId: contract.agentId,
+        baseAmount: fromCents(baseCents),
+        rate: rate.toFixed(3),
+        amount: fromCents(amountCents),
+        updatedAt: new Date(),
+      })
+      .where(eq(commissions.id, existing[0].id));
+    return;
+  }
+
+  await db.insert(commissions).values({
+    contractId,
+    agentId: contract.agentId,
+    kind: "RATE",
+    baseAmount: fromCents(baseCents),
+    rate: rate.toFixed(3),
+    amount: fromCents(amountCents),
+  });
+}
+
+/**
+ * Every contract that names no agent, for the sale recorded by hand.
+ *
+ * Only the ones nobody has claimed: a sale already credited to somebody is
+ * changed on that sale's own line rather than by claiming it again from another
+ * agent's page, which would be a quiet way of moving a commission.
+ */
+export async function salesWithoutAnAgent() {
+  const rows = await db
+    .select({
+      contractId: contracts.id,
+      reference: contracts.reference,
+      price: contracts.netPrice,
+      unitCode: units.code,
+      projectName: projects.name,
+      clientFirst: clients.firstName,
+      clientLast: clients.lastName,
+    })
+    .from(contracts)
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
+    .where(isNull(contracts.agentId))
+    .orderBy(asc(projects.name), asc(units.code))
+    .limit(500);
+
+  return rows.map((row) => ({
+    contractId: row.contractId,
+    label: [
+      [row.projectName, row.unitCode].filter(Boolean).join(" "),
+      [row.clientFirst, row.clientLast].filter(Boolean).join(" "),
+      row.reference,
+    ]
+      .filter(Boolean)
+      .join(" . "),
+  }));
 }

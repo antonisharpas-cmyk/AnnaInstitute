@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { contracts, installments, payments, projects, units } from "@/db/schema";
 import { toCents } from "@/lib/money";
 import { recordAudit } from "@/lib/audit";
+import { recalculateCommission } from "@/lib/commissions";
 
 /*
  * This module is deliberately free of the server-only marker the other
@@ -113,6 +114,17 @@ export async function followTheMoney(contractId: string, who: Who = null): Promi
         userId: who?.id,
         userEmail: who?.email ?? "the payment schedule",
       });
+
+      /**
+       * The agent's commission follows the same moment.
+       *
+       * An apartment that has just become sold is an apartment somebody has
+       * earned a commission on, and one that has gone back to reserved is not.
+       * The commission line is maintained by the contracts side, which knows
+       * the rate and the extras, so it is asked to look again rather than
+       * having the rule repeated here.
+       */
+      await recalculateCommission(contract.id);
     }
   }
 

@@ -11,11 +11,19 @@ import SubmitButton from "@/components/SubmitButton";
  * on by an agent sits in the list next to the ones that arrive on their own. The
  * note is where the message goes, whether it came from a form or from whoever
  * took the call.
+ *
+ * Two things belong here rather than being fixed up afterwards. The agent, which
+ * only appears once the enquiry is said to have come from one, because the
+ * person taking the call is the one who knows who passed it on. And consent to
+ * be contacted with offers: somebody who says yes on the telephone has said yes,
+ * and asking the office to remember to tick a box on another screen later is how
+ * a marketing list ends up unlawful.
  */
 export default function LeadForm({
   action,
   labels,
   cancelHref,
+  agents,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   cancelHref: string;
@@ -31,10 +39,16 @@ export default function LeadForm({
     note: string;
     noteHint: string;
     contactNote: string;
+    agent: string;
+    chooseAgent: string;
+    consent: string;
+    consentHint: string;
     save: string;
     cancel: string;
     sources: { value: string; label: string }[];
   };
+  /** Every agent who can be named, for the picker that appears on demand. */
+  agents: { id: string; name: string }[];
 }) {
   const [source, setSource] = useState("ENQUIRY");
 
@@ -110,6 +124,31 @@ export default function LeadForm({
           </div>
         )}
       </div>
+
+      {/* The agent, only when there is one to name. */}
+      {source === "AGENT" ? (
+        <div className="sm:w-1/2">
+          <label className="label" htmlFor="agentId">
+            {labels.agent}
+          </label>
+          <select id="agentId" name="agentId" className="select" defaultValue="">
+            <option value="">{labels.chooseAgent}</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
+      <label className="flex items-start gap-2 rounded border border-brand-line bg-brand-surface p-3 text-sm">
+        <input type="checkbox" name="consent" value="on" className="mt-0.5" />
+        <span>
+          {labels.consent}
+          <span className="mt-0.5 block text-xs text-brand-graphite/60">{labels.consentHint}</span>
+        </span>
+      </label>
 
       <div>
         <label className="label" htmlFor="message">

@@ -7,9 +7,10 @@ import { documents, projectPartners, projects, units } from "@/db/schema";
  * Keeping a project record current.
  *
  * A development picks up detail as it goes: a location, a completion date, the
- * company it is built with, the partners, the price list, the floor plans, the
- * photographs. This is the check on all of it, so a record does not quietly go
- * stale while the building goes up.
+ * company it is built with, the partner, the price list, and the four kinds of
+ * paper it is sold on, the pictures, the architectural drawings, the brochure
+ * and the technical specification. This is the check on all of it, so a record
+ * does not quietly go stale while the building goes up.
  */
 
 export type CheckItem = {
@@ -31,7 +32,7 @@ export async function projectChecklist(projectId: string): Promise<{
 }> {
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
 
-  const [[unitStats], [partnerCount], [fileStats], [planCount]] = await Promise.all([
+  const [[unitStats], [partnerCount], [fileStats]] = await Promise.all([
     db
       .select({
         total: sql<number>`count(*)::int`,
@@ -46,14 +47,13 @@ export async function projectChecklist(projectId: string): Promise<{
     db
       .select({
         total: sql<number>`count(*)::int`,
-        photos: sql<number>`count(*) filter (where ${documents.category} = 'PROGRESS_PHOTO')::int`,
+        pictures: sql<number>`count(*) filter (where ${documents.category} = 'PICTURES')::int`,
+        drawings: sql<number>`count(*) filter (where ${documents.category} = 'ARCHITECTURAL')::int`,
+        brochure: sql<number>`count(*) filter (where ${documents.category} = 'BROCHURE')::int`,
+        specification: sql<number>`count(*) filter (where ${documents.category} = 'TECHNICAL_SPEC')::int`,
       })
       .from(documents)
       .where(eq(documents.projectId, projectId)),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(documents)
-      .where(and(eq(documents.projectId, projectId), eq(documents.category, "FLOOR_PLAN"))),
   ]);
 
   const [unitPlans] = await db
@@ -74,9 +74,18 @@ export async function projectChecklist(projectId: string): Promise<{
       done: (unitStats?.total ?? 0) > 0 && unitStats.priced === unitStats.total,
       important: true,
     },
-    { key: "plans", done: (planCount?.total ?? 0) + (unitPlans?.total ?? 0) > 0, important: true },
-    { key: "photos", done: (fileStats?.photos ?? 0) > 0, important: false },
-    { key: "files", done: (fileStats?.total ?? 0) > 0, important: false },
+    { key: "pictures", done: (fileStats?.pictures ?? 0) > 0, important: true },
+    {
+      /**
+       * The drawings for the building, or failing that the floor plans filed on
+       * its apartments, since between them they answer the same question.
+       */
+      key: "drawings",
+      done: (fileStats?.drawings ?? 0) + (unitPlans?.total ?? 0) > 0,
+      important: true,
+    },
+    { key: "brochure", done: (fileStats?.brochure ?? 0) > 0, important: true },
+    { key: "specification", done: (fileStats?.specification ?? 0) > 0, important: false },
   ];
 
   const checkedAt = project?.recordCheckedAt ?? null;
@@ -113,8 +122,21 @@ export async function checklistSummary() {
       partners: sql<number>`(
         select count(*)::int from project_partners pp where pp.project_id = projects.id
       )`,
-      files: sql<number>`(
-        select count(*)::int from documents d where d.project_id = projects.id
+      pictures: sql<number>`(
+        select count(*)::int from documents d
+        where d.project_id = projects.id and d.category = 'PICTURES'
+      )`,
+      drawings: sql<number>`(
+        select count(*)::int from documents d
+        where d.project_id = projects.id and d.category = 'ARCHITECTURAL'
+      )`,
+      brochure: sql<number>`(
+        select count(*)::int from documents d
+        where d.project_id = projects.id and d.category = 'BROCHURE'
+      )`,
+      specification: sql<number>`(
+        select count(*)::int from documents d
+        where d.project_id = projects.id and d.category = 'TECHNICAL_SPEC'
       )`,
       plans: sql<number>`(
         select count(*)::int from documents d
@@ -134,8 +156,10 @@ export async function checklistSummary() {
       { done: Boolean(row.description), important: false },
       { done: (row.units ?? 0) > 0, important: true },
       { done: (row.units ?? 0) > 0 && (row.unpriced ?? 0) === 0, important: true },
-      { done: (row.plans ?? 0) > 0, important: true },
-      { done: (row.files ?? 0) > 0, important: false },
+      { done: (row.pictures ?? 0) > 0, important: true },
+      { done: (row.drawings ?? 0) + (row.plans ?? 0) > 0, important: true },
+      { done: (row.brochure ?? 0) > 0, important: true },
+      { done: (row.specification ?? 0) > 0, important: false },
     ];
     summary.set(row.id, {
       missing: checks.filter((c) => !c.done).length,

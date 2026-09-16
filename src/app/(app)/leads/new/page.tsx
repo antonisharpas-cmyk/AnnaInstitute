@@ -1,3 +1,6 @@
+import { asc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { agents } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import LeadForm from "../LeadForm";
@@ -8,6 +11,14 @@ const SOURCES = ["ENQUIRY", "AGENT", "WHATSAPP", "WEBSITE", "OTHER"] as const;
 export default async function NewLeadPage() {
   const { t } = await getTranslator();
 
+  // Named on the enquiry when it came from one of them, so the commission has
+  // an owner from the first day rather than from the day of the contract.
+  const theAgents = await db
+    .select({ id: agents.id, name: agents.name })
+    .from(agents)
+    .where(eq(agents.isActive, true))
+    .orderBy(asc(agents.name));
+
   return (
     <>
       <BackLink href="/leads" label={t("leads.backToLeads")} />
@@ -17,6 +28,7 @@ export default async function NewLeadPage() {
           <LeadForm
             action={createLead}
             cancelHref="/leads"
+            agents={theAgents}
             labels={{
               firstName: t("common.name"),
               lastName: t("common.surname"),
@@ -29,6 +41,10 @@ export default async function NewLeadPage() {
               note: t("leads.note"),
               noteHint: t("leads.noteHint"),
               contactNote: t("leads.contactNote"),
+              agent: t("contracts.agent"),
+              chooseAgent: t("leads.chooseAgent"),
+              consent: t("leads.consentNow"),
+              consentHint: t("leads.consentNowHint"),
               save: t("common.save"),
               cancel: t("common.cancel"),
               sources: SOURCES.map((value) => ({
