@@ -1,7 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { documents, units } from "@/db/schema";
+import { clients, documents, units } from "@/db/schema";
 import { deleteStored, saveUpload } from "./storage";
 import { recordAudit } from "./audit";
 import type { SessionUser } from "./auth";
@@ -139,4 +139,75 @@ export function readUploadFields(formData: FormData) {
     title,
     category: String(formData.get("category") ?? "OTHER") as DocumentCategory,
   };
+}
+
+/* ---------------------------------------------------------------------------
+   Filing a document the way the office chooses it
+
+   The client profile and the contract both ask the same question: what kind of
+   document is this, and what does that kind need. Keeping the answer here means
+   the two cannot drift apart, which is the whole point of the office asking for
+   the same logic in both places. The form is one shared component and this is
+   the one action behind it.
+   --------------------------------------------------------------------------- */
+
+/** The three identification types the office files, and how they read. */
+export const ID_LABELS: Record<string, string> = {
+  ID_CARD: "Identity Card",
+  PASSPORT: "Passport",
+  YELLOW_SLIP: "Yellow Slip",
+};
+
+/**
+ * File the documents on one form submission.
+ *
+ * Identification is filed as identification, carries its type in the title so a
+ * list reads "Passport copy (Passport)", and writes the type and number onto the
+ * client record, whether it was filed from the client's own page or from a
+ * contract of theirs. Everything else is filed under the type that was chosen.
+ */
+export async function storeChosenDocuments(options: {
+  formData: FormData;
+  user: SessionUser;
+  /** Where it is being filed from. A contract fills the client in itself. */
+  attachTo: AttachTo;
+  /** The client whose record an identification number belongs on. */
+  clientId?: string | null;
+}): Promise<void> {
+  const { formData, user } = options;
+
+  const chosen = String(formData.get("category") ?? "").trim();
+  if (!chosen) throw new Error("Choose the type of document first.");
+
+  const files = formData
+    .getAll("files")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  const typed = String(formData.get("title") ?? "").trim();
+
+  if (files.length === 0) throw new Error("Choose at least one file.");
+  if (!typed) throw new Error("Give the file a title first.");
+
+  const idType = ID_LABELS[chosen] ? (chosen as "ID_CARD" | "PASSPORT" | "YELLOW_SLIP") : null;
+  const category: DocumentCategory = idType ? "IDENTIFICATION" : (chosen as DocumentCategory);
+  const title = idType ? `${typed} (${ID_LABELS[idType]})` : typed;
+
+  if (idType && options.clientId) {
+    const idNumber = String(formData.get("idNumber") ?? "").trim();
+    await db
+      .update(clients)
+      .set({ idType, ...(idNumber ? { idNumber } : {}), updatedAt: new Date() })
+      .where(eq(clients.id, options.clientId));
+  }
+
+  // A buyer with more than one apartment keeps different paperwork for each, so
+  // the file can name the apartment it concerns.
+  const chosenUnit = String(formData.get("unitId") ?? "").trim() || null;
+
+  await storeDocuments({
+    files,
+    title,
+    category,
+    attachTo: { ...options.attachTo, unitId: chosenUnit ?? options.attachTo.unitId ?? null },
+    user,
+  });
 }

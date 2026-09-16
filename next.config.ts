@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
    * that page. Nothing dynamic is kept.
    */
   experimental: {
-    staleTimes: { dynamic: 0, static: 30 },
+    staleTimes: { dynamic: 0, static: 0 },
   },
 };
 

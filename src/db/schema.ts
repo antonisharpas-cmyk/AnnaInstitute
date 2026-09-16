@@ -22,6 +22,8 @@ export const projectStatusEnum = pgEnum("project_status", [
   "PLANNING",
   "UNDER_CONSTRUCTION",
   "COMPLETED",
+  /** Every apartment in it has been handed over. Set by the money, not by hand. */
+  "DELIVERED",
 ]);
 export const unitStatusEnum = pgEnum("unit_status", ["AVAILABLE", "RESERVED", "SOLD", "DELIVERED"]);
 export const contractStatusEnum = pgEnum("contract_status", [
@@ -182,6 +184,18 @@ export const projects = pgTable("projects", {
   location: text("location"),
   description: text("description"),
   status: projectStatusEnum("status").default("UNDER_CONSTRUCTION").notNull(),
+  /**
+   * When somebody set the status by hand, and who.
+   *
+   * The status normally follows the apartments: once every one of them is
+   * delivered the development is delivered too. A status chosen by a person
+   * outranks that, and these two columns are how the rule knows to keep its
+   * hands off. Clearing them hands the status back to the apartments.
+   */
+  statusByHandAt: timestamp("status_by_hand_at", { withTimezone: true }),
+  statusByHandById: text("status_by_hand_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
   completionBy: text("completion_by"),
   /** When somebody last went over the record and confirmed it is still right. */
   recordCheckedAt: timestamp("record_checked_at", { withTimezone: true }),
@@ -232,6 +246,17 @@ export const units = pgTable(
     parkingSpaces: integer("parking_spaces").default(0).notNull(),
     netPrice: money("net_price").default("0").notNull(),
     status: unitStatusEnum("status").default("AVAILABLE").notNull(),
+    /**
+     * When somebody set this apartment's status by hand, and who.
+     *
+     * Left empty, the status follows the contract: sold on the first payment
+     * received, delivered once the contract is paid in full. Set, the person's
+     * choice stands and the money leaves it alone.
+     */
+    statusByHandAt: timestamp("status_by_hand_at", { withTimezone: true }),
+    statusByHandById: text("status_by_hand_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     // The client who has reserved or bought this apartment. Assigned from the
     // client record, and independent of the contract, which comes later and
     // carries its own agreed price and payment schedule.
@@ -704,6 +729,25 @@ export const leads = pgTable("leads", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: created(),
   updatedAt: updated(),
+});
+
+/**
+ * One note on an enquiry, with the day it was written.
+ *
+ * The office does not keep one note on an enquiry, it keeps a running record:
+ * contacted, contacted again, meeting agreed, came to the show flat. A single
+ * box loses all of that the moment somebody types over it, so each note is its
+ * own row with its own date and its own author, and the enquiry reads as a
+ * history rather than as a last known state.
+ */
+export const leadNotes = pgTable("lead_notes", {
+  id: id(),
+  leadId: text("lead_id")
+    .notNull()
+    .references(() => leads.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  writtenById: text("written_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: created(),
 });
 
 /**

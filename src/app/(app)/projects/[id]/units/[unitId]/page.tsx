@@ -11,7 +11,12 @@ import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import { LightboxGrid } from "@/components/Lightbox";
 import UploadForm from "@/components/UploadForm";
 import UnitForm from "../../../UnitForm";
-import { deleteUnitDocument, updateUnit, uploadUnitFiles } from "../../../actions";
+import {
+  deleteUnitDocument,
+  letTheMoneyDecide,
+  updateUnit,
+  uploadUnitFiles,
+} from "../../../actions";
 
 /** The order the groups appear in, so floor plans are always at the top. */
 const GROUP_ORDER = ["FLOOR_PLAN", "PROGRESS_PHOTO", "OTHER"];
@@ -57,8 +62,25 @@ export default async function EditUnitPage({
       <PageHeader
         title={`${t("units.edit")} ${row.unit.code}`}
         subtitle={row.project.name}
-        action={<Pill>{t(`units.status.${row.unit.status}` as MessageKey)}</Pill>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill>{t(`units.status.${row.unit.status}` as MessageKey)}</Pill>
+            {row.unit.statusByHandAt ? (
+              <form action={letTheMoneyDecide.bind(null, unitId, id)}>
+                <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
+                  {t("units.letMoneyDecide")}
+                </button>
+              </form>
+            ) : null}
+          </div>
+        }
       />
+
+      {row.unit.statusByHandAt ? (
+        <p className="mb-3 text-xs text-brand-graphite/65">{t("units.statusByHand")}</p>
+      ) : (
+        <p className="mb-3 text-xs text-brand-graphite/65">{t("units.statusFromMoney")}</p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">

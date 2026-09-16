@@ -12,7 +12,8 @@ import { titleWithExtension } from "@/lib/fileLabels";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DocumentList from "@/components/DocumentList";
-import UploadForm from "@/components/UploadForm";
+import DocumentUpload from "@/components/DocumentUpload";
+import { ChangeRequestForm, PaymentForm } from "@/components/MoneyForms";
 import DateField from "@/components/DateField";
 import {
   addChangeRequest,
@@ -27,7 +28,6 @@ import {
   updateLine,
   uploadContractDocuments,
 } from "../actions";
-import SubmitButton from "@/components/SubmitButton";
 
 const dateFor = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
@@ -38,6 +38,19 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
   const detail = await getContract(id);
   if (!detail) notFound();
+
+  /**
+   * How a payment arrived, in words.
+   *
+   * New payments carry one of the five codes. Older ones carry whatever
+   * somebody typed, and that is printed as it stands rather than hidden, since
+   * a receipt that says "bank, Hellenic" is still the truth about that payment.
+   */
+  const howPaid = (value: string | null) => {
+    if (!value) return "";
+    const known = ["CASH", "BANK", "CHEQUE", "CARD", "OTHER"];
+    return known.includes(value) ? t(`contracts.method.${value}` as MessageKey) : value;
+  };
 
   const [requests, contractDocuments, paymentFiles] = await Promise.all([
     db
@@ -338,77 +351,36 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         {/* 3. Money received. */}
         <Card title={t("contracts.recordPayment")}>
           <Disclosure showLabel={t("contracts.recordPayment")} hideLabel={t("common.cancel")}>
-            <form
+            <PaymentForm
               action={recordPayment.bind(null, id)}
-              className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-3"
-            >
-              <div>
-                <label className="label" htmlFor="installmentId">
-                  {t("contracts.stage")}
-                </label>
-                <select id="installmentId" name="installmentId" className="select">
-                  <option value="">not against one installment</option>
-                  {lines.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.seq}. {l.label} . {formatAmount(l.totalCents, locale)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="amount">
-                  {t("contracts.amount")}
-                </label>
-                <input id="amount" name="amount" required className="input" />
-              </div>
-              <div>
-                <label className="label" htmlFor="paidOn">
-                  {t("common.date")}
-                </label>
-                <DateField id="paidOn" name="paidOn" />
-              </div>
-              <div>
-                <label className="label" htmlFor="receiptNumber">
-                  {t("contracts.receipt")}
-                </label>
-                <input id="receiptNumber" name="receiptNumber" className="input" />
-              </div>
-              <div>
-                <label className="label" htmlFor="method">
-                  {t("contracts.method")}
-                </label>
-                <input id="method" name="method" className="input" />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="label" htmlFor="paymentFiles">
-                  {t("contracts.paymentFiles")}
-                </label>
-                <input
-                  id="paymentFiles"
-                  name="files"
-                  type="file"
-                  multiple
-                  className="input !py-1.5 text-xs"
-                />
-                <p className="mt-1 text-xs text-brand-graphite/60">
-                  {t("contracts.paymentFilesNote")}
-                </p>
-              </div>
-              <div>
-                <label className="label" htmlFor="fileTitle">
-                  {t("contracts.paymentFileTitle")}
-                </label>
-                <input
-                  id="fileTitle"
-                  name="fileTitle"
-                  placeholder={t("contracts.paymentFileTitlePlaceholder")}
-                  className="input"
-                />
-              </div>
-              <div className="flex items-end">
-                <SubmitButton>{t("common.save")}</SubmitButton>
-              </div>
-            </form>
+              lines={lines.map((l) => ({
+                id: l.id,
+                seq: l.seq,
+                label: l.label,
+                amount: formatAmount(l.totalCents, locale),
+              }))}
+              labels={{
+                stage: t("contracts.stage"),
+                notAgainstOne: t("contracts.notAgainstOne"),
+                amount: t("contracts.amount"),
+                date: t("common.date"),
+                receipt: t("contracts.receipt"),
+                method: t("contracts.method"),
+                methods: {
+                  CASH: t("contracts.method.CASH"),
+                  BANK: t("contracts.method.BANK"),
+                  CHEQUE: t("contracts.method.CHEQUE"),
+                  CARD: t("contracts.method.CARD"),
+                  OTHER: t("contracts.method.OTHER"),
+                },
+                chooseMethod: t("contracts.chooseMethod"),
+                files: t("contracts.paymentFiles"),
+                filesNote: t("contracts.paymentFilesNote"),
+                fileTitle: t("contracts.paymentFileTitle"),
+                fileTitlePlaceholder: t("contracts.paymentFileTitlePlaceholder"),
+                save: t("common.save"),
+              }}
+            />
           </Disclosure>
 
           {payments.length > 0 ? (
@@ -430,7 +402,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                       <td>{dateFor(p.paidOn)}</td>
                       <td className="ctr">{formatAmount(toCents(p.amount), locale)}</td>
                       <td>{p.receiptNumber ?? ""}</td>
-                      <td>{p.method ?? ""}</td>
+                      <td>{howPaid(p.method)}</td>
                       <td className="text-xs">
                         {(paymentFiles.get(p.id) ?? []).map((doc) => (
                           <div key={doc.id}>
@@ -500,11 +472,13 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                           className="select !w-32 !py-1 !text-xs"
                           aria-label={t("common.status")}
                         >
-                          <option value="SUBMITTED">submitted</option>
-                          <option value="IN_REVIEW">in review</option>
-                          <option value="APPROVED">approved</option>
-                          <option value="REJECTED">rejected</option>
-                          <option value="COMPLETED">completed</option>
+                          {(
+                            ["SUBMITTED", "IN_REVIEW", "APPROVED", "REJECTED", "COMPLETED"] as const
+                          ).map((one) => (
+                            <option key={one} value={one}>
+                              {t(`contracts.changeStatus.${one}` as MessageKey)}
+                            </option>
+                          ))}
                         </select>
                         <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
                           {t("common.save")}
@@ -540,55 +514,43 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           )}
 
           <Disclosure showLabel={t("contracts.addChangeRequest")} hideLabel={t("common.cancel")}>
-            <form
+            <ChangeRequestForm
               action={addChangeRequest.bind(null, id)}
-              className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-2"
-            >
-              <div className="sm:col-span-2">
-                <label className="label" htmlFor="title">
-                  {t("common.name")}
-                </label>
-                <input id="title" name="title" required className="input" />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="label" htmlFor="description">
-                  {t("common.notes")}
-                </label>
-                <textarea id="description" name="description" rows={2} className="textarea" />
-              </div>
-              <div>
-                <label className="label" htmlFor="costImpact">
-                  {t("contracts.amount")}
-                </label>
-                <input id="costImpact" name="costImpact" className="input" />
-              </div>
-              <div>
-                <label className="label" htmlFor="changeFiles">
-                  {t("common.files")}
-                </label>
-                <input
-                  id="changeFiles"
-                  name="files"
-                  type="file"
-                  multiple
-                  className="input !py-1.5 text-xs"
-                />
-              </div>
-              <div className="flex items-end sm:col-span-2">
-                <SubmitButton>{t("common.add")}</SubmitButton>
-              </div>
-            </form>
+              labels={{
+                name: t("common.name"),
+                notes: t("common.notes"),
+                amount: t("contracts.amount"),
+                files: t("common.files"),
+                add: t("common.add"),
+              }}
+            />
           </Disclosure>
         </Card>
 
         {/* 5. Files kept against the contract. */}
         <Card title={t("contracts.documents")}>
           <div className="mb-4 rounded border border-brand-line bg-brand-surface p-3">
-            <UploadForm
+            {/* The same block as the client profile, so the questions never differ. */}
+            <DocumentUpload
               action={uploadContractDocuments.bind(null, id)}
-              categories={["CONTRACT", "RECEIPT", "FLOOR_PLAN", "IDENTIFICATION", "OTHER"]}
-              defaultCategory="CONTRACT"
-              submitLabel={t("common.add")}
+              idNumber={client?.idNumber ?? ""}
+              apartments={[]}
+              fixed={
+                unit && project ? { unitId: unit.id, label: `${project.name} ${unit.code}` } : null
+              }
+              labels={{
+                category: t("clients.docType"),
+                selectOne: t("clients.docSelectOne"),
+                pickFirst: t("clients.docPickFirst"),
+                number: t("clients.idNumber"),
+                title: t("common.title"),
+                files: t("common.files"),
+                add: t("common.add"),
+                apartment: t("clients.docsApartment"),
+                choose: t("clients.chooseApartmentDoc"),
+                anyApartment: t("clients.anyApartment"),
+                search: t("clients.searchPlaceholder"),
+              }}
             />
           </div>
           <DocumentList

@@ -97,6 +97,37 @@ export async function projectsOfSubowner(subownerId: string) {
   });
 }
 
+/**
+ * Who holds each development, and for how much of it.
+ *
+ * A development with no partner line is held by One Eleven alone, which is why
+ * an empty list is meaningful here rather than missing data. One Eleven is
+ * never a line of its own: our share is whatever the partners do not hold, so
+ * the caller works it out and decides what to print for it.
+ */
+export async function partnersByProject(): Promise<
+  Map<string, { name: string; share: number | null }[]>
+> {
+  const rows = await db
+    .select({
+      projectId: projectPartners.projectId,
+      name: subowners.name,
+      share: projectPartners.sharePercent,
+    })
+    .from(projectPartners)
+    .innerJoin(subowners, eq(subowners.id, projectPartners.subownerId))
+    .orderBy(desc(projectPartners.sharePercent), asc(subowners.name));
+
+  const held = new Map<string, { name: string; share: number | null }[]>();
+  for (const row of rows) {
+    const entry = { name: row.name, share: row.share === null ? null : Number(row.share) };
+    const list = held.get(row.projectId);
+    if (list) list.push(entry);
+    else held.set(row.projectId, [entry]);
+  }
+  return held;
+}
+
 /** The partners on one development. */
 export async function partnersOfProject(projectId: string) {
   return db

@@ -106,6 +106,7 @@ export default function ProjectForm({
             <option value="PLANNING">{t("projects.status.PLANNING")}</option>
             <option value="UNDER_CONSTRUCTION">{t("projects.status.UNDER_CONSTRUCTION")}</option>
             <option value="COMPLETED">{t("projects.status.COMPLETED")}</option>
+            <option value="DELIVERED">{t("projects.status.DELIVERED")}</option>
           </select>
         </div>
 

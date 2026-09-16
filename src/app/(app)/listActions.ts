@@ -27,7 +27,7 @@ export async function createSavedView(formData: FormData) {
     return;
   }
 
-  await saveView({
+  const id = await saveView({
     userId: user.id,
     list,
     name,
@@ -45,6 +45,18 @@ export async function createSavedView(formData: FormData) {
 
   await flash("said.viewSaved");
   revalidatePath(`/${list}`);
+
+  /**
+   * Straight into the view that was just saved.
+   *
+   * Two reasons, and the second is the important one. Naming what is on screen
+   * and then being on that view is what somebody expects. And a redirect to a
+   * different address always arrives, whereas asking the current page to draw
+   * itself again is the one navigation this router occasionally fetches and
+   * never commits, which used to leave the new view invisible until the next
+   * click. Going somewhere is reliable; staying put is not.
+   */
+  redirect(`/${list}?${query ? `${query}&` : ""}view=${id}`);
 }
 
 /** Keep the changed filters against the view that is open. */

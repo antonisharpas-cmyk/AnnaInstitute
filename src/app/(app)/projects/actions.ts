@@ -8,6 +8,13 @@ import { db } from "@/db";
 import { companies, projects, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import {
+  followTheApartments,
+  handProjectBackToApartments,
+  handUnitBackToMoney,
+  markProjectByHand,
+  markUnitByHand,
+} from "@/lib/statuses";
 import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
 import { readUploadFields, removeDocument, storeDocuments } from "@/lib/uploads";
@@ -25,7 +32,7 @@ const projectSchema = z.object({
   name: z.string().min(1),
   location: z.string().optional(),
   completionBy: z.string().optional(),
-  status: z.enum(["PLANNING", "UNDER_CONSTRUCTION", "COMPLETED"]),
+  status: z.enum(["PLANNING", "UNDER_CONSTRUCTION", "COMPLETED", "DELIVERED"]),
   description: z.string().optional(),
 });
 
@@ -109,6 +116,15 @@ export async function updateProject(projectId: string, formData: FormData) {
     .set({ ...parsed, companyId, updatedAt: new Date() })
     .where(eq(projects.id, projectId));
 
+  /**
+   * A status chosen here is a person's decision, so it is marked as such and
+   * the apartments stop deciding it. Everything else on the form leaves that
+   * alone: editing a location should not freeze a status.
+   */
+  if (parsed.status !== before[0].status) {
+    await markProjectByHand(projectId, user);
+  }
+
   await recordAudit({
     action: "project.update",
     entity: "project",
@@ -173,6 +189,13 @@ export async function createUnit(projectId: string, formData: FormData) {
     .values({ projectId, ...values })
     .returning({ id: units.id });
 
+  // An apartment entered as anything other than available was put there by a
+  // person, so the money leaves it alone until somebody hands it back.
+  if (values.status !== "AVAILABLE") {
+    await markUnitByHand(inserted[0].id, user);
+  }
+  await followTheApartments(projectId, user);
+
   await recordAudit({
     action: "unit.create",
     entity: "unit",
@@ -197,6 +220,11 @@ export async function updateUnit(unitId: string, formData: FormData) {
     .update(units)
     .set({ ...values, updatedAt: new Date() })
     .where(eq(units.id, unitId));
+
+  if (values.status !== unit.status) {
+    await markUnitByHand(unitId, user);
+    await followTheApartments(unit.projectId, user);
+  }
 
   await recordAudit({
     action: "unit.update",
@@ -306,6 +334,51 @@ export async function markProjectChecked(projectId: string) {
   });
 
   await flash("said.checked");
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/projects");
+}
+
+/**
+ * Hand an apartment's status back to the money.
+ *
+ * The office sets a status by hand when it knows something the schedule does
+ * not, and that choice then stands for good. This is the way back: the mark
+ * comes off and the rule works the status out again from what has been paid, so
+ * nobody has to remember which apartments were once overridden.
+ */
+export async function letTheMoneyDecide(unitId: string, projectId: string) {
+  const user = await requireUser(["ADMIN"]);
+  await handUnitBackToMoney(unitId, user);
+
+  await recordAudit({
+    action: "unit.status.released",
+    entity: "unit",
+    entityId: unitId,
+    detail: "the status follows the payments again",
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.statusFollowsMoney");
+  revalidatePath(`/projects/${projectId}/units/${unitId}`);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+/** The same for a development, whose status follows its apartments. */
+export async function letTheApartmentsDecide(projectId: string) {
+  const user = await requireUser(["ADMIN"]);
+  await handProjectBackToApartments(projectId, user);
+
+  await recordAudit({
+    action: "project.status.released",
+    entity: "project",
+    entityId: projectId,
+    detail: "the status follows the apartments again",
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.statusFollowsApartments");
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");
 }

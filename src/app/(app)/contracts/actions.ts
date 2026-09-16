@@ -19,7 +19,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
-import { readUploadFields, removeDocument, storeDocuments } from "@/lib/uploads";
+import { removeDocument, storeChosenDocuments, storeDocuments } from "@/lib/uploads";
 import { fromCents, toCents } from "@/lib/money";
 import {
   addMonths,
@@ -34,6 +34,7 @@ import {
   recalculateSchedule,
   vatSummary,
 } from "@/lib/contracts";
+import { followTheApartments, followTheMoney } from "@/lib/statuses";
 
 const detailsSchema = z.object({
   reference: z.string().min(1),
@@ -199,11 +200,46 @@ function readDetails(formData: FormData) {
   });
 }
 
-/** The apartment belongs to the buyer on the contract, and it is sold. */
+/**
+ * Everything about a contract is also on its buyer's profile.
+ *
+ * The profile is where the office works now, so a payment, an adjustment or a
+ * document recorded here has to appear there as well, immediately. Asking the
+ * router to redraw is not enough on its own: the page has to be marked as
+ * changed, or the redraw is served the same answer as before. So every action
+ * that touches a contract marks the buyer's page too, and the office never
+ * meets a screen that is a few seconds behind the truth.
+ */
+async function alsoTheBuyer(contractId: string) {
+  const [row] = await db
+    .select({ clientId: contracts.clientId })
+    .from(contracts)
+    .where(eq(contracts.id, contractId))
+    .limit(1);
+
+  if (row?.clientId) revalidatePath(`/clients/${row.clientId}`);
+  revalidatePath("/clients");
+}
+
+/**
+
+ *
+ * A contract on its own reserves the apartment rather than selling it, because
+ * the office counts an apartment as sold once the first installment has come
+ * in. That is what followTheMoney does the moment a payment is recorded, so
+ * this only has to get the buyer and the reservation right.
+ */
 async function takeUnit(unitId: string, clientId: string) {
+  const rows = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
+  const already = rows[0];
+
   await db
     .update(units)
-    .set({ status: "SOLD", clientId, updatedAt: new Date() })
+    .set({
+      status: already && already.status !== "AVAILABLE" ? already.status : "RESERVED",
+      clientId,
+      updatedAt: new Date(),
+    })
     .where(eq(units.id, unitId));
 }
 
@@ -261,6 +297,7 @@ export async function createContract(
   await writeSchedule(contractId, netCents, rate, checked);
   await takeUnit(parsed.unitId, parsed.clientId);
   await syncCommission(contractId);
+  await followTheMoney(contractId, user);
 
   await recordAudit({
     action: "contract.create",
@@ -351,6 +388,7 @@ export async function updateContract(
   }
 
   await syncCommission(contractId);
+  await followTheMoney(contractId, user);
 
   await recordAudit({
     action: "contract.update",
@@ -372,7 +410,15 @@ export async function deleteContract(contractId: string) {
   if (!detail) return;
 
   await db.delete(contracts).where(eq(contracts.id, contractId));
-  if (detail.contract.unitId) await releaseUnit(detail.contract.unitId);
+  if (detail.contract.unitId) {
+    await releaseUnit(detail.contract.unitId);
+    const [unit] = await db
+      .select({ projectId: units.projectId })
+      .from(units)
+      .where(eq(units.id, detail.contract.unitId))
+      .limit(1);
+    if (unit) await followTheApartments(unit.projectId, user);
+  }
 
   await recordAudit({
     action: "contract.delete",
@@ -428,6 +474,7 @@ export async function setDates(contractId: string, formData: FormData) {
   });
 
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
 }
 
 /**
@@ -503,7 +550,10 @@ export async function updateLine(installmentId: string, contractId: string, form
     userEmail: user.email,
   });
 
+  await followTheMoney(contractId, user);
+
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
 }
 
 /** One more line on the schedule, for whatever the deal needs. */
@@ -537,7 +587,10 @@ export async function addLine(contractId: string) {
     userEmail: user.email,
   });
 
+  await followTheMoney(contractId, user);
+
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
 }
 
 export async function removeLine(installmentId: string, contractId: string) {
@@ -561,7 +614,10 @@ export async function removeLine(installmentId: string, contractId: string) {
     userEmail: user.email,
   });
 
+  await followTheMoney(contractId, user);
+
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
 }
 
 export async function recordPayment(contractId: string, formData: FormData) {
@@ -605,6 +661,7 @@ export async function recordPayment(contractId: string, formData: FormData) {
   }
 
   await lockPaidInstallments(contractId);
+  await followTheMoney(contractId, user);
 
   await recordAudit({
     action: "payment.record",
@@ -618,6 +675,7 @@ export async function recordPayment(contractId: string, formData: FormData) {
   await flash("said.paymentRecorded");
 
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
   revalidatePath("/contracts");
 }
 
@@ -634,6 +692,7 @@ export async function deletePayment(paymentId: string, contractId: string) {
 
   await db.delete(payments).where(eq(payments.id, paymentId));
   await lockPaidInstallments(contractId);
+  await followTheMoney(contractId, user);
 
   await recordAudit({
     action: "payment.delete",
@@ -645,6 +704,7 @@ export async function deletePayment(paymentId: string, contractId: string) {
   });
 
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
 }
 
 export async function addChangeRequest(contractId: string, formData: FormData) {
@@ -685,19 +745,43 @@ export async function addChangeRequest(contractId: string, formData: FormData) {
   });
 
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
 }
 
+/**
+ * Upload one or more documents to a contract.
+ *
+ * The same form and the same filing as the client profile, so an identity
+ * document filed from here ends up on the buyer's record exactly as it would
+ * have done from their own page, and a receipt filed from here names the
+ * apartment the contract is about without anybody choosing it.
+ */
 export async function uploadContractDocuments(contractId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
-  const { files, title, category } = readUploadFields(formData);
-  await storeDocuments({ files, title, category, attachTo: { contractId }, user });
+
+  const [contract] = await db
+    .select({ clientId: contracts.clientId, unitId: contracts.unitId })
+    .from(contracts)
+    .where(eq(contracts.id, contractId))
+    .limit(1);
+
+  await storeChosenDocuments({
+    formData,
+    user,
+    attachTo: { contractId, unitId: contract?.unitId ?? null },
+    clientId: contract?.clientId ?? null,
+  });
+
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
+  if (contract?.clientId) revalidatePath(`/clients/${contract.clientId}`);
 }
 
 export async function deleteContractDocument(documentId: string, contractId: string) {
   const user = await requireUser(["ADMIN"]);
   await removeDocument(documentId, user);
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
 }
 
 export async function setChangeRequestStatus(
@@ -724,6 +808,7 @@ export async function setChangeRequestStatus(
   });
 
   revalidatePath(`/contracts/${contractId}`);
+  await alsoTheBuyer(contractId);
 }
 
 /** Keep the agent commission in step with the contract price and the rate. */

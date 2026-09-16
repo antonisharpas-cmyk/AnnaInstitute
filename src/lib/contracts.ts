@@ -1,6 +1,7 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
+import { manyOf } from "@/lib/filters";
 import {
   agents,
   clients,
@@ -192,9 +193,33 @@ export async function lockPaidInstallments(contractId: string) {
   }
 }
 
+/**
+ * How the contracts list can be ordered.
+ *
+ * The money columns are worked out from the schedule and the payments rather
+ * than stored, so they are ordered by the same subqueries the columns are built
+ * from. Outstanding is the one the office actually sorts by: largest first is
+ * the list of who to telephone.
+ */
+export const CONTRACT_ORDER: Record<string, SQL> = {
+  reference: sql`${contracts.reference}`,
+  client: sql`concat(coalesce(${clients.lastName}, ''), ' ', coalesce(${clients.firstName}, ''))`,
+  unit: sql`concat(coalesce((select p.name from projects p where p.id = ${units.projectId}), ''), ' ', coalesce(${units.code}, ''))`,
+  price: sql`${contracts.netPrice}`,
+  vat: sql`${contracts.vatRate}`,
+  plan: sql`(select count(*) from installments i where i.contract_id = ${contracts.id})`,
+  total: sql`coalesce((select sum(i.total_amount) from installments i where i.contract_id = ${contracts.id}), 0)`,
+  paid: sql`coalesce((select sum(p.amount) from payments p where p.contract_id = ${contracts.id}), 0)`,
+  outstanding: sql`coalesce((select sum(i.total_amount) from installments i where i.contract_id = ${contracts.id}), 0) - coalesce((select sum(p.amount) from payments p where p.contract_id = ${contracts.id}), 0)`,
+  status: sql`${contracts.status}::text`,
+  date: sql`${contracts.contractDate}`,
+};
+
 export async function listContracts(options?: {
   query?: string;
   status?: string;
+  sort?: string;
+  dir?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }) {
@@ -211,16 +236,17 @@ export async function listContracts(options?: {
       ) as SQL,
     );
   }
-  const status = options?.status;
-  if (
-    status === "DRAFT" ||
-    status === "ACTIVE" ||
-    status === "COMPLETED" ||
-    status === "CANCELLED"
-  ) {
-    filters.push(eq(contracts.status, status));
-  }
+  const wanted = manyOf(options?.status, ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"] as const);
+  if (wanted.length === 1) filters.push(eq(contracts.status, wanted[0]));
+  if (wanted.length > 1) filters.push(inArray(contracts.status, wanted));
   const where = filters.length > 0 ? and(...filters) : undefined;
+
+  const chosen = CONTRACT_ORDER[options?.sort ?? ""] ?? null;
+  const orderBy = chosen
+    ? options?.dir === "desc"
+      ? desc(chosen)
+      : asc(chosen)
+    : desc(contracts.createdAt);
 
   const selection = {
     contract: contracts,
@@ -240,7 +266,7 @@ export async function listContracts(options?: {
     .leftJoin(projects, eq(projects.id, units.projectId))
     .leftJoin(clients, eq(clients.id, contracts.clientId))
     .where(where)
-    .orderBy(desc(contracts.createdAt))
+    .orderBy(orderBy)
     .limit(options?.limit ?? 1000)
     .offset(options?.offset ?? 0);
 

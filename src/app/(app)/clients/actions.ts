@@ -8,7 +8,8 @@ import { db } from "@/db";
 import { clients, contracts, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
-import { removeDocument, storeDocuments } from "@/lib/uploads";
+import { followTheApartments, markUnitByHand } from "@/lib/statuses";
+import { removeDocument, storeChosenDocuments } from "@/lib/uploads";
 import { flash } from "@/lib/flash";
 import { offerUndo } from "@/lib/undo";
 import { matchingClientIds } from "@/lib/clients";
@@ -157,61 +158,23 @@ export async function unsubscribeClient(clientId: string) {
   revalidatePath(`/clients/${clientId}`);
 }
 
-const ID_LABELS: Record<string, string> = {
-  ID_CARD: "Identity Card",
-  PASSPORT: "Passport",
-  YELLOW_SLIP: "Yellow Slip",
-};
-
 /**
  * Upload one or more documents to a client.
  *
- * The category can be one of the three identification types. When it is, the
- * document is filed as identification, the type is put on the end of the title
- * so the list reads "Title - Passport", and the type and number are written onto
- * the client record at the same time.
+ * The form and the filing itself are shared with the contract side, in
+ * src/components/DocumentUpload.tsx and storeChosenDocuments, so the office
+ * gets the same questions and the same result whichever page it starts from.
  */
 export async function uploadClientDocuments(clientId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
-  const chosen = String(formData.get("category") ?? "OTHER");
-  const idType = ID_LABELS[chosen] ? (chosen as "ID_CARD" | "PASSPORT" | "YELLOW_SLIP") : null;
 
-  const files = formData
-    .getAll("files")
-    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
-  const typed = String(formData.get("title") ?? "").trim();
-
-  if (files.length === 0) throw new Error("Choose at least one file.");
-  if (!typed) throw new Error("Give the file a title first.");
-
-  const category = idType
-    ? "IDENTIFICATION"
-    : (chosen as "CONTRACT" | "RECEIPT" | "CHANGE_REQUEST" | "OTHER");
-  const title = idType ? `${typed} - ${ID_LABELS[idType]}` : typed;
-
-  if (idType) {
-    const idNumber = String(formData.get("idNumber") ?? "").trim();
-    await db
-      .update(clients)
-      .set({
-        idType,
-        ...(idNumber ? { idNumber } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(clients.id, clientId));
-  }
-
-  // A buyer with more than one apartment keeps different paperwork for each, so
-  // the file can name the apartment it concerns.
-  const unitId = String(formData.get("unitId") ?? "").trim() || null;
-
-  await storeDocuments({
-    files,
-    title,
-    category,
-    attachTo: { clientId, unitId },
+  await storeChosenDocuments({
+    formData,
     user,
+    attachTo: { clientId },
+    clientId,
   });
+
   revalidatePath(`/clients/${clientId}`);
 }
 
@@ -247,6 +210,14 @@ export async function assignApartment(clientId: string, formData: FormData) {
     .update(units)
     .set({ clientId, status, updatedAt: new Date() })
     .where(eq(units.id, unitId));
+
+  /**
+   * A status picked here is somebody's decision about a deal the schedule knows
+   * nothing about yet, so it is marked as set by hand and the payments leave it
+   * alone until the apartment is handed back to them.
+   */
+  await markUnitByHand(unitId, user);
+  await followTheApartments(unit.projectId, user);
 
   await recordAudit({
     action: "unit.assign",
@@ -286,8 +257,17 @@ export async function unassignApartment(unitId: string, clientId: string) {
 
   await db
     .update(units)
-    .set({ clientId: null, status: "AVAILABLE", updatedAt: new Date() })
+    .set({
+      clientId: null,
+      status: "AVAILABLE",
+      // Nobody holds it, so there is nothing for a hand set status to protect.
+      statusByHandAt: null,
+      statusByHandById: null,
+      updatedAt: new Date(),
+    })
     .where(eq(units.id, unitId));
+
+  await followTheApartments(unit.projectId, user);
 
   await recordAudit({
     action: "unit.unassign",
@@ -354,6 +334,9 @@ async function chosenClientIds(formData: FormData): Promise<string[]> {
     const rows = await matchingClientIds({
       query: String(formData.get("q") ?? ""),
       held: String(formData.get("held") ?? ""),
+      project: String(formData.get("project") ?? ""),
+      partner: String(formData.get("partner") ?? ""),
+      source: String(formData.get("source") ?? ""),
     });
     return rows;
   }

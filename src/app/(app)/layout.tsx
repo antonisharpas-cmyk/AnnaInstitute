@@ -8,6 +8,8 @@ import { readUndo } from "@/lib/undo";
 import { getTranslator, type MessageKey } from "@/i18n";
 import AppShell, { type Alert, type NavItem } from "@/components/AppShell";
 import Toaster from "@/components/Toaster";
+import Sortable from "@/components/Sortable";
+import AfterSave from "@/components/AfterSave";
 import SchemaGap from "@/components/SchemaGap";
 import { setLocale, signOut, undoLast } from "@/app/actions";
 
@@ -188,6 +190,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       >
         {children}
       </AppShell>
+
+      {/*
+        Every table that shows all of itself on the page becomes sortable by
+        clicking a heading. Mounted once here rather than on each page, so it
+        covers the tables that already exist and the ones added later.
+      */}
+      <Sortable />
+
+      {/* Anything saved shows up without anybody pressing refresh. */}
+      <AfterSave />
 
       {said ? (
         <Toaster

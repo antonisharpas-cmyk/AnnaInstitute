@@ -144,7 +144,7 @@ export function InlineText({
           onClick={() => setEditing(true)}
           title={label}
         >
-          {shown || <span className="inline-empty">{placeholder ?? "―"}</span>}
+          {shown || <span className="inline-empty">{placeholder ?? "+"}</span>}
         </button>
         {pending ? <span className="inline-dot" aria-hidden="true" /> : null}
         {error ? <span className="inline-error">{error}</span> : null}

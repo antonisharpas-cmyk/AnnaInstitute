@@ -94,6 +94,31 @@ export async function addPartner(projectId: string, formData: FormData) {
     )
     .limit(1);
 
+  /**
+   * The shares have to leave room for us.
+   *
+   * One Eleven never has a line of its own, our share is whatever the partners
+   * do not hold, so partners adding up to more than 100 would make our share a
+   * negative number. The line being edited is left out of the sum, otherwise
+   * changing 60 to 55 would count the 60 twice.
+   */
+  if (share) {
+    const others = await db
+      .select({ id: projectPartners.id, share: projectPartners.sharePercent })
+      .from(projectPartners)
+      .where(eq(projectPartners.projectId, projectId));
+
+    const taken = others
+      .filter((row) => row.id !== existing[0]?.id)
+      .reduce((sum, row) => sum + (row.share ? Number(row.share) : 0), 0);
+
+    if (taken + Number(share) > 100) {
+      await flash("said.shareTooMuch", "bad");
+      revalidatePath(`/projects/${projectId}`);
+      return;
+    }
+  }
+
   if (existing[0]) {
     await db
       .update(projectPartners)

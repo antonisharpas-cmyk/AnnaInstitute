@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, contracts, documents, leads } from "@/db/schema";
+import { clients, contracts, documents, leadNotes, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
@@ -96,10 +96,65 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
   revalidatePath("/leads");
 }
 
-export async function saveLeadNotes(leadId: string, formData: FormData) {
-  await requireUser(["ADMIN"]);
-  const notes = String(formData.get("notes") ?? "").trim() || null;
-  await db.update(leads).set({ notes, updatedAt: new Date() }).where(eq(leads.id, leadId));
+/**
+ * Add one note to an enquiry's record.
+ *
+ * Notes are added, never overwritten: "contacted", then "contacted again, he
+ * asked for the plans", then "meeting agreed for Tuesday" is the history the
+ * office works from, and a single box that the next person types over destroys
+ * exactly the part that was worth keeping. The enquiry's own updated stamp
+ * moves too, so a list sorted by activity puts it where it belongs.
+ */
+export async function addLeadNote(leadId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!body) {
+    await flash("said.noteEmpty", "bad");
+    revalidatePath(`/leads/${leadId}`);
+    return;
+  }
+
+  await db.insert(leadNotes).values({ leadId, body, writtenById: user.id });
+  await db.update(leads).set({ updatedAt: new Date() }).where(eq(leads.id, leadId));
+
+  await recordAudit({
+    action: "lead.note",
+    entity: "lead",
+    entityId: leadId,
+    detail: body.slice(0, 120),
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.noteAdded");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+}
+
+/**
+ * Take one note back off the record.
+ *
+ * Kept deliberately plain: a note written by mistake goes, and the audit log
+ * remembers that it was written and that it was removed, which is the honest
+ * way round for a record somebody may have acted on.
+ */
+export async function removeLeadNote(leadId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const noteId = String(formData.get("noteId") ?? "").trim();
+  if (!noteId) return;
+
+  await db.delete(leadNotes).where(eq(leadNotes.id, noteId));
+
+  await recordAudit({
+    action: "lead.note.remove",
+    entity: "lead",
+    entityId: leadId,
+    detail: `note ${noteId}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
   revalidatePath(`/leads/${leadId}`);
 }
 

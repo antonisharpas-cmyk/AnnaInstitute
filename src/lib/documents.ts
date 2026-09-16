@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { documents, units } from "@/db/schema";
 import type { SessionUser } from "./auth";
@@ -66,15 +66,31 @@ export async function documentsForUnit(unitId: string) {
 }
 
 /**
- * A client's files with the apartment each one concerns, so a buyer with two
- * apartments can tell their paperwork apart.
+ * Everything in a client's file, wherever it was filed from.
+ *
+ * This is the whole point of the client profile being the place the office
+ * works: a receipt attached to a payment on their contract, the signed contract
+ * filed from the contract page, a drawing attached to one of their change
+ * requests and an identity card uploaded here are all that client's paperwork,
+ * and asking somebody to remember which page they filed it from is not a
+ * filing system.
+ *
+ * So the file is gathered by relationship rather than by which column happens
+ * to be filled in: theirs, or their contracts', or their apartments'. The
+ * apartment code comes along so a buyer of two can tell them apart.
  */
 export async function documentsForClientWithUnits(clientId: string) {
   return db
     .select({ document: documents, unitCode: units.code })
     .from(documents)
     .leftJoin(units, eq(units.id, documents.unitId))
-    .where(eq(documents.clientId, clientId))
+    .where(
+      or(
+        eq(documents.clientId, clientId),
+        sql`${documents.contractId} in (select c.id from contracts c where c.client_id = ${clientId})`,
+        sql`${documents.unitId} in (select u.id from units u where u.client_id = ${clientId})`,
+      ),
+    )
     .orderBy(desc(documents.createdAt));
 }
 

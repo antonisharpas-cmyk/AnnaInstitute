@@ -16,8 +16,9 @@
   font-display: swap;
   font-weight: 100 900;
   src: url("/fonts/inter-latin.woff2") format("woff2-variations");
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
-    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
@@ -26,9 +27,10 @@
   font-display: swap;
   font-weight: 100 900;
   src: url("/fonts/inter-latin-ext.woff2") format("woff2-variations");
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
-    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
-    U+2C60-2C7F, U+A720-A7FF;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
 }
 
 @font-face {
@@ -1516,11 +1518,6 @@ table.data tbody tr[data-hot="true"] td {
   box-shadow: inset 0 0 0 1px var(--color-brand-teal);
 }
 
-table.data tbody tr[data-peeked="true"] td {
-  background: var(--color-brand-teal-soft);
-  font-weight: 500;
-}
-
 /* The identifying column stays put while the rest of the table scrolls. */
 .freeze table.data thead th:first-child,
 .freeze table.data tbody td:first-child,
@@ -1541,8 +1538,7 @@ table.data tbody tr[data-peeked="true"] td {
 }
 
 .freeze table.data tbody tr:hover td:first-child,
-.freeze table.data tbody tr[data-chosen="true"] td:first-child,
-.freeze table.data tbody tr[data-peeked="true"] td:first-child {
+.freeze table.data tbody tr[data-chosen="true"] td:first-child {
   background: var(--color-brand-teal-soft);
 }
 
@@ -1572,8 +1568,7 @@ table.data tbody tr[data-peeked="true"] td {
 }
 
 .freeze table.data tbody tr:hover td.pick + td,
-.freeze table.data tbody tr[data-chosen="true"] td.pick + td,
-.freeze table.data tbody tr[data-peeked="true"] td.pick + td {
+.freeze table.data tbody tr[data-chosen="true"] td.pick + td {
   background: var(--color-brand-teal-soft);
 }
 
@@ -1682,93 +1677,6 @@ table.data thead th.pick {
 .inline-cell[data-bad="true"] .inline-read {
   border-color: var(--bad-border);
   background: var(--bad-bg);
-}
-
-/* The record beside its list. */
-.peeklayout {
-  display: grid;
-  gap: 1rem;
-  align-items: start;
-}
-
-@media (min-width: 1280px) {
-  .peeklayout[data-open="true"] {
-    grid-template-columns: minmax(0, 1fr) 25rem;
-  }
-}
-
-.peek {
-  position: sticky;
-  top: 4.5rem;
-  max-height: calc(100vh - 6rem);
-  overflow-y: auto;
-  border: 1px solid var(--color-brand-line);
-  border-radius: 0.625rem;
-  background: var(--color-brand-paper);
-  box-shadow: var(--shadow-raised);
-}
-
-.peekhead {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.65rem;
-  border-bottom: 1px solid var(--color-brand-line);
-  background: var(--color-brand-paper);
-}
-
-.peekwhere {
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--label-ink);
-  white-space: nowrap;
-}
-
-.peekbody {
-  padding: 0.85rem;
-}
-
-.peekrow {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.35rem 0;
-  border-bottom: 1px solid var(--color-brand-line);
-  font-size: 0.8125rem;
-}
-
-.peekrow:last-child {
-  border-bottom: 0;
-}
-
-.peekrow dt {
-  color: var(--label-ink);
-  white-space: nowrap;
-}
-
-.peekrow dd {
-  text-align: right;
-  font-weight: 500;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-/* On a narrow screen the panel comes over the list instead of beside it. */
-@media (max-width: 1279px) {
-  .peek {
-    position: fixed;
-    inset: auto 0 0 0;
-    top: 3.5rem;
-    z-index: 45;
-    max-height: none;
-    border-radius: 0.75rem 0.75rem 0 0;
-    box-shadow: var(--shadow-float);
-  }
 }
 
 /* Two different empty screens: nothing here yet, and nothing matched. */
@@ -1920,8 +1828,7 @@ body {
 
 /* A card that is a link, or holds a chart, answers the pointer. A card that is
    just a container stays put: movement has to mean something. */
-a.card:hover,
-.card:has(> .peekbody):hover {
+a.card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-lift);
   border-color: color-mix(in srgb, var(--color-brand-teal) 35%, var(--color-brand-line));
@@ -2063,17 +1970,6 @@ table.data tbody tr[data-hot="true"] td:first-child {
   }
 }
 
-@keyframes slide-from-right {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
 @keyframes pop {
   from {
     opacity: 0;
@@ -2132,7 +2028,6 @@ main > *:nth-child(4) {
 }
 
 /* Inside a dashboard, each panel follows its neighbour the same way. */
-.peeklayout > .card,
 main .lg\:grid-cols-6 > .panel-wrap {
   animation: fade 0.34s linear backwards;
 }
@@ -2155,11 +2050,6 @@ main .lg\:grid-cols-6 > .panel-wrap:nth-child(5) {
 
 main .lg\:grid-cols-6 > .panel-wrap:nth-child(n + 6) {
   animation-delay: 0.22s;
-}
-
-/* The side panel comes in from the side it lives on. */
-.peek {
-  animation: slide-from-right 0.26s var(--ease-out) backwards;
 }
 
 /* Anything that opens over the page scales up a hair rather than blinking on. */
@@ -2350,4 +2240,564 @@ svg[role="img"] rect.bar {
   animation: rise 0.45s var(--ease-out) backwards;
   animation-delay: 0.06s;
   box-shadow: var(--shadow-lift);
+}
+
+/* ---------------------------------------------------------------------------
+   THE THREE WORD BOARD
+
+   All, New and Handled at the top of the enquiries: not a filter buried in a
+   dropdown but three buttons in the same place every time, each carrying its
+   own count so the size of the job is visible before anybody clicks.
+   --------------------------------------------------------------------------- */
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--color-brand-line);
+  border-radius: 999px;
+  background: var(--color-brand-paper);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-brand-graphite);
+  box-shadow: var(--shadow-raised);
+  transition:
+    background 0.16s var(--ease-out),
+    border-color 0.16s var(--ease-out),
+    color 0.16s var(--ease-out);
+}
+
+.tab:hover {
+  border-color: color-mix(in srgb, var(--color-brand-teal) 45%, var(--color-brand-line));
+}
+
+.tab[data-on="true"] {
+  background: var(--color-brand-teal);
+  border-color: var(--color-brand-teal);
+  color: #ffffff;
+}
+
+.tabcount {
+  display: inline-flex;
+  min-width: 1.35rem;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-brand-teal-soft);
+  padding: 0 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--color-brand-teal-dark);
+}
+
+.tab[data-on="true"] .tabcount {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+/* ---------------------------------------------------------------------------
+   THE RUNNING RECORD
+
+   Notes on an enquiry, each with its day. A line down the left, because a
+   history reads as a thread rather than as a stack of boxes, and the date
+   before the words, because when it happened is what somebody scans for.
+   --------------------------------------------------------------------------- */
+
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.75rem;
+  border-left: 2px solid var(--color-brand-line);
+}
+
+.note {
+  position: relative;
+  padding: 0 0 0.85rem 0.55rem;
+}
+
+.note:last-child {
+  padding-bottom: 0;
+}
+
+.note::before {
+  content: "";
+  position: absolute;
+  left: -1.22rem;
+  top: 0.3rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-brand-teal);
+  box-shadow: 0 0 0 3px var(--color-brand-paper);
+}
+
+.notewhen {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--label-ink);
+}
+
+.notewho {
+  font-weight: 500;
+  color: var(--color-brand-graphite);
+  opacity: 0.7;
+}
+
+.notedrop {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 0.6875rem;
+  color: var(--color-brand-graphite);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.16s var(--ease-out);
+}
+
+.note:hover .notedrop,
+.notedrop:focus-visible {
+  opacity: 0.65;
+  text-decoration: underline;
+}
+
+.notebody {
+  margin-top: 0.15rem;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------------
+   SORTING BY A COLUMN
+
+   The whole heading is the target, and the arrow beside it says what is
+   happening: a double arrow on a column that can be sorted, a single one on the
+   column the table is actually sorted by. Only the active column's arrow is at
+   full strength, so nine sortable columns do not read as nine instructions.
+   --------------------------------------------------------------------------- */
+
+table.data th .sorter,
+table.data th > a.sorter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+table.data th.ctr .sorter {
+  justify-content: center;
+}
+
+table.data th .sorter:hover {
+  color: var(--color-brand-teal-dark);
+}
+
+.sortmark {
+  font-size: 0.75em;
+  opacity: 0.25;
+  transition: opacity 0.16s var(--ease-out);
+}
+
+table.data th .sorter:hover .sortmark {
+  opacity: 0.6;
+}
+
+.sorter[data-on="true"] {
+  color: var(--color-brand-teal-dark);
+}
+
+.sorter[data-on="true"] .sortmark {
+  opacity: 1;
+}
+
+/*
+   The tables that sort themselves in the browser carry no markup of their own,
+   so their arrows are drawn here from the heading and one attribute the click
+   sets. Nothing is added to the page, which is what keeps it out of React's
+   way: a stylesheet cannot make the page disagree with the server.
+*/
+table.data thead th:not(.pick):not(:has(a[data-sort])) {
+  cursor: pointer;
+}
+
+table.data thead th:not(.pick):not(:has(a[data-sort]))::after {
+  content: "\2195";
+  margin-left: 0.3rem;
+  font-size: 0.75em;
+  opacity: 0.22;
+}
+
+table.data thead th:not(.pick):not(:has(a[data-sort])):hover::after {
+  opacity: 0.55;
+}
+
+table.data thead th[data-sorted="asc"]::after {
+  content: "\2191";
+  opacity: 1;
+}
+
+table.data thead th[data-sorted="desc"]::after {
+  content: "\2193";
+  opacity: 1;
+}
+
+table.data thead th[data-sorted] {
+  color: var(--color-brand-teal-dark);
+}
+
+/* ---------------------------------------------------------------------------
+   THE CALENDAR
+
+   Ours, not the browser's. The native picker is a different shape on every
+   machine in the office, so the field keeps its behaviour and loses its looks:
+   the indicator is hidden and the month below is drawn here, in the brand's own
+   colours, with today ringed and the weekend in lighter ink.
+   --------------------------------------------------------------------------- */
+
+.datewrap {
+  position: relative;
+}
+
+.datefield::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+.datefield {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234D4D4F' stroke-opacity='0.55' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v4M16 3v4M3 11h18'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  padding-right: 2rem;
+}
+
+[data-theme="dark"] .datefield {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23C9CDCF' stroke-opacity='0.7' stroke-width='2' stroke-linecap='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M8 3v4M16 3v4M3 11h18'/%3E%3C/svg%3E");
+}
+
+.calendar {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  width: 17.5rem;
+  padding: 0.7rem;
+  border: 1px solid var(--color-brand-line);
+  border-radius: var(--radius-card);
+  background: var(--color-brand-paper);
+  box-shadow: var(--shadow-float);
+  animation: fade 0.14s linear backwards;
+}
+
+.calhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.calmonth {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.calstep {
+  display: inline-flex;
+  height: 1.6rem;
+  width: 1.6rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.5rem;
+  background: var(--color-brand-surface);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.calstep:hover {
+  border-color: var(--color-brand-teal);
+  color: var(--color-brand-teal-dark);
+}
+
+.calnames,
+.calgrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.15rem;
+}
+
+.calnames {
+  margin-bottom: 0.2rem;
+}
+
+.calnames span {
+  text-align: center;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--label-ink);
+}
+
+.calday {
+  display: flex;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: none;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-brand-ink);
+  cursor: pointer;
+  transition:
+    background 0.12s var(--ease-out),
+    color 0.12s var(--ease-out);
+}
+
+.calday:hover {
+  background: var(--color-brand-teal-soft);
+}
+
+.calday[data-other="true"] {
+  opacity: 0.35;
+}
+
+.calday[data-weekend="true"] {
+  color: color-mix(in srgb, var(--color-brand-graphite) 70%, transparent);
+}
+
+.calday[data-today="true"] {
+  border-color: var(--color-brand-teal);
+  font-weight: 700;
+}
+
+.calday[data-on="true"] {
+  background: var(--color-brand-teal);
+  border-color: var(--color-brand-teal);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.calfoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  border-top: 1px solid var(--color-brand-line);
+  padding-top: 0.5rem;
+}
+
+.calquick {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-brand-teal-dark);
+  cursor: pointer;
+}
+
+.calquick:hover {
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------------
+   A FILTER THAT TAKES MORE THAN ONE ANSWER
+
+   The button says what is chosen rather than how many, because reading "New,
+   Contacted" beats reading "2 chosen" and then having to open it. The list
+   reloads itself when the panel closes, so choosing is one action rather than
+   two.
+   --------------------------------------------------------------------------- */
+
+.pick {
+  position: relative;
+  width: 12rem;
+}
+
+.pickbutton {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  border: 1px solid var(--color-brand-line);
+  border-radius: var(--radius-control);
+  background: var(--color-brand-paper);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.875rem;
+  color: var(--color-brand-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pickbutton:hover {
+  border-color: color-mix(in srgb, var(--color-brand-teal) 45%, var(--color-brand-line));
+}
+
+.pickbutton[data-on="true"] {
+  border-color: var(--color-brand-teal);
+  box-shadow: inset 0 0 0 1px var(--color-brand-teal);
+  font-weight: 600;
+}
+
+.picksays {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pickmark {
+  flex: none;
+  font-size: 0.6875rem;
+  opacity: 0.5;
+}
+
+.pickmenu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  width: max(100%, 13rem);
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-brand-line);
+  border-radius: var(--radius-card);
+  background: var(--color-brand-paper);
+  box-shadow: var(--shadow-float);
+  padding: 0.3rem;
+  animation: fade 0.12s linear backwards;
+}
+
+.pickrow {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: none;
+  padding: 0.4rem 0.45rem;
+  font-size: 0.8125rem;
+  color: var(--color-brand-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pickrow:hover {
+  background: var(--color-brand-surface);
+}
+
+.pickbox {
+  display: inline-flex;
+  height: 1rem;
+  width: 1rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-brand-line);
+  border-radius: 0.25rem;
+  background: var(--color-brand-paper);
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
+.pickrow[data-on="true"] {
+  font-weight: 600;
+}
+
+.pickrow[data-on="true"] .pickbox {
+  border-color: var(--color-brand-teal);
+  background: var(--color-brand-teal);
+  color: #ffffff;
+}
+
+.pickfoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  border-top: 1px solid var(--color-brand-line);
+  padding: 0.4rem 0.45rem 0.15rem;
+}
+
+/* ---------------------------------------------------------------------------
+   THE STATEMENT
+
+   One page that says where a buyer stands, made to be printed. The CRM's own
+   furniture is marked no-print and disappears; what comes out is the logo, the
+   buyer, the figures and the date.
+   --------------------------------------------------------------------------- */
+
+.statement {
+  max-width: 60rem;
+}
+
+.statehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 2px solid var(--color-brand-teal);
+  padding-bottom: 0.75rem;
+}
+
+.stateblock {
+  margin-top: 1.25rem;
+  break-inside: avoid;
+}
+
+.statetitle {
+  margin-bottom: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--label-ink);
+}
+
+.statetotals {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  border-top: 2px solid var(--color-brand-teal);
+  padding-top: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  break-inside: avoid;
+}
+
+.statefigure {
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.statefigure-owed {
+  color: var(--color-warning);
+}
+
+@media print {
+  .statement {
+    max-width: none;
+  }
+
+  .statement table.data {
+    font-size: 0.75rem;
+  }
 }

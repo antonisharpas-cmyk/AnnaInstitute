@@ -32,6 +32,9 @@ export const COLUMNS: Record<ListKey, Column[]> = {
     { key: "phone", label: "common.phone" },
     { key: "country", label: "clients.country" },
     { key: "apartments", label: "clients.apartmentsPlural" },
+    { key: "building", label: "clients.building" },
+    { key: "partner", label: "clients.partner" },
+    { key: "source", label: "clients.source" },
     { key: "status", label: "common.status" },
     { key: "contracts", label: "contracts.title" },
     { key: "marketing", label: "clients.marketing" },
@@ -61,6 +64,7 @@ export const COLUMNS: Record<ListKey, Column[]> = {
   projects: [
     { key: "name", label: "common.name", fixed: true },
     { key: "company", label: "projects.company" },
+    { key: "partner", label: "clients.partner" },
     { key: "location", label: "projects.location" },
     { key: "completion", label: "projects.completion" },
     { key: "status", label: "common.status" },
@@ -72,7 +76,13 @@ export const COLUMNS: Record<ListKey, Column[]> = {
 };
 
 /** The parameters that belong to a view. Paging and the preview do not. */
-const NOT_A_FILTER = new Set(["page", "peek", "view", "saved", "all", "row"]);
+/**
+ * Paging is not a filter, and neither is the marker that says "show
+ * everything". The chosen column is: "the contracts with the most outstanding
+ * first" is a way of looking at the list worth saving as a view, so sort and
+ * dir stay in.
+ */
+const NOT_A_FILTER = new Set(["page", "view", "saved", "all", "row"]);
 
 /**
  * The filter part of an address, tidied.
@@ -132,13 +142,18 @@ export async function saveView(input: {
   name: string;
   query: string;
   everyone: boolean;
-}): Promise<void> {
-  await db.insert(savedViews).values({
-    userId: input.everyone ? null : input.userId,
-    list: input.list,
-    name: input.name.slice(0, 60),
-    query: input.query,
-  });
+}): Promise<string> {
+  const [made] = await db
+    .insert(savedViews)
+    .values({
+      userId: input.everyone ? null : input.userId,
+      list: input.list,
+      name: input.name.slice(0, 60),
+      query: input.query,
+    })
+    .returning({ id: savedViews.id });
+
+  return made.id;
 }
 
 export async function updateView(id: string, query: string): Promise<void> {

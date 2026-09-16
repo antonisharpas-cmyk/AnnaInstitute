@@ -279,7 +279,8 @@ export default function AppShell({
     <div ref={shell} className="flex min-h-screen">
       {/* The sidebar, on anything wider than a telephone. */}
       <aside
-        className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-brand-line bg-brand-paper py-4 md:flex ${
+        /* no-print: a statement sent to a buyer should not carry our menu. */
+        className={`no-print sticky top-0 hidden h-screen shrink-0 flex-col border-r border-brand-line bg-brand-paper py-4 md:flex ${
           narrow ? "w-[4.5rem]" : "w-60"
         }`}
       >

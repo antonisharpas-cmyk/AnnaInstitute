@@ -3,7 +3,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
-import { leadCounts, leadIdsFor, leadStatusTone, listLeads } from "@/lib/leads";
+import { latestNoteByLead, LEAD_ORDER, leadCounts, listLeads } from "@/lib/leads";
+import { readSort, sortHref } from "@/lib/sorting";
+import { anyFilter, many } from "@/lib/filters";
 import {
   COLUMNS,
   filterQuery,
@@ -13,20 +15,29 @@ import {
   shownColumns,
   viewsFor,
 } from "@/lib/lists";
-import { Card, PageHeader, Pill, Stat } from "@/components/ui";
+import { Card, PageHeader } from "@/components/ui";
 import { NoMatch, NothingYet } from "@/components/Nothing";
 import { IconLeads } from "@/components/icons";
 import SearchBox from "@/components/SearchBox";
+import SortTh from "@/components/SortTh";
+import Pick from "@/components/Pick";
 import Pagination, { paginate } from "@/components/Pagination";
 import ViewsBar from "@/components/ViewsBar";
 import BulkBar from "@/components/BulkBar";
 import RowKeys from "@/components/RowKeys";
-import Peek, { PeekLine } from "@/components/Peek";
 import { InlineSelect } from "@/components/Inline";
 import { bulkLeadBin, bulkLeadStatus, setLeadStatusInline } from "./actions";
 
 const PER_PAGE = 20;
-const STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "CLOSED"] as const;
+/**
+ * The statuses an enquiry can be in while it is still an enquiry.
+ *
+ * Became a client is not among them. It is not a status somebody sets any more:
+ * making a client out of an enquiry is a button on the enquiry itself, and the
+ * moment it is pressed the enquiry belongs to the clients list rather than to
+ * this one.
+ */
+const STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CLOSED"] as const;
 
 const when = (value: Date, locale: string) =>
   new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB", {
@@ -44,9 +55,10 @@ export default async function LeadsPage({
     q?: string;
     status?: string;
     source?: string;
+    sort?: string;
+    dir?: string;
     page?: string;
     view?: string;
-    peek?: string;
     all?: string;
     saved?: string;
   }>;
@@ -72,42 +84,26 @@ export default async function LeadsPage({
   const status = params.status ?? "";
   const source = params.source ?? "";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
+  const sort = readSort(params as Record<string, string | undefined>, Object.keys(LEAD_ORDER), {
+    key: "received",
+    dir: "desc",
+  });
   const filters = filterQuery(params as Record<string, string | undefined>);
   const filtering = filters !== "";
 
-  const [{ rows, total }, counts, views, hidden, orderedIds] = await Promise.all([
-    listLeads({ query, status, source, limit: perPage, offset }),
+  const [{ rows, total }, counts, views, hidden] = await Promise.all([
+    listLeads({ query, status, source, sort: sort.key, dir: sort.dir, limit: perPage, offset }),
     leadCounts(),
     viewsFor(user.id, "leads"),
     hiddenColumns(user.id, "leads"),
-    params.peek ? leadIdsFor({ query, status, source }) : Promise.resolve([]),
   ]);
 
   const { on, hidden: away } = shownColumns("leads", hidden);
+  const latestNotes = await latestNoteByLead(rows.map((r) => r.lead.id));
+  const link = (key: string) =>
+    sortHref("/leads", params as Record<string, string | undefined>, key, sort);
   const currentView = views.find((view) => view.id === params.view) ?? null;
 
-  /** The address of this list, without the panel, so a link can go back to it. */
-  const here = (extra?: Record<string, string | undefined>) => {
-    const search = new URLSearchParams();
-    for (const [key, value] of Object.entries({ ...params, ...extra })) {
-      if (value) search.set(key, String(value));
-    }
-    search.delete("saved");
-    const text = search.toString();
-    return text ? `/leads?${text}` : "/leads?all=1";
-  };
-
-  const withoutPeek = () => {
-    const search = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value && key !== "peek" && key !== "saved") search.set(key, String(value));
-    }
-    const text = search.toString();
-    return text ? `/leads?${text}` : "/leads?all=1";
-  };
-
-  const peeked = params.peek ? (rows.find((row) => row.lead.id === params.peek) ?? null) : null;
-  const at = params.peek ? orderedIds.indexOf(params.peek) : -1;
   const statusOptions = STATUSES.map((one) => ({
     value: one,
     label: t(`leads.status.${one}` as MessageKey),
@@ -133,363 +129,364 @@ export default async function LeadsPage({
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Stat
-          label={t("leads.fresh")}
-          value={String(counts.fresh)}
-          count={{ amount: counts.fresh, locale }}
-          tone="warn"
-          href="/leads?status=NEW"
-        />
-        <Stat
-          label={t("leads.working")}
-          value={String(counts.working)}
-          count={{ amount: counts.working, locale }}
-          href="/leads?status=CONTACTED"
-        />
-        <Stat
-          label={t("leads.convertedCount")}
-          value={String(counts.converted)}
-          count={{ amount: counts.converted, locale }}
-          tone="good"
-          href="/leads?status=CONVERTED"
-        />
+      {/*
+        The board in three words. All is a filter like the other two rather than
+        a way of clearing the others, because "show me everything" is a thing
+        people ask for constantly and it should be one button, always in the
+        same place, next to the two halves of the work.
+      */}
+      {/*
+        Plain links on purpose. These three go to the same path with different
+        search parameters, which is exactly the navigation the router
+        intermittently fetches and never commits, so the browser does it.
+      */}
+      {/* eslint-disable @next/next/no-html-link-for-pages */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <a
+          href="/leads?all=1"
+          className="tab"
+          data-on={status === "" && !params.source ? "true" : "false"}
+        >
+          {t("list.all")}
+          <span className="tabcount">{counts.total}</span>
+        </a>
+        <a href="/leads?status=NEW" className="tab" data-on={status === "NEW" ? "true" : "false"}>
+          {t("leads.status.NEW")}
+          <span className="tabcount">{counts.fresh}</span>
+        </a>
+        <a
+          href="/leads?status=HANDLED"
+          className="tab"
+          data-on={status === "HANDLED" ? "true" : "false"}
+        >
+          {t("leads.handled")}
+          <span className="tabcount">{counts.handled}</span>
+        </a>
       </div>
+      {/* eslint-enable @next/next/no-html-link-for-pages */}
 
-      <div className="peeklayout" data-open={Boolean(peeked)}>
-        <Card>
-          <ViewsBar
-            list="leads"
-            views={views}
-            query={filters}
-            currentView={currentView}
-            restored={Boolean(params.saved)}
-            columns={COLUMNS.leads}
-            hidden={away}
-            labels={{
-              all: t("list.all"),
-              saveAs: t("list.saveAs"),
-              saveAsHint: t("list.saveAsHint"),
-              name: t("list.viewName"),
-              everyone: t("list.everyone"),
-              save: t("list.saveView"),
-              update: t("list.updateView"),
-              reset: t("list.resetView"),
-              showAll: t("list.reset"),
-              changed: t("list.changed"),
-              remove: t("list.removeView"),
-              mine: t("list.mine"),
-              shared: t("list.shared"),
-              restored: t("list.restored"),
-              columns: t("list.columns"),
-              columnsHint: t("list.columnsHint"),
-              done: t("list.columnsDone"),
-              always: t("list.always"),
-            }}
+      <Card>
+        <ViewsBar
+          list="leads"
+          views={views}
+          query={filters}
+          currentView={currentView}
+          restored={Boolean(params.saved)}
+          columns={COLUMNS.leads}
+          hidden={away}
+          labels={{
+            all: t("list.all"),
+            saveAs: t("list.saveAs"),
+            saveAsHint: t("list.saveAsHint"),
+            name: t("list.viewName"),
+            everyone: t("list.everyone"),
+            save: t("list.saveView"),
+            update: t("list.updateView"),
+            reset: t("list.resetView"),
+            showAll: t("list.reset"),
+            changed: t("list.changed"),
+            remove: t("list.removeView"),
+            mine: t("list.mine"),
+            shared: t("list.shared"),
+            restored: t("list.restored"),
+            columns: t("list.columns"),
+            columnsHint: t("list.columnsHint"),
+            done: t("list.columnsDone"),
+            always: t("list.always"),
+          }}
+        />
+
+        <SearchBox
+          action="/leads"
+          query={query}
+          placeholder={t("leads.searchPlaceholder")}
+          searchLabel={t("common.search")}
+          clearLabel={t("common.clear")}
+          keep={{ view: params.view }}
+          filtered={anyFilter(params as Record<string, string | undefined>)}
+          resetLabel={t("list.resetAll")}
+        >
+          <Pick
+            name="status"
+            label={t("common.status")}
+            chosen={many(status)}
+            anything={t("common.all")}
+            choices={STATUSES.map((one) => ({
+              value: one,
+              label: t(`leads.status.${one}` as MessageKey),
+            }))}
           />
+          <Pick
+            name="source"
+            label={t("leads.camefrom")}
+            chosen={many(source)}
+            anything={t("common.all")}
+            choices={(["WEBSITE", "ENQUIRY", "AGENT", "WHATSAPP", "OTHER"] as const).map((one) => ({
+              value: one,
+              label: t(`leads.source.${one}` as MessageKey),
+            }))}
+          />
+        </SearchBox>
 
-          <SearchBox
-            action="/leads"
-            query={query}
-            placeholder={t("leads.searchPlaceholder")}
-            searchLabel={t("common.search")}
-            clearLabel={t("common.clear")}
-            keep={{ view: params.view }}
-          >
-            <div className="w-48">
-              <label className="label" htmlFor="status">
-                {t("common.status")}
-              </label>
-              <select id="status" name="status" defaultValue={status} className="select">
-                <option value="">{t("common.all")}</option>
-                {STATUSES.map((one) => (
-                  <option key={one} value={one}>
-                    {t(`leads.status.${one}` as MessageKey)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="w-48">
-              <label className="label" htmlFor="source">
-                {t("leads.camefrom")}
-              </label>
-              <select id="source" name="source" defaultValue={source} className="select">
-                <option value="">{t("common.all")}</option>
-                {(["WEBSITE", "ENQUIRY", "AGENT", "WHATSAPP", "OTHER"] as const).map((one) => (
-                  <option key={one} value={one}>
-                    {t(`leads.source.${one}` as MessageKey)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </SearchBox>
-
-          {rows.length === 0 ? (
-            filtering ? (
-              <NoMatch
-                title={t("nothing.match")}
-                note={t("nothing.matchNote")}
-                clearHref="/leads?all=1"
-                clearLabel={t("nothing.clear")}
-              />
-            ) : (
-              <NothingYet
-                title={t("nothing.leads")}
-                note={t("nothing.leadsNote")}
-                icon={<IconLeads size={20} />}
-                action={
-                  <>
-                    <Link
-                      href="/leads/new"
-                      className="btn btn-primary !py-1 !text-xs"
-                      prefetch={false}
-                    >
-                      {t("leads.newLead")}
-                    </Link>
-                    <Link
-                      href="/leads/api"
-                      className="btn btn-secondary !py-1 !text-xs"
-                      prefetch={false}
-                    >
-                      {t("leads.apiAccess")}
-                    </Link>
-                  </>
-                }
-              />
-            )
+        {rows.length === 0 ? (
+          filtering ? (
+            <NoMatch
+              title={t("nothing.match")}
+              note={t("nothing.matchNote")}
+              clearHref="/leads?all=1"
+              clearLabel={t("nothing.clear")}
+            />
           ) : (
-            <form action={bulkLeadStatus}>
-              <input type="hidden" name="q" value={query} />
-              <input type="hidden" name="status" value={status} />
-              <input type="hidden" name="source" value={source} />
+            <NothingYet
+              title={t("nothing.leads")}
+              note={t("nothing.leadsNote")}
+              icon={<IconLeads size={20} />}
+              action={
+                <>
+                  <Link
+                    href="/leads/new"
+                    className="btn btn-primary !py-1 !text-xs"
+                    prefetch={false}
+                  >
+                    {t("leads.newLead")}
+                  </Link>
+                  <Link
+                    href="/leads/api"
+                    className="btn btn-secondary !py-1 !text-xs"
+                    prefetch={false}
+                  >
+                    {t("leads.apiAccess")}
+                  </Link>
+                </>
+              }
+            />
+          )
+        ) : (
+          <form action={bulkLeadStatus}>
+            <input type="hidden" name="q" value={query} />
+            <input type="hidden" name="status" value={status} />
+            <input type="hidden" name="source" value={source} />
 
-              <RowKeys />
+            <RowKeys />
 
-              <div className="mt-4 overflow-x-auto freeze">
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th className="pick">
-                        <input type="checkbox" data-pagebox aria-label={t("list.all")} />
-                      </th>
-                      {on("name") ? <th>{t("common.name")}</th> : null}
-                      {on("received") ? <th>{t("leads.received")}</th> : null}
-                      {on("contact") ? <th>{t("leads.contact")}</th> : null}
-                      {on("source") ? <th>{t("leads.camefrom")}</th> : null}
-                      {on("status") ? <th>{t("common.status")}</th> : null}
-                      {on("about") ? <th>{t("leads.about")}</th> : null}
-                      {on("note") ? <th>{t("leads.note")}</th> : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr
-                        key={r.lead.id}
-                        data-id={r.lead.id}
-                        data-peeked={params.peek === r.lead.id}
-                      >
-                        <td className="pick">
-                          <input
-                            type="checkbox"
-                            name="ids"
-                            value={r.lead.id}
-                            aria-label={r.lead.email ?? r.lead.id}
-                          />
+            <div className="mt-4 overflow-x-auto freeze">
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th className="pick">
+                      <input type="checkbox" data-pagebox aria-label={t("list.all")} />
+                    </th>
+                    {on("name") ? (
+                      <SortTh
+                        label={t("common.name")}
+                        by="name"
+                        current={sort}
+                        href={link("name")}
+                      />
+                    ) : null}
+                    {on("received") ? (
+                      <SortTh
+                        label={t("leads.received")}
+                        by="received"
+                        current={sort}
+                        href={link("received")}
+                      />
+                    ) : null}
+                    {on("contact") ? (
+                      <SortTh
+                        label={t("leads.contact")}
+                        by="contact"
+                        current={sort}
+                        href={link("contact")}
+                      />
+                    ) : null}
+                    {on("source") ? (
+                      <SortTh
+                        label={t("leads.camefrom")}
+                        by="source"
+                        current={sort}
+                        href={link("source")}
+                      />
+                    ) : null}
+                    {on("status") ? (
+                      <SortTh
+                        label={t("common.status")}
+                        by="status"
+                        current={sort}
+                        href={link("status")}
+                      />
+                    ) : null}
+                    {on("about") ? (
+                      <SortTh
+                        label={t("leads.about")}
+                        by="about"
+                        current={sort}
+                        href={link("about")}
+                      />
+                    ) : null}
+                    {on("note") ? (
+                      <SortTh
+                        label={t("leads.note")}
+                        by="note"
+                        current={sort}
+                        href={link("note")}
+                      />
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.lead.id} data-id={r.lead.id}>
+                      <td className="pick">
+                        <input
+                          type="checkbox"
+                          name="ids"
+                          value={r.lead.id}
+                          aria-label={r.lead.email ?? r.lead.id}
+                        />
+                      </td>
+
+                      {on("name") ? (
+                        <td className="whitespace-nowrap">
+                          <a
+                            /* The name opens the record, as a plain link so it never misses. */
+                            data-open
+                            href={`/leads/${r.lead.id}`}
+                            className="font-semibold hover:underline"
+                          >
+                            {[r.lead.firstName, r.lead.lastName].filter(Boolean).join(" ") || "?"}
+                          </a>
                         </td>
+                      ) : null}
 
-                        {on("name") ? (
-                          <td className="whitespace-nowrap">
-                            <a
-                              /* A plain link, so opening the panel never misses. */
-                              href={here({ peek: r.lead.id })}
-                              className="font-semibold hover:underline"
-                            >
-                              {[r.lead.firstName, r.lead.lastName].filter(Boolean).join(" ") || "?"}
-                            </a>
-                          </td>
-                        ) : null}
+                      {on("received") ? (
+                        <td className="whitespace-nowrap text-xs">
+                          {when(r.lead.createdAt, locale)}
+                        </td>
+                      ) : null}
 
-                        {on("received") ? (
-                          <td className="whitespace-nowrap text-xs">
-                            {when(r.lead.createdAt, locale)}
-                          </td>
-                        ) : null}
+                      {on("contact") ? (
+                        <td className="text-xs">
+                          <div className="break-all">{r.lead.email ?? ""}</div>
+                          <div>{r.lead.phone ?? ""}</div>
+                        </td>
+                      ) : null}
 
-                        {on("contact") ? (
-                          <td className="text-xs">
-                            <div className="break-all">{r.lead.email ?? ""}</div>
-                            <div>{r.lead.phone ?? ""}</div>
-                          </td>
-                        ) : null}
+                      {on("source") ? (
+                        <td className="text-xs">
+                          <div>{t(`leads.source.${r.lead.sourceKind}` as MessageKey)}</div>
+                          {r.lead.sourceKind === "OTHER" && r.lead.source ? (
+                            <div className="text-brand-graphite/60">{r.lead.source}</div>
+                          ) : null}
+                          {r.lead.utmCampaign ? (
+                            <div className="text-brand-graphite/60">{r.lead.utmCampaign}</div>
+                          ) : null}
+                        </td>
+                      ) : null}
 
-                        {on("source") ? (
-                          <td className="text-xs">
-                            <div>{t(`leads.source.${r.lead.sourceKind}` as MessageKey)}</div>
-                            {r.lead.sourceKind === "OTHER" && r.lead.source ? (
-                              <div className="text-brand-graphite/60">{r.lead.source}</div>
-                            ) : null}
-                            {r.lead.utmCampaign ? (
-                              <div className="text-brand-graphite/60">{r.lead.utmCampaign}</div>
-                            ) : null}
-                          </td>
-                        ) : null}
-
-                        {on("status") ? (
-                          <td>
-                            <InlineSelect
-                              label={t("common.status")}
-                              value={r.lead.status}
-                              options={statusOptions}
-                              save={setLeadStatusInline.bind(null, r.lead.id)}
-                            />
-                            {r.client ? (
-                              <div className="mt-0.5">
-                                <Link
-                                  href={`/clients/${r.client.id}`}
-                                  className="text-xs text-brand-teal-dark hover:underline"
-                                  prefetch={false}
-                                >
-                                  {r.client.firstName} {r.client.lastName}
-                                </Link>
-                              </div>
-                            ) : null}
-                          </td>
-                        ) : null}
-
-                        {on("about") ? (
-                          <td className="text-xs">
-                            {r.project ? (
+                      {on("status") ? (
+                        <td>
+                          <InlineSelect
+                            label={t("common.status")}
+                            value={r.lead.status}
+                            options={statusOptions}
+                            save={setLeadStatusInline.bind(null, r.lead.id)}
+                          />
+                          {r.client ? (
+                            <div className="mt-0.5">
                               <Link
-                                href={`/projects/${r.project.id}`}
-                                className="hover:underline"
+                                href={`/clients/${r.client.id}`}
+                                className="text-xs text-brand-teal-dark hover:underline"
                                 prefetch={false}
                               >
-                                {r.project.name}
+                                {r.client.firstName} {r.client.lastName}
                               </Link>
-                            ) : (
-                              (r.lead.projectName ?? "")
-                            )}
-                            {r.lead.unitCode ? <div>{r.lead.unitCode}</div> : null}
-                          </td>
-                        ) : null}
+                            </div>
+                          ) : null}
+                        </td>
+                      ) : null}
 
-                        {on("note") ? (
-                          <td className="max-w-80 text-xs text-brand-graphite/70">
-                            {r.lead.message ?? ""}
-                          </td>
-                        ) : null}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      {on("about") ? (
+                        <td className="text-xs">
+                          {r.project ? (
+                            <Link
+                              href={`/projects/${r.project.id}`}
+                              className="hover:underline"
+                              prefetch={false}
+                            >
+                              {r.project.name}
+                            </Link>
+                          ) : (
+                            (r.lead.projectName ?? "")
+                          )}
+                          {r.lead.unitCode ? <div>{r.lead.unitCode}</div> : null}
+                        </td>
+                      ) : null}
 
-              <BulkBar
-                total={total}
-                labels={{
-                  chosen: t("list.chosen"),
-                  page: t("list.all"),
-                  everyMatching: t("list.everyMatching"),
-                  clear: t("list.clearChosen"),
-                  scopeAll: t("list.scopeAll"),
-                }}
+                      {on("note") ? (
+                        <td className="max-w-80 text-xs text-brand-graphite/70">
+                          {/*
+                            The last thing written about this enquiry, which is
+                            what somebody scanning the list wants. The whole
+                            record, with its dates, is on the enquiry itself.
+                          */}
+                          {latestNotes.get(r.lead.id) ?? r.lead.message ?? ""}
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <BulkBar
+              total={total}
+              labels={{
+                chosen: t("list.chosen"),
+                page: t("list.all"),
+                everyMatching: t("list.everyMatching"),
+                clear: t("list.clearChosen"),
+                scopeAll: t("list.scopeAll"),
+              }}
+            >
+              <label className="flex items-center gap-1.5 text-xs font-semibold">
+                {t("list.setStatus")}
+                <select name="newStatus" className="select !w-auto !py-1 !text-xs">
+                  {STATUSES.map((one) => (
+                    <option key={one} value={one}>
+                      {t(`leads.status.${one}` as MessageKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className="btn btn-primary !px-2.5 !py-1 !text-xs">
+                {t("list.apply")}
+              </button>
+              <button
+                type="submit"
+                formAction={bulkLeadBin}
+                className="btn btn-secondary !px-2.5 !py-1 !text-xs"
               >
-                <label className="flex items-center gap-1.5 text-xs font-semibold">
-                  {t("list.setStatus")}
-                  <select name="newStatus" className="select !w-auto !py-1 !text-xs">
-                    {STATUSES.filter((one) => one !== "CONVERTED").map((one) => (
-                      <option key={one} value={one}>
-                        {t(`leads.status.${one}` as MessageKey)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button type="submit" className="btn btn-primary !px-2.5 !py-1 !text-xs">
-                  {t("list.apply")}
-                </button>
-                <button
-                  type="submit"
-                  formAction={bulkLeadBin}
-                  className="btn btn-secondary !px-2.5 !py-1 !text-xs"
-                >
-                  {t("list.moveToBin")}
-                </button>
-              </BulkBar>
+                {t("list.moveToBin")}
+              </button>
+            </BulkBar>
 
-              <p className="mt-2 text-xs text-brand-graphite/55">{t("list.keyboardHint")}</p>
-            </form>
-          )}
+            <p className="mt-2 text-xs text-brand-graphite/55">{t("list.keyboardHint")}</p>
+          </form>
+        )}
 
-          <Pagination
-            basePath="/leads"
-            params={params as Record<string, string | undefined>}
-            info={{ page, perPage, total }}
-            labels={{
-              previous: t("common.previous"),
-              next: t("common.next"),
-              showing: t("common.showing"),
-              of: t("common.of"),
-            }}
-          />
-        </Card>
-
-        {peeked ? (
-          <Peek
-            title={
-              [peeked.lead.firstName, peeked.lead.lastName].filter(Boolean).join(" ") ||
-              t("bin.lead")
-            }
-            subtitle={when(peeked.lead.createdAt, locale)}
-            at={at >= 0 ? at + 1 : 1}
-            of={orderedIds.length || 1}
-            previousHref={at > 0 ? here({ peek: orderedIds[at - 1] }) : null}
-            nextHref={
-              at >= 0 && at < orderedIds.length - 1 ? here({ peek: orderedIds[at + 1] }) : null
-            }
-            closeHref={withoutPeek()}
-            openHref={`/leads/${peeked.lead.id}`}
-            labels={{
-              close: t("peek.close"),
-              previous: t("peek.previous"),
-              next: t("peek.next"),
-              open: t("peek.open"),
-              position: t("peek.position"),
-            }}
-          >
-            <PeekLine label={t("common.status")}>
-              <Pill tone={leadStatusTone(peeked.lead.status) as "good" | "warn" | "neutral"}>
-                {t(`leads.status.${peeked.lead.status}` as MessageKey)}
-              </Pill>
-            </PeekLine>
-            <PeekLine label={t("common.email")}>{peeked.lead.email ?? "―"}</PeekLine>
-            <PeekLine label={t("common.phone")}>{peeked.lead.phone ?? "―"}</PeekLine>
-            <PeekLine label={t("leads.camefrom")}>
-              {t(`leads.source.${peeked.lead.sourceKind}` as MessageKey)}
-              {peeked.lead.source ? ` . ${peeked.lead.source}` : ""}
-            </PeekLine>
-            <PeekLine label={t("leads.about")}>
-              {peeked.project?.name ?? peeked.lead.projectName ?? "―"}
-              {peeked.lead.unitCode ? ` ${peeked.lead.unitCode}` : ""}
-            </PeekLine>
-            {peeked.lead.message ? (
-              <PeekLine label={t("leads.note")}>
-                <span className="text-xs">{peeked.lead.message}</span>
-              </PeekLine>
-            ) : null}
-            {peeked.client ? (
-              <PeekLine label={t("nav.clients")}>
-                <Link
-                  href={`/clients/${peeked.client.id}`}
-                  className="text-brand-teal-dark hover:underline"
-                  prefetch={false}
-                >
-                  {peeked.client.firstName} {peeked.client.lastName}
-                </Link>
-              </PeekLine>
-            ) : null}
-          </Peek>
-        ) : null}
-      </div>
+        <Pagination
+          basePath="/leads"
+          params={params as Record<string, string | undefined>}
+          info={{ page, perPage, total }}
+          labels={{
+            previous: t("common.previous"),
+            next: t("common.next"),
+            showing: t("common.showing"),
+            of: t("common.of"),
+          }}
+        />
+      </Card>
     </>
   );
 }

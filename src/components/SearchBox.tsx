@@ -12,6 +12,8 @@ export default function SearchBox({
   clearLabel,
   children,
   keep,
+  filtered,
+  resetLabel,
 }: {
   action: string;
   query: string;
@@ -24,6 +26,9 @@ export default function SearchBox({
    * all, because losing it is how a list forgets which view it is on.
    */
   keep?: Record<string, string | undefined>;
+  /** Is anything filtered at all, so the reset is worth offering. */
+  filtered?: boolean;
+  resetLabel?: string;
 }) {
   return (
     <form action={action} method="get">
@@ -41,9 +46,14 @@ export default function SearchBox({
         <button type="submit" className="btn btn-primary">
           {searchLabel}
         </button>
-        {query ? (
-          <Link href={`${action}?all=1`} className="btn btn-secondary">
-            {clearLabel}
+        {/*
+          One button that puts the list back to everything: every filter, the
+          search, the order, the page. Offered only when there is something to
+          undo, so it is never furniture.
+        */}
+        {(filtered ?? query) ? (
+          <Link href={`${action}?all=1`} className="btn btn-secondary" prefetch={false}>
+            {resetLabel ?? clearLabel}
           </Link>
         ) : null}
       </div>

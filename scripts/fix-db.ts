@@ -24,11 +24,14 @@ const NEEDED_TABLES = [
   ["dashboard_layouts", "0012"],
   ["saved_views", "0013"],
   ["list_settings", "0013"],
+  ["lead_notes", "0015"],
 ] as const;
 
 const NEEDED_COLUMNS = [
   ["leads", "deleted_at", "0013"],
   ["clients", "deleted_at", "0013"],
+  ["units", "status_by_hand_at", "0014"],
+  ["projects", "status_by_hand_at", "0014"],
 ] as const;
 
 type Ask = (text: string) => Promise<Record<string, unknown>[]>;
@@ -147,6 +150,12 @@ async function main() {
       "",
       "  alter table clients add column if not exists deleted_at timestamp with time zone;",
       "  alter table leads   add column if not exists deleted_at timestamp with time zone;",
+      "",
+      "  alter table units    add column if not exists status_by_hand_at timestamp with time zone;",
+      "  alter table units    add column if not exists status_by_hand_by text;",
+      "  alter table projects add column if not exists status_by_hand_at timestamp with time zone;",
+      "  alter table projects add column if not exists status_by_hand_by text;",
+      "  alter type project_status add value if not exists 'DELIVERED';",
       "",
       "  create table if not exists saved_views (",
       "    id text primary key not null,",

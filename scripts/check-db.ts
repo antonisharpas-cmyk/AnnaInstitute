@@ -30,6 +30,7 @@ const EXPECTED_TABLES = [
   "expenses",
   "email_templates",
   "dashboard_layouts",
+  "lead_notes",
   "saved_views",
   "list_settings",
 ];
@@ -38,6 +39,8 @@ const EXPECTED_TABLES = [
 const EXPECTED_COLUMNS: [string, string][] = [
   ["leads", "deleted_at"],
   ["clients", "deleted_at"],
+  ["units", "status_by_hand_at"],
+  ["projects", "status_by_hand_at"],
 ];
 
 type Rows = Record<string, unknown>[];

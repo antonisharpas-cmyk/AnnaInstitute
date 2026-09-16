@@ -43,6 +43,21 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the deleted_at column on clients",
     migration: "0013",
   },
+  {
+    probe: "select status_by_hand_at from units limit 1",
+    what: "the status_by_hand_at column on units",
+    migration: "0014",
+  },
+  {
+    probe: "select status_by_hand_at from projects limit 1",
+    what: "the status_by_hand_at column on projects",
+    migration: "0014",
+  },
+  {
+    probe: "select body from lead_notes limit 1",
+    what: "the lead_notes table",
+    migration: "0015",
+  },
 ];
 
 let answer: Missing[] | null = null;

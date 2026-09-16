@@ -1,7 +1,21 @@
 import "server-only";
-import { and, desc, eq, gte, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { db } from "@/db";
-import { clients, leads, projects } from "@/db/schema";
+import { many, manyOf } from "@/lib/filters";
+import { clients, leadNotes, leads, projects, users } from "@/db/schema";
 
 /**
  * What arrives from the website, and what the office sees.
@@ -48,6 +62,9 @@ function splitName(full: string): { firstName: string; lastName: string | null }
 }
 
 export const LEAD_SOURCES = ["WEBSITE", "ENQUIRY", "AGENT", "WHATSAPP", "OTHER"] as const;
+
+/** Every status an enquiry can hold, in the order the board reads. */
+export const LEAD_STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "CLOSED"] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
 /** What the website called itself, mapped onto the office's own categories. */
@@ -138,21 +155,52 @@ export async function recentDuplicate(email: string | null, phone: string | null
   return rows[0]?.id ?? null;
 }
 
+/**
+ * How the enquiries list can be ordered, as SQL for each column.
+ *
+ * Newest first is the default and stays the default, because an enquiries list
+ * is a queue before it is a table. The rest are here for the moments when it is
+ * a table: every enquiry from one development together, or the oldest thing
+ * nobody has touched at the top.
+ */
+export const LEAD_ORDER: Record<string, SQL> = {
+  name: sql`concat(coalesce(${leads.firstName}, ''), ' ', coalesce(${leads.lastName}, ''))`,
+  received: sql`${leads.createdAt}`,
+  contact: sql`coalesce(${leads.email}, ${leads.phone}, '')`,
+  source: sql`${leads.sourceKind}::text`,
+  status: sql`${leads.status}::text`,
+  about: sql`coalesce(${leads.projectName}, '')`,
+  note: sql`coalesce((select n.body from lead_notes n where n.lead_id = ${leads.id} order by n.created_at desc limit 1), ${leads.message}, '')`,
+};
+
 export async function listLeads({
   query = "",
   status = "",
   source = "",
+  sort = "received",
+  dir = "desc",
   limit = 20,
   offset = 0,
 }: {
   query?: string;
   status?: string;
   source?: string;
+  sort?: string;
+  dir?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }) {
-  // Anything in the recycle bin is out of every list and every count.
-  const filters: SQL[] = [isNull(leads.deletedAt) as SQL];
+  /**
+   * Two things are out of every enquiries list.
+   *
+   * Anything in the recycle bin, and anything that has become a client. The
+   * second is the office's own rule: the moment an enquiry becomes a buyer it
+   * is a client record, and leaving it in the enquiries list as well means two
+   * places to look and two places to keep up to date. Everything the enquiry
+   * said, its notes included, is on the client profile, and the enquiry itself
+   * is still at its own address for anybody who wants the original.
+   */
+  const filters: SQL[] = [isNull(leads.deletedAt) as SQL, ne(leads.status, "CONVERTED") as SQL];
   if (query) {
     filters.push(
       or(
@@ -165,12 +213,25 @@ export async function listLeads({
       ) as SQL,
     );
   }
-  if (["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "CLOSED"].includes(status)) {
-    filters.push(eq(leads.status, status as "NEW"));
+  /**
+   * Status takes a list: "the new ones and the ones we have contacted" is the
+   * question somebody actually asks before they start telephoning.
+   */
+  const wanted = manyOf(status, LEAD_STATUSES);
+  if (wanted.length === 1) filters.push(eq(leads.status, wanted[0]));
+  if (wanted.length > 1) filters.push(inArray(leads.status, wanted));
+  /**
+   * Handled is the office's own word for the rest of the board: an enquiry
+   * somebody has already picked up, whatever happened to it afterwards. It is
+   * not a status on the record, it is every status except the first one, which
+   * is why it is worked out here rather than stored.
+   */
+  if (many(status).includes("HANDLED")) {
+    filters.push(ne(leads.status, "NEW") as SQL);
   }
-  if ((LEAD_SOURCES as readonly string[]).includes(source)) {
-    filters.push(eq(leads.sourceKind, source as LeadSource));
-  }
+  const from = manyOf(source, LEAD_SOURCES);
+  if (from.length === 1) filters.push(eq(leads.sourceKind, from[0]));
+  if (from.length > 1) filters.push(inArray(leads.sourceKind, from));
   const where = and(...filters);
 
   const [rows, [counted]] = await Promise.all([
@@ -180,7 +241,11 @@ export async function listLeads({
       .leftJoin(projects, eq(projects.id, leads.projectId))
       .leftJoin(clients, eq(clients.id, leads.clientId))
       .where(where)
-      .orderBy(desc(leads.createdAt))
+      .orderBy(
+        dir === "asc"
+          ? asc(LEAD_ORDER[sort] ?? LEAD_ORDER.received)
+          : desc(LEAD_ORDER[sort] ?? LEAD_ORDER.received),
+      )
       .limit(limit)
       .offset(offset),
     db
@@ -195,14 +260,20 @@ export async function listLeads({
 export async function leadCounts() {
   const [row] = await db
     .select({
-      total: sql<number>`count(*)::int`,
+      total: sql<number>`count(*) filter (where status <> 'CONVERTED')::int`,
       fresh: sql<number>`count(*) filter (where status = 'NEW')::int`,
       working: sql<number>`count(*) filter (where status in ('CONTACTED','QUALIFIED'))::int`,
+      /** Kept for the reports, which still want to know how many became buyers. */
       converted: sql<number>`count(*) filter (where status = 'CONVERTED')::int`,
+      /**
+       * Picked up but not yet a client: the other half of the board. A client
+       * is not "handled", it is a client, and it is counted on that list.
+       */
+      handled: sql<number>`count(*) filter (where status not in ('NEW','CONVERTED'))::int`,
     })
     .from(leads)
     .where(isNull(leads.deletedAt));
-  return row ?? { total: 0, fresh: 0, working: 0, converted: 0 };
+  return row ?? { total: 0, fresh: 0, working: 0, converted: 0, handled: 0 };
 }
 
 /** How many leads are still waiting for somebody to pick them up. */
@@ -241,4 +312,57 @@ export async function leadIdsFor({
 }): Promise<string[]> {
   const { rows } = await listLeads({ query, status, source, limit: 2000, offset: 0 });
   return rows.map((row) => row.lead.id);
+}
+
+/* ---------------------------------------------------------------------------
+   The running record on an enquiry
+   --------------------------------------------------------------------------- */
+
+/** Ten to a page, which is about what fits without the card becoming a list. */
+export const NOTES_PER_PAGE = 10;
+
+/**
+ * The notes on an enquiry, newest first.
+ *
+ * All of them, not a page of them, and the paging happens in the browser. Two
+ * reasons: an enquiry has tens of notes rather than thousands, so there is
+ * nothing to save by asking the database twice, and the arrows then turn the
+ * page instantly instead of reloading the record around them. It also keeps the
+ * address clean, so a link to an enquiry is a link to the enquiry rather than
+ * to page three of its notes.
+ */
+export async function notesForLead(leadId: string) {
+  return (
+    db
+      .select({
+        id: leadNotes.id,
+        body: leadNotes.body,
+        createdAt: leadNotes.createdAt,
+        writtenBy: users.name,
+      })
+      .from(leadNotes)
+      .leftJoin(users, eq(users.id, leadNotes.writtenById))
+      .where(eq(leadNotes.leadId, leadId))
+      // Two notes written in the same second still need a definite order, so the
+      // identifier breaks the tie and the list never shuffles between loads.
+      .orderBy(desc(leadNotes.createdAt), desc(leadNotes.id))
+      .limit(500)
+  );
+}
+
+/** The latest note on each of these enquiries, for the list column. */
+export async function latestNoteByLead(leadIds: string[]): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  if (leadIds.length === 0) return found;
+
+  const rows = await db
+    .select({ leadId: leadNotes.leadId, body: leadNotes.body, createdAt: leadNotes.createdAt })
+    .from(leadNotes)
+    .where(inArray(leadNotes.leadId, leadIds))
+    .orderBy(desc(leadNotes.createdAt));
+
+  for (const row of rows) {
+    if (!found.has(row.leadId)) found.set(row.leadId, row.body);
+  }
+  return found;
 }

@@ -4,9 +4,11 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, leads, projects } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
-import { leadStatusTone } from "@/lib/leads";
+import { leadStatusTone, notesForLead } from "@/lib/leads";
 import { BackLink, Card, PageHeader, Pill } from "@/components/ui";
-import { convertLead, deleteLead, saveLeadNotes, setLeadStatus } from "../actions";
+import SubmitButton from "@/components/SubmitButton";
+import NoteList from "@/components/NoteList";
+import { addLeadNote, convertLead, deleteLead, removeLeadNote, setLeadStatus } from "../actions";
 
 const when = (value: Date, locale: string) =>
   new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB");
@@ -37,6 +39,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const row = found[0];
   if (!row) notFound();
   const { lead, project, client } = row;
+
+  const notes = await notesForLead(id);
 
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?";
 
@@ -79,7 +83,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             {lead.country ? <Line label={t("clients.country")}>{lead.country}</Line> : null}
             {lead.message ? (
               <div className="mt-3 border-t border-brand-line pt-3">
-                <p className="label">{t("leads.note")}</p>
+                <p className="label">{t("leads.theirWords")}</p>
                 <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
                   {lead.message}
                 </pre>
@@ -114,13 +118,47 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             ) : null}
           </Card>
 
-          <Card title={t("leads.notes")}>
-            <form action={saveLeadNotes.bind(null, id)} className="space-y-2">
-              <textarea name="notes" rows={4} defaultValue={lead.notes ?? ""} className="input" />
-              <button type="submit" className="btn btn-primary">
-                {t("common.save")}
-              </button>
+          {/*
+            The record, not a box. Each note keeps the day it was written and
+            who wrote it, newest first, ten at a time with arrows back through
+            the older ones. Nothing here is ever typed over.
+          */}
+          <Card
+            title={t("leads.notes")}
+            action={
+              <span className="text-xs text-brand-graphite/60">
+                {notes.length} {t("leads.noteCount")}
+              </span>
+            }
+          >
+            <form action={addLeadNote.bind(null, id)} className="mb-4 space-y-2">
+              <textarea
+                name="body"
+                rows={3}
+                required
+                placeholder={t("leads.notePlaceholder")}
+                className="textarea"
+              />
+              <SubmitButton>{t("leads.noteAdd")}</SubmitButton>
             </form>
+
+            <NoteList
+              notes={notes.map((note) => ({
+                id: note.id,
+                body: note.body,
+                when: when(note.createdAt, locale),
+                writtenBy: note.writtenBy,
+              }))}
+              labels={{
+                none: t("leads.noteNone"),
+                by: t("leads.noteBy"),
+                older: t("leads.noteOlder"),
+                newer: t("leads.noteNewer"),
+                of: t("common.of"),
+                delete: t("common.delete"),
+              }}
+              remove={removeLeadNote.bind(null, id)}
+            />
           </Card>
 
           {lead.payload ? (

@@ -16,6 +16,7 @@ import Disclosure from "@/components/Disclosure";
 import Pagination, { paginate } from "@/components/Pagination";
 import { deleteProjectDocument, markProjectChecked, uploadProjectDocuments } from "../actions";
 import { addPartner, removePartner } from "../../subowners/actions";
+import { letTheApartmentsDecide } from "../actions";
 
 const PER_PAGE = 25;
 
@@ -72,6 +73,19 @@ export default async function ProjectPage({
     projectChecklist(id),
   ]);
 
+  /**
+   * What One Eleven holds of this development: whatever the partners do not.
+   *
+   * A development of ours alone therefore reads 100 without anybody having to
+   * type a partner line for us, and a development held with Trivest at 60 reads
+   * 40 here the moment their line is saved.
+   */
+  const partnerShare = partners.reduce(
+    (sum, row) => sum + (row.partner.sharePercent ? Number(row.partner.sharePercent) : 0),
+    0,
+  );
+  const ourShare = Math.max(0, 100 - partnerShare);
+
   return (
     <>
       <BackLink
@@ -121,8 +135,17 @@ export default async function ProjectPage({
         <Stat
           label={t("common.status")}
           value={t(`projects.status.${project.status}` as MessageKey)}
+          hint={project.statusByHandAt ? t("projects.statusByHand") : t("projects.statusFromUnits")}
         />
       </div>
+
+      {project.statusByHandAt ? (
+        <form action={letTheApartmentsDecide.bind(null, id)} className="mb-3">
+          <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
+            {t("projects.letApartmentsDecide")}
+          </button>
+        </form>
+      ) : null}
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
         <Card
@@ -139,7 +162,7 @@ export default async function ProjectPage({
           }
         >
           {partners.length === 0 ? (
-            <Empty message={t("subowners.noPartners")} />
+            <Empty message={t("subowners.oursAlone")} />
           ) : (
             <table className="data">
               <thead>
@@ -182,6 +205,16 @@ export default async function ProjectPage({
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr>
+                  {/* Our own share is never a line of its own, it is the rest. */}
+                  <td className="font-semibold">{t("subowners.ourselves")}</td>
+                  <td className="ctr font-semibold">{formatPercent(ourShare, locale)}</td>
+                  <td colSpan={2} className="text-xs text-brand-graphite/60">
+                    {t("subowners.theRest")}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           )}
 
@@ -219,6 +252,7 @@ export default async function ProjectPage({
                       id="sharePercent"
                       name="sharePercent"
                       inputMode="decimal"
+                      defaultValue="60"
                       className="input !w-24"
                     />
                   </div>

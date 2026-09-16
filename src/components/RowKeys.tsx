@@ -7,17 +7,22 @@ import { goTo } from "@/components/GoTo";
 /**
  * Moving down a list without the mouse.
  *
- * j and k, or the arrow keys, walk the rows; Enter opens the one in hand in the
- * side panel; x takes it for a bulk action; Escape lets it go. This is the
- * vocabulary people bring with them from every other tool that respects the
- * keyboard, so it is worth matching exactly rather than inventing.
+ * j and k, or the arrow keys, walk the rows; Enter opens the one in hand; x
+ * takes it for a bulk action; Escape lets it go. This is the vocabulary people
+ * bring with them from every other tool that respects the keyboard, so it is
+ * worth matching exactly rather than inventing.
+ *
+ * Enter opens whatever the row's own name link points at, found on the page
+ * rather than built here from a path. Every list therefore opens the same
+ * record by keyboard as by mouse, and a list added later needs nothing from
+ * this file beyond marking its name link.
  *
  * The row in hand is remembered by its own identifier rather than by a mark on
  * the page, because a list refreshes itself whenever something is saved and a
  * mark would be wiped by the refresh. Somebody who changes a status and carries
  * on with j and k stays exactly where they were.
  */
-export default function RowKeys({ peekParam = "peek" }: { peekParam?: string }) {
+export default function RowKeys() {
   const router = useRouter();
   const hot = useRef<string | null>(null);
 
@@ -57,21 +62,6 @@ export default function RowKeys({ peekParam = "peek" }: { peekParam?: string }) 
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (typing(event.target)) return;
-      /**
-       * While the side panel is open it owns j, k and Enter. Escape is handled
-       * in both places on purpose: whichever of the two is ready first closes
-       * the panel, so the key never feels dead.
-       */
-      if (document.querySelector(".peek")) {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        const url = new URL(window.location.href);
-        if (!url.searchParams.has(peekParam)) return;
-        url.searchParams.delete(peekParam);
-        const rest = url.searchParams.toString();
-        goTo(router, rest ? `${url.pathname}?${rest}` : url.pathname);
-        return;
-      }
 
       const all = rows();
       if (all.length === 0) return;
@@ -97,12 +87,10 @@ export default function RowKeys({ peekParam = "peek" }: { peekParam?: string }) 
         return;
       }
       if (event.key === "Enter" && at >= 0) {
-        const id = all[at].dataset.id;
-        if (!id) return;
+        const link = all[at].querySelector<HTMLAnchorElement>("a[data-open]");
+        if (!link) return;
         event.preventDefault();
-        const url = new URL(window.location.href);
-        url.searchParams.set(peekParam, id);
-        goTo(router, `${url.pathname}?${url.searchParams.toString()}`);
+        goTo(router, link.getAttribute("href") ?? link.href);
         return;
       }
       if (event.key === "Escape") {
@@ -128,7 +116,7 @@ export default function RowKeys({ peekParam = "peek" }: { peekParam?: string }) 
       window.removeEventListener("keydown", onKey);
       watcher?.disconnect();
     };
-  }, [router, peekParam]);
+  }, [router]);
 
   return null;
 }
