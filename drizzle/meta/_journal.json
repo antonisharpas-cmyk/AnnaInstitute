@@ -127,6 +127,13 @@
       "when": 1789575689677,
       "tag": "0017_project_file_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789636667270,
+      "tag": "0018_partners_vat_land_exchange",
+      "breakpoints": true
     }
   ]
 }

@@ -340,12 +340,17 @@ input[type="radio"] {
 
 /*
    A wide table stays inside the page and scrolls sideways on its own, rather
-   than stretching the layout. Any table in an overflow-x-auto wrapper grows to
-   the width of its content and the wrapper carries the scrollbar, which is drawn
-   permanently so it is obvious there is more to the right.
+   than stretching the layout.
+
+   It fills the wrapper rather than growing to the width of its longest cell,
+   which is the difference between a readable table and one where a long name
+   takes the room of three columns and everything else is squeezed. So a long
+   value wraps onto a second line first, and the table only spills over and
+   carries a scrollbar when even the wrapped columns will not fit, which is what
+   the permanently drawn scrollbar below is for.
 */
 .overflow-x-auto > table.data {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
 }
 
@@ -411,6 +416,31 @@ table.data tbody td {
   border-bottom: 1px solid var(--color-brand-line);
   padding: 0.6rem 0.7rem;
   vertical-align: middle;
+  /*
+    A long value wraps at its spaces. Two names joined by an ampersand, a
+    company with four words in it, an address: these are common and they are
+    what stretched the table before.
+
+    Break-word rather than anywhere on purpose. Anywhere lets a column shrink to
+    one letter wide, which turns MAGNUM OPUS UNO into MAGNU M OPUS UNO and is
+    worse than the problem it solves. This way a column is never narrower than
+    its longest word, so the wrapping happens between words and a table whose
+    words genuinely will not fit spills over and scrolls instead.
+  */
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/*
+  Figures and dates are not wrapped: a price broken over two lines is harder to
+  read than a slightly wider column, and they are short enough not to be the
+  problem in the first place.
+*/
+table.data tbody td.num,
+table.data tbody td.ctr,
+table.data tbody td.nowrap {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 table.data tbody tr:nth-child(even) td {

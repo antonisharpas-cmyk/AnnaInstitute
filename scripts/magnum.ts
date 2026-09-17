@@ -43,22 +43,74 @@ import { connectionOptions, DatabaseUrlError, target } from "../src/db/url";
    -------------------------------------------------------------------------- */
 
 const PARTNERS = [
-  { name: "DEX-INNO GREEN PROPERTIES LTD", registryNumber: "ΗΕ 449137" },
-  { name: "TRIVEST PROPERTY DEVELOPMENT LIMITED", registryNumber: "ΗΕ 476522" },
+  {
+    name: "DEX-INNO GREEN PROPERTIES LTD",
+    registryNumber: "ΗΕ 449137",
+    directors: [
+      {
+        name: "Andreas Kailis",
+        role: "Director",
+        email: "andreas.moscow@gmail.com",
+        emailAlternate: "dexinno@yahoo.com",
+        phone: "99 616761",
+      },
+    ],
+    shares: [
+      { holder: "One Eleven", sharePercent: 50 },
+      { holder: "Vladimir", sharePercent: 50 },
+    ],
+  },
+  {
+    name: "TRIVEST PROPERTY DEVELOPMENT LIMITED",
+    registryNumber: "ΗΕ 476522",
+    directors: [
+      { name: "George", role: "Director", email: "gm@oliverlandon.com", phone: "97566567" },
+      {
+        name: "Adel",
+        role: "Director",
+        email: "adel@asa-consultants.com",
+        phone: "+973 3952 1225",
+      },
+    ],
+    shares: [
+      { holder: "One Eleven", sharePercent: 33.3 },
+      { holder: "Marvenus Holding", sharePercent: 33.3 },
+      { holder: "ASA Consultants", sharePercent: 33.3 },
+    ],
+  },
 ];
 
 /**
- * What a partner holds of a building it is in.
+ * Two different questions, and this script answers both.
  *
- * The office's own figure: the partner sixty, One Eleven the remaining forty.
- * One Eleven's share is never a line of its own, it is whatever the partners
- * have not taken, so a building with no partner reads as ours outright.
+ * Who owns the partner company is the block above, and it belongs to the
+ * company: DEX-INNO is half ours and half Vladimir's wherever it builds. What
+ * the partner holds of one development is the figure below, and it belongs to
+ * that development, so the same partner can be on different terms on different
+ * buildings. Keeping them apart is the whole point, because they are agreed at
+ * different times with different people.
  */
 const PARTNER_SHARE = 60;
 
 /* --------------------------------------------------------------------------
    The developments, and the apartments in them.
    -------------------------------------------------------------------------- */
+
+/**
+ * The buyer of an apartment.
+ *
+ * The key is what makes one buyer of two apartments one record rather than two:
+ * the same key on two apartments means the same person, and the second
+ * apartment is added to the client already created rather than to a copy of
+ * them with a number after their name.
+ */
+type Buyer = {
+  key: string;
+  firstName: string;
+  lastName: string;
+  /** About the person, not about the sale. */
+  note?: string;
+};
 
 /** An apartment as the price list has it. */
 type Apartment = {
@@ -71,13 +123,24 @@ type Apartment = {
   parking?: number;
   /** Euro. Left out where the price list does not say, and then PRICE_UNKNOWN. */
   price?: number;
+  /**
+   * Nineteen per cent unless the buyer is entitled to the reduced rate, which
+   * is why an apartment nobody has bought yet carries the ordinary one.
+   */
+  vatRate?: number;
   status: "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED";
   /** What the price list says that the record has no column of its own for. */
   note?: string;
+  /** Who bought it, where the office has told us. */
+  buyer?: Buyer;
+  /** A term of that sale: cash agreed, something held back until delivery. */
+  contractNote?: string;
 };
 
 type Building = {
   name: string;
+  /** UNO, DUE: the short form that goes in front of a contract reference. */
+  short: string;
   slug: string;
   /** The folder its files are in, under the source folder. */
   folder: string;
@@ -116,6 +179,7 @@ const PRICE_UNKNOWN = 200_000;
 const MAGNUM_OPUS: Building[] = [
   {
     name: "MAGNUM OPUS UNO",
+    short: "UNO",
     slug: "magnum-opus-uno",
     folder: "MAGNUM OPUS UNO",
     partner: "DEX-INNO GREEN PROPERTIES LTD",
@@ -136,8 +200,11 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 0,
         parking: 1,
+        price: 170000,
+        vatRate: 19,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 101 m2.",
+        buyer: { key: "uno-komodromou", firstName: "Aristotelis", lastName: "Komodromou" },
       },
       {
         code: "102",
@@ -147,8 +214,11 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 0,
         parking: 1,
+        price: 180000,
+        vatRate: 5,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 101 m2.",
+        buyer: { key: "uno-a-gaughan", firstName: "Andreas", lastName: "Gaughan" },
       },
       {
         code: "103",
@@ -158,8 +228,11 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 0,
         parking: 1,
+        price: 180000,
+        vatRate: 5,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 101 m2.",
+        buyer: { key: "uno-k-gaughan", firstName: "Konstantinos", lastName: "Gaughan" },
       },
       {
         code: "104",
@@ -169,8 +242,13 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 25.2,
         roofGarden: 0,
         parking: 1,
+        price: 170000,
+        vatRate: 5,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 105.5 m2.",
+        buyer: { key: "uno-siakallis", firstName: "Nektarios", lastName: "Siakallis" },
+        contractNote:
+          "A further 10,000 on delivery. 10,000 will be refunded from the second payment and the buyer pays that amount on delivery.",
       },
       {
         code: "201",
@@ -180,8 +258,11 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 13,
         roofGarden: 0,
         parking: 1,
+        price: 140000,
+        vatRate: 5,
         status: "SOLD",
         note: "Beds 1+1. Bathrooms 1. Store room yes. Total area 98 m2.",
+        buyer: { key: "uno-ismailova", firstName: "Alina", lastName: "Ismailova" },
       },
       {
         code: "202",
@@ -191,8 +272,12 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 0,
         parking: 1,
+        price: 171000,
+        vatRate: 5,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 101 m2.",
+        buyer: { key: "uno-iakovides", firstName: "Konstantinos", lastName: "Iakovides" },
+        contractNote: "15,000 in cash.",
       },
       {
         code: "203",
@@ -202,8 +287,11 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 0,
         parking: 1,
+        price: 183000,
+        vatRate: 5,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 101 m2.",
+        buyer: { key: "uno-rokopou", firstName: "Stavrina", lastName: "Rokopou" },
       },
       {
         code: "204",
@@ -213,8 +301,11 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 0,
         parking: 1,
+        price: 181000,
+        vatRate: 5,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 101 m2.",
+        buyer: { key: "uno-adamos", firstName: "Adamos", lastName: "Anastasiou" },
       },
       {
         code: "301",
@@ -224,8 +315,11 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 13,
         roofGarden: 42,
         parking: 1,
+        price: 180000,
+        vatRate: 19,
         status: "RESERVED",
         note: "Beds 1+1. Bathrooms 1. Store room yes. Total area 102 m2.",
+        buyer: { key: "uno-trifilli", firstName: "Panagiota", lastName: "Trifilli" },
       },
       {
         code: "302",
@@ -235,8 +329,12 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 42,
         parking: 1,
+        price: 225000,
+        vatRate: 5,
         status: "RESERVED",
         note: "Bathrooms 2. Store room yes. Total area 143 m2.",
+        buyer: { key: "uno-marios", firstName: "Marios", lastName: "Anastasiou" },
+        contractNote: "20,000 in cash.",
       },
       {
         code: "303",
@@ -246,8 +344,11 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 42,
         parking: 1,
+        price: 240000,
+        vatRate: 5,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 143 m2.",
+        buyer: { key: "uno-louroutziati", firstName: "Ersia", lastName: "Louroutziati" },
       },
       {
         code: "304",
@@ -257,7 +358,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 21,
         roofGarden: 42,
         parking: 1,
-        price: 260_000,
+        price: 260000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 143 m2.",
       },
@@ -265,6 +367,7 @@ const MAGNUM_OPUS: Building[] = [
   },
   {
     name: "MAGNUM OPUS DUE",
+    short: "DUE",
     slug: "magnum-opus-due",
     folder: "MAGNUM OPUS DUE",
     partner: "TRIVEST PROPERTY DEVELOPMENT LIMITED",
@@ -285,7 +388,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 15,
         roofGarden: 0,
         parking: 1,
-        price: 230_000,
+        price: 230000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 100 m2.",
       },
@@ -297,7 +401,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 20,
         roofGarden: 0,
         parking: 1,
-        price: 230_000,
+        price: 230000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 103 m2.",
       },
@@ -309,7 +414,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 15,
         roofGarden: 0,
         parking: 1,
-        price: 240_000,
+        price: 240000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 100 m2.",
       },
@@ -321,8 +427,12 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 20,
         roofGarden: 0,
         parking: 1,
+        price: 185000,
+        vatRate: 5,
         status: "RESERVED",
         note: "Bathrooms 2. Store room yes. Total area 103 m2.",
+        buyer: { key: "due-panayi", firstName: "Maria", lastName: "Panayi" },
+        contractNote: "20,000 in cash, paid.",
       },
       {
         code: "301",
@@ -332,7 +442,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 15,
         roofGarden: 0,
         parking: 1,
-        price: 270_000,
+        price: 270000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 100 m2.",
       },
@@ -344,7 +455,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 28.5,
         roofGarden: 0,
         parking: 1,
-        price: 280_000,
+        price: 280000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Beds 2+1. Bathrooms 2. Store room yes. Total area 111.5 m2.",
       },
@@ -356,6 +468,7 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 33.6,
         roofGarden: 38.3,
         parking: 1,
+        vatRate: 19,
         status: "SOLD",
         note: "Bathrooms 3. Store room yes. Uncovered balcony 38.5 m2. Total area 230.4 m2.",
       },
@@ -363,6 +476,7 @@ const MAGNUM_OPUS: Building[] = [
   },
   {
     name: "MAGNUM OPUS TRE",
+    short: "TRE",
     slug: "magnum-opus-tre",
     folder: "MAGNUM OPUS TRE",
     partner: "TRIVEST PROPERTY DEVELOPMENT LIMITED",
@@ -383,8 +497,16 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 17,
         roofGarden: 0,
         parking: 1,
+        price: 195300,
+        vatRate: 5,
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 102 m2.",
+        buyer: {
+          key: "tre-saifan",
+          firstName: "Rami Saifan and Annie",
+          lastName: "Abdallah",
+          note: "Joint buyers: Rami Saifan and Annie Abdallah. They hold two apartments in this building.",
+        },
       },
       {
         code: "102",
@@ -394,7 +516,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 17,
         roofGarden: 0,
         parking: 1,
-        price: 230_000,
+        price: 230000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 102 m2.",
       },
@@ -406,8 +529,17 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 10,
         roofGarden: 0,
         parking: 1,
+        price: 109150,
+        vatRate: 19,
         status: "SOLD",
         note: "Bathrooms 1. Store room yes. Total area 61 m2.",
+        buyer: {
+          key: "tre-saifan",
+          firstName: "Rami Saifan and Annie",
+          lastName: "Abdallah",
+          note: "Joint buyers: Rami Saifan and Annie Abdallah. They hold two apartments in this building.",
+        },
+        contractNote: "35,000 in cash, paid.",
       },
       {
         code: "201",
@@ -417,8 +549,16 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 17,
         roofGarden: 0,
         parking: 1,
+        price: 217000,
+        vatRate: 5,
         status: "RESERVED",
         note: "Bathrooms 2. Store room yes. Total area 102 m2.",
+        buyer: {
+          key: "tre-abboud",
+          firstName: "Daniele Maouad and Bassam",
+          lastName: "Abboud",
+          note: "Joint buyers: Daniele Maouad, spouse of Abboud, and Bassam Abboud.",
+        },
       },
       {
         code: "202",
@@ -428,6 +568,7 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 17,
         roofGarden: 0,
         parking: 1,
+        vatRate: 19,
         status: "RESERVED",
         note: "Bathrooms 2. Store room yes. Total area 102 m2.",
       },
@@ -439,7 +580,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 10,
         roofGarden: 0,
         parking: 1,
-        price: 170_000,
+        price: 170000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 1. Store room yes. Total area 61 m2.",
       },
@@ -451,8 +593,12 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 17,
         roofGarden: 49,
         parking: 1,
+        price: 250000,
+        vatRate: 5,
         status: "RESERVED",
         note: "Bathrooms 2. Store room yes. Total area 151 m2.",
+        buyer: { key: "tre-athanasiades", firstName: "Michalis", lastName: "Athanasiades" },
+        contractNote: "30,000 in cash.",
       },
       {
         code: "302",
@@ -462,7 +608,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 17,
         roofGarden: 49,
         parking: 1,
-        price: 300_000,
+        price: 300000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 151 m2.",
       },
@@ -474,7 +621,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 10,
         roofGarden: 0,
         parking: 1,
-        price: 180_000,
+        price: 180000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 1. Store room yes. Total area 61 m2.",
       },
@@ -482,6 +630,7 @@ const MAGNUM_OPUS: Building[] = [
   },
   {
     name: "MAGNUM OPUS QUATTRO",
+    short: "QUATTRO",
     slug: "magnum-opus-quattro",
     folder: "MAGNUM OPUS QUATTRO",
     partner: null,
@@ -503,7 +652,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 26,
         roofGarden: 0,
         parking: 1,
-        price: 175_000,
+        price: 175000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 1. Store room yes. Total area 77 m2.",
       },
@@ -514,7 +664,8 @@ const MAGNUM_OPUS: Building[] = [
         covered: 78,
         veranda: 43,
         parking: 1,
-        price: 265_000,
+        price: 265000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Ground floor garden. Total area 121 m2.",
       },
@@ -526,7 +677,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 24,
         roofGarden: 0,
         parking: 1,
-        price: 250_000,
+        price: 250000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 105 m2.",
       },
@@ -538,7 +690,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 32,
         roofGarden: 0,
         parking: 1,
-        price: 270_000,
+        price: 270000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Beds 2+1. Bathrooms 2. Store room yes. Total area 119 m2.",
       },
@@ -550,7 +703,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 24,
         roofGarden: 0,
         parking: 1,
-        price: 260_000,
+        price: 260000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Bathrooms 2. Store room yes. Total area 105 m2.",
       },
@@ -562,7 +716,8 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 32,
         roofGarden: 0,
         parking: 1,
-        price: 280_000,
+        price: 280000,
+        vatRate: 19,
         status: "AVAILABLE",
         note: "Beds 2+1. Bathrooms 2. Store room yes. Total area 119 m2.",
       },
@@ -574,6 +729,7 @@ const MAGNUM_OPUS: Building[] = [
         veranda: 37,
         roofGarden: 50,
         parking: 1,
+        vatRate: 19,
         status: "SOLD",
         note: "Bathrooms 3. Store room yes. Total area 230.4 m2.",
       },
@@ -748,6 +904,8 @@ async function main() {
     ["project_partners", "partner shares"],
     ["projects", "developments"],
     ["companies", "companies"],
+    ["subowner_directors", "partner directors"],
+    ["subowner_shares", "partner shareholdings"],
     ["subowners", "partners"],
     ["clients", "clients"],
   ];
@@ -775,11 +933,44 @@ async function main() {
     );
     partnerIds.set(partner.name, id);
     console.log(`  added    ${partner.name}  ${partner.registryNumber}`);
+
+    for (const person of partner.directors) {
+      await ask(
+        `insert into subowner_directors
+           (id, subowner_id, name, role, email, email_alternate, phone)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          newId(),
+          id,
+          person.name,
+          person.role,
+          person.email ?? null,
+          "emailAlternate" in person ? (person.emailAlternate ?? null) : null,
+          person.phone ?? null,
+        ],
+      );
+      console.log(`           director ${person.name}`);
+    }
+
+    for (const holding of partner.shares) {
+      await ask(
+        `insert into subowner_shares (id, subowner_id, holder, share_percent)
+         values ($1, $2, $3, $4)`,
+        [newId(), id, holding.holder, holding.sharePercent.toFixed(3)],
+      );
+    }
+    console.log(
+      `           owned by ${partner.shares.map((one) => `${one.holder} ${one.sharePercent}`).join(", ")}`,
+    );
   }
 
   /* 3. The developments, their company, their partner share and their
         apartments. */
   const projectIds = new Map<string, string>();
+  /* One record per buyer, however many apartments they hold. */
+  const clientIds = new Map<string, string>();
+  let buyersMade = 0;
+  let contractsMade = 0;
 
   for (const building of BUILDINGS) {
     console.log(`\n  ${building.name}:`);
@@ -840,13 +1031,30 @@ async function main() {
       const price = flat.price ?? PRICE_UNKNOWN;
       if (flat.price === undefined) guessed += 1;
 
+      const unitId = newId();
+
+      /**
+       * A status the office gave us, not one the money proved.
+       *
+       * Sold and reserved here come off the price list, and there is not a
+       * payment on the record to back them up yet. Left to itself the rule
+       * would look at a contract with nothing paid against it and put the
+       * apartment back to reserved, or to available, and the office would find
+       * its own list contradicted overnight. Marking it as set by hand is
+       * exactly what that column is for, and the page says so plainly. Once the
+       * real payments are in, the button on the apartment hands the status back
+       * to the money.
+       */
+      const byHand = flat.status === "AVAILABLE" ? null : new Date();
+
       await ask(
         `insert into units
            (id, project_id, code, floor, bedrooms, covered_area, veranda_area,
-            roof_garden_area, parking_spaces, net_price, status, notes)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            roof_garden_area, parking_spaces, net_price, vat_rate, status,
+            status_by_hand_at, notes)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
-          newId(),
+          unitId,
           projectId,
           flat.code,
           flat.floor ?? null,
@@ -856,7 +1064,9 @@ async function main() {
           flat.roofGarden === undefined ? null : flat.roofGarden.toFixed(2),
           flat.parking ?? 0,
           price.toFixed(2),
+          (flat.vatRate ?? 19).toFixed(3),
           flat.status,
+          byHand,
           flat.price === undefined
             ? [
                 flat.note,
@@ -867,6 +1077,49 @@ async function main() {
             : (flat.note ?? null),
         ],
       );
+
+      if (!flat.buyer) continue;
+
+      /* The buyer, created once however many apartments they hold. */
+      let clientId = clientIds.get(flat.buyer.key);
+      if (!clientId) {
+        clientId = newId();
+        await ask(
+          `insert into clients (id, first_name, last_name, source, marketing_opt_in, notes)
+           values ($1, $2, $3, 'BUYER', false, $4)`,
+          [clientId, flat.buyer.firstName, flat.buyer.lastName, flat.buyer.note ?? null],
+        );
+        clientIds.set(flat.buyer.key, clientId);
+        buyersMade += 1;
+      }
+
+      await ask("update units set client_id = $1 where id = $2", [clientId, unitId]);
+
+      /**
+       * A draft contract, so the price, the rate and the term agreed have a
+       * home.
+       *
+       * Draft rather than active because two things are still missing and only
+       * the office has them: the contract's own number and date, and the
+       * payment schedule. Everything else is here, so finishing one is filling
+       * in two fields rather than typing a sale in from the beginning.
+       */
+      await ask(
+        `insert into contracts
+           (id, reference, kind, unit_id, client_id, net_price, vat_rate,
+            schedule_type, status, notes)
+         values ($1, $2, 'SALE', $3, $4, $5, $6, 'STANDARD', 'DRAFT', $7)`,
+        [
+          newId(),
+          `${building.short} ${flat.code}`,
+          unitId,
+          clientId,
+          price.toFixed(2),
+          (flat.vatRate ?? 19).toFixed(3),
+          flat.contractNote ?? null,
+        ],
+      );
+      contractsMade += 1;
     }
 
     const sold = building.apartments.filter((a) => a.status === "SOLD").length;
@@ -874,7 +1127,15 @@ async function main() {
     const free = building.apartments.filter((a) => a.status === "AVAILABLE").length;
     console.log(
       `  flats    ${building.apartments.length} in, ${free} available, ${reserved} reserved, ${sold} sold` +
-        (guessed > 0 ? `, ${guessed} priced at ${PRICE_UNKNOWN.toLocaleString("en-GB")}` : ""),
+        (guessed > 0 ? `, ${guessed} with no price yet` : ""),
+    );
+
+    const named = building.apartments.filter((one) => one.buyer).length;
+    const unnamed = building.apartments.filter(
+      (one) => one.status !== "AVAILABLE" && !one.buyer,
+    ).length;
+    console.log(
+      `  buyers   ${named} named` + (unnamed > 0 ? `, ${unnamed} taken but nobody named yet` : ""),
     );
   }
 
@@ -968,7 +1229,11 @@ async function main() {
       order by p.name`,
   );
 
-  console.log("\n  Where it stands now:\n");
+  console.log(`\n  Buyers: ${buyersMade} created, ${contractsMade} draft contracts written.`);
+  console.log("  The contracts carry the price, the rate and the term agreed. Their own");
+  console.log("  number, date and payment schedule are what the office adds.\n");
+
+  console.log("  Where it stands now:\n");
   for (const row of standing) {
     console.log(
       `  ${String(row.name).padEnd(22)} ${String(row.flats).padStart(3)} flats, ` +

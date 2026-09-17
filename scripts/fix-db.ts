@@ -25,6 +25,8 @@ const NEEDED_TABLES = [
   ["saved_views", "0013"],
   ["list_settings", "0013"],
   ["lead_notes", "0015"],
+  ["subowner_directors", "0018"],
+  ["subowner_shares", "0018"],
 ] as const;
 
 const NEEDED_COLUMNS = [
@@ -33,6 +35,9 @@ const NEEDED_COLUMNS = [
   ["units", "status_by_hand_at", "0014"],
   ["projects", "status_by_hand_at", "0014"],
   ["leads", "agent_id", "0016"],
+  ["units", "vat_rate", "0018"],
+  ["contracts", "kind", "0018"],
+  ["contracts", "cash_amount", "0018"],
 ] as const;
 
 type Ask = (text: string) => Promise<Record<string, unknown>[]>;

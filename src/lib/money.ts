@@ -79,3 +79,20 @@ export function distributeCents(total: number, weights: number[]): number[] {
   }
   return floors;
 }
+
+/**
+ * A price with its VAT on top.
+ *
+ * Cyprus charges five per cent on a buyer's first home and nineteen on
+ * everything else, so the same apartment is quoted at two different totals
+ * depending on who is buying. Working it out in one place means the project
+ * page, the apartment page and the price list can never disagree about it.
+ */
+export function withVat(
+  netCents: number,
+  rate: string | number | null | undefined,
+): { netCents: number; rate: number; vatCents: number; totalCents: number } {
+  const percent = Number(rate ?? 0);
+  const vatCents = Math.round((netCents * percent) / 100);
+  return { netCents, rate: percent, vatCents, totalCents: netCents + vatCents };
+}

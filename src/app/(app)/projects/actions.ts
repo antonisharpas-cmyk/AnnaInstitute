@@ -148,6 +148,7 @@ const unitSchema = z.object({
   roofGardenArea: z.string().optional(),
   parkingSpaces: z.coerce.number().int().min(0).max(10).default(0),
   netPrice: z.string(),
+  vatRate: z.string().optional(),
   status: z.enum(["AVAILABLE", "RESERVED", "SOLD", "DELIVERED"]),
   notes: z.string().optional(),
 });
@@ -162,6 +163,7 @@ function readUnit(formData: FormData) {
     roofGardenArea: formData.get("roofGardenArea") || undefined,
     parkingSpaces: formData.get("parkingSpaces") || 0,
     netPrice: String(formData.get("netPrice") ?? "0"),
+    vatRate: formData.get("vatRate") || undefined,
     status: formData.get("status") || "AVAILABLE",
     notes: formData.get("notes") || undefined,
   });
@@ -175,6 +177,12 @@ function readUnit(formData: FormData) {
     roofGardenArea: parsed.roofGardenArea ? String(Number(parsed.roofGardenArea)) : null,
     parkingSpaces: parsed.parkingSpaces,
     netPrice: fromCents(toCents(parsed.netPrice)),
+    /**
+     * Nineteen unless somebody says otherwise. The reduced rate is the buyer's
+     * entitlement rather than the apartment's, so an apartment nobody has
+     * bought yet is priced at the ordinary rate.
+     */
+    vatRate: Number(parsed.vatRate ?? 19).toFixed(3),
     status: parsed.status,
     notes: parsed.notes?.trim() || null,
   };

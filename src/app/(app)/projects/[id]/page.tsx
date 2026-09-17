@@ -4,7 +4,7 @@ import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { companies, projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
-import { formatAmount, formatPercent, toCents } from "@/lib/money";
+import { formatAmount, formatPercent, toCents, withVat } from "@/lib/money";
 import { documentsForProjectWithUnits, floorPlansByUnit } from "@/lib/documents";
 import { categoryLabel, fileLabel, isImage } from "@/lib/fileLabels";
 import { partnersOfProject, subownerChoices } from "@/lib/subowners";
@@ -243,7 +243,12 @@ export default async function ProjectPage({
                         ? formatPercent(Number(row.partner.sharePercent), locale)
                         : ""}
                     </td>
-                    <td className="text-xs">{row.partner.role ?? ""}</td>
+                    <td className="text-xs">
+                      {row.partner.role ?? ""}
+                      {row.partner.notes ? (
+                        <div className="text-brand-graphite/60">{row.partner.notes}</div>
+                      ) : null}
+                    </td>
                     <td className="ctr">
                       <form action={removePartner.bind(null, row.partner.id, id)}>
                         <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
@@ -314,6 +319,17 @@ export default async function ProjectPage({
                       name="role"
                       placeholder={t("subowners.rolePlaceholder")}
                       className="input !w-48"
+                    />
+                  </div>
+                  <div className="min-w-56 flex-1">
+                    <label className="label" htmlFor="agreement">
+                      {t("subowners.agreement")}
+                    </label>
+                    <input
+                      id="agreement"
+                      name="agreement"
+                      placeholder={t("subowners.agreementPlaceholder")}
+                      className="input"
                     />
                   </div>
                   <button type="submit" className="btn btn-primary">
@@ -391,12 +407,44 @@ export default async function ProjectPage({
                         <td className="ctr">{area(u.verandaArea)}</td>
                         <td className="ctr">{area(u.roofGardenArea)}</td>
                         <td className="ctr font-semibold">
+                          {/*
+                            One cell, three figures. A buyer asks for the price
+                            with VAT and the office works in the price before
+                            it, and the rate is the only thing that connects the
+                            two, so all three are here rather than spread over
+                            three more columns of an already wide table.
+                          */}
                           {formatAmount(toCents(u.netPrice), locale)}
+                          <div className="text-xs font-normal text-brand-graphite/60">
+                            {formatPercent(Number(u.vatRate), locale)} {t("units.vat")}
+                          </div>
+                          <div className="text-xs font-normal">
+                            {formatAmount(
+                              withVat(toCents(u.netPrice), u.vatRate).totalCents,
+                              locale,
+                            )}{" "}
+                            {t("units.withVat")}
+                          </div>
                         </td>
                         <td className="ctr">
                           <Pill tone={statusTone(u.status) as "good" | "warn" | "neutral"}>
                             {t(`units.status.${u.status}` as MessageKey)}
                           </Pill>
+                          {u.statusByHandAt ? (
+                            /*
+                              Whose word this status is on.
+                              
+                              A status the money proved and a status somebody
+                              typed look identical otherwise, and they are not
+                              the same thing: the second one stays put when a
+                              payment arrives. Saying so here is what stops the
+                              office wondering why a paid apartment still reads
+                              as reserved.
+                            */
+                            <div className="mt-0.5 text-xs text-brand-graphite/60">
+                              {t("units.byHandShort")}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="ctr">
                           <LightboxLink

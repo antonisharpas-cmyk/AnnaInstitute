@@ -1,7 +1,14 @@
 import "server-only";
 import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { projectPartners, projects, subowners, units } from "@/db/schema";
+import {
+  projectPartners,
+  projects,
+  subownerDirectors,
+  subownerShares,
+  subowners,
+  units,
+} from "@/db/schema";
 import { toCents } from "./money";
 
 /**
@@ -145,4 +152,38 @@ export async function subownerChoices() {
     .from(subowners)
     .where(eq(subowners.isActive, true))
     .orderBy(asc(subowners.name));
+}
+
+/**
+ * The people a partner company is dealt with through.
+ *
+ * Ordered as they were added rather than by name, because the first one put in
+ * is usually the one the office actually rings.
+ */
+export async function directorsOf(subownerId: string) {
+  return db
+    .select()
+    .from(subownerDirectors)
+    .where(eq(subownerDirectors.subownerId, subownerId))
+    .orderBy(asc(subownerDirectors.createdAt));
+}
+
+/**
+ * Who owns the partner company, largest holding first, with what is unaccounted
+ * for worked out rather than assumed.
+ *
+ * A company whose shares add up to less than a hundred is not an error: the
+ * office may only have recorded the holders it deals with. Saying what is left
+ * over is more honest than quietly showing a total of sixty.
+ */
+export async function sharesOf(subownerId: string) {
+  const rows = await db
+    .select()
+    .from(subownerShares)
+    .where(eq(subownerShares.subownerId, subownerId))
+    .orderBy(desc(subownerShares.sharePercent), asc(subownerShares.holder));
+
+  const accounted = rows.reduce((total, row) => total + Number(row.sharePercent ?? 0), 0);
+
+  return { rows, accounted, unaccounted: Math.max(0, 100 - accounted) };
 }

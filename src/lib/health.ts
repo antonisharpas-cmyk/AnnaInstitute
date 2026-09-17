@@ -63,6 +63,26 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the agent_id column on leads",
     migration: "0016",
   },
+  {
+    probe: "select vat_rate from units limit 1",
+    what: "the vat_rate column on units",
+    migration: "0018",
+  },
+  {
+    probe: "select kind, cash_amount from contracts limit 1",
+    what: "the kind and cash_amount columns on contracts",
+    migration: "0018",
+  },
+  {
+    probe: "select holder from subowner_shares limit 1",
+    what: "the subowner_shares table",
+    migration: "0018",
+  },
+  {
+    probe: "select name from subowner_directors limit 1",
+    what: "the subowner_directors table",
+    migration: "0018",
+  },
 ];
 
 let answer: Missing[] | null = null;

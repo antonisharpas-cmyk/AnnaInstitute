@@ -37,6 +37,10 @@ import { recalculateCommission } from "@/lib/commissions";
 
 const detailsSchema = z.object({
   reference: z.string().min(1),
+  /** A sale, or land given in exchange for apartments. */
+  kind: z.enum(["SALE", "LAND_EXCHANGE"]).default("SALE"),
+  /** Money alongside a land exchange, in either direction. */
+  cashAmount: z.string().optional(),
   unitId: z.string().min(1),
   clientId: z.string().min(1),
   agentId: z.string().optional(),
@@ -111,10 +115,28 @@ function planFrom(lines: LineInput[], netCents: number): InstallmentPlanItem[] {
   }));
 }
 
-/** Read and check the schedule, turning a foreseeable mistake into a message. */
-function validated(formData: FormData, netCents: number): LineInput[] | { error: string } {
+/**
+ * Read and check the schedule, turning a foreseeable mistake into a message.
+ *
+ * A land exchange is allowed to have no schedule at all, which is the normal
+ * case: the owner of the plot is paid in apartments, so there are no
+ * installments to collect and insisting on some that add up to the contract
+ * value would be asking the office to invent them. A schedule typed in anyway,
+ * for cash paid in stages, is checked exactly as a sale's would be.
+ */
+function validated(
+  formData: FormData,
+  netCents: number,
+  scheduleOptional = false,
+): LineInput[] | { error: string } {
   try {
     const lines = readLines(formData);
+    /*
+      The form offers the usual stages with their amounts blank, so "no
+      schedule" arrives as a set of lines worth nothing rather than as no lines
+      at all. Either shape means the same thing here.
+    */
+    if (scheduleOptional && !lines.some((line) => toCents(line.amount) > 0)) return [];
     planFrom(lines, netCents);
     return lines;
   } catch (error) {
@@ -129,9 +151,14 @@ async function writeSchedule(
   rate: number,
   lines: LineInput[],
 ) {
+  await db.delete(installments).where(eq(installments.contractId, contractId));
+
+  /* No lines is a real answer, not an empty one: a land exchange collects
+     nothing by installments. */
+  if (lines.length === 0) return;
+
   const built = buildSchedule({ netCents, rate }, planFrom(lines, netCents));
 
-  await db.delete(installments).where(eq(installments.contractId, contractId));
   await db.insert(installments).values(
     built.map((line) => ({
       contractId,
@@ -187,6 +214,8 @@ async function unitIsFree(unitId: string, exceptId?: string) {
 function readDetails(formData: FormData) {
   return detailsSchema.parse({
     reference: formData.get("reference"),
+    kind: formData.get("kind") || "SALE",
+    cashAmount: formData.get("cashAmount") || undefined,
     unitId: formData.get("unitId"),
     clientId: formData.get("clientId"),
     agentId: formData.get("agentId") || undefined,
@@ -272,19 +301,28 @@ export async function createContract(
   const netCents = toCents(parsed.netPrice);
   const rate = Number(parsed.vatRate);
 
-  const checked = validated(formData, netCents);
+  const checked = validated(formData, netCents, parsed.kind === "LAND_EXCHANGE");
   if ("error" in checked) return checked;
 
   const inserted = await db
     .insert(contracts)
     .values({
       reference,
+      kind: parsed.kind,
       unitId: parsed.unitId,
       clientId: parsed.clientId,
       agentId: parsed.agentId || null,
       contractDate: parsed.contractDate ? new Date(parsed.contractDate) : null,
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),
+      /**
+       * Cash is only meaningful on a land exchange, so a sale never keeps a
+       * figure here even if one was left in the field by an earlier choice.
+       */
+      cashAmount:
+        parsed.kind === "LAND_EXCHANGE" && parsed.cashAmount
+          ? fromCents(toCents(parsed.cashAmount))
+          : null,
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,
       status: "ACTIVE",
@@ -342,19 +380,30 @@ export async function updateContract(
   const status = String(formData.get("status") ?? before.contract.status) as
     "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
 
-  const checked = before.open ? validated(formData, netCents) : null;
+  const checked = before.open
+    ? validated(formData, netCents, parsed.kind === "LAND_EXCHANGE")
+    : null;
   if (checked && "error" in checked) return checked;
 
   await db
     .update(contracts)
     .set({
       reference,
+      kind: parsed.kind,
       unitId: parsed.unitId,
       clientId: parsed.clientId,
       agentId: parsed.agentId || null,
       contractDate: parsed.contractDate ? new Date(parsed.contractDate) : null,
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),
+      /**
+       * Cash is only meaningful on a land exchange, so a sale never keeps a
+       * figure here even if one was left in the field by an earlier choice.
+       */
+      cashAmount:
+        parsed.kind === "LAND_EXCHANGE" && parsed.cashAmount
+          ? fromCents(toCents(parsed.cashAmount))
+          : null,
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,
       status,

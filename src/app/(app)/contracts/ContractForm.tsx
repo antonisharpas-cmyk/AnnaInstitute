@@ -14,8 +14,10 @@ type ContractRecord = {
   clientId: string | null;
   agentId: string | null;
   contractDate: Date | null;
+  kind: "SALE" | "LAND_EXCHANGE";
   netPrice: string;
   vatRate: string;
+  cashAmount: string | null;
   scheduleType: "STANDARD" | "PERIODIC";
   periodMonths: number | null;
   status: "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
@@ -69,6 +71,27 @@ export default function ContractForm({
   const [state, formAction] = useActionState(action, undefined);
   const [netPrice, setNetPrice] = useState(whole(contract?.netPrice));
   const [vatRate, setVatRate] = useState(contract ? String(Number(contract.vatRate)) : "5");
+  /**
+   * A sale, or land exchanged for apartments.
+   *
+   * Antiparochi is a different agreement, not a sale with odd numbers: the
+   * owner of the plot is paid in apartments, the VAT is whatever that
+   * particular transaction attracts rather than the usual rate, and a sum of
+   * cash often settles the difference. So choosing it offers nought as the rate
+   * and asks for the cash, and choosing a sale puts the rate back and takes the
+   * question away, which is the whole difference between the two on this form.
+   */
+  const [kind, setKind] = useState<"SALE" | "LAND_EXCHANGE">(contract?.kind ?? "SALE");
+  const [cash, setCash] = useState(whole(contract?.cashAmount ?? undefined));
+
+  const chooseKind = (value: "SALE" | "LAND_EXCHANGE") => {
+    setKind(value);
+    if (value === "LAND_EXCHANGE") setVatRate("0");
+    else {
+      setVatRate(contract ? String(Number(contract.vatRate)) : "5");
+      setCash("");
+    }
+  };
 
   return (
     <form action={formAction} className="space-y-4">
@@ -79,6 +102,25 @@ export default function ContractForm({
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
+        <div className={kind === "LAND_EXCHANGE" ? "sm:col-span-2" : ""}>
+          <label className="label" htmlFor="kind">
+            {labels.kind}
+          </label>
+          <select
+            id="kind"
+            name="kind"
+            value={kind}
+            onChange={(event) => chooseKind(event.target.value as "SALE" | "LAND_EXCHANGE")}
+            className="select"
+          >
+            <option value="SALE">{labels.kindSale}</option>
+            <option value="LAND_EXCHANGE">{labels.kindLandExchange}</option>
+          </select>
+          {kind === "LAND_EXCHANGE" ? (
+            <p className="mt-1 text-xs text-brand-graphite/60">{labels.kindLandExchangeHint}</p>
+          ) : null}
+        </div>
+
         <div>
           <label className="label" htmlFor="clientId">
             {labels.client}
@@ -195,6 +237,24 @@ export default function ContractForm({
           />
         </div>
 
+        {kind === "LAND_EXCHANGE" ? (
+          <div>
+            <label className="label" htmlFor="cashAmount">
+              {labels.cashAmount}
+            </label>
+            <input
+              id="cashAmount"
+              name="cashAmount"
+              value={cash}
+              onChange={(event) => setCash(event.target.value)}
+              inputMode="decimal"
+              placeholder="0"
+              className="input"
+            />
+            <p className="mt-1 text-xs text-brand-graphite/60">{labels.cashAmountHint}</p>
+          </div>
+        ) : null}
+
         {editing ? (
           <div>
             <label className="label" htmlFor="status">
@@ -214,13 +274,32 @@ export default function ContractForm({
           </div>
         ) : null}
 
-        <div className={editing ? "" : "sm:col-span-2"}>
+        <div className="sm:col-span-2">
           <label className="label" htmlFor="notes">
-            {labels.notes}
+            {kind === "LAND_EXCHANGE" ? labels.extraAgreement : labels.notes}
           </label>
-          <input id="notes" name="notes" defaultValue={contract?.notes ?? ""} className="input" />
+          {/*
+            A note on a contract is a term of the agreement, not a label: twenty
+            thousand in cash, ten thousand held back until delivery, a extra
+            arrangement about the roof. So it is given room to be a sentence
+            rather than a line that runs off the end of a box.
+          */}
+          <textarea
+            id="notes"
+            name="notes"
+            rows={3}
+            defaultValue={contract?.notes ?? ""}
+            placeholder={labels.notesPlaceholder}
+            className="input"
+          />
         </div>
       </div>
+
+      {kind === "LAND_EXCHANGE" ? (
+        <p className="rounded border border-brand-line bg-brand-surface px-3 py-2 text-xs text-brand-graphite/70">
+          {labels.landExchangeSchedule}
+        </p>
+      ) : null}
 
       <ScheduleBuilder
         netPrice={netPrice}

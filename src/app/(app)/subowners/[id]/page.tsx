@@ -5,10 +5,17 @@ import { db } from "@/db";
 import { subowners } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent } from "@/lib/money";
-import { projectsOfSubowner } from "@/lib/subowners";
+import { directorsOf, projectsOfSubowner, sharesOf } from "@/lib/subowners";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import ProfileCard from "@/components/ProfileCard";
-import { updateSubowner } from "../actions";
+import Disclosure from "@/components/Disclosure";
+import {
+  addDirector,
+  addShareholder,
+  removeDirector,
+  removeShareholder,
+  updateSubowner,
+} from "../actions";
 
 export default async function SubownerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,7 +25,11 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
   const subowner = found[0];
   if (!subowner) notFound();
 
-  const held = await projectsOfSubowner(id);
+  const [held, directors, shares] = await Promise.all([
+    projectsOfSubowner(id),
+    directorsOf(id),
+    sharesOf(id),
+  ]);
 
   const units = held.reduce((a, row) => a + row.unitCount, 0);
   const sold = held.reduce((a, row) => a + row.soldCount, 0);
@@ -112,7 +123,7 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
           </Card>
         </div>
 
-        <div>
+        <div className="space-y-4">
           <ProfileCard
             title={t("subowners.profile")}
             action={updateSubowner.bind(null, id)}
@@ -160,6 +171,194 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
               },
             ]}
           />
+
+          <Card title={t("subowners.directors")}>
+            {directors.length === 0 ? (
+              <Empty message={t("common.none")} />
+            ) : (
+              <ul className="divide-y divide-brand-line text-sm">
+                {directors.map((person) => (
+                  <li key={person.id} className="py-2">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <p className="font-semibold">{person.name}</p>
+                      <form action={removeDirector.bind(null, person.id, id)}>
+                        <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                          {t("subowners.remove")}
+                        </button>
+                      </form>
+                    </div>
+                    {person.role ? (
+                      <p className="text-xs text-brand-graphite/60">{person.role}</p>
+                    ) : null}
+                    {[person.email, person.emailAlternate].filter(Boolean).map((address) => (
+                      <p key={address} className="text-xs break-all">
+                        <a
+                          href={`mailto:${address}`}
+                          className="text-brand-teal-dark hover:underline"
+                        >
+                          {address}
+                        </a>
+                      </p>
+                    ))}
+                    {person.phone ? (
+                      <p className="text-xs">
+                        <a
+                          href={`tel:${person.phone}`}
+                          className="text-brand-teal-dark hover:underline"
+                        >
+                          {person.phone}
+                        </a>
+                      </p>
+                    ) : null}
+                    {person.notes ? (
+                      <p className="mt-1 text-xs text-brand-graphite/60">{person.notes}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="mt-3">
+              <Disclosure showLabel={t("subowners.addDirector")} hideLabel={t("common.cancel")}>
+                <form
+                  action={addDirector.bind(null, id)}
+                  className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3"
+                >
+                  <div>
+                    <label className="label" htmlFor="directorName">
+                      {t("common.name")}
+                    </label>
+                    <input id="directorName" name="name" required className="input" />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="directorRole">
+                      {t("subowners.role")}
+                    </label>
+                    <input
+                      id="directorRole"
+                      name="role"
+                      placeholder={t("subowners.directorPlaceholder")}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="directorEmail">
+                      {t("leads.email")}
+                    </label>
+                    <input id="directorEmail" name="email" type="email" className="input" />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="directorEmailAlternate">
+                      {t("subowners.secondEmail")}
+                    </label>
+                    <input
+                      id="directorEmailAlternate"
+                      name="emailAlternate"
+                      type="email"
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="directorPhone">
+                      {t("leads.phone")}
+                    </label>
+                    <input id="directorPhone" name="phone" className="input" />
+                  </div>
+                  <button type="submit" className="btn btn-primary">
+                    {t("common.add")}
+                  </button>
+                </form>
+              </Disclosure>
+            </div>
+          </Card>
+
+          <Card title={t("subowners.shareholders")}>
+            {shares.rows.length === 0 ? (
+              <Empty message={t("common.none")} />
+            ) : (
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t("subowners.holder")}</th>
+                    <th className="ctr">{t("subowners.share")}</th>
+                    <th className="ctr">{t("common.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shares.rows.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        {row.holder}
+                        {row.notes ? (
+                          <div className="text-xs text-brand-graphite/60">{row.notes}</div>
+                        ) : null}
+                      </td>
+                      <td className="ctr">
+                        {row.sharePercent ? formatPercent(Number(row.sharePercent), locale) : ""}
+                      </td>
+                      <td className="ctr">
+                        <form action={removeShareholder.bind(null, row.id, id)}>
+                          <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                            {t("subowners.remove")}
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                {shares.unaccounted > 0 ? (
+                  <tfoot>
+                    <tr>
+                      <td className="text-xs text-brand-graphite/60">
+                        {t("subowners.unaccounted")}
+                      </td>
+                      <td className="ctr font-semibold">
+                        {formatPercent(shares.unaccounted, locale)}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                ) : null}
+              </table>
+            )}
+
+            <div className="mt-3">
+              <Disclosure showLabel={t("subowners.addShareholder")} hideLabel={t("common.cancel")}>
+                <form
+                  action={addShareholder.bind(null, id)}
+                  className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3"
+                >
+                  <div>
+                    <label className="label" htmlFor="holder">
+                      {t("subowners.holder")}
+                    </label>
+                    <input
+                      id="holder"
+                      name="holder"
+                      required
+                      placeholder={t("subowners.holderPlaceholder")}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="holderShare">
+                      {t("subowners.share")}
+                    </label>
+                    <input
+                      id="holderShare"
+                      name="sharePercent"
+                      inputMode="decimal"
+                      className="input !w-28"
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary">
+                    {t("common.add")}
+                  </button>
+                </form>
+              </Disclosure>
+            </div>
+            <p className="mt-2 text-xs text-brand-graphite/60">{t("subowners.sharesHint")}</p>
+          </Card>
         </div>
       </div>
     </>

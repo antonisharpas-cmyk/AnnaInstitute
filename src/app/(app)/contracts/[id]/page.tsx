@@ -86,6 +86,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           .join(" . ")}
         action={
           <div className="flex flex-wrap items-center gap-2">
+            {contract.kind === "LAND_EXCHANGE" ? (
+              <Pill tone="teal">{t("contracts.kind.LAND_EXCHANGE")}</Pill>
+            ) : null}
             <Pill tone={contractStatusTone(contract.status) as "good" | "warn" | "bad" | "teal"}>
               {t(`contracts.status.${contract.status}` as MessageKey)}
             </Pill>
@@ -178,6 +181,39 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 )}
               </dd>
             </div>
+
+            <div>
+              <dt className="label">{t("contracts.kind")}</dt>
+              <dd className="text-sm font-semibold">
+                {t(`contracts.kind.${contract.kind}` as MessageKey)}
+              </dd>
+            </div>
+
+            {contract.cashAmount ? (
+              <div>
+                <dt className="label">{t("contracts.cash")}</dt>
+                <dd className="text-sm font-semibold">
+                  {formatAmount(toCents(contract.cashAmount), locale)}
+                </dd>
+              </div>
+            ) : null}
+
+            {contract.notes ? (
+              <div className="sm:col-span-3">
+                {/*
+                  The note is a term of the agreement, so it is read here rather
+                  than only on the form that wrote it. Twenty thousand in cash,
+                  ten held back until delivery: the office needs to see that
+                  without opening the edit page.
+                */}
+                <dt className="label">
+                  {contract.kind === "LAND_EXCHANGE"
+                    ? t("contracts.extraAgreement")
+                    : t("common.notes")}
+                </dt>
+                <dd className="text-sm whitespace-pre-line">{contract.notes}</dd>
+              </div>
+            ) : null}
           </dl>
         </Card>
 

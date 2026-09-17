@@ -26,6 +26,17 @@ export const projectStatusEnum = pgEnum("project_status", [
   "DELIVERED",
 ]);
 export const unitStatusEnum = pgEnum("unit_status", ["AVAILABLE", "RESERVED", "SOLD", "DELIVERED"]);
+/**
+ * What kind of transaction a contract records.
+ *
+ * A sale is money for an apartment. A land exchange, antiparochi, is the older
+ * arrangement this business is built on: the owner of the plot is paid in
+ * apartments in the building that goes up on it, sometimes with a sum of cash
+ * on top, and the VAT is whatever that particular transaction attracts rather
+ * than the usual rate. The two are different agreements, so the record says
+ * which it is instead of leaving somebody to work it out from a nought.
+ */
+export const contractKindEnum = pgEnum("contract_kind", ["SALE", "LAND_EXCHANGE"]);
 export const contractStatusEnum = pgEnum("contract_status", [
   "DRAFT",
   "ACTIVE",
@@ -122,6 +133,50 @@ export const subowners = pgTable("subowners", {
   isActive: boolean("is_active").default(true).notNull(),
   /** Partners are business contacts, but a stop is still a stop. */
   unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
+  notes: text("notes"),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/**
+ * A director of a partner company.
+ *
+ * The partner is a company, and a company is dealt with through people. These
+ * are the names the office rings, with the two email addresses some of them
+ * use, because writing to the wrong one of the two is how a reply is missed.
+ */
+export const subownerDirectors = pgTable("subowner_directors", {
+  id: id(),
+  subownerId: text("subowner_id")
+    .notNull()
+    .references(() => subowners.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  role: text("role"),
+  email: text("email"),
+  /** A second address, for the ones who use two. */
+  emailAlternate: text("email_alternate"),
+  phone: text("phone"),
+  notes: text("notes"),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/**
+ * Who owns a partner company, and how much of it.
+ *
+ * Not the same question as who holds a development. A partner company has its
+ * own shareholders, One Eleven usually among them, and the split differs from
+ * company to company because each one was set up with different investors. The
+ * holder is a plain name rather than a link to another record, since most of
+ * them are companies the CRM has no other business with.
+ */
+export const subownerShares = pgTable("subowner_shares", {
+  id: id(),
+  subownerId: text("subowner_id")
+    .notNull()
+    .references(() => subowners.id, { onDelete: "cascade" }),
+  holder: text("holder").notNull(),
+  sharePercent: rate("share_percent"),
   notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
@@ -257,6 +312,15 @@ export const units = pgTable(
     roofGardenArea: numeric("roof_garden_area", { precision: 10, scale: 2 }),
     parkingSpaces: integer("parking_spaces").default(0).notNull(),
     netPrice: money("net_price").default("0").notNull(),
+    /**
+     * The VAT the apartment is priced at.
+     *
+     * Cyprus charges five per cent on a buyer's first home and nineteen on
+     * everything else, so the rate belongs to the apartment as it is offered
+     * and is settled for good on the contract. Without it a price list can only
+     * show the price before VAT, which is not the figure a buyer asks for.
+     */
+    vatRate: rate("vat_rate").default("19").notNull(),
     status: unitStatusEnum("status").default("AVAILABLE").notNull(),
     /**
      * When somebody set this apartment's status by hand, and who.
@@ -309,9 +373,19 @@ export const contracts = pgTable("contracts", {
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   commissionRate: rate("commission_rate"),
   contractDate: timestamp("contract_date", { withTimezone: true }),
+  /** A sale, or land given in exchange for apartments. */
+  kind: contractKindEnum("kind").default("SALE").notNull(),
   netPrice: money("net_price").notNull(),
   /** One rate for the whole price. Editable, because the law changes. */
   vatRate: rate("vat_rate").default("5").notNull(),
+  /**
+   * Cash changing hands alongside a land exchange.
+   *
+   * On antiparochi the apartments are most of the consideration and a sum of
+   * money settles the difference, in either direction. Kept apart from the
+   * price so the contract can say plainly what was agreed.
+   */
+  cashAmount: money("cash_amount"),
   scheduleType: scheduleTypeEnum("schedule_type").default("STANDARD").notNull(),
   /** 1 for monthly, 3 for quarterly. Only meaningful for a periodic schedule. */
   periodMonths: integer("period_months"),

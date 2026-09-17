@@ -234,7 +234,22 @@ export default async function ClientPage({
       />
       <PageHeader
         title={`${client.firstName} ${client.lastName}`}
-        subtitle={[client.email, client.phone].filter(Boolean).join(" . ")}
+        subtitle={[
+          client.email,
+          client.phone,
+          /*
+            A buyer who gave land rather than money is a different kind of
+            counterparty, and the office needs to know that before it starts
+            talking about installments. It is read off their contracts rather
+            than kept as a second flag on the client, so it can never disagree
+            with them.
+          */
+          contractRows.some((row) => row.contract.kind === "LAND_EXCHANGE")
+            ? t("contracts.kind.LAND_EXCHANGE")
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" . ")}
         action={
           <div className="flex flex-wrap gap-2">
             {/* One page that says where this buyer stands, ready to print. */}
@@ -517,6 +532,27 @@ export default async function ClientPage({
                           {formatAmount(paid, locale)} {t("contracts.paid").toLowerCase()} of{" "}
                           {formatAmount(scheduled, locale)}
                         </div>
+                        {row.contract.kind === "LAND_EXCHANGE" ? (
+                          <div className="mt-1">
+                            <Pill tone="teal">{t("contracts.kind.LAND_EXCHANGE")}</Pill>
+                            {row.contract.cashAmount ? (
+                              <span className="ml-2 text-xs text-brand-graphite/60">
+                                {t("contracts.cash")}{" "}
+                                {formatAmount(toCents(row.contract.cashAmount), locale)}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {row.contract.notes ? (
+                          /*
+                            The term the office agreed for this apartment, read
+                            where the office works. A note that only exists on
+                            the edit page is a note nobody sees.
+                          */
+                          <p className="mt-1 max-w-prose text-xs whitespace-pre-line text-brand-graphite">
+                            {row.contract.notes}
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">

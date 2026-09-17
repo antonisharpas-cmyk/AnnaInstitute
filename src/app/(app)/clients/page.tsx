@@ -385,7 +385,7 @@ export default async function ClientsPage({
                         </td>
 
                         {on("name") ? (
-                          <td className="whitespace-nowrap">
+                          <td>
                             <a
                               /* The name opens the record, as a plain link so it never misses. */
                               data-open
@@ -436,7 +436,7 @@ export default async function ClientsPage({
                             ) : (
                               <ul className="space-y-1">
                                 {mine.map((a) => (
-                                  <li key={a.unitId} className="whitespace-nowrap">
+                                  <li key={a.unitId}>
                                     <Link
                                       href={`/projects/${a.projectId}/units/${a.unitId}`}
                                       className="text-brand-teal-dark hover:underline"
@@ -458,7 +458,7 @@ export default async function ClientsPage({
                             ) : (
                               <ul className="space-y-1">
                                 {inBuildings.map(([projectId, name]) => (
-                                  <li key={projectId} className="whitespace-nowrap">
+                                  <li key={projectId}>
                                     <Link
                                       href={`/projects/${projectId}`}
                                       className="text-brand-teal-dark hover:underline"
@@ -480,12 +480,10 @@ export default async function ClientsPage({
                             ) : (
                               <ul className="space-y-1">
                                 {withPartners.map((name) => (
-                                  <li key={name} className="whitespace-nowrap">
-                                    {name}
-                                  </li>
+                                  <li key={name}>{name}</li>
                                 ))}
                                 {anyOurs ? (
-                                  <li className="whitespace-nowrap text-brand-graphite/60">
+                                  <li className="text-brand-graphite/60">
                                     {t("clients.oursOnly")}
                                   </li>
                                 ) : null}

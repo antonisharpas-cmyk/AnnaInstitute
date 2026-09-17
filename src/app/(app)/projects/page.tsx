@@ -339,7 +339,7 @@ export default async function ProjectsPage({
                   {rows.map((r) => (
                     <tr key={r.project.id} data-id={r.project.id}>
                       {on("name") ? (
-                        <td className="whitespace-nowrap">
+                        <td>
                           <a
                             /* The name opens the record, as a plain link so it never misses. */
                             data-open
@@ -366,12 +366,12 @@ export default async function ProjectsPage({
                       {on("partner") ? (
                         <td className="text-xs">
                           {(held.get(r.project.id) ?? []).map((p) => (
-                            <div key={p.name} className="whitespace-nowrap">
+                            <div key={p.name}>
                               {p.name}
                               {p.share === null ? "" : ` ${p.share}%`}
                             </div>
                           ))}
-                          <div className="whitespace-nowrap text-brand-graphite/60">
+                          <div className="text-brand-graphite/60">
                             {t("subowners.ourselves")} {ourShare(r.project.id)}%
                           </div>
                         </td>

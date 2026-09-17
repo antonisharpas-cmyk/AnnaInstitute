@@ -347,7 +347,7 @@ export default async function LeadsPage({
                       </td>
 
                       {on("name") ? (
-                        <td className="whitespace-nowrap">
+                        <td>
                           <a
                             /* The name opens the record, as a plain link so it never misses. */
                             data-open

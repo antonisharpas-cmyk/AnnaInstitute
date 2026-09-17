@@ -267,7 +267,7 @@ export default async function ContractsPage({
                   {rows.map((r) => (
                     <tr key={r.contract.id} data-id={r.contract.id}>
                       {on("reference") ? (
-                        <td className="whitespace-nowrap">
+                        <td>
                           <a
                             /* The name opens the record, as a plain link so it never misses. */
                             data-open
