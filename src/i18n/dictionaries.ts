@@ -513,6 +513,7 @@ export const dictionaries = {
     "common.next": "Next",
     "common.showing": "Showing",
     "common.of": "of",
+    "common.and": "and",
     "common.saved": "Saved",
     "common.download": "Download",
     "common.upload": "Upload",
@@ -993,6 +994,8 @@ export const dictionaries = {
     "commissions.fullValue": "The full value of the property",
     "commissions.onTheContract": "on the contract and",
     "commissions.inCash": "in cash",
+    "commissions.notYetEarned":
+      "No commission yet. It is generated the moment the first installment on this apartment is received, and then it appears here as its own record with a place for the invoice and the receipt.",
     "commissions.generatedOn": "Generated on",
     "commissions.onFirstPayment": "when the first installment was received",
     "commissions.completed": "Completed",
@@ -1542,6 +1545,7 @@ export const dictionaries = {
     "common.next": "Επόμενη",
     "common.showing": "Εμφάνιση",
     "common.of": "από",
+    "common.and": "και",
     "common.saved": "Αποθηκεύτηκε",
     "common.download": "Λήψη",
     "common.upload": "Ανέβασμα",
@@ -2020,6 +2024,8 @@ export const dictionaries = {
     "commissions.fullValue": "Η πλήρης αξία του ακινήτου",
     "commissions.onTheContract": "στο συμβόλαιο και",
     "commissions.inCash": "μετρητά",
+    "commissions.notYetEarned":
+      "Δεν υπάρχει ακόμη προμήθεια. Δημιουργείται τη στιγμή που εισπράττεται η πρώτη δόση για αυτό το διαμέρισμα, και τότε εμφανίζεται εδώ ως δική της καρτέλα με θέση για το τιμολόγιο και την απόδειξη.",
     "commissions.generatedOn": "Δημιουργήθηκε στις",
     "commissions.onFirstPayment": "όταν εισπράχθηκε η πρώτη δόση",
     "commissions.completed": "Ολοκληρωμένη",

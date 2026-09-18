@@ -204,6 +204,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                         </div>
                         <div className="mt-1 text-xs text-brand-graphite/60">
                           {t("agents.soldFor")} {formatAmount(sale.soldCents, locale)}
+                          {/* The cash is half of what the agent sold, so it is
+                              named here rather than left for somebody to find
+                              on the contract. */}
+                          {sale.value.cashCents > 0
+                            ? ` ${t("common.and")} ${formatAmount(sale.value.cashCents, locale)} ${t(
+                                "commissions.inCash",
+                              )}`
+                            : ""}
                           {sale.listPriceCents > 0
                             ? ` . ${t("agents.listedAt")} ${formatAmount(sale.listPriceCents, locale)}`
                             : ""}
@@ -242,7 +250,47 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                       </form>
                     </div>
 
-                    <div className="mt-3 overflow-x-auto">
+                    {sale.lines.length === 0 ? (
+                      /*
+                        Nothing earned yet is not the same as nothing to say.
+                        Left as an empty table with a nought in it, the page
+                        looks broken to somebody who has just named an agent on
+                        a sale. So it does the sum anyway, shows what the
+                        commission will be, and says the one thing that has to
+                        happen for it to become real.
+                      */
+                      <div className="mt-3 rounded border border-dashed border-brand-line bg-brand-surface p-3">
+                        <p className="text-sm font-semibold">
+                          {formatPercent(
+                            Number(sale.contract.commissionRate ?? agent.commissionRate),
+                            locale,
+                          )}{" "}
+                          {t("common.of")} {formatAmount(sale.value.fullCents, locale)} .{" "}
+                          {formatAmount(
+                            Math.round(
+                              (sale.value.fullCents *
+                                Number(sale.contract.commissionRate ?? agent.commissionRate)) /
+                                100,
+                            ),
+                            locale,
+                          )}
+                        </p>
+                        {sale.value.cashCents > 0 ? (
+                          <p className="text-xs text-brand-graphite/70">
+                            {formatAmount(sale.value.priceCents, locale)}{" "}
+                            {t("commissions.onTheContract")}{" "}
+                            {formatAmount(sale.value.cashCents, locale)} {t("commissions.inCash")}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-xs text-brand-graphite/70">
+                          {t("commissions.notYetEarned")}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    <div
+                      className={`mt-3 overflow-x-auto${sale.lines.length === 0 ? " hidden" : ""}`}
+                    >
                       <table className="data">
                         <thead>
                           <tr>
