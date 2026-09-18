@@ -18,6 +18,8 @@ export type DocumentCategory =
   | "ARCHITECTURAL"
   | "BROCHURE"
   | "TECHNICAL_SPEC"
+  | "AGENT_INVOICE"
+  | "AGENT_RECEIPT"
   | "OTHER";
 
 export type AttachTo = {
@@ -28,6 +30,7 @@ export type AttachTo = {
   changeRequestId?: string | null;
   paymentId?: string | null;
   expenseId?: string | null;
+  commissionId?: string | null;
 };
 
 /** Save one uploaded file and create its document record. */
@@ -56,6 +59,7 @@ export async function storeDocument(options: {
       changeRequestId: options.attachTo.changeRequestId ?? null,
       paymentId: options.attachTo.paymentId ?? null,
       expenseId: options.attachTo.expenseId ?? null,
+      commissionId: options.attachTo.commissionId ?? null,
       uploadedById: options.user.id,
     })
     .returning({ id: documents.id });

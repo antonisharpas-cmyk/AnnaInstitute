@@ -6,7 +6,8 @@ import { agents, commissionPayments } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { amountForInput } from "@/lib/money";
-import { commissionTotals, salesOfAgent, salesWithoutAnAgent } from "@/lib/commissions";
+import { commissionTotals, papersFor, salesOfAgent, salesWithoutAnAgent } from "@/lib/commissions";
+import CommissionRecord from "./CommissionRecord";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
@@ -20,7 +21,9 @@ import {
   recordCommissionPayment,
   recordSale,
   removeCommissionLine,
+  removeCommissionPaper,
   setSaleRate,
+  uploadCommissionPaper,
 } from "../actions";
 
 const day = (value: Date | null | undefined) =>
@@ -46,6 +49,12 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
     // attaches to.
     salesWithoutAnAgent(),
   ]);
+
+  /* The two papers filed against every commission line on this page. */
+  const papers = await papersFor(sales.flatMap((sale) => sale.lines.map((line) => line.id)));
+
+  const shortDay = (value: Date | null | undefined) =>
+    value ? new Date(value).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB") : "";
 
   return (
     <>
@@ -265,18 +274,16 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                               </td>
                               <td className="ctr">{formatAmount(line.paidCents, locale)}</td>
                               <td className="ctr">
-                                <Pill
-                                  tone={
-                                    line.outstandingCents <= 0
-                                      ? "good"
-                                      : line.paidCents > 0
-                                        ? "warn"
-                                        : "neutral"
-                                  }
-                                >
-                                  {line.outstandingCents <= 0
-                                    ? t("commissions.settled")
-                                    : t("commissions.owed")}
+                                {/*
+                                  One meaning of finished, not two. The papers
+                                  below decide it, so this says the same thing
+                                  they do rather than a second story told by the
+                                  payments.
+                                */}
+                                <Pill tone={papers.get(line.id)?.complete ? "good" : "warn"}>
+                                  {papers.get(line.id)?.complete
+                                    ? t("commissions.completed")
+                                    : t("commissions.notCompleted")}
                                 </Pill>
                               </td>
                               <td className="ctr">
@@ -320,6 +327,81 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                         </tfoot>
                       </table>
                     </div>
+
+                    {sale.lines.map((line) => {
+                      const mine = papers.get(line.id) ?? {
+                        invoice: null,
+                        receipt: null,
+                        complete: false,
+                      };
+                      const where =
+                        sale.project && sale.unit
+                          ? `${sale.project.name} ${sale.unit.code}`
+                          : sale.contract.reference;
+
+                      const missing = mine.invoice
+                        ? mine.receipt
+                          ? null
+                          : t("commissions.waitingReceipt")
+                        : mine.receipt
+                          ? t("commissions.waitingInvoice")
+                          : t("commissions.waitingBoth");
+
+                      return (
+                        <CommissionRecord
+                          key={line.id}
+                          papers={mine}
+                          headline={`${t("commissions.title")} . ${where}`}
+                          workedOut={
+                            line.kind === "RATE"
+                              ? `${formatPercent(line.rate, locale)} ${t("common.of")} ${formatAmount(
+                                  line.baseCents,
+                                  locale,
+                                )} . ${t("commissions.fullValue").toLowerCase()} . ${formatAmount(
+                                  line.amountCents,
+                                  locale,
+                                )}`
+                              : `${line.label ?? t("commissions.extra")} . ${formatAmount(
+                                  line.amountCents,
+                                  locale,
+                                )}`
+                          }
+                          madeUpOf={
+                            line.kind === "RATE" && sale.value.cashCents > 0
+                              ? `${formatAmount(sale.value.priceCents, locale)} ${t(
+                                  "commissions.onTheContract",
+                                )} ${formatAmount(sale.value.cashCents, locale)} ${t(
+                                  "commissions.inCash",
+                                )}`
+                              : null
+                          }
+                          generatedOn={`${shortDay(line.generatedAt)} . ${t("commissions.onFirstPayment")}`}
+                          completedOn={shortDay(line.completedAt) || null}
+                          waitingFor={missing}
+                          upload={async (kind, formData) => {
+                            "use server";
+                            await uploadCommissionPaper(line.id, id, kind, formData);
+                          }}
+                          remove={async (documentId) => {
+                            "use server";
+                            await removeCommissionPaper(documentId, line.id, id);
+                          }}
+                          labels={{
+                            record: t("commissions.recordNote"),
+                            completed: t("commissions.completed"),
+                            waiting: t("commissions.notCompleted"),
+                            invoice: t("commissions.agentInvoice"),
+                            invoiceHint: t("commissions.agentInvoiceHint"),
+                            receipt: t("commissions.agentReceipt"),
+                            receiptHint: t("commissions.agentReceiptHint"),
+                            open: t("common.open"),
+                            replace: t("common.delete"),
+                            add: t("common.add"),
+                            generated: t("commissions.generatedOn"),
+                          }}
+                        />
+                      );
+                    })}
 
                     <div className="mt-3">
                       <Disclosure

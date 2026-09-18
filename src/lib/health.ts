@@ -83,6 +83,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the subowner_directors table",
     migration: "0018",
   },
+  {
+    probe: "select commission_id from documents limit 1",
+    what: "the commission_id column on documents",
+    migration: "0019",
+  },
+  {
+    probe: "select completed_at from commissions limit 1",
+    what: "the completed_at column on commissions",
+    migration: "0019",
+  },
 ];
 
 let answer: Missing[] | null = null;

@@ -28,7 +28,7 @@
  */
 import { createConnection } from "node:net";
 import { randomBytes } from "node:crypto";
-import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import postgres from "postgres";
@@ -135,6 +135,12 @@ type Apartment = {
   buyer?: Buyer;
   /** A term of that sale: cash agreed, something held back until delivery. */
   contractNote?: string;
+  /**
+   * The part of the agreed price paid in cash rather than written on the
+   * contract. Kept as a figure as well as in the note, because the agent's
+   * commission is worked out on the price and the cash together.
+   */
+  cash?: number;
 };
 
 type Building = {
@@ -277,6 +283,7 @@ const MAGNUM_OPUS: Building[] = [
         status: "SOLD",
         note: "Bathrooms 2. Store room yes. Total area 101 m2.",
         buyer: { key: "uno-iakovides", firstName: "Konstantinos", lastName: "Iakovides" },
+        cash: 15000,
         contractNote: "15,000 in cash.",
       },
       {
@@ -334,6 +341,7 @@ const MAGNUM_OPUS: Building[] = [
         status: "RESERVED",
         note: "Bathrooms 2. Store room yes. Total area 143 m2.",
         buyer: { key: "uno-marios", firstName: "Marios", lastName: "Anastasiou" },
+        cash: 20000,
         contractNote: "20,000 in cash.",
       },
       {
@@ -432,6 +440,7 @@ const MAGNUM_OPUS: Building[] = [
         status: "RESERVED",
         note: "Bathrooms 2. Store room yes. Total area 103 m2.",
         buyer: { key: "due-panayi", firstName: "Maria", lastName: "Panayi" },
+        cash: 20000,
         contractNote: "20,000 in cash, paid.",
       },
       {
@@ -539,6 +548,7 @@ const MAGNUM_OPUS: Building[] = [
           lastName: "Abdallah",
           note: "Joint buyers: Rami Saifan and Annie Abdallah. They hold two apartments in this building.",
         },
+        cash: 35000,
         contractNote: "35,000 in cash, paid.",
       },
       {
@@ -598,6 +608,7 @@ const MAGNUM_OPUS: Building[] = [
         status: "RESERVED",
         note: "Bathrooms 2. Store room yes. Total area 151 m2.",
         buyer: { key: "tre-athanasiades", firstName: "Michalis", lastName: "Athanasiades" },
+        cash: 30000,
         contractNote: "30,000 in cash.",
       },
       {
@@ -1107,8 +1118,8 @@ async function main() {
       await ask(
         `insert into contracts
            (id, reference, kind, unit_id, client_id, net_price, vat_rate,
-            schedule_type, status, notes)
-         values ($1, $2, 'SALE', $3, $4, $5, $6, 'STANDARD', 'DRAFT', $7)`,
+            cash_amount, schedule_type, status, notes)
+         values ($1, $2, 'SALE', $3, $4, $5, $6, $7, 'STANDARD', 'DRAFT', $8)`,
         [
           newId(),
           `${building.short} ${flat.code}`,
@@ -1116,6 +1127,7 @@ async function main() {
           clientId,
           price.toFixed(2),
           (flat.vatRate ?? 19).toFixed(3),
+          flat.cash === undefined ? null : flat.cash.toFixed(2),
           flat.contractNote ?? null,
         ],
       );
@@ -1214,6 +1226,74 @@ async function main() {
 
     const said = [...counts.entries()].map(([heading, n]) => `${n} ${heading.toLowerCase()}`);
     console.log(`  ${building.name}: ${said.length > 0 ? said.join(", ") : "nothing found"}`);
+  }
+
+  /*
+   * Clear out what this run has just orphaned.
+   *
+   * A file the CRM serves lives in two places: the file itself on disk, and the
+   * row that says which picture it is. The row is the only thing that knows,
+   * so when this script clears the rows and writes them again, every file the
+   * old rows pointed at becomes unreachable: nothing on the machine can say
+   * what it was or which building it belonged to.
+   *
+   * Leaving them there means a second run doubles the folder and a third
+   * trebles it, for no purpose at all. So the last thing this does is compare
+   * the folder against the rows that now exist and remove anything no row
+   * claims. It asks the database rather than assuming, and it keeps every file
+   * any row points at, including files this script never touched.
+   */
+  const claimed = new Set(
+    (await ask("select file_path from documents where file_path is not null")).map((row) =>
+      String(row.file_path).split("/").join(path.sep),
+    ),
+  );
+
+  const root = storageRoot();
+
+  async function orphansIn(folder: string): Promise<{ file: string; bytes: number }[]> {
+    const found: { file: string; bytes: number }[] = [];
+    let entries;
+    try {
+      entries = await readdir(folder, { withFileTypes: true });
+    } catch {
+      return found;
+    }
+
+    for (const entry of entries) {
+      const full = path.join(folder, entry.name);
+      if (entry.isDirectory()) {
+        found.push(...(await orphansIn(full)));
+        continue;
+      }
+      /* The folder's own readme is not a document and never was. */
+      if (entry.name.toLowerCase() === "readme.md") continue;
+      if (claimed.has(path.relative(root, full))) continue;
+      found.push({ file: full, bytes: (await stat(full)).size });
+    }
+    return found;
+  }
+
+  const orphans = await orphansIn(root);
+
+  if (orphans.length > 0) {
+    let freed = 0;
+    let failed = 0;
+    for (const one of orphans) {
+      try {
+        await rm(one.file);
+        freed += one.bytes;
+      } catch {
+        failed += 1;
+      }
+    }
+    console.log(
+      `\n  Cleared ${orphans.length - failed} file${orphans.length - failed === 1 ? "" : "s"} ` +
+        `no record points at, ${(freed / 1024 / 1024).toFixed(0)} MB` +
+        (failed > 0 ? `, and could not remove ${failed}` : ""),
+    );
+  } else {
+    console.log("\n  Nothing left over in the storage folder.");
   }
 
   /* 5. Say where everything stands, so nothing is taken on trust. */

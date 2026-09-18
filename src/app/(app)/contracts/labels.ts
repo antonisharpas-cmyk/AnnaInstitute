@@ -25,6 +25,8 @@ export function formLabels(t: (key: MessageKey) => string): Record<string, strin
     kindLandExchangeHint: t("contracts.landExchangeHint"),
     cashAmount: t("contracts.cashAmount"),
     cashAmountHint: t("contracts.cashAmountHint"),
+    cashOnSaleHint: t("contracts.cashOnSaleHint"),
+    fullValue: t("commissions.fullValue"),
     extraAgreement: t("contracts.extraAgreement"),
     landExchangeSchedule: t("contracts.landExchangeSchedule"),
     schedule: t("contracts.schedule"),

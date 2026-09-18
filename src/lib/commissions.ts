@@ -12,6 +12,8 @@ import {
   commissionPayments,
   commissions,
   contracts,
+  documents,
+  payments,
   projects,
   units,
 } from "@/db/schema";
@@ -27,6 +29,10 @@ export type CommissionLine = {
   paidCents: number;
   outstandingCents: number;
   status: "PENDING" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
+  /** The day the buyer's payment brought this commission into being. */
+  generatedAt: Date;
+  /** The day both papers were in, which is the day the agent was settled. */
+  completedAt: Date | null;
 };
 
 /**
@@ -81,6 +87,8 @@ export async function salesOfAgent(agentId: string) {
       paidCents,
       outstandingCents: amountCents - paidCents,
       status: line.status,
+      generatedAt: line.createdAt,
+      completedAt: line.completedAt,
     };
     const list = byContract.get(line.contractId);
     if (list) list.push(entry);
@@ -96,9 +104,11 @@ export async function salesOfAgent(agentId: string) {
     // positive difference is the usual reason for an extra line.
     const listPriceCents = r.unit ? toCents(r.unit.netPrice) : 0;
     const soldCents = toCents(r.contract.netPrice);
+    const value = fullValueOf(r.contract);
 
     return {
       ...r,
+      value,
       lines: own,
       generatedCents,
       paidCents,
@@ -152,64 +162,88 @@ export async function commissionTotals(agentId: string) {
    Keeping a commission in step with its sale
    --------------------------------------------------------------------------- */
 
+/**
+ * What the agent's commission is worked out on.
+ *
+ * The price on the contract is not always the whole of what the buyer pays. A
+ * sale agreed at 280,000 is sometimes written as 250,000 on the contract with
+ * 30,000 in cash beside it, and the agent sold a 280,000 apartment either way.
+ * So the base is the contract price plus whatever cash was agreed with it, and
+ * both figures are kept so the office can always see how the total was reached.
+ */
+export function fullValueOf(contract: { netPrice: string; cashAmount?: string | null }): {
+  priceCents: number;
+  cashCents: number;
+  fullCents: number;
+} {
+  const priceCents = toCents(contract.netPrice);
+  const cashCents = toCents(contract.cashAmount ?? "0");
+  return { priceCents, cashCents, fullCents: priceCents + cashCents };
+}
+
 export async function recalculateCommission(contractId: string) {
   const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
   const contract = rows[0];
   if (!contract) return;
 
   /**
-   * A commission exists once the apartment is sold, and not before.
+   * A commission exists once the buyer has paid, and not before.
    *
-   * The office was clear about when an agent has earned something: the
-   * apartment is sold when the first installment has been received, and that is
-   * the moment the commission becomes real. A contract signed last week with
-   * nothing paid against it is not a commission yet, and showing one would put
-   * money on the commissions page that nobody owes.
+   * The office's rule in their own words: the client signs and pays the first
+   * installment, and at that moment the agent has earned their commission. A
+   * contract signed last week with nothing received against it is not a
+   * commission yet, and showing one would put money on the commissions page
+   * that nobody owes.
    *
-   * So the line follows the apartment's status, which the payments themselves
-   * move. When the status goes back, because a payment was recorded in error
-   * and removed, the line goes with it, and an extra the office granted by hand
-   * is left alone either way.
+   * The test is the money itself rather than the apartment's status, which
+   * matters more than it sounds: a status somebody set by hand no longer
+   * decides whether an agent gets paid. Take the payment off again, because it
+   * was recorded in error, and the line goes with it. An extra the office
+   * granted by hand is left alone either way.
    */
-  const sold = contract.unitId
-    ? (
-        await db
-          .select({ status: units.status })
-          .from(units)
-          .where(eq(units.id, contract.unitId))
-          .limit(1)
-      )[0]?.status
-    : undefined;
+  const [received] = await db
+    .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+    .from(payments)
+    .where(eq(payments.contractId, contractId));
 
-  const earned = sold === "SOLD" || sold === "DELIVERED";
+  const earned = toCents(received?.paid ?? "0") > 0;
 
-  if (!earned) {
-    await db
-      .delete(commissions)
-      .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")));
-    return;
-  }
-
-  // Only the rate line is maintained here. Extras are the office's own decision
-  // and are never touched by a change of price or rate.
+  /**
+   * A commission with its paperwork on it is never withdrawn automatically.
+   *
+   * Once the agent's invoice or the receipt has been filed against a line, that
+   * line is a piece of the office's history. A correction elsewhere must not
+   * make it disappear, so it stays and somebody removes it deliberately.
+   */
   const existing = await db
     .select()
     .from(commissions)
     .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")))
     .limit(1);
 
-  if (!contract.agentId) {
+  const papered = existing[0]
+    ? (
+        await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(documents)
+          .where(eq(documents.commissionId, existing[0].id))
+      )[0]?.n > 0
+    : false;
+
+  if ((!earned || !contract.agentId) && !papered) {
     await db
       .delete(commissions)
       .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")));
     return;
   }
 
+  if (!contract.agentId) return;
+
   const agentRows = await db.select().from(agents).where(eq(agents.id, contract.agentId)).limit(1);
 
   const rate = Number(contract.commissionRate ?? agentRows[0]?.commissionRate ?? 0);
-  const baseCents = toCents(contract.netPrice);
-  const amountCents = Math.round((baseCents * rate) / 100);
+  const { fullCents } = fullValueOf(contract);
+  const amountCents = Math.round((fullCents * rate) / 100);
 
   await db
     .update(commissions)
@@ -221,7 +255,7 @@ export async function recalculateCommission(contractId: string) {
       .update(commissions)
       .set({
         agentId: contract.agentId,
-        baseAmount: fromCents(baseCents),
+        baseAmount: fromCents(fullCents),
         rate: rate.toFixed(3),
         amount: fromCents(amountCents),
         updatedAt: new Date(),
@@ -234,10 +268,131 @@ export async function recalculateCommission(contractId: string) {
     contractId,
     agentId: contract.agentId,
     kind: "RATE",
-    baseAmount: fromCents(baseCents),
+    baseAmount: fromCents(fullCents),
     rate: rate.toFixed(3),
     amount: fromCents(amountCents),
   });
+}
+
+/**
+ * The two papers that finish a commission, and what they say about it.
+ *
+ * The office asked for this plainly: the agent's invoice goes on the record,
+ * the receipt for the money paid goes on the record, and when both are there
+ * the commission is done. So the state is read off the papers rather than kept
+ * as a separate flag somebody has to remember to set.
+ */
+export type CommissionPapers = {
+  invoice: { id: string; title: string; mimeType: string | null } | null;
+  receipt: { id: string; title: string; mimeType: string | null } | null;
+  complete: boolean;
+};
+
+export async function papersFor(commissionIds: string[]): Promise<Map<string, CommissionPapers>> {
+  const byCommission = new Map<string, CommissionPapers>();
+  for (const id of commissionIds) {
+    byCommission.set(id, { invoice: null, receipt: null, complete: false });
+  }
+  if (commissionIds.length === 0) return byCommission;
+
+  const rows = await db
+    .select({
+      id: documents.id,
+      commissionId: documents.commissionId,
+      category: documents.category,
+      title: documents.title,
+      mimeType: documents.mimeType,
+    })
+    .from(documents)
+    .where(inArray(documents.commissionId, commissionIds))
+    .orderBy(desc(documents.createdAt));
+
+  for (const row of rows) {
+    if (!row.commissionId) continue;
+    const entry = byCommission.get(row.commissionId);
+    if (!entry) continue;
+    const file = { id: row.id, title: row.title, mimeType: row.mimeType };
+    if (row.category === "AGENT_INVOICE" && !entry.invoice) entry.invoice = file;
+    if (row.category === "AGENT_RECEIPT" && !entry.receipt) entry.receipt = file;
+  }
+
+  for (const entry of byCommission.values()) {
+    entry.complete = Boolean(entry.invoice && entry.receipt);
+  }
+
+  return byCommission;
+}
+
+/**
+ * Bring a commission's state into line with the papers filed against it.
+ *
+ * Called after a paper is added or taken off. Both there means the agent has
+ * been paid and the line is finished; anything less puts it back to waiting, so
+ * a file removed by mistake cannot leave a commission reading as settled.
+ */
+/** How a payment written by the papers rather than by hand is recognised. */
+const FROM_THE_RECEIPT = "Recorded when the receipt was filed against this commission.";
+
+export async function refreshCommissionPapers(commissionId: string): Promise<boolean> {
+  const papers = (await papersFor([commissionId])).get(commissionId);
+  const complete = Boolean(papers?.complete);
+
+  const [line] = await db
+    .select()
+    .from(commissions)
+    .where(eq(commissions.id, commissionId))
+    .limit(1);
+  if (!line) return false;
+
+  /**
+   * The receipt is the money moving, so the money says so too.
+   *
+   * Without this the record would read completed on one side of the page and
+   * owed on the other, which is the kind of disagreement that makes somebody
+   * pay an agent twice. The receipt is proof we paid, so filing it settles
+   * whatever was still outstanding on the line, and taking it off again undoes
+   * that and nothing else: a payment the office entered by hand is left exactly
+   * where it was.
+   */
+  const [alreadyPaid] = await db
+    .select({ total: sql<string>`coalesce(sum(${commissionPayments.amount}), 0)` })
+    .from(commissionPayments)
+    .where(eq(commissionPayments.commissionId, commissionId));
+
+  const owedCents = toCents(line.amount) - toCents(alreadyPaid?.total ?? "0");
+
+  if (complete && owedCents > 0) {
+    await db.insert(commissionPayments).values({
+      agentId: line.agentId,
+      commissionId,
+      amount: fromCents(owedCents),
+      paidOn: new Date(),
+      reference: null,
+      notes: FROM_THE_RECEIPT,
+    });
+  }
+
+  if (!complete) {
+    await db
+      .delete(commissionPayments)
+      .where(
+        and(
+          eq(commissionPayments.commissionId, commissionId),
+          eq(commissionPayments.notes, FROM_THE_RECEIPT),
+        ),
+      );
+  }
+
+  await db
+    .update(commissions)
+    .set({
+      status: complete ? "PAID" : "PENDING",
+      completedAt: complete ? new Date() : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(commissions.id, commissionId));
+
+  return complete;
 }
 
 /**

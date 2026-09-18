@@ -10,7 +10,8 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
-import { recalculateCommission } from "@/lib/commissions";
+import { recalculateCommission, refreshCommissionPapers } from "@/lib/commissions";
+import { removeDocument, storeDocuments } from "@/lib/uploads";
 
 const agentSchema = z.object({
   name: z.string().min(1),
@@ -453,5 +454,82 @@ export async function recordSale(agentId: string, formData: FormData) {
   await flash("said.saleRecorded");
   revalidatePath(`/agents/${agentId}`);
   revalidatePath(`/contracts/${contractId}`);
+  revalidatePath("/commissions");
+}
+
+/*
+ * The two papers that finish a commission.
+ *
+ * The office's own words: the commission record is created when the buyer pays,
+ * the agent's invoice and the receipt for the money are put on it, and when
+ * both are there the commission is completed, meaning the agent has been paid.
+ * So these two actions do nothing clever. They file a paper against the line
+ * and then ask the line to look at what it now has, which is what decides
+ * whether it reads as finished.
+ */
+export async function uploadCommissionPaper(
+  commissionId: string,
+  agentId: string,
+  kind: "AGENT_INVOICE" | "AGENT_RECEIPT",
+  formData: FormData,
+) {
+  const user = await requireUser(["ADMIN"]);
+
+  /*
+   * The slot already says what this paper is, so the form asks for the file and
+   * nothing else. That is the difference between two labelled slots and a pile
+   * of files: the office does not have to name what it is uploading.
+   */
+  const files = formData
+    .getAll("files")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (files.length === 0) return;
+
+  const rows = await db.select().from(commissions).where(eq(commissions.id, commissionId)).limit(1);
+  if (!rows[0]) throw new Error("Commission not found");
+
+  await storeDocuments({
+    files: [files[0]],
+    title: kind === "AGENT_INVOICE" ? "Invoice from the agent" : "Receipt of payment",
+    category: kind,
+    attachTo: { commissionId },
+    user,
+  });
+
+  const complete = await refreshCommissionPapers(commissionId);
+
+  await recordAudit({
+    action: complete ? "commission.completed" : "commission.paper.add",
+    entity: "agent",
+    entityId: agentId,
+    detail: `${commissionId}, ${kind}${complete ? ", both papers in" : ""}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash(complete ? "said.commissionCompleted" : "said.saved");
+  revalidatePath(`/agents/${agentId}`);
+  revalidatePath("/commissions");
+}
+
+export async function removeCommissionPaper(
+  documentId: string,
+  commissionId: string,
+  agentId: string,
+) {
+  const user = await requireUser(["ADMIN"]);
+  await removeDocument(documentId, user);
+  await refreshCommissionPapers(commissionId);
+
+  await recordAudit({
+    action: "commission.paper.remove",
+    entity: "agent",
+    entityId: agentId,
+    detail: `${commissionId}, ${documentId}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  revalidatePath(`/agents/${agentId}`);
   revalidatePath("/commissions");
 }

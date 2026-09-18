@@ -19,6 +19,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
   ARCHITECTURAL: "Architectural Drawings",
   BROCHURE: "Brochure",
   TECHNICAL_SPEC: "Technical Specifications",
+  AGENT_INVOICE: "Invoice from the agent",
+  AGENT_RECEIPT: "Receipt of payment",
   OTHER: "Other",
 };
 

@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { agents, commissionPayments } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
-import { allCommissionLines } from "@/lib/commissions";
+import { allCommissionLines, papersFor } from "@/lib/commissions";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import SearchBox from "@/components/SearchBox";
 import Pagination, { paginate } from "@/components/Pagination";
@@ -33,6 +33,9 @@ export default async function CommissionsPage({
    * are joined through the assignment, which is where the agent is recorded.
    */
   const all = await allCommissionLines();
+  /* The two papers behind every line, so this page tells the same story the
+     agent's own page does. */
+  const papers = await papersFor(all.map((row) => row.line.id));
 
   const matching = all.filter((r) => {
     const paidCents = toCents(r.paid);
@@ -122,6 +125,7 @@ export default async function CommissionsPage({
                     <th className="ctr">{t("agents.rate")}</th>
                     <th className="ctr">{t("contracts.amount")}</th>
                     <th className="ctr">{t("agents.paidOut")}</th>
+                    <th className="ctr">{t("commissions.papers")}</th>
                     <th className="ctr">{t("common.status")}</th>
                   </tr>
                 </thead>
@@ -180,17 +184,31 @@ export default async function CommissionsPage({
                         {formatAmount(toCents(r.line.amount), locale)}
                       </td>
                       <td className="ctr">{formatAmount(toCents(r.paid), locale)}</td>
-                      <td className="ctr">
+                      <td className="ctr text-xs">
+                        {/* Which of the two papers is in, so the office can see
+                            at a glance what it is chasing. */}
                         {(() => {
-                          const owed = toCents(r.line.amount) - toCents(r.paid);
+                          const mine = papers.get(r.line.id);
                           return (
-                            <Pill
-                              tone={owed <= 0 ? "good" : toCents(r.paid) > 0 ? "warn" : "neutral"}
-                            >
-                              {owed <= 0 ? t("commissions.settled") : t("commissions.owed")}
-                            </Pill>
+                            <>
+                              <div className={mine?.invoice ? "" : "text-brand-graphite/50"}>
+                                {mine?.invoice ? "\u2713" : "\u2013"}{" "}
+                                {t("commissions.agentInvoice")}
+                              </div>
+                              <div className={mine?.receipt ? "" : "text-brand-graphite/50"}>
+                                {mine?.receipt ? "\u2713" : "\u2013"}{" "}
+                                {t("commissions.agentReceipt")}
+                              </div>
+                            </>
                           );
                         })()}
+                      </td>
+                      <td className="ctr">
+                        <Pill tone={papers.get(r.line.id)?.complete ? "good" : "warn"}>
+                          {papers.get(r.line.id)?.complete
+                            ? t("commissions.completed")
+                            : t("commissions.notCompleted")}
+                        </Pill>
                       </td>
                     </tr>
                   ))}

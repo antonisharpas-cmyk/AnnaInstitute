@@ -316,13 +316,14 @@ export async function createContract(
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),
       /**
-       * Cash is only meaningful on a land exchange, so a sale never keeps a
-       * figure here even if one was left in the field by an earlier choice.
+       * Cash counts on both kinds.
+       *
+       * On a sale it is the part of the agreed price that is not written on the
+       * contract, and the agent's commission is worked out on the two together.
+       * On a land exchange it is the money settling the difference against the
+       * apartments. Either way an empty field means none.
        */
-      cashAmount:
-        parsed.kind === "LAND_EXCHANGE" && parsed.cashAmount
-          ? fromCents(toCents(parsed.cashAmount))
-          : null,
+      cashAmount: parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,
       status: "ACTIVE",
@@ -397,13 +398,14 @@ export async function updateContract(
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),
       /**
-       * Cash is only meaningful on a land exchange, so a sale never keeps a
-       * figure here even if one was left in the field by an earlier choice.
+       * Cash counts on both kinds.
+       *
+       * On a sale it is the part of the agreed price that is not written on the
+       * contract, and the agent's commission is worked out on the two together.
+       * On a land exchange it is the money settling the difference against the
+       * apartments. Either way an empty field means none.
        */
-      cashAmount:
-        parsed.kind === "LAND_EXCHANGE" && parsed.cashAmount
-          ? fromCents(toCents(parsed.cashAmount))
-          : null,
+      cashAmount: parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,
       status,

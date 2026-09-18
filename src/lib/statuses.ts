@@ -114,19 +114,18 @@ export async function followTheMoney(contractId: string, who: Who = null): Promi
         userId: who?.id,
         userEmail: who?.email ?? "the payment schedule",
       });
-
-      /**
-       * The agent's commission follows the same moment.
-       *
-       * An apartment that has just become sold is an apartment somebody has
-       * earned a commission on, and one that has gone back to reserved is not.
-       * The commission line is maintained by the contracts side, which knows
-       * the rate and the extras, so it is asked to look again rather than
-       * having the rule repeated here.
-       */
-      await recalculateCommission(contract.id);
     }
   }
+
+  /**
+   * The agent's commission follows the money, not the apartment.
+   *
+   * It is asked to look again on every money change rather than only when the
+   * apartment's status moved, because a status the office set by hand never
+   * moves and an agent would then never be paid. The rule itself lives with the
+   * commissions, which know the rate and the extras.
+   */
+  await recalculateCommission(contract.id);
 
   await followTheApartments(unit.projectId, who);
 }

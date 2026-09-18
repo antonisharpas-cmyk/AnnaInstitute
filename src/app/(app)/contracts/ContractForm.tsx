@@ -84,13 +84,21 @@ export default function ContractForm({
   const [kind, setKind] = useState<"SALE" | "LAND_EXCHANGE">(contract?.kind ?? "SALE");
   const [cash, setCash] = useState(whole(contract?.cashAmount ?? undefined));
 
+  /** The price and the cash added up, said out loud so nobody has to do it. */
+  const money = (value: string) => {
+    const n = Number(String(value).replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const together = money(netPrice) + money(cash);
+  const fullValue =
+    money(cash) > 0
+      ? `${labels.fullValue}: ${together.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`
+      : null;
+
   const chooseKind = (value: "SALE" | "LAND_EXCHANGE") => {
     setKind(value);
     if (value === "LAND_EXCHANGE") setVatRate("0");
-    else {
-      setVatRate(contract ? String(Number(contract.vatRate)) : "5");
-      setCash("");
-    }
+    else setVatRate(contract ? String(Number(contract.vatRate)) : "5");
   };
 
   return (
@@ -237,23 +245,34 @@ export default function ContractForm({
           />
         </div>
 
-        {kind === "LAND_EXCHANGE" ? (
-          <div>
-            <label className="label" htmlFor="cashAmount">
-              {labels.cashAmount}
-            </label>
-            <input
-              id="cashAmount"
-              name="cashAmount"
-              value={cash}
-              onChange={(event) => setCash(event.target.value)}
-              inputMode="decimal"
-              placeholder="0"
-              className="input"
-            />
-            <p className="mt-1 text-xs text-brand-graphite/60">{labels.cashAmountHint}</p>
-          </div>
-        ) : null}
+        {/*
+          Cash belongs on both kinds, for different reasons.
+
+          On a sale it is the part of the agreed price that is not written on
+          the contract: 280,000 sold as 250,000 with 30,000 in cash. The agent
+          sold a 280,000 apartment either way, so the two figures together are
+          what the commission is worked out on and the form has to be able to
+          hold both. On a land exchange it is the money settling the difference
+          against the apartments.
+        */}
+        <div>
+          <label className="label" htmlFor="cashAmount">
+            {labels.cashAmount}
+          </label>
+          <input
+            id="cashAmount"
+            name="cashAmount"
+            value={cash}
+            onChange={(event) => setCash(event.target.value)}
+            inputMode="decimal"
+            placeholder="0"
+            className="input"
+          />
+          <p className="mt-1 text-xs text-brand-graphite/60">
+            {kind === "LAND_EXCHANGE" ? labels.cashAmountHint : labels.cashOnSaleHint}
+          </p>
+          {fullValue ? <p className="mt-1 text-xs font-semibold">{fullValue}</p> : null}
+        </div>
 
         {editing ? (
           <div>

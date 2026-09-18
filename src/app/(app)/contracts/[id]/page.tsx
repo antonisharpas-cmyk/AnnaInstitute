@@ -198,6 +198,22 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               </div>
             ) : null}
 
+            {contract.cashAmount ? (
+              <div>
+                {/*
+                  What the sale is really worth, said once and plainly. The
+                  price on the contract and the cash beside it are two halves of
+                  one figure, and that figure is what an agent's commission is
+                  worked out on, so leaving the office to add them up in their
+                  head is how a commission comes out wrong.
+                */}
+                <dt className="label">{t("commissions.fullValue")}</dt>
+                <dd className="text-sm font-semibold">
+                  {formatAmount(toCents(contract.netPrice) + toCents(contract.cashAmount), locale)}
+                </dd>
+              </div>
+            ) : null}
+
             {contract.notes ? (
               <div className="sm:col-span-3">
                 {/*

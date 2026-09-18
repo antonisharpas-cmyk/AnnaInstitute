@@ -75,6 +75,16 @@ export const documentCategoryEnum = pgEnum("document_category", [
   "ARCHITECTURAL",
   "BROCHURE",
   "TECHNICAL_SPEC",
+  /**
+   * The two papers that settle an agent's commission.
+   *
+   * The agent sends an invoice for what they are owed, and the office files the
+   * receipt for the money it paid. A commission is finished when both are on
+   * the record and not before, so they are their own two kinds rather than two
+   * files called Other that somebody has to open to tell apart.
+   */
+  "AGENT_INVOICE",
+  "AGENT_RECEIPT",
   "OTHER",
 ]);
 export const changeRequestStatusEnum = pgEnum("change_request_status", [
@@ -490,6 +500,8 @@ export const documents = pgTable("documents", {
   }),
   /** An invoice or a receipt filed against one payment. */
   paymentId: text("payment_id").references(() => payments.id, { onDelete: "cascade" }),
+  /** The agent's invoice, or the receipt for the commission we paid them. */
+  commissionId: text("commission_id"),
   /** The invoice paper behind a company cost. */
   expenseId: text("expense_id"),
   originalName: text("original_name"),
@@ -524,6 +536,16 @@ export const commissions = pgTable("commissions", {
   rate: rate("rate").notNull(),
   amount: money("amount").notNull(),
   status: commissionStatusEnum("status").default("PENDING").notNull(),
+  /**
+   * When the paperwork was complete, which is when the agent was settled.
+   *
+   * The office's own rule: the agent's invoice comes in, the office pays and
+   * files the receipt, and at that moment the commission is finished. Both
+   * papers on the record is the evidence, so this is stamped by the second
+   * upload rather than by somebody remembering to press a button, and cleared
+   * again if either paper is taken off.
+   */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
