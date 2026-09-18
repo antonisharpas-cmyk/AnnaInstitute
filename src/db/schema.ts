@@ -389,13 +389,36 @@ export const contracts = pgTable("contracts", {
   /** One rate for the whole price. Editable, because the law changes. */
   vatRate: rate("vat_rate").default("5").notNull(),
   /**
-   * Cash changing hands alongside a land exchange.
+   * Cash changing hands alongside the apartments.
    *
-   * On antiparochi the apartments are most of the consideration and a sum of
-   * money settles the difference, in either direction. Kept apart from the
-   * price so the contract can say plainly what was agreed.
+   * On a sale it is the part of the agreed price paid in cash rather than
+   * written on the contract, and the agent's commission is worked out on the
+   * two together. On a land exchange it is the sum that settles the difference
+   * between the land and the apartments, in either direction. Kept apart from
+   * the price so the contract can say plainly what was agreed.
    */
   cashAmount: money("cash_amount"),
+  /*
+   * What a land exchange is actually made of.
+   *
+   * On antiparochi nobody buys anything. The owner of a plot hands it to the
+   * developer and is paid in apartments in the building that goes up on it,
+   * usually an agreed share of the finished units, sometimes with money
+   * settling the difference. So the record has to hold three things a sale
+   * never needs: which plot came in, what share of the building was promised,
+   * and which apartments that share turned into.
+   *
+   * The apartments are the join table below rather than the single unit column
+   * above, because a land exchange is almost never one apartment.
+   */
+  /** The plot the owner gave: where it is, in the office's own words. */
+  plotDescription: text("plot_description"),
+  /** Its registration or plot number, the way the land registry has it. */
+  plotReference: text("plot_reference"),
+  /** Its area, in square metres. */
+  plotArea: numeric("plot_area", { precision: 12, scale: 2 }),
+  /** The share of the finished units the owner was promised. */
+  sharePercent: rate("share_percent"),
   scheduleType: scheduleTypeEnum("schedule_type").default("STANDARD").notNull(),
   /** 1 for monthly, 3 for quarterly. Only meaningful for a periodic schedule. */
   periodMonths: integer("period_months"),
@@ -404,6 +427,32 @@ export const contracts = pgTable("contracts", {
   createdAt: created(),
   updatedAt: updated(),
 });
+
+/**
+ * The apartments a contract covers when one is not enough.
+ *
+ * A sale is one apartment and says so on the contract itself. A land exchange
+ * gives the landowner several, and they arrive one at a time as the building is
+ * designed, so they are their own lines and can be added and taken off without
+ * touching the agreement they belong to.
+ */
+export const contractUnits = pgTable(
+  "contract_units",
+  {
+    id: id(),
+    contractId: text("contract_id")
+      .notNull()
+      .references(() => contracts.id, { onDelete: "cascade" }),
+    unitId: text("unit_id")
+      .notNull()
+      .references(() => units.id, { onDelete: "cascade" }),
+    notes: text("notes"),
+    createdAt: created(),
+  },
+  (t) => ({
+    unitOncePerContract: unique("contract_units_contract_unit").on(t.contractId, t.unitId),
+  }),
+);
 
 /** A line of a contract's payment schedule, with its own due date. */
 export const installments = pgTable(

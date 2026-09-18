@@ -76,9 +76,14 @@ export default async function NewContractPage({
             <Empty message={t("contracts.needClientAndUnit")} />
           ) : (
             <>
-              <p className="mb-3 text-xs text-brand-graphite/60">
-                {source ? t("contracts.copyHint") : t("contracts.newHint")}
-              </p>
+              {/*
+                The note about what one contract covers now lives under the
+                transaction type, where it can say the right thing for each of
+                them. Only the note about copying belongs up here.
+              */}
+              {source ? (
+                <p className="mb-3 text-xs text-brand-graphite/60">{t("contracts.copyHint")}</p>
+              ) : null}
               <ContractForm
                 action={createContract}
                 contract={

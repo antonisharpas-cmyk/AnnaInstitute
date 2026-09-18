@@ -6,6 +6,7 @@ import {
   agents,
   clients,
   contracts,
+  contractUnits,
   installments,
   payments,
   projects,
@@ -348,4 +349,20 @@ export function contractStatusTone(status: string) {
 export async function contractIdsFor(options?: { query?: string; status?: string }) {
   const { rows } = await listContracts({ ...options, limit: 2000, offset: 0 });
   return rows.map((row) => row.contract.id);
+}
+
+/**
+ * The apartments allotted to a landowner under a land exchange.
+ *
+ * Their own lines rather than the contract's single apartment column, because a
+ * land exchange is rarely one apartment and they are agreed one at a time.
+ */
+export async function landExchangeUnits(contractId: string) {
+  return db
+    .select({ unit: units, project: projects })
+    .from(contractUnits)
+    .innerJoin(units, eq(units.id, contractUnits.unitId))
+    .innerJoin(projects, eq(projects.id, units.projectId))
+    .where(eq(contractUnits.contractId, contractId))
+    .orderBy(asc(projects.name), asc(units.code));
 }

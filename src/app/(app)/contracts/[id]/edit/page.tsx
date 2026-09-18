@@ -3,7 +3,7 @@ import { asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, clients } from "@/db/schema";
 import { getTranslator } from "@/i18n";
-import { getContract, unitsWithoutContract } from "@/lib/contracts";
+import { getContract, landExchangeUnits, unitsWithoutContract } from "@/lib/contracts";
 import { amountForInput, formatAmount } from "@/lib/money";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import ContractForm from "../../ContractForm";
@@ -20,10 +20,11 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
   const detail = await getContract(id);
   if (!detail) notFound();
 
-  const [free, clientList, agentList] = await Promise.all([
+  const [free, clientList, agentList, theirs] = await Promise.all([
     unitsWithoutContract(detail.contract.unitId ?? undefined),
     db.select().from(clients).where(isNull(clients.deletedAt)).orderBy(asc(clients.lastName)),
     db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
+    landExchangeUnits(id),
   ]);
 
   const rows: Row[] = detail.installments.map((l, i) => ({
@@ -54,6 +55,7 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
                 locale,
               )}`,
             }))}
+            chosenUnitIds={theirs.map((row) => row.unit.id)}
             clients={clientList.map((c) => ({ id: c.id, label: `${c.lastName} ${c.firstName}` }))}
             agents={agentList.map((a) => ({
               id: a.id,

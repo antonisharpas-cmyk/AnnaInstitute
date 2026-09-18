@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import DateField from "@/components/DateField";
 import ScheduleBuilder, { type Row } from "./ScheduleBuilder";
+import UnitPicker from "./UnitPicker";
 import type { ContractFormState } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 
@@ -18,6 +19,10 @@ type ContractRecord = {
   netPrice: string;
   vatRate: string;
   cashAmount: string | null;
+  plotDescription: string | null;
+  plotReference: string | null;
+  plotArea: string | null;
+  sharePercent: string | null;
   scheduleType: "STANDARD" | "PERIODIC";
   periodMonths: number | null;
   status: "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
@@ -50,6 +55,7 @@ export default function ContractForm({
   clients,
   agents,
   defaults,
+  chosenUnitIds = [],
   cancelHref,
   frozen,
   editing,
@@ -63,6 +69,8 @@ export default function ContractForm({
   agents: { id: string; label: string }[];
   /** Preselected apartment and buyer, for a contract started from a client. */
   defaults?: { unitId?: string; clientId?: string; agentId?: string };
+  /** On a land exchange, the apartments already allotted to the landowner. */
+  chosenUnitIds?: string[];
   cancelHref: string;
   frozen?: boolean;
   editing?: boolean;
@@ -92,7 +100,10 @@ export default function ContractForm({
   const together = money(netPrice) + money(cash);
   const fullValue =
     money(cash) > 0
-      ? `${labels.fullValue}: ${together.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`
+      ? `${kind === "LAND_EXCHANGE" ? labels.togetherWithCash : labels.fullValue}: ${together.toLocaleString(
+          "en-GB",
+          { maximumFractionDigits: 2 },
+        )}`
       : null;
 
   const chooseKind = (value: "SALE" | "LAND_EXCHANGE") => {
@@ -124,14 +135,15 @@ export default function ContractForm({
             <option value="SALE">{labels.kindSale}</option>
             <option value="LAND_EXCHANGE">{labels.kindLandExchange}</option>
           </select>
-          {kind === "LAND_EXCHANGE" ? (
-            <p className="mt-1 text-xs text-brand-graphite/60">{labels.kindLandExchangeHint}</p>
-          ) : null}
+          <p className="mt-1 text-xs text-brand-graphite/60">
+            {kind === "LAND_EXCHANGE" ? labels.kindLandExchangeHint : labels.kindSaleHint}
+          </p>
         </div>
 
         <div>
           <label className="label" htmlFor="clientId">
-            {labels.client}
+            {/* The other side of a land exchange is not a buyer. */}
+            {kind === "LAND_EXCHANGE" ? labels.landowner : labels.client}
           </label>
           <select
             id="clientId"
@@ -149,29 +161,46 @@ export default function ContractForm({
           </select>
         </div>
 
-        <div>
-          <label className="label" htmlFor="unitId">
-            {labels.apartment}
-          </label>
-          <select
-            id="unitId"
-            name="unitId"
-            required
-            defaultValue={contract?.unitId ?? defaults?.unitId ?? ""}
-            className="select"
-          >
-            <option value="">{labels.choose}</option>
-            {units.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {kind === "SALE" ? (
+          <div>
+            <label className="label" htmlFor="unitId">
+              {labels.apartment}
+            </label>
+            <select
+              id="unitId"
+              name="unitId"
+              required
+              defaultValue={contract?.unitId ?? defaults?.unitId ?? ""}
+              className="select"
+            >
+              <option value="">{labels.choose}</option>
+              {units.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <label className="label" htmlFor="sharePercent">
+              {labels.sharePercent}
+            </label>
+            <input
+              id="sharePercent"
+              name="sharePercent"
+              inputMode="decimal"
+              defaultValue={contract?.sharePercent ? String(Number(contract.sharePercent)) : ""}
+              placeholder="40"
+              className="input"
+            />
+            <p className="mt-1 text-xs text-brand-graphite/60">{labels.sharePercentHint}</p>
+          </div>
+        )}
 
         <div>
           <label className="label" htmlFor="reference">
-            {labels.name}
+            {kind === "LAND_EXCHANGE" ? labels.contractNumber : labels.name}
           </label>
           <input
             id="reference"
@@ -196,7 +225,7 @@ export default function ContractForm({
 
         <div>
           <label className="label" htmlFor="netPrice">
-            {labels.netPrice}
+            {kind === "LAND_EXCHANGE" ? labels.agreementValue : labels.netPrice}
           </label>
           <input
             id="netPrice"
@@ -210,24 +239,28 @@ export default function ContractForm({
           />
         </div>
 
-        <div>
-          <label className="label" htmlFor="agentId">
-            {labels.agent}
-          </label>
-          <select
-            id="agentId"
-            name="agentId"
-            defaultValue={contract?.agentId ?? defaults?.agentId ?? ""}
-            className="select"
-          >
-            <option value="">{labels.noAgent}</option>
-            {agents.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {kind === "SALE" ? (
+          /* No agent on a land exchange: there is no sale price for a
+             commission to be a percentage of, and nothing is collected. */
+          <div>
+            <label className="label" htmlFor="agentId">
+              {labels.agent}
+            </label>
+            <select
+              id="agentId"
+              name="agentId"
+              defaultValue={contract?.agentId ?? defaults?.agentId ?? ""}
+              className="select"
+            >
+              <option value="">{labels.noAgent}</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
 
         <div>
           <label className="label" htmlFor="vatRate">
@@ -315,9 +348,77 @@ export default function ContractForm({
       </div>
 
       {kind === "LAND_EXCHANGE" ? (
-        <p className="rounded border border-brand-line bg-brand-surface px-3 py-2 text-xs text-brand-graphite/70">
-          {labels.landExchangeSchedule}
-        </p>
+        <>
+          {/*
+            What the owner gave, and what they get for it.
+
+            These two blocks are the agreement. Everything above them is the
+            paperwork around it: who, when, what number. A sale has no plot and
+            gives one apartment, so it sees neither of them.
+          */}
+          <fieldset className="rounded border border-brand-line bg-brand-surface p-3">
+            <legend className="label px-1">{labels.thePlot}</legend>
+            <p className="mb-3 text-xs text-brand-graphite/60">{labels.thePlotHint}</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="sm:col-span-3">
+                <label className="label" htmlFor="plotDescription">
+                  {labels.plotDescription}
+                </label>
+                <input
+                  id="plotDescription"
+                  name="plotDescription"
+                  defaultValue={contract?.plotDescription ?? ""}
+                  placeholder={labels.plotDescriptionPlaceholder}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="plotReference">
+                  {labels.plotReference}
+                </label>
+                <input
+                  id="plotReference"
+                  name="plotReference"
+                  defaultValue={contract?.plotReference ?? ""}
+                  placeholder="0/1234"
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="plotArea">
+                  {labels.plotArea}
+                </label>
+                <input
+                  id="plotArea"
+                  name="plotArea"
+                  inputMode="decimal"
+                  defaultValue={contract?.plotArea ? String(Number(contract.plotArea)) : ""}
+                  placeholder="1200"
+                  className="input"
+                />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset className="rounded border border-brand-line bg-brand-surface p-3">
+            <legend className="label px-1">{labels.theirApartments}</legend>
+            <p className="mb-3 text-xs text-brand-graphite/60">{labels.theirApartmentsHint}</p>
+            <UnitPicker
+              units={units}
+              chosen={chosenUnitIds}
+              labels={{
+                search: labels.searchApartments,
+                none: labels.noApartmentsYet,
+                count: labels.apartmentsChosen,
+                nothingFound: labels.nothingFound,
+              }}
+            />
+          </fieldset>
+
+          <p className="rounded border border-brand-line bg-brand-surface px-3 py-2 text-xs text-brand-graphite/70">
+            {labels.landExchangeSchedule}
+          </p>
+        </>
       ) : null}
 
       <ScheduleBuilder

@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { changeRequests } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
-import { contractStatusTone, getContract } from "@/lib/contracts";
+import { contractStatusTone, getContract, landExchangeUnits } from "@/lib/contracts";
 import { STAGE_CHOICES } from "@/lib/vat";
 import { documentsByPayment, documentsForContract } from "@/lib/documents";
 import { titleWithExtension } from "@/lib/fileLabels";
@@ -51,6 +51,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
     const known = ["CASH", "BANK", "CHEQUE", "CARD", "OTHER"];
     return known.includes(value) ? t(`contracts.method.${value}` as MessageKey) : value;
   };
+
+  const theirApartments =
+    detail.contract.kind === "LAND_EXCHANGE" ? await landExchangeUnits(id) : [];
 
   const [requests, contractDocuments, paymentFiles] = await Promise.all([
     db
@@ -108,7 +111,14 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Stat label={t("contracts.netPrice")} value={formatAmount(totals.netCents, locale)} />
+        <Stat
+          label={
+            contract.kind === "LAND_EXCHANGE"
+              ? t("contracts.agreementValue")
+              : t("contracts.netPrice")
+          }
+          value={formatAmount(totals.netCents, locale)}
+        />
         <Stat
           label={`${t("contracts.vat")} ${formatPercent(Number(contract.vatRate), locale)}`}
           value={formatAmount(totals.scheduleVatCents, locale)}
@@ -120,10 +130,18 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
       <div className="space-y-4">
         {/* 1. Who and what this contract is for. */}
-        <Card title={t("contracts.theSale")}>
+        <Card
+          title={
+            contract.kind === "LAND_EXCHANGE" ? t("contracts.theAgreement") : t("contracts.theSale")
+          }
+        >
           <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-3">
             <div>
-              <dt className="label">{t("contracts.buyer")}</dt>
+              <dt className="label">
+                {contract.kind === "LAND_EXCHANGE"
+                  ? t("contracts.landowner")
+                  : t("contracts.buyer")}
+              </dt>
               <dd className="text-sm">
                 {client ? (
                   <Link
@@ -142,7 +160,37 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 ) : null}
               </dd>
             </div>
-            <div>
+            {contract.kind === "LAND_EXCHANGE" ? (
+              <div>
+                <dt className="label">{t("contracts.thePlot")}</dt>
+                <dd className="text-sm">
+                  <span className="font-semibold">
+                    {contract.plotDescription ?? t("common.none")}
+                  </span>
+                  <div className="text-xs text-brand-graphite/60">
+                    {[
+                      contract.plotReference,
+                      contract.plotArea ? `${Number(contract.plotArea)} m2` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" . ")}
+                  </div>
+                </dd>
+              </div>
+            ) : null}
+
+            {contract.kind === "LAND_EXCHANGE" ? (
+              <div>
+                <dt className="label">{t("contracts.sharePercent")}</dt>
+                <dd className="text-sm font-semibold">
+                  {contract.sharePercent
+                    ? formatPercent(Number(contract.sharePercent), locale)
+                    : t("common.none")}
+                </dd>
+              </div>
+            ) : null}
+
+            <div className={contract.kind === "LAND_EXCHANGE" ? "hidden" : ""}>
               <dt className="label">{t("contracts.unit")}</dt>
               <dd className="text-sm">
                 {project && unit ? (
@@ -164,7 +212,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 ) : null}
               </dd>
             </div>
-            <div>
+            <div className={contract.kind === "LAND_EXCHANGE" ? "hidden" : ""}>
               <dt className="label">{t("contracts.agent")}</dt>
               <dd className="text-sm">
                 {agent ? (
@@ -207,7 +255,11 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                   worked out on, so leaving the office to add them up in their
                   head is how a commission comes out wrong.
                 */}
-                <dt className="label">{t("commissions.fullValue")}</dt>
+                <dt className="label">
+                  {contract.kind === "LAND_EXCHANGE"
+                    ? t("contracts.togetherWithCash")
+                    : t("commissions.fullValue")}
+                </dt>
                 <dd className="text-sm font-semibold">
                   {formatAmount(toCents(contract.netPrice) + toCents(contract.cashAmount), locale)}
                 </dd>
@@ -233,8 +285,75 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </dl>
         </Card>
 
+        {contract.kind === "LAND_EXCHANGE" ? (
+          <Card title={t("contracts.theirApartments")}>
+            {theirApartments.length === 0 ? (
+              <Empty message={t("contracts.noApartmentsYet")} />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="data">
+                  <thead>
+                    <tr>
+                      <th>{t("contracts.unit")}</th>
+                      <th className="ctr">{t("units.floor")}</th>
+                      <th className="ctr">{t("units.bedrooms")}</th>
+                      <th className="ctr">{t("units.covered")}</th>
+                      <th className="ctr">{t("units.netPrice")}</th>
+                      <th className="ctr">{t("common.status")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {theirApartments.map((row) => (
+                      <tr key={row.unit.id}>
+                        <td>
+                          <Link
+                            href={`/projects/${row.project.id}/units/${row.unit.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-brand-teal-dark hover:underline"
+                          >
+                            {row.project.name} {row.unit.code}
+                          </Link>
+                        </td>
+                        <td className="ctr">{row.unit.floor ?? ""}</td>
+                        <td className="ctr">{row.unit.bedrooms ?? ""}</td>
+                        <td className="ctr">
+                          {row.unit.coveredArea ? `${Number(row.unit.coveredArea)} m2` : ""}
+                        </td>
+                        <td className="ctr">{formatAmount(toCents(row.unit.netPrice), locale)}</td>
+                        <td className="ctr">
+                          <Pill
+                            tone={
+                              row.unit.status === "AVAILABLE"
+                                ? "good"
+                                : row.unit.status === "RESERVED"
+                                  ? "warn"
+                                  : "neutral"
+                            }
+                          >
+                            {t(`units.status.${row.unit.status}` as MessageKey)}
+                          </Pill>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="mt-3 text-xs text-brand-graphite/60">
+              {t("contracts.theirApartmentsNote")}
+            </p>
+          </Card>
+        ) : null}
+
         {/* 2. The schedule, with its own dates. */}
-        <Card title={t("contracts.schedule")}>
+        {/* A land exchange with nothing to collect has no schedule to show,
+            and an empty one full of noughts only invites somebody to fill it
+            in. It comes back the moment a line is added. */}
+        <Card
+          title={t("contracts.schedule")}
+          className={contract.kind === "LAND_EXCHANGE" && lines.length === 0 ? "hidden" : ""}
+        >
           <form
             action={setDates.bind(null, id)}
             className="mb-4 flex flex-wrap items-end gap-2 border-b border-brand-line pb-4"

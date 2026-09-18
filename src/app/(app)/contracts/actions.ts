@@ -8,6 +8,7 @@ import { db } from "@/db";
 import {
   changeRequests,
   contracts,
+  contractUnits,
   documents,
   installments,
   payments,
@@ -39,9 +40,18 @@ const detailsSchema = z.object({
   reference: z.string().min(1),
   /** A sale, or land given in exchange for apartments. */
   kind: z.enum(["SALE", "LAND_EXCHANGE"]).default("SALE"),
-  /** Money alongside a land exchange, in either direction. */
+  /** Money alongside the apartments, in either direction. */
   cashAmount: z.string().optional(),
-  unitId: z.string().min(1),
+  /* What a land exchange is made of, and nothing a sale ever carries. */
+  plotDescription: z.string().optional(),
+  plotReference: z.string().optional(),
+  plotArea: z.string().optional(),
+  sharePercent: z.string().optional(),
+  /**
+   * A sale names one apartment. A land exchange names none here: the owner's
+   * apartments are their own lines, because their share is rarely one.
+   */
+  unitId: z.string().optional(),
   clientId: z.string().min(1),
   agentId: z.string().optional(),
   contractDate: z.string().optional(),
@@ -198,7 +208,8 @@ async function referenceIsFree(reference: string, exceptId?: string) {
   return rows.length === 0;
 }
 
-async function unitIsFree(unitId: string, exceptId?: string) {
+async function unitIsFree(unitId: string | undefined, exceptId?: string) {
+  if (!unitId) return true;
   const rows = await db
     .select({ id: contracts.id })
     .from(contracts)
@@ -216,7 +227,11 @@ function readDetails(formData: FormData) {
     reference: formData.get("reference"),
     kind: formData.get("kind") || "SALE",
     cashAmount: formData.get("cashAmount") || undefined,
-    unitId: formData.get("unitId"),
+    plotDescription: formData.get("plotDescription") || undefined,
+    plotReference: formData.get("plotReference") || undefined,
+    plotArea: formData.get("plotArea") || undefined,
+    sharePercent: formData.get("sharePercent") || undefined,
+    unitId: formData.get("unitId") || undefined,
     clientId: formData.get("clientId"),
     agentId: formData.get("agentId") || undefined,
     contractDate: formData.get("contractDate") || undefined,
@@ -257,7 +272,8 @@ async function alsoTheBuyer(contractId: string) {
  * in. That is what followTheMoney does the moment a payment is recorded, so
  * this only has to get the buyer and the reservation right.
  */
-async function takeUnit(unitId: string, clientId: string) {
+async function takeUnit(unitId: string | undefined, clientId: string) {
+  if (!unitId) return;
   const rows = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
   const already = rows[0];
 
@@ -272,13 +288,51 @@ async function takeUnit(unitId: string, clientId: string) {
 }
 
 /** An apartment with no contract on it is available again, or still reserved. */
-async function releaseUnit(unitId: string) {
+async function releaseUnit(unitId: string | undefined) {
+  if (!unitId) return;
   const rows = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
   if (!rows[0]) return;
   await db
     .update(units)
     .set({ status: rows[0].clientId ? "RESERVED" : "AVAILABLE", updatedAt: new Date() })
     .where(eq(units.id, unitId));
+}
+
+/**
+ * The apartments a landowner receives, kept in step with what was ticked.
+ *
+ * Written as the whole answer rather than as a difference: whatever is on the
+ * form now is what the agreement says now. An apartment taken off goes back to
+ * being free unless somebody else holds it, and one added is marked as the
+ * owner's, so the development's list and the owner's own profile tell the same
+ * story without anybody updating them separately.
+ */
+async function setLandExchangeUnits(contractId: string, clientId: string, wanted: string[]) {
+  const before = await db
+    .select({ unitId: contractUnits.unitId })
+    .from(contractUnits)
+    .where(eq(contractUnits.contractId, contractId));
+
+  const had = new Set(before.map((row) => row.unitId));
+  const now = new Set(wanted);
+
+  for (const unitId of had) {
+    if (now.has(unitId)) continue;
+    await db
+      .delete(contractUnits)
+      .where(and(eq(contractUnits.contractId, contractId), eq(contractUnits.unitId, unitId)));
+    await db
+      .update(units)
+      .set({ clientId: null, status: "AVAILABLE", updatedAt: new Date() })
+      .where(and(eq(units.id, unitId), eq(units.clientId, clientId)));
+  }
+
+  for (const unitId of now) {
+    if (!had.has(unitId)) {
+      await db.insert(contractUnits).values({ contractId, unitId });
+    }
+    await takeUnit(unitId, clientId);
+  }
 }
 
 export async function createContract(
@@ -324,6 +378,19 @@ export async function createContract(
        * apartments. Either way an empty field means none.
        */
       cashAmount: parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
+      /* Only a land exchange carries a plot and a share, and choosing a sale
+         afterwards clears them rather than leaving them to be found later. */
+      plotDescription:
+        parsed.kind === "LAND_EXCHANGE" ? parsed.plotDescription?.trim() || null : null,
+      plotReference: parsed.kind === "LAND_EXCHANGE" ? parsed.plotReference?.trim() || null : null,
+      plotArea:
+        parsed.kind === "LAND_EXCHANGE" && parsed.plotArea
+          ? Number(parsed.plotArea).toFixed(2)
+          : null,
+      sharePercent:
+        parsed.kind === "LAND_EXCHANGE" && parsed.sharePercent
+          ? Number(parsed.sharePercent).toFixed(3)
+          : null,
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,
       status: "ACTIVE",
@@ -334,6 +401,9 @@ export async function createContract(
   const contractId = inserted[0].id;
   await writeSchedule(contractId, netCents, rate, checked);
   await takeUnit(parsed.unitId, parsed.clientId);
+  if (parsed.kind === "LAND_EXCHANGE") {
+    await setLandExchangeUnits(contractId, parsed.clientId, formData.getAll("unitIds").map(String));
+  }
   await syncCommission(contractId);
   await followTheMoney(contractId, user);
 
@@ -406,6 +476,19 @@ export async function updateContract(
        * apartments. Either way an empty field means none.
        */
       cashAmount: parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
+      /* Only a land exchange carries a plot and a share, and choosing a sale
+         afterwards clears them rather than leaving them to be found later. */
+      plotDescription:
+        parsed.kind === "LAND_EXCHANGE" ? parsed.plotDescription?.trim() || null : null,
+      plotReference: parsed.kind === "LAND_EXCHANGE" ? parsed.plotReference?.trim() || null : null,
+      plotArea:
+        parsed.kind === "LAND_EXCHANGE" && parsed.plotArea
+          ? Number(parsed.plotArea).toFixed(2)
+          : null,
+      sharePercent:
+        parsed.kind === "LAND_EXCHANGE" && parsed.sharePercent
+          ? Number(parsed.sharePercent).toFixed(3)
+          : null,
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,
       status,
@@ -418,6 +501,13 @@ export async function updateContract(
     await releaseUnit(before.contract.unitId);
   }
   await takeUnit(parsed.unitId, parsed.clientId);
+  await setLandExchangeUnits(
+    contractId,
+    parsed.clientId,
+    /* A contract changed back to a sale gives the owner's apartments up, which
+       is the same answer as an empty list. */
+    parsed.kind === "LAND_EXCHANGE" ? formData.getAll("unitIds").map(String) : [],
+  );
 
   if (checked) {
     await writeSchedule(contractId, netCents, rate, checked);

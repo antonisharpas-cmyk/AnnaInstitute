@@ -93,6 +93,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the completed_at column on commissions",
     migration: "0019",
   },
+  {
+    probe: "select share_percent, plot_reference from contracts limit 1",
+    what: "the land exchange columns on contracts",
+    migration: "0020",
+  },
+  {
+    probe: "select unit_id from contract_units limit 1",
+    what: "the contract_units table",
+    migration: "0020",
+  },
 ];
 
 let answer: Missing[] | null = null;
