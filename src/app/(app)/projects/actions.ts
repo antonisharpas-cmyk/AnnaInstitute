@@ -415,15 +415,15 @@ export async function deleteProject(projectId: string) {
 
   const rows = await db.select({ id: units.id }).from(units).where(eq(units.projectId, projectId));
 
+  /* Refused, not thrown. The record page says what is in the way before the
+     button is shown, but the same delete now sits in a row of the list, where
+     a thrown error would put a server error page in front of the office
+     instead of a sentence telling them what to do first. */
   const inTheWay = await contractsOnUnits(rows.map((row) => row.id));
   if (inTheWay.length > 0) {
-    throw new Error(
-      `This development cannot be deleted while its apartments have contracts on them: ${inTheWay
-        .slice(0, 5)
-        .join(
-          ", ",
-        )}${inTheWay.length > 5 ? ` and ${inTheWay.length - 5} more` : ""}. Delete those contracts first.`,
-    );
+    await flash("said.contractsInTheWay", "bad");
+    revalidatePath("/projects");
+    return;
   }
 
   await db.delete(projects).where(eq(projects.id, projectId));
@@ -450,9 +450,9 @@ export async function deleteUnit(unitId: string, projectId: string) {
 
   const inTheWay = await contractsOnUnits([unitId]);
   if (inTheWay.length > 0) {
-    throw new Error(
-      `This apartment cannot be deleted while ${inTheWay.join(", ")} is on it. Delete the contract first.`,
-    );
+    await flash("said.contractOnApartment", "bad");
+    revalidatePath(`/projects/${projectId}`);
+    return;
   }
 
   await db.delete(units).where(eq(units.id, unitId));

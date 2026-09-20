@@ -28,6 +28,9 @@ import Pick from "@/components/Pick";
 import Pagination, { paginate } from "@/components/Pagination";
 import ViewsBar from "@/components/ViewsBar";
 import RowKeys from "@/components/RowKeys";
+import ConfirmButton from "@/components/ConfirmButton";
+import { projectsWithContracts } from "@/lib/deletes";
+import { deleteProject } from "./actions";
 
 const PER_PAGE = 15;
 
@@ -144,6 +147,10 @@ export default async function ProjectsPage({
     hiddenColumns(user.id, "projects"),
     partnersByProject(),
   ]);
+
+  /* Which of the rows about to be drawn are held by a contract, so the delete
+     is left off those and the office is not offered a button that refuses. */
+  const locked = await projectsWithContracts(rows.map((r) => r.project.id));
 
   const total = counted?.total ?? 0;
   const { on, hidden: away } = shownColumns("projects", hidden);
@@ -439,7 +446,15 @@ export default async function ProjectsPage({
                             prefetch={false}
                           >
                             {t("common.edit")}
-                          </Link>
+                          </Link>{" "}
+                          {locked.has(r.project.id) ? null : (
+                            <ConfirmButton
+                              action={deleteProject.bind(null, r.project.id)}
+                              label={t("common.delete")}
+                              confirm={t("remove.sure")}
+                              title={t("remove.projectWhat")}
+                            />
+                          )}
                         </td>
                       ) : null}
                     </tr>
@@ -448,7 +463,9 @@ export default async function ProjectsPage({
               </table>
             </div>
 
-            <p className="mt-2 text-xs text-brand-graphite/55">{t("list.keyboardHint")}</p>
+            <p className="mt-2 text-xs text-brand-graphite/55">
+              {t("list.keyboardHint")} {t("remove.rowHint")}
+            </p>
           </>
         )}
 

@@ -25,6 +25,8 @@ import Pick from "@/components/Pick";
 import Pagination, { paginate } from "@/components/Pagination";
 import ViewsBar from "@/components/ViewsBar";
 import RowKeys from "@/components/RowKeys";
+import ConfirmButton from "@/components/ConfirmButton";
+import { deleteContract } from "./actions";
 
 const PER_PAGE = 15;
 const STATUSES = ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"] as const;
@@ -392,6 +394,12 @@ export default async function ContractsPage({
                             >
                               {t("contracts.copy")}
                             </Link>
+                            <ConfirmButton
+                              action={deleteContract.bind(null, r.contract.id)}
+                              label={t("common.delete")}
+                              confirm={t("remove.sure")}
+                              title={t("remove.contractWhat")}
+                            />
                           </div>
                         </td>
                       ) : null}
@@ -401,7 +409,9 @@ export default async function ContractsPage({
               </table>
             </div>
 
-            <p className="mt-2 text-xs text-brand-graphite/55">{t("list.keyboardHint")}</p>
+            <p className="mt-2 text-xs text-brand-graphite/55">
+              {t("list.keyboardHint")} {t("remove.rowHint")}
+            </p>
           </>
         )}
 

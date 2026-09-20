@@ -118,3 +118,28 @@ export async function whatGoesWithPartner(subownerId: string) {
 
   return { developments: held.length, directors: people.length, shareholders: owners.length };
 }
+
+/**
+ * Which of these developments have a contract somewhere in them.
+ *
+ * The list offers a delete in the row, and a button that can only fail is
+ * worse than no button, so the page asks this once for the page of rows it is
+ * about to draw and leaves the delete off the ones that are held.
+ */
+export async function projectsWithContracts(projectIds: string[]): Promise<Set<string>> {
+  if (projectIds.length === 0) return new Set();
+
+  const direct = await db
+    .select({ projectId: units.projectId })
+    .from(contracts)
+    .innerJoin(units, eq(units.id, contracts.unitId))
+    .where(inArray(units.projectId, projectIds));
+
+  const shared = await db
+    .select({ projectId: units.projectId })
+    .from(contractUnits)
+    .innerJoin(units, eq(units.id, contractUnits.unitId))
+    .where(inArray(units.projectId, projectIds));
+
+  return new Set([...direct, ...shared].map((row) => row.projectId));
+}

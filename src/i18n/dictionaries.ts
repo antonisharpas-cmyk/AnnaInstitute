@@ -412,11 +412,20 @@ export const dictionaries = {
     "remove.contractWhat":
       "The contract goes, with its payment schedule, its payments and its change requests. The apartment goes back on the market.",
     "remove.confirm": "Yes, delete it",
+    "remove.sure": "Sure?",
+    "remove.rowHint":
+      "Delete asks twice: the first press turns the button red, the second one does it.",
     "remove.blockedByContracts": "There are contracts in the way. Delete these first:",
     "remove.agentBlocked":
       "This agent has commission lines or payments on the record, so the record cannot be deleted. Make them inactive instead, which keeps the history and takes them out of the lists.",
     "said.saved": "Saved",
     "said.deleted": "Deleted",
+    "said.contractsInTheWay":
+      "There are contracts on the apartments, so nothing was deleted. Delete those contracts first.",
+    "said.contractOnApartment":
+      "There is a contract on that apartment, so it was not deleted. Delete the contract first.",
+    "said.agentHasCommissions":
+      "That agent has commission lines or payments on the record, so nothing was deleted. Make the agent inactive instead, which keeps the history.",
     "said.commissionCompleted": "Both papers are in, so the commission is completed.",
     "said.paymentRecorded": "Payment recorded",
     "said.leadCreated": "Enquiry added",
@@ -1493,11 +1502,20 @@ export const dictionaries = {
     "remove.contractWhat":
       "Φεύγει το συμβόλαιο, με το πρόγραμμα πληρωμών, τις πληρωμές και τα αιτήματα αλλαγών. Το διαμέρισμα επιστρέφει στη διάθεση.",
     "remove.confirm": "Ναι, διαγραφή",
+    "remove.sure": "Σίγουρα;",
+    "remove.rowHint":
+      "Η διαγραφή ρωτά δύο φορές: το πρώτο πάτημα κοκκινίζει το κουμπί, το δεύτερο τη κάνει.",
     "remove.blockedByContracts": "Υπάρχουν συμβόλαια που το εμποδίζουν. Διαγράψτε πρώτα:",
     "remove.agentBlocked":
       "Ο συνεργάτης έχει γραμμές προμήθειας ή πληρωμές, οπότε η καρτέλα δεν διαγράφεται. Κάντε τον ανενεργό, ώστε να μείνει το ιστορικό και να φύγει από τις λίστες.",
     "said.saved": "Αποθηκεύτηκε",
     "said.deleted": "Διαγράφηκε",
+    "said.contractsInTheWay":
+      "Υπάρχουν συμβόλαια στα διαμερίσματα, οπότε δεν διαγράφηκε τίποτα. Διαγράψτε πρώτα τα συμβόλαια.",
+    "said.contractOnApartment":
+      "Υπάρχει συμβόλαιο σε αυτό το διαμέρισμα, οπότε δεν διαγράφηκε. Διαγράψτε πρώτα το συμβόλαιο.",
+    "said.agentHasCommissions":
+      "Ο συνεργάτης έχει γραμμές προμήθειας ή πληρωμές, οπότε δεν διαγράφηκε τίποτα. Κάντε τον ανενεργό, ώστε να μείνει το ιστορικό.",
     "said.commissionCompleted": "Μπήκαν και τα δύο έγγραφα, οπότε η προμήθεια ολοκληρώθηκε.",
     "said.paymentRecorded": "Η πληρωμή καταγράφηκε",
     "said.leadCreated": "Το αίτημα προστέθηκε",

@@ -603,6 +603,7 @@ export async function deleteContract(contractId: string) {
     userEmail: user.email,
   });
 
+  await flash("said.deleted");
   revalidatePath("/contracts");
   redirect("/contracts");
 }

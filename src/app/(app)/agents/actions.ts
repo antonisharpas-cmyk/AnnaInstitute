@@ -554,11 +554,9 @@ export async function deleteAgent(agentId: string) {
 
   const attached = await whatGoesWithAgent(agentId);
   if (attached.commissions > 0 || attached.payments > 0) {
-    throw new Error(
-      `${agent.name} has ${attached.commissions} commission line${
-        attached.commissions === 1 ? "" : "s"
-      } and ${attached.payments} payment${attached.payments === 1 ? "" : "s"} on the record, so the record cannot be deleted. Make the agent inactive instead, which keeps the history and takes them out of the lists.`,
-    );
+    await flash("said.agentHasCommissions", "bad");
+    revalidatePath("/agents");
+    return;
   }
 
   /* The sales they were named on keep their own contracts and simply stop
