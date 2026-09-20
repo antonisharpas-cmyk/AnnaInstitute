@@ -218,7 +218,9 @@ export const CLIENT_ORDER: Record<string, SQL> = {
   email: sql`coalesce(${clients.email}, '')`,
   phone: sql`coalesce(${clients.phone}, '')`,
   country: sql`coalesce(${clients.country}, '')`,
-  apartments: sql`(select min(concat(p.name, ' ', u.code)) from units u join projects p on p.id = u.project_id where u.client_id = ${clients.id})`,
+  /* Ordered by the apartment alone, the way the column prints it now: sorting
+     by the building under a heading that says apartment looks unsorted. */
+  apartments: sql`(select min(u.code) from units u where u.client_id = ${clients.id})`,
   building: sql`(select min(p.name) from units u join projects p on p.id = u.project_id where u.client_id = ${clients.id})`,
   partner: sql`(select min(s.name) from units u join project_partners pp on pp.project_id = u.project_id join subowners s on s.id = pp.subowner_id where u.client_id = ${clients.id})`,
   source: sql`coalesce((select l.source_kind::text from leads l where l.client_id = ${clients.id} order by l.created_at desc limit 1), ${clients.source}::text)`,

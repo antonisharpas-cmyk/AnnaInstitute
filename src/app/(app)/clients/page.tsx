@@ -427,11 +427,16 @@ export default async function ClientsPage({
                                 {mine.map((a) => (
                                   <li key={a.unitId}>
                                     <Link
+                                      /* Just the apartment. The building it is
+                                         in has a column of its own beside this
+                                         one, and saying it twice on every row
+                                         is what made this column wide. */
                                       href={`/projects/${a.projectId}/units/${a.unitId}`}
+                                      title={`${a.projectName} ${a.code}`}
                                       className="text-brand-teal-dark hover:underline"
                                       prefetch={false}
                                     >
-                                      {a.projectName} {a.code}
+                                      {a.code}
                                     </Link>
                                   </li>
                                 ))}
