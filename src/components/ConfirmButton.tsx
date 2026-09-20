@@ -22,6 +22,7 @@ export default function ConfirmButton({
   label,
   confirm,
   title,
+  blocked,
 }: {
   action: () => void | Promise<void>;
   /** The quiet word, before it is armed. */
@@ -30,6 +31,8 @@ export default function ConfirmButton({
   confirm: string;
   /** What is about to go, for the tooltip. */
   title?: string;
+  /** Why this one cannot go yet, if it cannot. */
+  blocked?: string | null;
 }) {
   const [armed, setArmed] = useState(false);
 
@@ -39,6 +42,24 @@ export default function ConfirmButton({
     const timer = setTimeout(() => setArmed(false), 5000);
     return () => clearTimeout(timer);
   }, [armed]);
+
+  /*
+    Held by something else. The button still stands in the row, because a
+    column that shows a delete on some rows and nothing on others reads as a
+    delete that has gone missing. It is greyed out and carries the reason.
+  */
+  if (blocked) {
+    return (
+      <button
+        type="button"
+        disabled
+        title={blocked}
+        className="btn btn-secondary !px-3 !py-1 !text-xs cursor-not-allowed opacity-45"
+      >
+        {label}
+      </button>
+    );
+  }
 
   return (
     <form

@@ -42,6 +42,8 @@ const detailsSchema = z.object({
   kind: z.enum(["SALE", "LAND_EXCHANGE"]).default("SALE"),
   /** Money alongside the apartments, in either direction. */
   cashAmount: z.string().optional(),
+  /** The figure the deed states, when it is not the value of the agreement. */
+  contractValue: z.string().optional(),
   /* What a land exchange is made of, and nothing a sale ever carries. */
   plotDescription: z.string().optional(),
   plotReference: z.string().optional(),
@@ -227,6 +229,7 @@ function readDetails(formData: FormData) {
     reference: formData.get("reference"),
     kind: formData.get("kind") || "SALE",
     cashAmount: formData.get("cashAmount") || undefined,
+    contractValue: formData.get("contractValue") || undefined,
     plotDescription: formData.get("plotDescription") || undefined,
     plotReference: formData.get("plotReference") || undefined,
     plotArea: formData.get("plotArea") || undefined,
@@ -402,6 +405,8 @@ export async function createContract(
        * apartments. Either way an empty field means none.
        */
       cashAmount: parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
+      /* What the deed says, when that is its own number. */
+      contractValue: parsed.contractValue ? fromCents(toCents(parsed.contractValue)) : null,
       /* Only a land exchange carries a plot and a share, and choosing a sale
          afterwards clears them rather than leaving them to be found later. */
       plotDescription:
@@ -505,6 +510,8 @@ export async function updateContract(
        * apartments. Either way an empty field means none.
        */
       cashAmount: parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
+      /* What the deed says, when that is its own number. */
+      contractValue: parsed.contractValue ? fromCents(toCents(parsed.contractValue)) : null,
       /* Only a land exchange carries a plot and a share, and choosing a sale
          afterwards clears them rather than leaving them to be found later. */
       plotDescription:

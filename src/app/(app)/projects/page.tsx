@@ -432,29 +432,32 @@ export default async function ProjectsPage({
                       ) : null}
 
                       {on("actions") ? (
-                        <td className="whitespace-nowrap">
-                          <Link
-                            href={`/projects/${r.project.id}`}
-                            prefetch={false}
-                            className="btn btn-secondary !px-3 !py-1 !text-xs"
-                          >
-                            {t("common.open")}
-                          </Link>{" "}
-                          <Link
-                            href={`/projects/${r.project.id}/edit`}
-                            className="btn btn-secondary !px-3 !py-1 !text-xs"
-                            prefetch={false}
-                          >
-                            {t("common.edit")}
-                          </Link>{" "}
-                          {locked.has(r.project.id) ? null : (
+                        <td>
+                          <div className="flex flex-wrap gap-1">
+                            <Link
+                              href={`/projects/${r.project.id}`}
+                              prefetch={false}
+                              className="btn btn-secondary !px-3 !py-1 !text-xs"
+                            >
+                              {t("common.open")}
+                            </Link>
+                            <Link
+                              href={`/projects/${r.project.id}/edit`}
+                              className="btn btn-secondary !px-3 !py-1 !text-xs"
+                              prefetch={false}
+                            >
+                              {t("common.edit")}
+                            </Link>
                             <ConfirmButton
                               action={deleteProject.bind(null, r.project.id)}
                               label={t("common.delete")}
                               confirm={t("remove.sure")}
                               title={t("remove.projectWhat")}
+                              blocked={
+                                locked.has(r.project.id) ? t("remove.heldByContracts") : null
+                              }
                             />
-                          )}
+                          </div>
                         </td>
                       ) : null}
                     </tr>

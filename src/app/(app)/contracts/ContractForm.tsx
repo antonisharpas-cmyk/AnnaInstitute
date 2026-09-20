@@ -19,6 +19,7 @@ type ContractRecord = {
   netPrice: string;
   vatRate: string;
   cashAmount: string | null;
+  contractValue: string | null;
   plotDescription: string | null;
   plotReference: string | null;
   plotArea: string | null;
@@ -238,6 +239,28 @@ export default function ContractForm({
             className="input"
           />
         </div>
+
+        {kind === "LAND_EXCHANGE" ? (
+          /*
+            The value of the agreement and the value on the deed are two
+            numbers on antiparochi, and the office has to be able to record
+            both. On a sale they are the same thing, so the field is not there.
+          */
+          <div>
+            <label className="label" htmlFor="contractValue">
+              {labels.contractValue}
+            </label>
+            <input
+              id="contractValue"
+              name="contractValue"
+              inputMode="decimal"
+              defaultValue={whole(contract?.contractValue ?? undefined)}
+              placeholder="200000"
+              className="input"
+            />
+            <p className="mt-1 text-xs text-brand-graphite/60">{labels.contractValueHint}</p>
+          </div>
+        ) : null}
 
         {kind === "SALE" ? (
           /* No agent on a land exchange: there is no sale price for a

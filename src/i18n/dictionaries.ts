@@ -413,6 +413,8 @@ export const dictionaries = {
       "The contract goes, with its payment schedule, its payments and its change requests. The apartment goes back on the market.",
     "remove.confirm": "Yes, delete it",
     "remove.sure": "Sure?",
+    "remove.heldByContracts":
+      "There are contracts on the apartments of this development, so it cannot be deleted. Delete those contracts first.",
     "remove.rowHint":
       "Delete asks twice: the first press turns the button red, the second one does it.",
     "remove.blockedByContracts": "There are contracts in the way. Delete these first:",
@@ -948,6 +950,15 @@ export const dictionaries = {
     "contracts.landowner": "The landowner",
     "contracts.contractNumber": "Contract number",
     "contracts.agreementValue": "Value of the agreement",
+    "contracts.contractValue": "Value written on the contract",
+    "contracts.contractValueHint":
+      "The figure the contract itself states, when that is not the value of the agreement above. Left empty, the value of the agreement is what stands.",
+    "contracts.theExchange": "The land exchange",
+    "contracts.theExchangeOnClient":
+      "What was agreed with this owner, and where it stands. It is one record until the whole thing is finished.",
+    "contracts.exchangeApartments": "Apartments the owner receives",
+    "contracts.noExchangeApartments": "No apartments named yet",
+    "contracts.openTheContract": "Open the contract",
     "contracts.togetherWithCash": "The agreement and the cash together",
     "contracts.sharePercent": "Share of the finished units",
     "contracts.sharePercentHint":
@@ -1503,6 +1514,8 @@ export const dictionaries = {
       "Φεύγει το συμβόλαιο, με το πρόγραμμα πληρωμών, τις πληρωμές και τα αιτήματα αλλαγών. Το διαμέρισμα επιστρέφει στη διάθεση.",
     "remove.confirm": "Ναι, διαγραφή",
     "remove.sure": "Σίγουρα;",
+    "remove.heldByContracts":
+      "Υπάρχουν συμβόλαια στα διαμερίσματα αυτού του έργου, οπότε δεν διαγράφεται. Διαγράψτε πρώτα τα συμβόλαια.",
     "remove.rowHint":
       "Η διαγραφή ρωτά δύο φορές: το πρώτο πάτημα κοκκινίζει το κουμπί, το δεύτερο τη κάνει.",
     "remove.blockedByContracts": "Υπάρχουν συμβόλαια που το εμποδίζουν. Διαγράψτε πρώτα:",
@@ -2032,7 +2045,16 @@ export const dictionaries = {
     "contracts.vatRate": "Συντελεστής ΦΠΑ",
     "contracts.landowner": "Ο ιδιοκτήτης του χωραφιού",
     "contracts.contractNumber": "Αριθμός συμβολαίου",
-    "contracts.agreementValue": "Αξία συμβολαίου",
+    "contracts.agreementValue": "Αξία συμφωνίας",
+    "contracts.contractValue": "Αξία που αναγράφεται στο συμβόλαιο",
+    "contracts.contractValueHint":
+      "Το ποσό που γράφει το ίδιο το συμβόλαιο, όταν δεν είναι η αξία της συμφωνίας πιο πάνω. Αν μείνει κενό, ισχύει η αξία της συμφωνίας.",
+    "contracts.theExchange": "Η αντιπαροχή",
+    "contracts.theExchangeOnClient":
+      "Τι συμφωνήθηκε με αυτό τον ιδιοκτήτη και πού βρίσκεται. Μένει μία καταχώρηση μέχρι να ολοκληρωθεί η διαδικασία.",
+    "contracts.exchangeApartments": "Διαμερίσματα που παίρνει ο ιδιοκτήτης",
+    "contracts.noExchangeApartments": "Δεν έχουν οριστεί ακόμη διαμερίσματα",
+    "contracts.openTheContract": "Άνοιγμα συμβολαίου",
     "contracts.togetherWithCash": "Το συμβόλαιο και τα μετρητά μαζί",
     "contracts.sharePercent": "Ποσοστό επί των τελικών μονάδων",
     "contracts.sharePercentHint":

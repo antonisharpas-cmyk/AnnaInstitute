@@ -16,6 +16,7 @@ import {
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { apartmentsByClient, assignableUnits } from "@/lib/clients";
+import { landExchangesForClient } from "@/lib/contracts";
 import { documentsForClientWithUnits } from "@/lib/documents";
 import { notesForLead } from "@/lib/leads";
 import { titleWithExtension } from "@/lib/fileLabels";
@@ -89,6 +90,14 @@ export default async function ClientPage({
     .leftJoin(agents, eq(agents.id, contracts.agentId))
     .where(eq(contracts.clientId, id))
     .orderBy(desc(contracts.createdAt));
+
+  /*
+    The land exchanges this owner signed. They name no single apartment, so the
+    query above, which reads a contract through the apartment on it, cannot see
+    them. They get their own card, because the office needs the whole agreement
+    on the owner's page and not only on the contract's.
+  */
+  const exchanges = await landExchangesForClient(id);
 
   const contractIds = contractRows.map((r) => r.contract.id);
 
@@ -244,7 +253,7 @@ export default async function ClientPage({
             than kept as a second flag on the client, so it can never disagree
             with them.
           */
-          contractRows.some((row) => row.contract.kind === "LAND_EXCHANGE")
+          exchanges.length > 0 || contractRows.some((row) => row.contract.kind === "LAND_EXCHANGE")
             ? t("contracts.kind.LAND_EXCHANGE")
             : null,
         ]
@@ -434,6 +443,144 @@ export default async function ClientPage({
             </div>
           )}
         </Card>
+
+        {/*
+          The land exchange, whole, on the owner's own page.
+
+          Everything the office asked to be able to read without opening the
+          contract: what kind of transaction it is, the value of the agreement
+          and the value the deed states, the VAT, the cash, the plot that came
+          in, the share promised, the apartments it has turned into so far, the
+          number and date of the contract, and whatever else was agreed. One
+          card per agreement, and it stays until the whole thing is finished.
+        */}
+        {exchanges.map(({ contract, apartments }) => (
+          <Card key={contract.id} title={t("contracts.theExchange")}>
+            <p className="mb-3 max-w-prose text-xs text-brand-graphite/60">
+              {t("contracts.theExchangeOnClient")}
+            </p>
+
+            <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-3">
+              <div>
+                <dt className="label">{t("contracts.kind")}</dt>
+                <dd className="text-sm font-semibold">{t("contracts.kind.LAND_EXCHANGE")}</dd>
+              </div>
+              <div>
+                <dt className="label">{t("contracts.agreementValue")}</dt>
+                <dd className="text-sm font-semibold">
+                  {formatAmount(toCents(contract.netPrice), locale)}
+                </dd>
+              </div>
+              <div>
+                <dt className="label">{t("contracts.contractValue")}</dt>
+                <dd className="text-sm font-semibold">
+                  {contract.contractValue
+                    ? formatAmount(toCents(contract.contractValue), locale)
+                    : formatAmount(toCents(contract.netPrice), locale)}
+                </dd>
+              </div>
+              <div>
+                <dt className="label">{t("contracts.vat")}</dt>
+                <dd className="text-sm font-semibold">
+                  {formatPercent(Number(contract.vatRate), locale)}
+                </dd>
+              </div>
+              <div>
+                <dt className="label">{t("contracts.cash")}</dt>
+                <dd className="text-sm font-semibold">
+                  {contract.cashAmount
+                    ? formatAmount(toCents(contract.cashAmount), locale)
+                    : t("common.none")}
+                </dd>
+              </div>
+              <div>
+                <dt className="label">{t("contracts.sharePercent")}</dt>
+                <dd className="text-sm font-semibold">
+                  {contract.sharePercent
+                    ? formatPercent(Number(contract.sharePercent), locale)
+                    : t("common.none")}
+                </dd>
+              </div>
+              <div>
+                <dt className="label">{t("contracts.contractNumber")}</dt>
+                <dd className="text-sm font-semibold">{contract.reference}</dd>
+              </div>
+              <div>
+                <dt className="label">{t("contracts.contractDate")}</dt>
+                <dd className="text-sm font-semibold">
+                  {contract.contractDate
+                    ? new Date(contract.contractDate).toLocaleDateString(locale)
+                    : t("common.none")}
+                </dd>
+              </div>
+              <div>
+                <dt className="label">{t("common.status")}</dt>
+                <dd className="text-sm">
+                  <Pill tone={contract.status === "COMPLETED" ? "good" : "warn"}>
+                    {t(`contracts.status.${contract.status}` as MessageKey)}
+                  </Pill>
+                </dd>
+              </div>
+              <div className="sm:col-span-3">
+                <dt className="label">{t("contracts.thePlot")}</dt>
+                <dd className="text-sm">
+                  <span className="font-semibold">
+                    {contract.plotDescription ?? t("common.none")}
+                  </span>
+                  <div className="text-xs text-brand-graphite/60">
+                    {[
+                      contract.plotReference,
+                      contract.plotArea ? `${Number(contract.plotArea)} m2` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" . ")}
+                  </div>
+                </dd>
+              </div>
+              {contract.notes ? (
+                <div className="sm:col-span-3">
+                  <dt className="label">{t("contracts.extraAgreement")}</dt>
+                  <dd className="text-sm whitespace-pre-line">{contract.notes}</dd>
+                </div>
+              ) : null}
+              <div className="sm:col-span-3">
+                <dt className="label">{t("contracts.exchangeApartments")}</dt>
+                <dd className="text-sm">
+                  {apartments.length === 0 ? (
+                    <span className="text-brand-graphite/50">
+                      {t("contracts.noExchangeApartments")}
+                    </span>
+                  ) : (
+                    <ul className="mt-1 grid gap-1 sm:grid-cols-2">
+                      {apartments.map(({ unit, project }) => (
+                        <li key={unit.id}>
+                          <Link
+                            href={`/projects/${project.id}/units/${unit.id}`}
+                            className="font-semibold text-brand-teal-dark hover:underline"
+                            prefetch={false}
+                          >
+                            {unit.code}
+                          </Link>{" "}
+                          <span className="text-xs text-brand-graphite/60">{project.name}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-3">
+              <Link
+                href={`/contracts/${contract.id}`}
+                className="btn btn-secondary !px-3 !py-1 !text-xs"
+                prefetch={false}
+              >
+                {t("contracts.openTheContract")}
+              </Link>
+            </div>
+          </Card>
+        ))}
 
         {/* 3. The contract on each apartment, with its schedule and what this
                apartment has paid against it. */}

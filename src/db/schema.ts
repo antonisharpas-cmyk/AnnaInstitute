@@ -406,6 +406,15 @@ export const contracts = pgTable("contracts", {
    * the price so the contract can say plainly what was agreed.
    */
   cashAmount: money("cash_amount"),
+  /**
+   * The figure written on the contract itself.
+   *
+   * Usually the same as the price above, and then this is left empty. It exists
+   * for antiparochi, where the value of the agreement and the value the deed
+   * states are two different numbers and the office needs to be able to record
+   * both without one quietly overwriting the other.
+   */
+  contractValue: money("contract_value"),
   /*
    * What a land exchange is actually made of.
    *

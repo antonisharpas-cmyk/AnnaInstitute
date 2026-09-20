@@ -366,3 +366,27 @@ export async function landExchangeUnits(contractId: string) {
     .where(eq(contractUnits.contractId, contractId))
     .orderBy(asc(projects.name), asc(units.code));
 }
+
+/**
+ * Every land exchange this client is the landowner of, with its apartments.
+ *
+ * The client page reads a buyer's contracts through the apartment on them, so
+ * an antiparochi, which names no single apartment, never appeared there at all.
+ * The office asked for the opposite: the agreement has to be visible on the
+ * owner's own card, as one record, from the day it is signed until the whole
+ * thing is finished. So it is fetched on its own terms here.
+ */
+export async function landExchangesForClient(clientId: string) {
+  const rows = await db
+    .select()
+    .from(contracts)
+    .where(and(eq(contracts.clientId, clientId), eq(contracts.kind, "LAND_EXCHANGE")))
+    .orderBy(desc(contracts.createdAt));
+
+  return Promise.all(
+    rows.map(async (contract) => ({
+      contract,
+      apartments: await landExchangeUnits(contract.id),
+    })),
+  );
+}

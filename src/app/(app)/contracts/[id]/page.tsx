@@ -238,6 +238,16 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               </dd>
             </div>
 
+            {contract.kind === "LAND_EXCHANGE" && contract.contractValue ? (
+              <div>
+                {/* What the deed states, when that is its own figure. */}
+                <dt className="label">{t("contracts.contractValue")}</dt>
+                <dd className="text-sm font-semibold">
+                  {formatAmount(toCents(contract.contractValue), locale)}
+                </dd>
+              </div>
+            ) : null}
+
             {contract.cashAmount ? (
               <div>
                 <dt className="label">{t("contracts.cash")}</dt>
