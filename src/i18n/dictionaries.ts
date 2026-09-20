@@ -396,7 +396,27 @@ export const dictionaries = {
     "shell.newCampaign": "Campaign",
     "shell.newAgent": "Agent",
     "shell.newPartner": "Partner",
+    "remove.project": "Delete this development",
+    "remove.projectWhat":
+      "The development goes, with its apartments, its files and its partner lines. Its contracts do not: a development whose apartments carry contracts refuses, and says which.",
+    "remove.unit": "Delete this apartment",
+    "remove.unitWhat":
+      "The apartment goes, with its floor plans and its files. An apartment with a contract on it refuses, and says which.",
+    "remove.agent": "Delete this agent",
+    "remove.agentWhat":
+      "The agent goes and their sales stop naming anybody. An agent with commission lines or payments refuses: make them inactive instead, which keeps the history.",
+    "remove.partner": "Delete this partner",
+    "remove.partnerWhat":
+      "The partner goes, with their directors, their shareholders and whatever they hold of every development. Those developments then read as ours outright.",
+    "remove.contract": "Delete this contract",
+    "remove.contractWhat":
+      "The contract goes, with its payment schedule, its payments and its change requests. The apartment goes back on the market.",
+    "remove.confirm": "Yes, delete it",
+    "remove.blockedByContracts": "There are contracts in the way. Delete these first:",
+    "remove.agentBlocked":
+      "This agent has commission lines or payments on the record, so the record cannot be deleted. Make them inactive instead, which keeps the history and takes them out of the lists.",
     "said.saved": "Saved",
+    "said.deleted": "Deleted",
     "said.commissionCompleted": "Both papers are in, so the commission is completed.",
     "said.paymentRecorded": "Payment recorded",
     "said.leadCreated": "Enquiry added",
@@ -719,6 +739,7 @@ export const dictionaries = {
     "units.roofGarden": "Roof garden",
     "units.parking": "Parking",
     "units.netPrice": "Price before VAT",
+    "units.price": "Price",
     "units.vat": "VAT",
     "units.byHandShort": "set by hand",
     "units.vatRate": "VAT rate",
@@ -812,6 +833,7 @@ export const dictionaries = {
     "clients.fromEnquiry": "From an enquiry",
     "clients.enteredHere": "Entered by the office",
     "clients.source.BUYER": "Buyer",
+    "clients.source.LAND_OWNER": "Land Owner",
     "clients.source.ENQUIRY": "Enquiry",
     "clients.source.AGENT_REFERRAL": "Agent referral",
     "clients.source.OTHER": "Other",
@@ -946,7 +968,7 @@ export const dictionaries = {
     "contracts.cashAmountHint":
       "Money changing hands alongside the apartments, in either direction.",
     "contracts.cashOnSaleHint":
-      "The part of the agreed price paid in cash rather than written on the contract. The agent\u2019s commission is worked out on the two together.",
+      "The part of the agreed price paid in cash rather than written on the contract. The two together are the apartment\u2019s price, and the agent\u2019s commission is worked out on them.",
     "contracts.extraAgreement": "Extra agreement and remarks",
     "contracts.landExchangeSchedule":
       "A land exchange usually collects nothing by installments, so the schedule below can be left empty. Fill it in only where cash is being paid in stages.",
@@ -1455,7 +1477,27 @@ export const dictionaries = {
     "shell.newCampaign": "Ενημέρωση",
     "shell.newAgent": "Συνεργάτης",
     "shell.newPartner": "Συνιδιοκτήτης",
+    "remove.project": "Διαγραφή αυτού του έργου",
+    "remove.projectWhat":
+      "Φεύγει το έργο, με τα διαμερίσματα, τα αρχεία και τις γραμμές συνεργατών του. Τα συμβόλαια όχι: έργο με συμβόλαια στα διαμερίσματά του δεν διαγράφεται και σας λέει ποια.",
+    "remove.unit": "Διαγραφή αυτού του διαμερίσματος",
+    "remove.unitWhat":
+      "Φεύγει το διαμέρισμα, με τις κατόψεις και τα αρχεία του. Διαμέρισμα με συμβόλαιο δεν διαγράφεται και σας λέει ποιο.",
+    "remove.agent": "Διαγραφή αυτού του συνεργάτη",
+    "remove.agentWhat":
+      "Φεύγει ο συνεργάτης και οι πωλήσεις του παύουν να αναφέρουν κάποιον. Συνεργάτης με γραμμές προμήθειας ή πληρωμές δεν διαγράφεται: κάντε τον ανενεργό, ώστε να μείνει το ιστορικό.",
+    "remove.partner": "Διαγραφή αυτού του συνεργάτη",
+    "remove.partnerWhat":
+      "Φεύγει η εταιρεία, με τους διευθυντές, τους μετόχους και ό,τι κρατά σε κάθε έργο. Τα έργα αυτά μετά είναι εξ ολοκλήρου δικά μας.",
+    "remove.contract": "Διαγραφή αυτού του συμβολαίου",
+    "remove.contractWhat":
+      "Φεύγει το συμβόλαιο, με το πρόγραμμα πληρωμών, τις πληρωμές και τα αιτήματα αλλαγών. Το διαμέρισμα επιστρέφει στη διάθεση.",
+    "remove.confirm": "Ναι, διαγραφή",
+    "remove.blockedByContracts": "Υπάρχουν συμβόλαια που το εμποδίζουν. Διαγράψτε πρώτα:",
+    "remove.agentBlocked":
+      "Ο συνεργάτης έχει γραμμές προμήθειας ή πληρωμές, οπότε η καρτέλα δεν διαγράφεται. Κάντε τον ανενεργό, ώστε να μείνει το ιστορικό και να φύγει από τις λίστες.",
     "said.saved": "Αποθηκεύτηκε",
+    "said.deleted": "Διαγράφηκε",
     "said.commissionCompleted": "Μπήκαν και τα δύο έγγραφα, οπότε η προμήθεια ολοκληρώθηκε.",
     "said.paymentRecorded": "Η πληρωμή καταγράφηκε",
     "said.leadCreated": "Το αίτημα προστέθηκε",
@@ -1774,6 +1816,7 @@ export const dictionaries = {
     "units.roofGarden": "Κηπάριο οροφής",
     "units.parking": "Στάθμευση",
     "units.netPrice": "Τιμή προ ΦΠΑ",
+    "units.price": "Τιμή",
     "units.vat": "ΦΠΑ",
     "units.byHandShort": "ορίστηκε χειροκίνητα",
     "units.vatRate": "Συντελεστής ΦΠΑ",
@@ -1867,6 +1910,7 @@ export const dictionaries = {
     "clients.fromEnquiry": "Από αίτημα",
     "clients.enteredHere": "Καταχωρήθηκε από το γραφείο",
     "clients.source.BUYER": "Αγοραστής",
+    "clients.source.LAND_OWNER": "Ιδιοκτήτης γης",
     "clients.source.ENQUIRY": "Αίτημα",
     "clients.source.AGENT_REFERRAL": "Σύσταση συνεργάτη",
     "clients.source.OTHER": "Άλλο",
@@ -2000,7 +2044,7 @@ export const dictionaries = {
     "contracts.cashAmountHint":
       "Χρήματα που κινούνται μαζί με τα διαμερίσματα, προς οποιαδήποτε κατεύθυνση.",
     "contracts.cashOnSaleHint":
-      "Το μέρος της συμφωνημένης τιμής που πληρώνεται μετρητά και δεν γράφεται στο συμβόλαιο. Η προμήθεια του συνεργάτη υπολογίζεται στο σύνολο των δύο.",
+      "Το μέρος της συμφωνημένης τιμής που πληρώνεται μετρητά και δεν γράφεται στο συμβόλαιο. Τα δύο μαζί είναι η τιμή του διαμερίσματος, και σε αυτά υπολογίζεται η προμήθεια του συνεργάτη.",
     "contracts.extraAgreement": "Επιπλέον συμφωνία και παρατηρήσεις",
     "contracts.landExchangeSchedule":
       "Στην αντιπαροχή συνήθως δεν εισπράττονται δόσεις, οπότε το πρόγραμμα πιο κάτω μπορεί να μείνει κενό. Συμπληρώστε το μόνο όταν τα μετρητά καταβάλλονται σε στάδια.",

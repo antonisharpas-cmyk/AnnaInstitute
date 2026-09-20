@@ -287,6 +287,30 @@ async function takeUnit(unitId: string | undefined, clientId: string) {
     .where(eq(units.id, unitId));
 }
 
+/**
+ * The apartment's price is whatever its contract says it went for.
+ *
+ * Before a contract exists the price is the office's asking price, typed on the
+ * apartment. Once there is one, the contract is the agreement and the apartment
+ * follows it: the price before VAT and the cash beside it added together, which
+ * is the figure a buyer would call the price. Two places holding two different
+ * answers to the same question is how a price list and a contract end up
+ * disagreeing in front of a buyer.
+ */
+async function priceTheUnit(
+  unitId: string | undefined,
+  netPrice: string,
+  cashAmount: string | null,
+) {
+  if (!unitId) return;
+  const together = toCents(netPrice) + toCents(cashAmount ?? "0");
+
+  await db
+    .update(units)
+    .set({ netPrice: fromCents(together), updatedAt: new Date() })
+    .where(eq(units.id, unitId));
+}
+
 /** An apartment with no contract on it is available again, or still reserved. */
 async function releaseUnit(unitId: string | undefined) {
   if (!unitId) return;
@@ -401,6 +425,11 @@ export async function createContract(
   const contractId = inserted[0].id;
   await writeSchedule(contractId, netCents, rate, checked);
   await takeUnit(parsed.unitId, parsed.clientId);
+  await priceTheUnit(
+    parsed.unitId,
+    fromCents(netCents),
+    parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
+  );
   if (parsed.kind === "LAND_EXCHANGE") {
     await setLandExchangeUnits(contractId, parsed.clientId, formData.getAll("unitIds").map(String));
   }
@@ -501,6 +530,11 @@ export async function updateContract(
     await releaseUnit(before.contract.unitId);
   }
   await takeUnit(parsed.unitId, parsed.clientId);
+  await priceTheUnit(
+    parsed.unitId,
+    fromCents(netCents),
+    parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
+  );
   await setLandExchangeUnits(
     contractId,
     parsed.clientId,

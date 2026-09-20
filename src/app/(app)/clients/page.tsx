@@ -41,7 +41,6 @@ export default async function ClientsPage({
 }: {
   searchParams: Promise<{
     q?: string;
-    held?: string;
     project?: string;
     partner?: string;
     source?: string;
@@ -64,7 +63,6 @@ export default async function ClientsPage({
   }
 
   const query = (params.q ?? "").trim();
-  const held = params.held ?? "";
   const project = params.project ?? "";
   const partner = params.partner ?? "";
   const source = params.source ?? "";
@@ -75,7 +73,7 @@ export default async function ClientsPage({
   });
   const order = sort.dir === "asc" ? asc(CLIENT_ORDER[sort.key]) : desc(CLIENT_ORDER[sort.key]);
   const filters = filterQuery(params as Record<string, string | undefined>);
-  const where = clientFilters({ query, held, project, partner, source });
+  const where = clientFilters({ query, project, partner, source });
 
   const [[counted], rows, views, hidden, buildings, partnerList] = await Promise.all([
     db
@@ -180,17 +178,6 @@ export default async function ClientsPage({
           resetLabel={t("list.resetAll")}
         >
           <Pick
-            name="held"
-            label={t("clients.apartmentsPlural")}
-            chosen={many(held)}
-            anything={t("common.all")}
-            choices={[
-              { value: "yes", label: t("clients.withApartment") },
-              { value: "no", label: t("clients.withoutApartment") },
-            ]}
-          />
-
-          <Pick
             name="project"
             label={t("clients.building")}
             chosen={many(project)}
@@ -214,16 +201,19 @@ export default async function ClientsPage({
             label={t("clients.source")}
             chosen={many(source)}
             anything={t("common.all")}
-            choices={[
-              ...(["WEBSITE", "ENQUIRY", "AGENT", "WHATSAPP", "OTHER"] as const).map((one) => ({
-                value: `lead:${one}`,
-                label: `${t(`leads.source.${one}` as MessageKey)} (${t("clients.fromEnquiry")})`,
-              })),
-              ...(["BUYER", "ENQUIRY", "AGENT_REFERRAL", "OTHER"] as const).map((one) => ({
+            /*
+              One list, not two. The enquiry sources were offered a second time
+              with "from an enquiry" after each of them, which read as ten
+              choices where there are five, and the two sets overlapped. The
+              client's own source is the one the office sets and the one the
+              column shows, so that is the one to filter by.
+            */
+            choices={(["BUYER", "ENQUIRY", "AGENT_REFERRAL", "LAND_OWNER", "OTHER"] as const).map(
+              (one) => ({
                 value: `own:${one}`,
                 label: t(`clients.source.${one}` as MessageKey),
-              })),
-            ]}
+              }),
+            )}
           />
         </SearchBox>
 
@@ -259,7 +249,6 @@ export default async function ClientsPage({
         ) : (
           <form action={bulkClientMarketing}>
             <input type="hidden" name="q" value={query} />
-            <input type="hidden" name="held" value={held} />
             <input type="hidden" name="project" value={project} />
             <input type="hidden" name="partner" value={partner} />
             <input type="hidden" name="source" value={source} />

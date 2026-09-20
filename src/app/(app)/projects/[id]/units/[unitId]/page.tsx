@@ -10,8 +10,11 @@ import { categoryLabel, isImage, titleWithExtension } from "@/lib/fileLabels";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import { LightboxGrid } from "@/components/Lightbox";
 import UploadForm from "@/components/UploadForm";
+import DeleteRecord from "@/components/DeleteRecord";
 import UnitForm from "../../../UnitForm";
+import { whatGoesWithUnit } from "@/lib/deletes";
 import {
+  deleteUnit,
   deleteUnitDocument,
   letTheMoneyDecide,
   updateUnit,
@@ -38,6 +41,8 @@ export default async function EditUnitPage({
 
   const row = found[0];
   if (!row) notFound();
+
+  const goes = await whatGoesWithUnit(unitId);
 
   const [sold, files] = await Promise.all([
     db.select({ contract: contracts }).from(contracts).where(eq(contracts.unitId, unitId)),
@@ -177,6 +182,18 @@ export default async function EditUnitPage({
               />
             </div>
           </Card>
+
+          <DeleteRecord
+            action={deleteUnit.bind(null, unitId, id)}
+            label={t("remove.unit")}
+            what={t("remove.unitWhat")}
+            blocked={
+              goes.contracts.length > 0
+                ? `${t("remove.blockedByContracts")} ${goes.contracts.join(", ")}`
+                : null
+            }
+            confirm={t("remove.confirm")}
+          />
         </div>
       </div>
     </>

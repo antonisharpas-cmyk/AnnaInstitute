@@ -103,6 +103,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the contract_units table",
     migration: "0020",
   },
+  {
+    probe: "select 'LAND_OWNER'::contact_source",
+    what: "the land owner client source",
+    migration: "0021",
+  },
 ];
 
 let answer: Missing[] | null = null;

@@ -26,7 +26,25 @@ type LeadSource = (typeof SOURCES)[number];
  * the phone or forwarded by an agent sits in the same list and follows the same
  * road to becoming a client.
  */
-export async function createLead(formData: FormData) {
+/**
+ * What the enquiry form gets back when it cannot be saved as it stands.
+ *
+ * The message, and everything that was typed. React empties a form once its
+ * action has run, so without carrying the answers back the office would be
+ * told what was missing and handed a blank page to type again, which is worse
+ * than the error page it replaced.
+ */
+export type LeadFormState = {
+  error: string;
+  values: Record<string, string>;
+  /** Counted up on each try, so the form knows to redraw with what was typed. */
+  attempt: number;
+} | null;
+
+export async function createLead(
+  previous: LeadFormState,
+  formData: FormData,
+): Promise<LeadFormState> {
   const user = await requireUser(["ADMIN"]);
 
   const firstName = String(formData.get("firstName") ?? "").trim() || null;
@@ -40,8 +58,25 @@ export async function createLead(formData: FormData) {
     : "ENQUIRY";
   const other = String(formData.get("sourceOther") ?? "").trim();
 
+  /*
+   * A foreseeable mistake is a message, not a crash.
+   *
+   * Forgetting both the email and the telephone number is the easiest thing in
+   * the world to do, and the office was meeting a server error page for it,
+   * which reads as the CRM being broken rather than as a field being empty. It
+   * is answered on the form now, with what the office typed still in it.
+   */
   if (!email && !phone) {
-    throw new Error("Give the lead an email or a phone number, or there is no way to reply.");
+    const typed: Record<string, string> = {};
+    for (const [key, value] of formData.entries()) {
+      if (typeof value === "string") typed[key] = value;
+    }
+    return {
+      error:
+        "Give the enquiry an email address or a telephone number, or there is no way to reply.",
+      values: typed,
+      attempt: (previous?.attempt ?? 0) + 1,
+    };
   }
 
   /**

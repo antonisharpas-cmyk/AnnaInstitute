@@ -110,7 +110,7 @@ export default function UnitForm({
 
         <div>
           <label className="label" htmlFor="netPrice">
-            {t("units.netPrice")}
+            {t("units.price")}
           </label>
           <input
             id="netPrice"
@@ -120,23 +120,6 @@ export default function UnitForm({
             placeholder="150000"
             className="input"
           />
-        </div>
-
-        <div>
-          <label className="label" htmlFor="vatRate">
-            {t("units.vatRate")}
-          </label>
-          <select
-            id="vatRate"
-            name="vatRate"
-            defaultValue={unit ? String(Number(unit.vatRate)) : "19"}
-            className="select"
-          >
-            <option value="19">19</option>
-            <option value="5">5</option>
-            <option value="0">0</option>
-          </select>
-          <p className="mt-1 text-xs text-brand-graphite/60">{t("units.vatHint")}</p>
         </div>
 
         <div>

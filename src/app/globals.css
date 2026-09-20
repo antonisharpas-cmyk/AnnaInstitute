@@ -323,6 +323,23 @@ input[type="radio"] {
   background: var(--color-brand-teal-soft);
 }
 
+/*
+   The button that destroys something.
+
+   Red, and only ever behind a step that had to be opened on purpose. It looks
+   like nothing else on the page, which is the point: nobody presses it by
+   accident on the way to somewhere else.
+*/
+.btn-danger {
+  background: var(--color-negative);
+  border-color: var(--color-negative);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  filter: brightness(0.92);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--color-brand-graphite);

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import SubmitButton from "@/components/SubmitButton";
+import type { LeadFormState } from "./actions";
 
 /**
  * A lead typed in by hand.
@@ -25,7 +26,7 @@ export default function LeadForm({
   cancelHref,
   agents,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (prev: LeadFormState, formData: FormData) => Promise<LeadFormState>;
   cancelHref: string;
   labels: {
     firstName: string;
@@ -50,34 +51,66 @@ export default function LeadForm({
   /** Every agent who can be named, for the picker that appears on demand. */
   agents: { id: string; name: string }[];
 }) {
-  const [source, setSource] = useState("ENQUIRY");
+  const [state, formAction] = useActionState(action, null);
+  const was = state?.values ?? {};
+  const [source, setSource] = useState(was.sourceKind ?? "ENQUIRY");
 
   return (
-    <form action={action} className="space-y-4">
+    /*
+      The key changes on every refused attempt, so the form is drawn again with
+      what the office typed rather than emptied by React after the action.
+    */
+    <form key={state?.attempt ?? 0} action={formAction} className="space-y-4">
+      {/*
+        What went wrong, said where the mistake was made, with everything the
+        office typed still on the screen.
+      */}
+      {state?.error ? (
+        <p className="rounded border border-[color:var(--color-negative)] bg-brand-paper px-3 py-2 text-sm text-[color:var(--color-negative)]">
+          {state.error}
+        </p>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="firstName">
             {labels.firstName}
           </label>
-          <input id="firstName" name="firstName" className="input" />
+          <input
+            id="firstName"
+            name="firstName"
+            defaultValue={was.firstName ?? ""}
+            className="input"
+          />
         </div>
         <div>
           <label className="label" htmlFor="lastName">
             {labels.lastName}
           </label>
-          <input id="lastName" name="lastName" className="input" />
+          <input
+            id="lastName"
+            name="lastName"
+            defaultValue={was.lastName ?? ""}
+            className="input"
+          />
         </div>
         <div>
           <label className="label" htmlFor="email">
             {labels.email}
           </label>
-          <input id="email" name="email" type="email" className="input" />
+          <input
+            id="email"
+            name="email"
+            defaultValue={was.email ?? ""}
+            type="email"
+            className="input"
+          />
         </div>
         <div>
           <label className="label" htmlFor="phone">
             {labels.phone}
           </label>
-          <input id="phone" name="phone" className="input" />
+          <input id="phone" name="phone" defaultValue={was.phone ?? ""} className="input" />
         </div>
       </div>
 
@@ -111,6 +144,7 @@ export default function LeadForm({
             <input
               id="sourceOther"
               name="sourceOther"
+              defaultValue={was.sourceOther ?? ""}
               placeholder={labels.sourceOtherHint}
               className="input"
             />
@@ -120,7 +154,12 @@ export default function LeadForm({
             <label className="label" htmlFor="projectName">
               {labels.project}
             </label>
-            <input id="projectName" name="projectName" className="input" />
+            <input
+              id="projectName"
+              name="projectName"
+              defaultValue={was.projectName ?? ""}
+              className="input"
+            />
           </div>
         )}
       </div>
@@ -143,7 +182,13 @@ export default function LeadForm({
       ) : null}
 
       <label className="flex items-start gap-2 rounded border border-brand-line bg-brand-surface p-3 text-sm">
-        <input type="checkbox" name="consent" value="on" className="mt-0.5" />
+        <input
+          type="checkbox"
+          name="consent"
+          value="on"
+          defaultChecked={was.consent === "on"}
+          className="mt-0.5"
+        />
         <span>
           {labels.consent}
           <span className="mt-0.5 block text-xs text-brand-graphite/60">{labels.consentHint}</span>
@@ -154,7 +199,13 @@ export default function LeadForm({
         <label className="label" htmlFor="message">
           {labels.note}
         </label>
-        <textarea id="message" name="message" rows={4} className="input" />
+        <textarea
+          id="message"
+          name="message"
+          defaultValue={was.message ?? ""}
+          rows={4}
+          className="input"
+        />
         <p className="mt-1 text-xs text-brand-graphite/60">{labels.noteHint}</p>
       </div>
 

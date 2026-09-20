@@ -13,6 +13,7 @@ import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DocumentList from "@/components/DocumentList";
 import DocumentUpload from "@/components/DocumentUpload";
+import DeleteRecord from "@/components/DeleteRecord";
 import { ChangeRequestForm, PaymentForm } from "@/components/MoneyForms";
 import DateField from "@/components/DateField";
 import {
@@ -768,11 +769,12 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </Card>
         ) : null}
 
-        <form action={deleteContract.bind(null, id)}>
-          <button type="submit" className="btn btn-secondary">
-            {t("contracts.delete")}
-          </button>
-        </form>
+        <DeleteRecord
+          action={deleteContract.bind(null, id)}
+          label={t("remove.contract")}
+          what={t("remove.contractWhat")}
+          confirm={t("remove.confirm")}
+        />
       </div>
     </>
   );

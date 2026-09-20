@@ -13,8 +13,11 @@ import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
 import DateField from "@/components/DateField";
 import ProfileCard from "@/components/ProfileCard";
+import DeleteRecord from "@/components/DeleteRecord";
+import { whatGoesWithAgent } from "@/lib/deletes";
 import {
   addExtra,
+  deleteAgent,
   saveAgentProfile,
   deleteCommissionPayment,
   payLine,
@@ -49,6 +52,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
     // attaches to.
     salesWithoutAnAgent(),
   ]);
+
+  const goes = await whatGoesWithAgent(id);
 
   /* The two papers filed against every commission line on this page. */
   const papers = await papersFor(sales.flatMap((sale) => sale.lines.map((line) => line.id)));
@@ -608,6 +613,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               </table>
             )}
           </Card>
+
+          <DeleteRecord
+            action={deleteAgent.bind(null, id)}
+            label={t("remove.agent")}
+            what={t("remove.agentWhat")}
+            blocked={goes.commissions > 0 || goes.payments > 0 ? t("remove.agentBlocked") : null}
+            confirm={t("remove.confirm")}
+          />
         </div>
       </div>
     </>

@@ -222,8 +222,15 @@ export const lastCookie = (list: ListKey) => `oe_list_${list}`;
  * Only when the address carries nothing at all: the moment somebody has typed a
  * search, followed a link, or pressed All, their intention wins. All also has to
  * survive a reload, which is why it stays in the address as all=1.
+ *
+ * It asks whether the keys are there, not whether they have anything in them,
+ * and the difference is the whole of it. Clearing the search box and pressing
+ * Search sends q with nothing in it, which is somebody saying "show me
+ * everything" in the plainest way there is. Reading that as an empty address
+ * put the list straight back to the search they had just cleared, so the box
+ * emptied and the results did not, and the only way out was the reset button.
  */
 export function shouldRestore(params: Record<string, string | undefined>): boolean {
   if (params.all) return false;
-  return Object.entries(params).every(([, value]) => !value);
+  return Object.keys(params).length === 0;
 }

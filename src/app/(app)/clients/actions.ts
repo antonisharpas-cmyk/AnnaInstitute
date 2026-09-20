@@ -23,7 +23,7 @@ const clientSchema = z.object({
   idNumber: z.string().optional(),
   address: z.string().optional(),
   country: z.string().optional(),
-  source: z.enum(["BUYER", "ENQUIRY", "AGENT_REFERRAL", "OTHER"]),
+  source: z.enum(["BUYER", "ENQUIRY", "AGENT_REFERRAL", "LAND_OWNER", "OTHER"]),
   notes: z.string().optional(),
 });
 

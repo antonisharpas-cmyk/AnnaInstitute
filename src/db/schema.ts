@@ -53,6 +53,14 @@ export const contactSourceEnum = pgEnum("contact_source", [
   "BUYER",
   "ENQUIRY",
   "AGENT_REFERRAL",
+  /**
+   * Somebody who came in by giving land rather than by buying.
+   *
+   * On a land exchange the other side of the agreement is a client like any
+   * other, with apartments, paperwork and a profile, but they never bought
+   * anything, so calling them a buyer would be wrong everywhere it appeared.
+   */
+  "LAND_OWNER",
   "OTHER",
 ]);
 export const documentCategoryEnum = pgEnum("document_category", [

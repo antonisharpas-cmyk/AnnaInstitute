@@ -5,12 +5,13 @@ import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { agents, commissionPayments, commissions, contracts } from "@/db/schema";
+import { agents, commissionPayments, commissions, contracts, leads, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
 import { recalculateCommission, refreshCommissionPapers } from "@/lib/commissions";
+import { whatGoesWithAgent } from "@/lib/deletes";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
 
 const agentSchema = z.object({
@@ -532,4 +533,51 @@ export async function removeCommissionPaper(
 
   revalidatePath(`/agents/${agentId}`);
   revalidatePath("/commissions");
+}
+
+/**
+ * Getting rid of an agent.
+ *
+ * Only one who has earned nothing. A commission line is the office's record of
+ * what was owed and what was paid, with the invoice and the receipt filed
+ * against it, and an agent cannot take that away with them. For the ones who
+ * have stopped working with us there is the active switch, which is what it is
+ * for: the history stays and they leave the pickers.
+ *
+ * An agent who is simply an entry made twice has nothing attached, and goes.
+ */
+export async function deleteAgent(agentId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  const [agent] = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
+  if (!agent) return;
+
+  const attached = await whatGoesWithAgent(agentId);
+  if (attached.commissions > 0 || attached.payments > 0) {
+    throw new Error(
+      `${agent.name} has ${attached.commissions} commission line${
+        attached.commissions === 1 ? "" : "s"
+      } and ${attached.payments} payment${attached.payments === 1 ? "" : "s"} on the record, so the record cannot be deleted. Make the agent inactive instead, which keeps the history and takes them out of the lists.`,
+    );
+  }
+
+  /* The sales they were named on keep their own contracts and simply stop
+     naming anybody, which is exactly what an unclaimed sale is. */
+  await db.update(contracts).set({ agentId: null }).where(eq(contracts.agentId, agentId));
+  await db.update(leads).set({ agentId: null }).where(eq(leads.agentId, agentId));
+  await db.update(users).set({ agentId: null }).where(eq(users.agentId, agentId));
+  await db.delete(agents).where(eq(agents.id, agentId));
+
+  await recordAudit({
+    action: "agent.delete",
+    entity: "agent",
+    entityId: agentId,
+    detail: `${agent.name}, ${attached.sales.length} sales released`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.deleted");
+  revalidatePath("/agents");
+  redirect("/agents");
 }

@@ -9,9 +9,11 @@ import { directorsOf, projectsOfSubowner, sharesOf } from "@/lib/subowners";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import ProfileCard from "@/components/ProfileCard";
 import Disclosure from "@/components/Disclosure";
+import DeleteRecord from "@/components/DeleteRecord";
 import {
   addDirector,
   addShareholder,
+  deleteSubowner,
   removeDirector,
   removeShareholder,
   updateSubowner,
@@ -359,6 +361,13 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
             </div>
             <p className="mt-2 text-xs text-brand-graphite/60">{t("subowners.sharesHint")}</p>
           </Card>
+
+          <DeleteRecord
+            action={deleteSubowner.bind(null, id)}
+            label={t("remove.partner")}
+            what={t("remove.partnerWhat")}
+            confirm={t("remove.confirm")}
+          />
         </div>
       </div>
     </>

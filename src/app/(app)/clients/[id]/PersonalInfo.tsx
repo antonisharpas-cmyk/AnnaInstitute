@@ -183,6 +183,7 @@ export default function PersonalInfo({
             <option value="BUYER">Buyer</option>
             <option value="ENQUIRY">Enquiry</option>
             <option value="AGENT_REFERRAL">Agent Referral</option>
+            <option value="LAND_OWNER">Land Owner</option>
             <option value="OTHER">Other</option>
           </select>
         </div>

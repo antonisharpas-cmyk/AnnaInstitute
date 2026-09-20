@@ -18,6 +18,7 @@ import {
 import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
 import { readUploadFields, removeDocument, storeDocuments } from "@/lib/uploads";
+import { contractsOnUnits } from "@/lib/deletes";
 
 const slugify = (value: string) =>
   value
@@ -389,4 +390,84 @@ export async function letTheApartmentsDecide(projectId: string) {
   await flash("said.statusFollowsApartments");
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/projects");
+}
+
+/* ---------------------------------------------------------------------------
+   Getting rid of a record
+
+   A development and an apartment can both be deleted outright, which a client
+   and an enquiry cannot: those go to the recycle bin, because a person who
+   telephoned once may telephone again. A building that was entered twice, or an
+   apartment that turned out not to exist, is simply a mistake and should leave
+   no trace.
+
+   Neither will go while a contract is attached. That is not caution for its own
+   sake: a contract carries a buyer, a schedule and receipted payments, and
+   letting an apartment take all of that with it quietly is how a CRM loses
+   money it has already banked. The refusal says which contract is in the way.
+   --------------------------------------------------------------------------- */
+
+export async function deleteProject(projectId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) return;
+
+  const rows = await db.select({ id: units.id }).from(units).where(eq(units.projectId, projectId));
+
+  const inTheWay = await contractsOnUnits(rows.map((row) => row.id));
+  if (inTheWay.length > 0) {
+    throw new Error(
+      `This development cannot be deleted while its apartments have contracts on them: ${inTheWay
+        .slice(0, 5)
+        .join(
+          ", ",
+        )}${inTheWay.length > 5 ? ` and ${inTheWay.length - 5} more` : ""}. Delete those contracts first.`,
+    );
+  }
+
+  await db.delete(projects).where(eq(projects.id, projectId));
+
+  await recordAudit({
+    action: "project.delete",
+    entity: "project",
+    entityId: projectId,
+    detail: `${project.name}, ${rows.length} apartments`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.deleted");
+  revalidatePath("/projects");
+  redirect("/projects");
+}
+
+export async function deleteUnit(unitId: string, projectId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  const [unit] = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
+  if (!unit) return;
+
+  const inTheWay = await contractsOnUnits([unitId]);
+  if (inTheWay.length > 0) {
+    throw new Error(
+      `This apartment cannot be deleted while ${inTheWay.join(", ")} is on it. Delete the contract first.`,
+    );
+  }
+
+  await db.delete(units).where(eq(units.id, unitId));
+  await followTheApartments(projectId, user);
+
+  await recordAudit({
+    action: "unit.delete",
+    entity: "unit",
+    entityId: unitId,
+    detail: unit.code,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.deleted");
+  revalidatePath(`/projects/${projectId}`);
+  redirect(`/projects/${projectId}`);
 }

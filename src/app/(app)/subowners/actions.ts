@@ -272,3 +272,40 @@ export async function removeShareholder(shareId: string, subownerId: string) {
 
   revalidatePath(`/subowners/${subownerId}`);
 }
+
+/**
+ * Getting rid of a partner company.
+ *
+ * A partner can always go: what they hold of a development is an agreement
+ * between us and them, so it goes with them and the development reads as ours
+ * outright afterwards. Nothing else is attached to them, which is why this
+ * needs no refusal, only the page saying plainly what changes.
+ */
+export async function deleteSubowner(subownerId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  const [partner] = await db.select().from(subowners).where(eq(subowners.id, subownerId)).limit(1);
+  if (!partner) return;
+
+  const held = await db
+    .select({ projectId: projectPartners.projectId })
+    .from(projectPartners)
+    .where(eq(projectPartners.subownerId, subownerId));
+
+  await db.delete(subowners).where(eq(subowners.id, subownerId));
+
+  await recordAudit({
+    action: "subowner.delete",
+    entity: "subowner",
+    entityId: subownerId,
+    detail: `${partner.name}, taken off ${held.length} developments`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.deleted");
+  for (const row of held) revalidatePath(`/projects/${row.projectId}`);
+  revalidatePath("/projects");
+  revalidatePath("/subowners");
+  redirect("/subowners");
+}

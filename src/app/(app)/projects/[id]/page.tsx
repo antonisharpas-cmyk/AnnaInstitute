@@ -4,18 +4,25 @@ import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { companies, projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
-import { formatAmount, formatPercent, toCents, withVat } from "@/lib/money";
+import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { documentsForProjectWithUnits, floorPlansByUnit } from "@/lib/documents";
 import { categoryLabel, fileLabel, isImage } from "@/lib/fileLabels";
 import { partnersOfProject, subownerChoices } from "@/lib/subowners";
 import { projectChecklist } from "@/lib/projectHealth";
+import { whatGoesWithProject } from "@/lib/deletes";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import { LightboxGrid, LightboxLink } from "@/components/Lightbox";
 import UploadForm from "@/components/UploadForm";
+import DeleteRecord from "@/components/DeleteRecord";
 import { PROJECT_FILE_CATEGORIES } from "@/lib/projectFiles";
 import Disclosure from "@/components/Disclosure";
 import Pagination, { paginate } from "@/components/Pagination";
-import { deleteProjectDocument, markProjectChecked, uploadProjectDocuments } from "../actions";
+import {
+  deleteProject,
+  deleteProjectDocument,
+  markProjectChecked,
+  uploadProjectDocuments,
+} from "../actions";
 import { addPartner, removePartner } from "../../subowners/actions";
 import { letTheApartmentsDecide } from "../actions";
 
@@ -95,6 +102,8 @@ export default async function ProjectPage({
   const project = found[0]?.project;
   const company = found[0]?.company;
   if (!project) notFound();
+
+  const goes = await whatGoesWithProject(id);
 
   const [rows, [totals], allFiles, plansByUnit, partners, choices, check] = await Promise.all([
     db
@@ -389,7 +398,7 @@ export default async function ProjectPage({
                     <th className="ctr">{t("units.covered")}</th>
                     <th className="ctr">{t("units.veranda")}</th>
                     <th className="ctr">{t("units.roofGarden")}</th>
-                    <th className="ctr">{t("units.netPrice")}</th>
+                    <th className="ctr">{t("units.price")}</th>
                     <th className="ctr">{t("common.status")}</th>
                     <th className="ctr">{t("units.floorPlan")}</th>
                     <th />
@@ -408,23 +417,16 @@ export default async function ProjectPage({
                         <td className="ctr">{area(u.roofGardenArea)}</td>
                         <td className="ctr font-semibold">
                           {/*
-                            One cell, three figures. A buyer asks for the price
-                            with VAT and the office works in the price before
-                            it, and the rate is the only thing that connects the
-                            two, so all three are here rather than spread over
-                            three more columns of an already wide table.
+                            One price, and only one.
+
+                            The apartment's price is what the office is asking
+                            for it. How that price is made up, what part is
+                            before VAT, what rate applies to this buyer and what
+                            part is paid in cash, is a term of the contract
+                            rather than a property of the apartment, so it lives
+                            there and this stays a single figure.
                           */}
                           {formatAmount(toCents(u.netPrice), locale)}
-                          <div className="text-xs font-normal text-brand-graphite/60">
-                            {formatPercent(Number(u.vatRate), locale)} {t("units.vat")}
-                          </div>
-                          <div className="text-xs font-normal">
-                            {formatAmount(
-                              withVat(toCents(u.netPrice), u.vatRate).totalCents,
-                              locale,
-                            )}{" "}
-                            {t("units.withVat")}
-                          </div>
                         </td>
                         <td className="ctr">
                           <Pill tone={statusTone(u.status) as "good" | "warn" | "neutral"}>
@@ -618,6 +620,18 @@ export default async function ProjectPage({
               {t("projects.edit")}
             </Link>
           </Card>
+
+          <DeleteRecord
+            action={deleteProject.bind(null, id)}
+            label={t("remove.project")}
+            what={t("remove.projectWhat")}
+            blocked={
+              goes.contracts.length > 0
+                ? `${t("remove.blockedByContracts")} ${goes.contracts.slice(0, 5).join(", ")}`
+                : null
+            }
+            confirm={t("remove.confirm")}
+          />
         </div>
       </div>
     </>
