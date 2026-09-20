@@ -36,8 +36,6 @@ export function formLabels(t: (key: MessageKey) => string): Record<string, strin
     contractValue: t("contracts.contractValue"),
     contractValueHint: t("contracts.contractValueHint"),
     togetherWithCash: t("contracts.togetherWithCash"),
-    sharePercent: t("contracts.sharePercent"),
-    sharePercentHint: t("contracts.sharePercentHint"),
     thePlot: t("contracts.thePlot"),
     thePlotHint: t("contracts.thePlotHint"),
     plotDescription: t("contracts.plotDescription"),

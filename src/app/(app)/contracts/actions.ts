@@ -48,7 +48,6 @@ const detailsSchema = z.object({
   plotDescription: z.string().optional(),
   plotReference: z.string().optional(),
   plotArea: z.string().optional(),
-  sharePercent: z.string().optional(),
   /**
    * A sale names one apartment. A land exchange names none here: the owner's
    * apartments are their own lines, because their share is rarely one.
@@ -233,7 +232,6 @@ function readDetails(formData: FormData) {
     plotDescription: formData.get("plotDescription") || undefined,
     plotReference: formData.get("plotReference") || undefined,
     plotArea: formData.get("plotArea") || undefined,
-    sharePercent: formData.get("sharePercent") || undefined,
     unitId: formData.get("unitId") || undefined,
     clientId: formData.get("clientId"),
     agentId: formData.get("agentId") || undefined,
@@ -416,10 +414,6 @@ export async function createContract(
         parsed.kind === "LAND_EXCHANGE" && parsed.plotArea
           ? Number(parsed.plotArea).toFixed(2)
           : null,
-      sharePercent:
-        parsed.kind === "LAND_EXCHANGE" && parsed.sharePercent
-          ? Number(parsed.sharePercent).toFixed(3)
-          : null,
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,
       status: "ACTIVE",
@@ -520,10 +514,6 @@ export async function updateContract(
       plotArea:
         parsed.kind === "LAND_EXCHANGE" && parsed.plotArea
           ? Number(parsed.plotArea).toFixed(2)
-          : null,
-      sharePercent:
-        parsed.kind === "LAND_EXCHANGE" && parsed.sharePercent
-          ? Number(parsed.sharePercent).toFixed(3)
           : null,
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,

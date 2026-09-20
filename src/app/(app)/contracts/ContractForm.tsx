@@ -23,7 +23,6 @@ type ContractRecord = {
   plotDescription: string | null;
   plotReference: string | null;
   plotArea: string | null;
-  sharePercent: string | null;
   scheduleType: "STANDARD" | "PERIODIC";
   periodMonths: number | null;
   status: "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
@@ -182,22 +181,7 @@ export default function ContractForm({
               ))}
             </select>
           </div>
-        ) : (
-          <div>
-            <label className="label" htmlFor="sharePercent">
-              {labels.sharePercent}
-            </label>
-            <input
-              id="sharePercent"
-              name="sharePercent"
-              inputMode="decimal"
-              defaultValue={contract?.sharePercent ? String(Number(contract.sharePercent)) : ""}
-              placeholder="40"
-              className="input"
-            />
-            <p className="mt-1 text-xs text-brand-graphite/60">{labels.sharePercentHint}</p>
-          </div>
-        )}
+        ) : null}
 
         <div>
           <label className="label" htmlFor="reference">

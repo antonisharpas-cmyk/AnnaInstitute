@@ -960,9 +960,6 @@ export const dictionaries = {
     "contracts.noExchangeApartments": "No apartments named yet",
     "contracts.openTheContract": "Open the contract",
     "contracts.togetherWithCash": "The agreement and the cash together",
-    "contracts.sharePercent": "Share of the finished units",
-    "contracts.sharePercentHint":
-      "What the owner was promised of the building that goes up on their land, as a percentage.",
     "contracts.thePlot": "The land given",
     "contracts.thePlotHint":
       "What came in from the owner. This is the whole of what they paid with.",
@@ -2056,9 +2053,6 @@ export const dictionaries = {
     "contracts.noExchangeApartments": "Δεν έχουν οριστεί ακόμη διαμερίσματα",
     "contracts.openTheContract": "Άνοιγμα συμβολαίου",
     "contracts.togetherWithCash": "Το συμβόλαιο και τα μετρητά μαζί",
-    "contracts.sharePercent": "Ποσοστό επί των τελικών μονάδων",
-    "contracts.sharePercentHint":
-      "Τι συμφωνήθηκε να πάρει ο ιδιοκτήτης από το κτήριο που ανεγείρεται στη γη του, ως ποσοστό.",
     "contracts.thePlot": "Η γη που δόθηκε",
     "contracts.thePlotHint":
       "Τι έδωσε ο ιδιοκτήτης. Αυτό είναι το σύνολο του τιμήματος από την πλευρά του.",

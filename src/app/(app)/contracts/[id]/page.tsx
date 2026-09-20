@@ -180,17 +180,6 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               </div>
             ) : null}
 
-            {contract.kind === "LAND_EXCHANGE" ? (
-              <div>
-                <dt className="label">{t("contracts.sharePercent")}</dt>
-                <dd className="text-sm font-semibold">
-                  {contract.sharePercent
-                    ? formatPercent(Number(contract.sharePercent), locale)
-                    : t("common.none")}
-                </dd>
-              </div>
-            ) : null}
-
             <div className={contract.kind === "LAND_EXCHANGE" ? "hidden" : ""}>
               <dt className="label">{t("contracts.unit")}</dt>
               <dd className="text-sm">

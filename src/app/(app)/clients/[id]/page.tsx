@@ -494,14 +494,6 @@ export default async function ClientPage({
                 </dd>
               </div>
               <div>
-                <dt className="label">{t("contracts.sharePercent")}</dt>
-                <dd className="text-sm font-semibold">
-                  {contract.sharePercent
-                    ? formatPercent(Number(contract.sharePercent), locale)
-                    : t("common.none")}
-                </dd>
-              </div>
-              <div>
                 <dt className="label">{t("contracts.contractNumber")}</dt>
                 <dd className="text-sm font-semibold">{contract.reference}</dd>
               </div>
