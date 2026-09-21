@@ -20,7 +20,8 @@
     "db:demo": "node --env-file=.env.local --import tsx scripts/demo.ts",
     "db:partners": "node --env-file=.env.local --import tsx scripts/partners.ts",
     "db:statuses": "node --env-file=.env.local --import tsx scripts/statuses.ts",
-    "db:magnum": "node --env-file=.env.local --import tsx scripts/magnum.ts"
+    "db:magnum": "node --env-file=.env.local --import tsx scripts/magnum.ts",
+    "db:import1": "node --env-file=.env.local --import tsx scripts/import1.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

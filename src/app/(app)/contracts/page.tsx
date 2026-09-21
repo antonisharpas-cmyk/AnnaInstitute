@@ -281,6 +281,13 @@ export default async function ContractsPage({
                           <div className="text-xs text-brand-graphite/60">
                             {day(r.contract.contractDate)}
                           </div>
+                          {/* An antiparochi in a list of sales should not look
+                              like a sale: nobody is paying for anything. */}
+                          {r.contract.kind === "LAND_EXCHANGE" ? (
+                            <div className="mt-0.5">
+                              <Pill tone="teal">{t("contracts.kind.LAND_EXCHANGE")}</Pill>
+                            </div>
+                          ) : null}
                         </td>
                       ) : null}
 
