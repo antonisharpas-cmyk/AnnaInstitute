@@ -217,10 +217,19 @@ export const dictionaries = {
     "projects.statusFromUnits": "Follows the apartments",
     "projects.letApartmentsDecide": "Let the apartments decide the status again",
     "projects.status.DELIVERED": "Delivered",
-    "units.statusByHand": "This status was set by hand, so the payments will not change it.",
+    "units.statusByHand":
+      "This status was set by hand. The payments will not pull it backwards, but they will carry it forwards if they go further than this.",
     "units.statusFromMoney":
-      "This status follows the contract: sold on the first payment received, delivered once it is paid in full.",
+      "This status follows the contract: sold once a payment has been received. Delivered is set by hand, on the day the keys change hands.",
     "units.letMoneyDecide": "Let the payments decide",
+    "units.whoHasIt": "Who has it",
+    "units.buyer": "Buyer",
+    "units.noContractYet": "no contract yet",
+    "units.nobodyYet": "Nobody has it yet",
+    "units.heldNoContract": "holds this apartment, with no contract on it yet",
+    "units.nobodyOnTheContract": "No buyer named on the contract",
+    "units.priceHereHint":
+      "The price above is the apartment's own. The contract carries the price that was agreed and the schedule it is being collected on, and changing one here does not change the other.",
     "subowners.ourselves": "One Eleven",
     "subowners.theRest":
       "Our own share is whatever the partners do not hold, so it needs no line of its own.",
@@ -1355,10 +1364,19 @@ export const dictionaries = {
     "projects.statusFromUnits": "Ακολουθεί τα διαμερίσματα",
     "projects.letApartmentsDecide": "Να αποφασίζουν ξανά τα διαμερίσματα",
     "projects.status.DELIVERED": "Παραδόθηκε",
-    "units.statusByHand": "Η κατάσταση ορίστηκε χειροκίνητα, οπότε οι πληρωμές δεν την αλλάζουν.",
+    "units.statusByHand":
+      "Η κατάσταση ορίστηκε χειροκίνητα. Οι πληρωμές δεν την πάνε πίσω, αλλά την πάνε μπροστά αν προχωρήσουν πιο πέρα από αυτή.",
     "units.statusFromMoney":
-      "Η κατάσταση ακολουθεί το συμβόλαιο: πουλημένο με την πρώτη πληρωμή, παραδοτέο όταν εξοφληθεί.",
+      "Η κατάσταση ακολουθεί το συμβόλαιο: πουλημένο μόλις εισπραχθεί πληρωμή. Το παραδομένο μπαίνει με το χέρι, την ημέρα που δίνονται τα κλειδιά.",
     "units.letMoneyDecide": "Να αποφασίζουν οι πληρωμές",
+    "units.whoHasIt": "Ποιος το έχει",
+    "units.buyer": "Αγοραστής",
+    "units.noContractYet": "χωρίς συμβόλαιο ακόμη",
+    "units.nobodyYet": "Δεν το έχει ακόμη κανείς",
+    "units.heldNoContract": "κρατά αυτό το διαμέρισμα, χωρίς συμβόλαιο ακόμη",
+    "units.nobodyOnTheContract": "Δεν έχει οριστεί αγοραστής στο συμβόλαιο",
+    "units.priceHereHint":
+      "Η τιμή πιο πάνω είναι του διαμερίσματος. Το συμβόλαιο κρατά τη συμφωνημένη τιμή και το πρόγραμμα είσπραξης, και η αλλαγή του ενός εδώ δεν αλλάζει το άλλο.",
     "subowners.ourselves": "One Eleven",
     "subowners.theRest":
       "Το δικό μας ποσοστό είναι ό,τι δεν κρατούν οι συνεργάτες, οπότε δεν χρειάζεται ξεχωριστή γραμμή.",

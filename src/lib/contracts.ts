@@ -390,3 +390,144 @@ export async function landExchangesForClient(clientId: string) {
     })),
   );
 }
+
+/**
+ * Who has this apartment, read from the apartment's own side.
+ *
+ * The office goes at this from the building: projects, then the apartment, and
+ * then they want to know who bought it and on what terms. That is the same
+ * information the contract page has, turned around, and it was missing here:
+ * the apartment knew only that a contract existed, and named it by its
+ * reference, which tells nobody anything.
+ *
+ * Both routes are followed. A sale names its one apartment on the contract. An
+ * antiparochi names its apartments in their own lines, and the owner receiving
+ * one of them belongs on that apartment's page just as much as a buyer does.
+ */
+export async function whoHasThisApartment(unitId: string) {
+  const direct = await db
+    .select({ contract: contracts, client: clients, agent: agents })
+    .from(contracts)
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
+    .leftJoin(agents, eq(agents.id, contracts.agentId))
+    .where(eq(contracts.unitId, unitId));
+
+  const shared = await db
+    .select({ contract: contracts, client: clients, agent: agents })
+    .from(contractUnits)
+    .innerJoin(contracts, eq(contracts.id, contractUnits.contractId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
+    .leftJoin(agents, eq(agents.id, contracts.agentId))
+    .where(eq(contractUnits.unitId, unitId));
+
+  const seen = new Set<string>();
+  const rows = [...direct, ...shared].filter((row) => {
+    if (seen.has(row.contract.id)) return false;
+    seen.add(row.contract.id);
+    return true;
+  });
+
+  /* What each one owes and what has come in, so the apartment can say where
+     the money stands without anybody opening the contract. */
+  return Promise.all(
+    rows.map(async (row) => {
+      const [owed] = await db
+        .select({ due: sql<string>`coalesce(sum(${installments.totalAmount}), 0)` })
+        .from(installments)
+        .where(eq(installments.contractId, row.contract.id));
+
+      const [got] = await db
+        .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+        .from(payments)
+        .where(eq(payments.contractId, row.contract.id));
+
+      const dueCents = toCents(owed?.due ?? "0");
+      const paidCents = toCents(got?.paid ?? "0");
+
+      return {
+        ...row,
+        dueCents,
+        paidCents,
+        outstandingCents: dueCents - paidCents,
+        paidInFull: dueCents > 0 && paidCents >= dueCents,
+      };
+    }),
+  );
+}
+
+/**
+ * The buyer against each apartment, for the development's own list.
+ *
+ * The apartment list said sold and said nothing about to whom, so the office
+ * had to open each one to find out. One query for the page of apartments being
+ * drawn, by either route a contract reaches an apartment, and the assigned
+ * client as a fallback for an apartment somebody holds without a contract yet.
+ */
+export async function buyersByUnit(unitIds: string[]) {
+  const answer = new Map<
+    string,
+    { clientId: string; name: string; contractId: string | null; reference: string | null }
+  >();
+  if (unitIds.length === 0) return answer;
+
+  const direct = await db
+    .select({
+      unitId: contracts.unitId,
+      contractId: contracts.id,
+      reference: contracts.reference,
+      clientId: clients.id,
+      firstName: clients.firstName,
+      lastName: clients.lastName,
+    })
+    .from(contracts)
+    .innerJoin(clients, eq(clients.id, contracts.clientId))
+    .where(inArray(contracts.unitId, unitIds));
+
+  const shared = await db
+    .select({
+      unitId: contractUnits.unitId,
+      contractId: contracts.id,
+      reference: contracts.reference,
+      clientId: clients.id,
+      firstName: clients.firstName,
+      lastName: clients.lastName,
+    })
+    .from(contractUnits)
+    .innerJoin(contracts, eq(contracts.id, contractUnits.contractId))
+    .innerJoin(clients, eq(clients.id, contracts.clientId))
+    .where(inArray(contractUnits.unitId, unitIds));
+
+  /* Held without a contract: still the person the office would name. */
+  const assigned = await db
+    .select({
+      unitId: units.id,
+      clientId: clients.id,
+      firstName: clients.firstName,
+      lastName: clients.lastName,
+    })
+    .from(units)
+    .innerJoin(clients, eq(clients.id, units.clientId))
+    .where(inArray(units.id, unitIds));
+
+  for (const row of assigned) {
+    answer.set(row.unitId, {
+      clientId: row.clientId,
+      name: `${row.firstName} ${row.lastName}`.trim(),
+      contractId: null,
+      reference: null,
+    });
+  }
+
+  /* A contract is better evidence than an assignment, so it writes last. */
+  for (const row of [...shared, ...direct]) {
+    if (!row.unitId) continue;
+    answer.set(row.unitId, {
+      clientId: row.clientId,
+      name: `${row.firstName} ${row.lastName}`.trim(),
+      contractId: row.contractId,
+      reference: row.reference,
+    });
+  }
+
+  return answer;
+}

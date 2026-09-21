@@ -10,6 +10,7 @@ import { categoryLabel, fileLabel, isImage } from "@/lib/fileLabels";
 import { partnersOfProject, subownerChoices } from "@/lib/subowners";
 import { projectChecklist } from "@/lib/projectHealth";
 import { whatGoesWithProject } from "@/lib/deletes";
+import { buyersByUnit } from "@/lib/contracts";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import { LightboxGrid, LightboxLink } from "@/components/Lightbox";
 import UploadForm from "@/components/UploadForm";
@@ -143,6 +144,9 @@ export default async function ProjectPage({
     0,
   );
   const ourShare = Math.max(0, 100 - partnerShare);
+
+  /* Who has each of the apartments on this page, so the list can say it. */
+  const buyers = await buyersByUnit(rows.map((u) => u.id));
 
   return (
     <>
@@ -400,6 +404,7 @@ export default async function ProjectPage({
                     <th className="ctr">{t("units.roofGarden")}</th>
                     <th className="ctr">{t("units.price")}</th>
                     <th className="ctr">{t("common.status")}</th>
+                    <th>{t("units.buyer")}</th>
                     <th className="ctr">{t("units.floorPlan")}</th>
                     <th />
                   </tr>
@@ -446,6 +451,42 @@ export default async function ProjectPage({
                             <div className="mt-0.5 text-xs text-brand-graphite/60">
                               {t("units.byHandShort")}
                             </div>
+                          ) : null}
+                        </td>
+                        {/*
+                          Who has it, in the list itself.
+
+                          An apartment reading sold and naming nobody made the
+                          office open every one to find the buyer. The name
+                          links to their card and the contract number under it
+                          links to the contract.
+                        */}
+                        <td className="text-xs">
+                          {buyers.get(u.id) ? (
+                            <>
+                              <Link
+                                href={`/clients/${buyers.get(u.id)!.clientId}`}
+                                className="font-semibold text-brand-teal-dark hover:underline"
+                                prefetch={false}
+                              >
+                                {buyers.get(u.id)!.name}
+                              </Link>
+                              {buyers.get(u.id)!.contractId ? (
+                                <div>
+                                  <Link
+                                    href={`/contracts/${buyers.get(u.id)!.contractId}`}
+                                    className="text-brand-graphite/60 hover:underline"
+                                    prefetch={false}
+                                  >
+                                    {buyers.get(u.id)!.reference}
+                                  </Link>
+                                </div>
+                              ) : (
+                                <div className="text-brand-graphite/55">
+                                  {t("units.noContractYet")}
+                                </div>
+                              )}
+                            </>
                           ) : null}
                         </td>
                         <td className="ctr">

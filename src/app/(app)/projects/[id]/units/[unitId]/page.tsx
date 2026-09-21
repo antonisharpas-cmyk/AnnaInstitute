@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { contracts, installments, payments, projects, units } from "@/db/schema";
+import { clients, projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import { documentsForUnit } from "@/lib/documents";
+import { whoHasThisApartment } from "@/lib/contracts";
 import { categoryLabel, isImage, titleWithExtension } from "@/lib/fileLabels";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import { LightboxGrid } from "@/components/Lightbox";
@@ -44,35 +45,15 @@ export default async function EditUnitPage({
 
   const goes = await whatGoesWithUnit(unitId);
 
-  const [sold, files] = await Promise.all([
-    db.select({ contract: contracts }).from(contracts).where(eq(contracts.unitId, unitId)),
+  const [sold, files, holder] = await Promise.all([
+    /* Who has it, on what terms, and where the money stands. */
+    whoHasThisApartment(unitId),
     documentsForUnit(unitId),
+    /* Assigned to somebody without a contract yet: still worth naming. */
+    row.unit.clientId
+      ? db.select().from(clients).where(eq(clients.id, row.unit.clientId)).limit(1)
+      : Promise.resolve([]),
   ]);
-
-  /*
-    Whether each of those contracts has been collected in full, so the
-    apartment's own page can say it. An apartment reading sold next to a
-    contract with nothing left owing should not make anybody open the contract
-    to find that out.
-  */
-  const settled = new Set(
-    (
-      await Promise.all(
-        sold.map(async ({ contract }) => {
-          const [owed] = await db
-            .select({ due: sql<string>`coalesce(sum(${installments.totalAmount}), 0)` })
-            .from(installments)
-            .where(eq(installments.contractId, contract.id));
-          const [got] = await db
-            .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
-            .from(payments)
-            .where(eq(payments.contractId, contract.id));
-          const due = toCents(owed?.due ?? "0");
-          return due > 0 && toCents(got?.paid ?? "0") >= due ? contract.id : null;
-        }),
-      )
-    ).filter((id): id is string => id !== null),
-  );
 
   // Grouped under a heading per category, in a fixed order.
   const groups = GROUP_ORDER.map((category) => ({
@@ -123,32 +104,162 @@ export default async function EditUnitPage({
             />
           </Card>
 
-          {sold.length > 0 ? (
-            <Card title={t("contracts.title")}>
-              <ul className="space-y-1 text-sm">
+          {/*
+            Who has it.
+
+            Coming at this from the building, which is how the office works,
+            the question is never "is there a contract" but "who bought it and
+            where do they stand". So the buyer is named first and linked, the
+            contract and its terms are read off here, and the money is summed
+            up, all without leaving the apartment.
+          */}
+          <Card title={t("units.whoHasIt")}>
+            {sold.length === 0 ? (
+              holder[0] ? (
+                <p className="text-sm">
+                  <Link
+                    href={`/clients/${holder[0].id}`}
+                    className="font-semibold text-brand-teal-dark hover:underline"
+                    prefetch={false}
+                  >
+                    {holder[0].firstName} {holder[0].lastName}
+                  </Link>
+                  <span className="ml-2 text-xs text-brand-graphite/60">
+                    {t("units.heldNoContract")}
+                  </span>
+                </p>
+              ) : (
+                <Empty message={t("units.nobodyYet")} />
+              )
+            ) : (
+              <ul className="divide-y divide-brand-line">
                 {sold.map((s) => (
-                  <li key={s.contract.id} className="flex items-center justify-between gap-3">
-                    <Link
-                      href={`/contracts/${s.contract.id}`}
-                      className="font-semibold text-brand-teal-dark hover:underline"
-                    >
-                      {s.contract.reference}
-                    </Link>
-                    <span className="flex items-center gap-2 tabular-nums">
-                      {settled.has(s.contract.id) ? (
-                        <Pill tone="good">{t("contracts.paidInFull")}</Pill>
+                  <li key={s.contract.id} className="py-3 first:pt-0 last:pb-0">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        {/* The buyer, first, because that is the question. */}
+                        {s.client ? (
+                          <Link
+                            href={`/clients/${s.client.id}`}
+                            className="text-base font-semibold text-brand-teal-dark hover:underline"
+                            prefetch={false}
+                          >
+                            {s.client.firstName} {s.client.lastName}
+                          </Link>
+                        ) : (
+                          <span className="text-sm text-brand-graphite/50">
+                            {t("units.nobodyOnTheContract")}
+                          </span>
+                        )}
+                        <div className="mt-0.5 text-xs text-brand-graphite/70">
+                          {[s.client?.phone, s.client?.email].filter(Boolean).join(" . ")}
+                        </div>
+                        <div className="mt-1 text-xs">
+                          <Link
+                            href={`/contracts/${s.contract.id}`}
+                            className="font-semibold hover:underline"
+                            prefetch={false}
+                          >
+                            {s.contract.reference}
+                          </Link>
+                          {s.contract.contractDate ? (
+                            <span className="text-brand-graphite/60">
+                              {" . "}
+                              {new Date(s.contract.contractDate).toLocaleDateString(
+                                locale === "el" ? "el-GR" : "en-GB",
+                              )}
+                            </span>
+                          ) : null}
+                          {s.agent ? (
+                            <span className="text-brand-graphite/60">
+                              {" . "}
+                              {t("contracts.agent").toLowerCase()} {s.agent.name}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {s.contract.kind === "LAND_EXCHANGE" ? (
+                          <Pill tone="teal">{t("contracts.kind.LAND_EXCHANGE")}</Pill>
+                        ) : null}
+                        {s.paidInFull ? <Pill tone="good">{t("contracts.paidInFull")}</Pill> : null}
+                        <Pill
+                          tone={
+                            s.contract.status === "COMPLETED"
+                              ? "good"
+                              : s.contract.status === "CANCELLED"
+                                ? "bad"
+                                : s.contract.status === "ACTIVE"
+                                  ? "warn"
+                                  : "neutral"
+                          }
+                        >
+                          {t(`contracts.status.${s.contract.status}` as MessageKey)}
+                        </Pill>
+                      </div>
+                    </div>
+
+                    {/* The terms and the money, read off the contract. */}
+                    <dl className="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+                      <div>
+                        <dt className="label">{t("contracts.netPrice")}</dt>
+                        <dd className="font-semibold tabular-nums">
+                          {formatAmount(toCents(s.contract.netPrice), locale)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="label">{t("contracts.vat")}</dt>
+                        <dd className="font-semibold tabular-nums">
+                          {Number(s.contract.vatRate)}%
+                        </dd>
+                      </div>
+                      {s.contract.cashAmount ? (
+                        <div>
+                          <dt className="label">{t("contracts.cash")}</dt>
+                          <dd className="font-semibold tabular-nums">
+                            {formatAmount(toCents(s.contract.cashAmount), locale)}
+                          </dd>
+                        </div>
                       ) : null}
-                      {formatAmount(toCents(s.contract.netPrice), locale)}
-                    </span>
+                      <div>
+                        <dt className="label">{t("contracts.paid")}</dt>
+                        <dd className="font-semibold tabular-nums">
+                          {formatAmount(s.paidCents, locale)}
+                          <span className="text-xs font-normal text-brand-graphite/60">
+                            {" "}
+                            {t("common.of").toLowerCase()} {formatAmount(s.dueCents, locale)}
+                          </span>
+                        </dd>
+                      </div>
+                      {s.paidInFull ? null : (
+                        <div>
+                          <dt className="label">{t("dash.outstanding")}</dt>
+                          <dd className="font-semibold tabular-nums">
+                            {formatAmount(s.outstandingCents, locale)}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+
+                    <div className="mt-2">
+                      <Link
+                        href={`/contracts/${s.contract.id}`}
+                        className="btn btn-secondary !px-3 !py-1 !text-xs"
+                        prefetch={false}
+                      >
+                        {t("contracts.openTheContract")}
+                      </Link>
+                    </div>
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-xs text-brand-graphite/60">
-                This apartment is on a contract. Changing its price here does not change the
-                contract, which carries its own agreed price and payment schedule.
-              </p>
-            </Card>
-          ) : null}
+            )}
+
+            {sold.length > 0 ? (
+              <p className="mt-3 text-xs text-brand-graphite/60">{t("units.priceHereHint")}</p>
+            ) : null}
+          </Card>
         </div>
 
         <div className="space-y-4">
