@@ -1042,10 +1042,53 @@ export const expenses = pgTable("expenses", {
 
 export const appointmentStatusEnum = pgEnum("appointment_status", ["PLANNED", "DONE", "MISSED"]);
 
+/**
+ * What kind of appointment it is.
+ *
+ * The office's own six, in their own words. Two of them are visits to a
+ * supplier and carry that supplier's name with them, which is why the type is
+ * worth having at all: "Studio Bagno" typed into a place field twenty times is
+ * twenty different spellings, and the office wants to be able to ask how often
+ * somebody is at the tile shop.
+ */
+export const appointmentTypeEnum = pgEnum("appointment_type", [
+  "TIMBER",
+  "BATHROOMS_TILES",
+  "OFFICE",
+  "PHONE_CALL",
+  "BUILDING",
+  "OTHER",
+]);
+
+/**
+ * The people in the office who go to the appointments.
+ *
+ * Not users: Panayiotis does not need a login to be the man going to the tile
+ * shop on Thursday, and asking the office to make a password before they can
+ * write his name down is how a feature goes unused. A name and an email
+ * address is the whole record, the email because the day's summary is sent to
+ * him.
+ */
+export const teamMembers = pgTable("team_members", {
+  id: id(),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
 export const appointments = pgTable("appointments", {
   id: id(),
-  /** Where it is, in the office's own words: "Studio Bango", "the site office". */
+  /** Where it is, in the office's own words: "Studio Bagno", "the site office". */
   place: text("place").notNull(),
+  /** Which of the office's six kinds of appointment this is. */
+  type: appointmentTypeEnum("type").default("OTHER").notNull(),
+  /** Who is going. Nothing happens without somebody's name on it. */
+  assignedToId: text("assigned_to_id").references(() => teamMembers.id, {
+    onDelete: "set null",
+  }),
   /** The day and the time in one, so the two can never disagree. */
   at: timestamp("at", { withTimezone: true }).notNull(),
   /** Who it is with: a client, or an enquiry who is not one yet. */

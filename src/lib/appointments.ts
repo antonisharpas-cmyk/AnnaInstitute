@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, ilike, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { appointments, clients, leads } from "@/db/schema";
+import { appointments, clients, leads, teamMembers } from "@/db/schema";
 
 /*
  * Appointments: where the office is going, and who they are meeting.
@@ -17,11 +17,12 @@ import { appointments, clients, leads } from "@/db/schema";
 
 export type Answer = "PLANNED" | "DONE" | "MISSED";
 
-/** One appointment with whoever it is with, named. */
+/** One appointment with whoever it is with and whoever is going, both named. */
 const selection = {
   appointment: appointments,
   client: clients,
   lead: leads,
+  member: teamMembers,
 };
 
 /** The start of today, so a meeting at four this afternoon still counts as coming up. */
@@ -54,6 +55,10 @@ export type AppointmentFilter = {
   /** "next" for what is coming, "past" for what has been, "waiting" for the unanswered. */
   when?: string;
   status?: string;
+  /** One person's own appointments, which is what they came to the page for. */
+  assignedTo?: string;
+  /** One of the six kinds. */
+  type?: string;
 };
 
 export async function listAppointments(filter: AppointmentFilter) {
@@ -76,6 +81,14 @@ export async function listAppointments(filter: AppointmentFilter) {
     parts.push(eq(appointments.status, filter.status));
   }
 
+  if (filter.assignedTo === "nobody") parts.push(isNull(appointments.assignedToId));
+  else if (filter.assignedTo) parts.push(eq(appointments.assignedToId, filter.assignedTo));
+
+  const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"];
+  if (filter.type && KINDS.includes(filter.type)) {
+    parts.push(eq(appointments.type, filter.type as (typeof KINDS)[number] as never));
+  }
+
   const when = filter.when ?? "next";
   if (when === "next") parts.push(gte(appointments.at, startOfToday()));
   if (when === "past") parts.push(lt(appointments.at, startOfToday()));
@@ -88,6 +101,7 @@ export async function listAppointments(filter: AppointmentFilter) {
     .from(appointments)
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
+    .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(where)
     /* What is coming up reads soonest first. What has been reads latest first. */
     .orderBy(when === "next" ? asc(appointments.at) : desc(appointments.at))
@@ -96,19 +110,37 @@ export async function listAppointments(filter: AppointmentFilter) {
   return rows;
 }
 
-/** Everything ever arranged with one client, soonest first among what is left. */
+/**
+ * Everything ever arranged with one client, with the name of whoever is going.
+ *
+ * The name is joined in rather than looked up per row, because the card shows
+ * it against every line and an appointment with nobody's name on it is the one
+ * thing the office most wants to see.
+ */
+const withMember = {
+  id: appointments.id,
+  place: appointments.place,
+  at: appointments.at,
+  status: appointments.status,
+  type: appointments.type,
+  assignedToId: appointments.assignedToId,
+  assignedToName: teamMembers.name,
+};
+
 export async function appointmentsForClient(clientId: string) {
   return db
-    .select()
+    .select(withMember)
     .from(appointments)
+    .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(eq(appointments.clientId, clientId))
     .orderBy(desc(appointments.at));
 }
 
 export async function appointmentsForLead(leadId: string) {
   return db
-    .select()
+    .select(withMember)
     .from(appointments)
+    .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(eq(appointments.leadId, leadId))
     .orderBy(desc(appointments.at));
 }

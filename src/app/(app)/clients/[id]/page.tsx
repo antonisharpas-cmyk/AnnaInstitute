@@ -18,6 +18,7 @@ import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { apartmentsByClient, assignableUnits } from "@/lib/clients";
 import { landExchangesForClient } from "@/lib/contracts";
 import { appointmentsForClient } from "@/lib/appointments";
+import { whoCanGo } from "@/lib/team";
 import Appointments from "@/components/Appointments";
 import { documentsForClientWithUnits } from "@/lib/documents";
 import { notesForLead } from "@/lib/leads";
@@ -49,6 +50,9 @@ const day = (value: Date | null | undefined, locale: string) =>
 
 const statusTone = (status: string) =>
   status === "SOLD" || status === "DELIVERED" ? "good" : status === "RESERVED" ? "warn" : "neutral";
+
+/** The six kinds, in the order the office listed them. */
+const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
 
 export default async function ClientPage({
   params,
@@ -101,8 +105,9 @@ export default async function ClientPage({
   */
   const exchanges = await landExchangesForClient(id);
 
-  /* Where the office is meeting them, and what came of the last one. */
-  const meetings = await appointmentsForClient(id);
+  /* Where the office is meeting them, what came of the last one, and who is
+     free to be given the next one. */
+  const [meetings, team] = await Promise.all([appointmentsForClient(id), whoCanGo()]);
 
   const contractIds = contractRows.map((r) => r.contract.id);
 
@@ -342,6 +347,18 @@ export default async function ClientPage({
             move: t("appointments.move"),
             remove: t("common.delete"),
             sure: t("remove.sure"),
+            type: t("appointments.type"),
+            kinds: KINDS.map((one) => ({
+              value: one,
+              label: t(`appointments.type.${one}` as MessageKey),
+            })),
+            kindOf: Object.fromEntries(
+              KINDS.map((one) => [one, t(`appointments.type.${one}` as MessageKey)]),
+            ),
+            assignedTo: t("appointments.assignedTo"),
+            assignTo: t("appointments.assignTo"),
+            nobody: t("appointments.nobody"),
+            team,
           }}
         />
 

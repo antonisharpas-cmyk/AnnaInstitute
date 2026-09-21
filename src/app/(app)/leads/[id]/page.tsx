@@ -10,6 +10,7 @@ import SubmitButton from "@/components/SubmitButton";
 import NoteList from "@/components/NoteList";
 import Appointments from "@/components/Appointments";
 import { appointmentsForLead } from "@/lib/appointments";
+import { whoCanGo } from "@/lib/team";
 import { addLeadNote, convertLead, deleteLead, removeLeadNote, setLeadStatus } from "../actions";
 
 const when = (value: Date, locale: string) =>
@@ -25,6 +26,9 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
     </div>
   );
 }
+
+/** The six kinds, in the order the office listed them. */
+const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
 
 export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -50,7 +54,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     first viewings. They follow the person, so when the enquiry becomes a client
     the history of what was shown to them is already there.
   */
-  const meetings = await appointmentsForLead(id);
+  const [meetings, team] = await Promise.all([appointmentsForLead(id), whoCanGo()]);
 
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?";
 
@@ -95,6 +99,18 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               move: t("appointments.move"),
               remove: t("common.delete"),
               sure: t("remove.sure"),
+              type: t("appointments.type"),
+              kinds: KINDS.map((one) => ({
+                value: one,
+                label: t(`appointments.type.${one}` as MessageKey),
+              })),
+              kindOf: Object.fromEntries(
+                KINDS.map((one) => [one, t(`appointments.type.${one}` as MessageKey)]),
+              ),
+              assignedTo: t("appointments.assignedTo"),
+              assignTo: t("appointments.assignTo"),
+              nobody: t("appointments.nobody"),
+              team,
             }}
           />
 

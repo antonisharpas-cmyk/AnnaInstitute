@@ -118,6 +118,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the appointments table",
     migration: "0023",
   },
+  {
+    probe: "select name from team_members limit 1",
+    what: "the team members table",
+    migration: "0024",
+  },
+  {
+    probe: "select type, assigned_to_id from appointments limit 1",
+    what: "the appointment type and who it is assigned to",
+    migration: "0024",
+  },
 ];
 
 let answer: Missing[] | null = null;

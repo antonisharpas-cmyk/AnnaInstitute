@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { getTranslator } from "@/i18n";
+import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { listAppointments, needsAnAnswer, whoCanBeMet } from "@/lib/appointments";
+import { whoCanGo } from "@/lib/team";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
@@ -21,20 +22,47 @@ import { answerAppointment, createAppointment, deleteAppointment } from "./actio
  * Every row names the person it is with and links to their card, because an
  * appointment is never about a place, it is about somebody.
  */
+/** The six kinds, in the order the office listed them. */
+const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
+
 export default async function AppointmentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; when?: string; status?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    when?: string;
+    status?: string;
+    assignedTo?: string;
+    type?: string;
+  }>;
 }) {
   const params = await searchParams;
   await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
 
   const when = params.when ?? "next";
-  const [rows, people] = await Promise.all([
-    listAppointments({ q: params.q, when, status: params.status }),
+  const [rows, people, team] = await Promise.all([
+    listAppointments({
+      q: params.q,
+      when,
+      status: params.status,
+      assignedTo: params.assignedTo,
+      type: params.type,
+    }),
     whoCanBeMet(),
+    whoCanGo(),
   ]);
+
+  /** The filters, kept when the view or the search changes. */
+  const keep = { when, assignedTo: params.assignedTo, type: params.type, q: params.q };
+  const href = (over: Record<string, string | undefined>) => {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries({ ...keep, ...over })) {
+      if (value) search.set(key, value);
+    }
+    const query = search.toString();
+    return query ? `/appointments?${query}` : "/appointments";
+  };
 
   const dayOf = (at: Date) =>
     new Date(at).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", {
@@ -65,7 +93,7 @@ export default async function AppointmentsPage({
           {tabs.map((tab) => (
             <Link
               key={tab.key}
-              href={`/appointments?when=${tab.key}`}
+              href={href({ when: tab.key })}
               prefetch={false}
               className={`btn !px-3 !py-1 !text-xs ${
                 when === tab.key ? "btn-primary" : "btn-secondary"
@@ -82,10 +110,78 @@ export default async function AppointmentsPage({
           placeholder={t("appointments.searchPlaceholder")}
           searchLabel={t("common.search")}
           clearLabel={t("common.clear")}
-          keep={{ when }}
-          filtered={Boolean(params.q)}
+          keep={{ when, assignedTo: params.assignedTo, type: params.type }}
+          filtered={Boolean(params.q || params.assignedTo || params.type)}
           resetLabel={t("list.resetAll")}
         />
+
+        {/*
+          Whose appointments, and of what kind.
+
+          Plain links rather than a form, because the office wants one person's
+          day and then another's, and a link is one press. "Their appointments"
+          on the team page comes straight here.
+        */}
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <span className="flex flex-wrap items-center gap-1">
+            <span className="label !mb-0">{t("appointments.assignedTo")}</span>
+            <Link
+              href={href({ assignedTo: undefined })}
+              prefetch={false}
+              className={`btn !px-2 !py-0.5 !text-xs ${
+                params.assignedTo ? "btn-secondary" : "btn-primary"
+              }`}
+            >
+              {t("appointments.anybody")}
+            </Link>
+            {team.map((member) => (
+              <Link
+                key={member.id}
+                href={href({ assignedTo: member.id })}
+                prefetch={false}
+                className={`btn !px-2 !py-0.5 !text-xs ${
+                  params.assignedTo === member.id ? "btn-primary" : "btn-secondary"
+                }`}
+              >
+                {member.name}
+              </Link>
+            ))}
+            <Link
+              href={href({ assignedTo: "nobody" })}
+              prefetch={false}
+              className={`btn !px-2 !py-0.5 !text-xs ${
+                params.assignedTo === "nobody" ? "btn-primary" : "btn-secondary"
+              }`}
+            >
+              {t("appointments.nobody")}
+            </Link>
+          </span>
+
+          <span className="flex flex-wrap items-center gap-1">
+            <span className="label !mb-0">{t("appointments.type")}</span>
+            <Link
+              href={href({ type: undefined })}
+              prefetch={false}
+              className={`btn !px-2 !py-0.5 !text-xs ${
+                params.type ? "btn-secondary" : "btn-primary"
+              }`}
+            >
+              {t("common.all")}
+            </Link>
+            {KINDS.map((kind) => (
+              <Link
+                key={kind}
+                href={href({ type: kind })}
+                prefetch={false}
+                className={`btn !px-2 !py-0.5 !text-xs ${
+                  params.type === kind ? "btn-primary" : "btn-secondary"
+                }`}
+              >
+                {t(`appointments.type.${kind}` as MessageKey)}
+              </Link>
+            ))}
+          </span>
+        </div>
 
         {/* Arranging one from here, where the person has to be named. */}
         <div className="mb-4">
@@ -128,6 +224,31 @@ export default async function AppointmentsPage({
                   </optgroup>
                 </select>
               </div>
+              <div className="sm:col-span-2">
+                <label className="label" htmlFor="type">
+                  {t("appointments.type")}
+                </label>
+                <select id="type" name="type" className="select" defaultValue="OTHER">
+                  {KINDS.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {t(`appointments.type.${kind}` as MessageKey)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label" htmlFor="assignedToId">
+                  {t("appointments.assignTo")}
+                </label>
+                <select id="assignedToId" name="assignedToId" className="select" defaultValue="">
+                  <option value="">{t("appointments.nobody")}</option>
+                  {team.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="label" htmlFor="day">
                   {t("appointments.day")}
@@ -162,7 +283,9 @@ export default async function AppointmentsPage({
               <thead>
                 <tr>
                   <th>{t("appointments.place")}</th>
+                  <th>{t("appointments.type")}</th>
                   <th>{t("appointments.who")}</th>
+                  <th>{t("appointments.assignedTo")}</th>
                   <th className="ctr">{t("appointments.day")}</th>
                   <th className="ctr">{t("appointments.time")}</th>
                   <th>{t("common.status")}</th>
@@ -170,11 +293,19 @@ export default async function AppointmentsPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ appointment, client, lead }) => {
+                {rows.map(({ appointment, client, lead, member }) => {
                   const asking = needsAnAnswer(appointment);
                   return (
                     <tr key={appointment.id}>
                       <td className="font-semibold">{appointment.place}</td>
+                      <td className="text-xs">
+                        {t(`appointments.type.${appointment.type}` as MessageKey)}
+                        {appointment.type === "TIMBER" || appointment.type === "BATHROOMS_TILES" ? (
+                          <div className="text-brand-graphite/60">
+                            {t(`appointments.company.${appointment.type}` as MessageKey)}
+                          </div>
+                        ) : null}
+                      </td>
                       <td>
                         {client ? (
                           <Link
@@ -199,6 +330,19 @@ export default async function AppointmentsPage({
                           </>
                         ) : (
                           <span className="text-brand-graphite/50">{t("common.none")}</span>
+                        )}
+                      </td>
+                      <td className="text-xs">
+                        {member ? (
+                          <Link
+                            href={href({ assignedTo: member.id })}
+                            className="font-semibold hover:underline"
+                            prefetch={false}
+                          >
+                            {member.name}
+                          </Link>
+                        ) : (
+                          <span className="text-brand-graphite/50">{t("appointments.nobody")}</span>
                         )}
                       </td>
                       <td className="ctr nowrap">{dayOf(appointment.at)}</td>

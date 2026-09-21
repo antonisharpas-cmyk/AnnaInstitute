@@ -97,12 +97,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
     { href: "/projects", label: t("nav.projects"), group: "everyDay" },
     { href: "/contracts", label: t("nav.contracts"), group: "everyDay" },
+    { href: "/team", label: t("nav.team"), group: "people" },
     { href: "/agents", label: t("nav.agents"), group: "people" },
     { href: "/subowners", label: t("nav.subowners"), group: "people" },
     { href: "/campaigns", label: t("nav.campaigns"), group: "people" },
     { href: "/commissions", label: t("nav.commissions"), group: "money" },
     { href: "/invoices", label: t("nav.invoices"), group: "money", count: bills?.total ?? 0 },
     { href: "/reports", label: t("nav.reports"), group: "insight" },
+    { href: "/settings", label: t("nav.settings"), group: "insight" },
   ];
 
   const creates = [

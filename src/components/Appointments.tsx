@@ -18,13 +18,23 @@ import {
  * followed up. What is coming up, which is why they opened the card. And what
  * has been, so the history of a buyer who has been shown four apartments is on
  * one screen.
+ *
+ * Every line names the kind of appointment and the person going to it, because
+ * "Studio Bagno on Thursday" with nobody's name on it is how an appointment is
+ * missed by everybody at once.
  */
+
+export type AppointmentKind =
+  "TIMBER" | "BATHROOMS_TILES" | "OFFICE" | "PHONE_CALL" | "BUILDING" | "OTHER";
 
 export type AppointmentRow = {
   id: string;
   place: string;
   at: Date;
   status: "PLANNED" | "DONE" | "MISSED";
+  type: AppointmentKind;
+  assignedToId: string | null;
+  assignedToName: string | null;
 };
 
 export type AppointmentLabels = {
@@ -49,6 +59,14 @@ export type AppointmentLabels = {
   move: string;
   remove: string;
   sure: string;
+  /** The type picker, and the six kinds in the office's own words. */
+  type: string;
+  kinds: { value: string; label: string }[];
+  kindOf: Record<string, string>;
+  assignedTo: string;
+  assignTo: string;
+  nobody: string;
+  team: { id: string; name: string }[];
 };
 
 /** The day, as anybody says it: 21/09/2026. */
@@ -79,7 +97,7 @@ function fieldValues(at: Date): { day: string; time: string } {
   };
 }
 
-export function needsAnAnswer(row: AppointmentRow): boolean {
+export function needsAnAnswer(row: { status: string; at: Date }): boolean {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return row.status === "PLANNED" && new Date(row.at) < today;
@@ -101,9 +119,17 @@ export default function Appointments({
   const coming = rows.filter((row) => row.status === "PLANNED" && !needsAnAnswer(row));
   const been = rows.filter((row) => row.status !== "PLANNED");
 
-  const when = (row: AppointmentRow) => (
-    <span className="text-brand-graphite/70">
-      {dayOf(row.at, locale)} . {timeOf(row.at, locale)}
+  /** Place, day, time, kind and who is going, on one line. */
+  const said = (row: AppointmentRow) => (
+    <span className="min-w-0">
+      <span className="font-semibold">{row.place}</span>{" "}
+      <span className="text-brand-graphite/70">
+        {dayOf(row.at, locale)} . {timeOf(row.at, locale)}
+      </span>
+      <span className="block text-xs text-brand-graphite/60">
+        {labels.kindOf[row.type] ?? row.type} . {labels.assignedTo}:{" "}
+        {row.assignedToName ?? labels.nobody}
+      </span>
     </span>
   );
 
@@ -117,9 +143,7 @@ export default function Appointments({
           <ul className="divide-y divide-brand-line text-sm">
             {asking.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span>
-                  <span className="font-semibold">{row.place}</span> {when(row)}
-                </span>
+                {said(row)}
                 <span className="flex flex-wrap gap-1">
                   <form action={answerAppointment.bind(null, row.id, "DONE")}>
                     <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">
@@ -146,10 +170,8 @@ export default function Appointments({
         <ul className="divide-y divide-brand-line text-sm">
           {coming.map((row) => (
             <li key={row.id} className="py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span>
-                  <span className="font-semibold">{row.place}</span> {when(row)}
-                </span>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                {said(row)}
                 <span className="flex flex-wrap items-center gap-1">
                   <Disclosure showLabel={labels.move} hideLabel={labels.cancel} tone="secondary">
                     <Form
@@ -157,6 +179,8 @@ export default function Appointments({
                       labels={labels}
                       values={fieldValues(row.at)}
                       place={row.place}
+                      type={row.type}
+                      assignedToId={row.assignedToId}
                     />
                   </Disclosure>
                   <ConfirmButton
@@ -178,9 +202,7 @@ export default function Appointments({
           <ul className="divide-y divide-brand-line text-sm">
             {been.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span>
-                  <span className="font-semibold">{row.place}</span> {when(row)}
-                </span>
+                {said(row)}
                 <span className="flex items-center gap-2">
                   <Pill tone={row.status === "DONE" ? "good" : "warn"}>
                     {row.status === "DONE" ? labels.statusDone : labels.statusMissed}
@@ -207,27 +229,55 @@ export default function Appointments({
   );
 }
 
-/** The same three boxes, whether a meeting is being made or moved. */
+/** The same boxes, whether a meeting is being made or moved. */
 function Form({
   action,
   labels,
   values,
   place,
+  type,
+  assignedToId,
   withWhom,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   labels: AppointmentLabels;
   values?: { day: string; time: string };
   place?: string;
+  type?: string;
+  assignedToId?: string | null;
   withWhom?: string;
 }) {
   return (
     <form
       action={action}
-      className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-3"
+      className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-2"
     >
       {withWhom ? <input type="hidden" name="with" value={withWhom} /> : null}
-      <div className="sm:col-span-3">
+
+      <div>
+        <label className="label">{labels.type}</label>
+        <select name="type" className="select" defaultValue={type ?? "OTHER"}>
+          {labels.kinds.map((kind) => (
+            <option key={kind.value} value={kind.value}>
+              {kind.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="label">{labels.assignTo}</label>
+        <select name="assignedToId" className="select" defaultValue={assignedToId ?? ""}>
+          <option value="">{labels.nobody}</option>
+          {labels.team.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="sm:col-span-2">
         <label className="label">{labels.place}</label>
         <input
           name="place"
@@ -237,6 +287,7 @@ function Form({
           className="input"
         />
       </div>
+
       <div>
         <label className="label">{labels.day}</label>
         <DateField name="day" required defaultValue={values?.day ?? ""} />
@@ -251,7 +302,8 @@ function Form({
           className="input"
         />
       </div>
-      <div className="flex items-end">
+
+      <div className="flex items-end sm:col-span-2">
         <SubmitButton>{labels.save}</SubmitButton>
       </div>
     </form>
