@@ -4,6 +4,7 @@ import { expenses, installments, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { ensureSchema } from "@/lib/health";
 import { readFlash } from "@/lib/flash";
+import { howManyNeedAnAnswer } from "@/lib/appointments";
 import { readUndo } from "@/lib/undo";
 import { getTranslator, type MessageKey } from "@/i18n";
 import AppShell, { type Alert, type NavItem } from "@/components/AppShell";
@@ -57,7 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       select sum(p.amount) from payments p where p.installment_id = installments.id
     ), 0) < ${installments.totalAmount}`;
 
-  const [[late], [waiting], [bills], said, undo] = await Promise.all([
+  const [[late], [waiting], [bills], asking, said, undo] = await Promise.all([
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(installments)
@@ -78,6 +79,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           sql`${expenses.status} <> 'PAID'`,
         ),
       ),
+    /* Appointments whose day has passed with nobody saying what happened. */
+    howManyNeedAnAnswer(),
     readFlash(),
     readUndo(),
   ]);
@@ -86,6 +89,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/", label: t("nav.dashboard"), group: "everyDay" },
     { href: "/leads", label: t("nav.leads"), group: "everyDay", count: waiting?.total ?? 0 },
     { href: "/clients", label: t("nav.clients"), group: "everyDay" },
+    {
+      href: "/appointments",
+      label: t("nav.appointments"),
+      group: "everyDay",
+      count: asking ?? 0,
+    },
     { href: "/projects", label: t("nav.projects"), group: "everyDay" },
     { href: "/contracts", label: t("nav.contracts"), group: "everyDay" },
     { href: "/agents", label: t("nav.agents"), group: "people" },
@@ -125,6 +134,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         label: t("shell.alertBills"),
         href: "/invoices?status=UNPAID",
         count: bills?.total ?? 0,
+        tone: "warn",
+      },
+      {
+        /* Yesterday's appointments that nobody has answered for. */
+        label: t("appointments.waitingShort"),
+        href: "/appointments?when=waiting",
+        count: asking ?? 0,
         tone: "warn",
       },
     ] satisfies Alert[]

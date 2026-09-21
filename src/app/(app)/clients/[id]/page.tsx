@@ -17,6 +17,8 @@ import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { apartmentsByClient, assignableUnits } from "@/lib/clients";
 import { landExchangesForClient } from "@/lib/contracts";
+import { appointmentsForClient } from "@/lib/appointments";
+import Appointments from "@/components/Appointments";
 import { documentsForClientWithUnits } from "@/lib/documents";
 import { notesForLead } from "@/lib/leads";
 import { titleWithExtension } from "@/lib/fileLabels";
@@ -98,6 +100,9 @@ export default async function ClientPage({
     on the owner's page and not only on the contract's.
   */
   const exchanges = await landExchangesForClient(id);
+
+  /* Where the office is meeting them, and what came of the last one. */
+  const meetings = await appointmentsForClient(id);
 
   const contractIds = contractRows.map((r) => r.contract.id);
 
@@ -303,6 +308,40 @@ export default async function ClientPage({
             address: t("clients.address"),
             source: t("clients.source"),
             notes: t("common.notes"),
+          }}
+        />
+
+        {/*
+          Where we are meeting them. High on the card on purpose: it is the
+          thing about a buyer that is happening this week, and the day after a
+          viewing it is the thing somebody has to answer for.
+        */}
+        <Appointments
+          rows={meetings}
+          with={`client:${id}`}
+          locale={locale}
+          labels={{
+            title: t("appointments.title"),
+            waiting: t("appointments.waiting"),
+            waitingHint: t("appointments.waitingHint"),
+            next: t("appointments.next"),
+            been: t("appointments.been"),
+            none: t("appointments.none"),
+            add: t("appointments.add"),
+            place: t("appointments.place"),
+            placeHint: t("appointments.placeHint"),
+            day: t("appointments.day"),
+            time: t("appointments.time"),
+            save: t("common.save"),
+            cancel: t("common.cancel"),
+            itHappened: t("appointments.itHappened"),
+            itDidNot: t("appointments.itDidNot"),
+            statusDone: t("appointments.done"),
+            statusMissed: t("appointments.missed"),
+            statusPlanned: t("appointments.planned"),
+            move: t("appointments.move"),
+            remove: t("common.delete"),
+            sure: t("remove.sure"),
           }}
         />
 

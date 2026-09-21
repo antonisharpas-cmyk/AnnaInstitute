@@ -1023,3 +1023,39 @@ export const expenses = pgTable("expenses", {
   createdAt: created(),
   updatedAt: updated(),
 });
+
+/* ---------------------------------------------------------------------------
+   APPOINTMENTS
+
+   Where somebody from the office is going, and who they are meeting.
+
+   The office keeps these on paper and in their heads, which is why a viewing
+   gets double booked and why nobody can say afterwards whether it happened. So
+   an appointment is a record: a place, a day, a time, and the person it is
+   with, who may be a client or still only an enquiry, since most first viewings
+   happen before anybody is a client.
+
+   The day after, it is either done or it did not happen, and until somebody
+   says which, the CRM asks. That is the whole point of keeping them: an
+   appointment nobody answered for is a viewing nobody followed up.
+   --------------------------------------------------------------------------- */
+
+export const appointmentStatusEnum = pgEnum("appointment_status", ["PLANNED", "DONE", "MISSED"]);
+
+export const appointments = pgTable("appointments", {
+  id: id(),
+  /** Where it is, in the office's own words: "Studio Bango", "the site office". */
+  place: text("place").notNull(),
+  /** The day and the time in one, so the two can never disagree. */
+  at: timestamp("at", { withTimezone: true }).notNull(),
+  /** Who it is with: a client, or an enquiry who is not one yet. */
+  clientId: text("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  leadId: text("lead_id").references(() => leads.id, { onDelete: "cascade" }),
+  status: appointmentStatusEnum("status").default("PLANNED").notNull(),
+  /** When somebody said whether it happened, and who. */
+  answeredAt: timestamp("answered_at", { withTimezone: true }),
+  answeredById: text("answered_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdById: text("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: created(),
+  updatedAt: updated(),
+});

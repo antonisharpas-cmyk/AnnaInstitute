@@ -8,6 +8,8 @@ import { leadStatusTone, notesForLead } from "@/lib/leads";
 import { BackLink, Card, PageHeader, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import NoteList from "@/components/NoteList";
+import Appointments from "@/components/Appointments";
+import { appointmentsForLead } from "@/lib/appointments";
 import { addLeadNote, convertLead, deleteLead, removeLeadNote, setLeadStatus } from "../actions";
 
 const when = (value: Date, locale: string) =>
@@ -43,6 +45,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
   const notes = await notesForLead(id);
 
+  /*
+    Viewings arranged with somebody who is still only an enquiry, which is most
+    first viewings. They follow the person, so when the enquiry becomes a client
+    the history of what was shown to them is already there.
+  */
+  const meetings = await appointmentsForLead(id);
+
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?";
 
   return (
@@ -60,6 +69,35 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          <Appointments
+            rows={meetings}
+            with={`lead:${id}`}
+            locale={locale}
+            labels={{
+              title: t("appointments.title"),
+              waiting: t("appointments.waiting"),
+              waitingHint: t("appointments.waitingHint"),
+              next: t("appointments.next"),
+              been: t("appointments.been"),
+              none: t("appointments.none"),
+              add: t("appointments.add"),
+              place: t("appointments.place"),
+              placeHint: t("appointments.placeHint"),
+              day: t("appointments.day"),
+              time: t("appointments.time"),
+              save: t("common.save"),
+              cancel: t("common.cancel"),
+              itHappened: t("appointments.itHappened"),
+              itDidNot: t("appointments.itDidNot"),
+              statusDone: t("appointments.done"),
+              statusMissed: t("appointments.missed"),
+              statusPlanned: t("appointments.planned"),
+              move: t("appointments.move"),
+              remove: t("common.delete"),
+              sure: t("remove.sure"),
+            }}
+          />
+
           <Card title={t("leads.theEnquiry")}>
             <Line label={t("leads.email")}>
               {lead.email ? <a href={`mailto:${lead.email}`}>{lead.email}</a> : ""}

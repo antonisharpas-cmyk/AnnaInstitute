@@ -28,6 +28,7 @@ const NEEDED_TABLES = [
   ["subowner_directors", "0018"],
   ["subowner_shares", "0018"],
   ["contract_units", "0020"],
+  ["appointments", "0023"],
 ] as const;
 
 const NEEDED_COLUMNS = [
