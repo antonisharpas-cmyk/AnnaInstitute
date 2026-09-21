@@ -353,7 +353,14 @@ export default async function ContractsPage({
 
                       {on("outstanding") ? (
                         <td className="ctr font-semibold">
-                          {formatAmount(r.outstandingCents, locale)}
+                          {/* Nought outstanding on a schedule that had something
+                              in it is not a blank, it is paid off, and it is
+                              worth a word rather than a figure. */}
+                          {r.scheduledCents > 0 && r.outstandingCents <= 0 ? (
+                            <Pill tone="good">{t("contracts.paidInFull")}</Pill>
+                          ) : (
+                            formatAmount(r.outstandingCents, locale)
+                          )}
                         </td>
                       ) : null}
 

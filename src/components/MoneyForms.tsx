@@ -1,3 +1,6 @@
+"use client";
+
+import { useRef } from "react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 
@@ -26,6 +29,8 @@ export type ScheduleLine = {
   label: string;
   /** Formatted for reading, since the money is formatted by the caller. */
   amount: string;
+  /** What this line still owes, as a plain number for the amount box. */
+  owing?: string;
 };
 
 export function PaymentForm({
@@ -52,6 +57,37 @@ export function PaymentForm({
   };
   /** Ties the field ids apart when two of these are on one page. */
 }) {
+  const amount = useRef<HTMLInputElement>(null);
+
+  /*
+    Only the stages that still owe something are offered.
+
+    A schedule of ten lines with nine receipted should not make the office read
+    all ten to find the one left. A line that is settled has nothing to receipt
+    against it, so it leaves the list, and money that belongs to no line goes
+    against the contract itself, which is the first choice.
+  */
+  const owing = lines.filter((line) => line.owing === undefined || Number(line.owing) > 0);
+
+  /*
+    Picking the stage fills the amount in with what that stage still owes.
+
+    Receipting a schedule means typing the same figure the line beside it
+    already shows, ten times over, and a typo there is a contract that never
+    quite reaches paid. The office can still change it: a part payment is just
+    a smaller number over the top of the one offered.
+  */
+  const offerTheAmount = (id: string) => {
+    const box = amount.current;
+    if (!box) return;
+    const line = lines.find((one) => one.id === id);
+    if (!line?.owing) return;
+    if (box.value.trim() === "" || box.dataset.offered === "yes") {
+      box.value = line.owing;
+      box.dataset.offered = "yes";
+    }
+  };
+
   return (
     <form
       action={action}
@@ -59,9 +95,13 @@ export function PaymentForm({
     >
       <div>
         <label className="label">{labels.stage}</label>
-        <select name="installmentId" className="select">
+        <select
+          name="installmentId"
+          className="select"
+          onChange={(event) => offerTheAmount(event.target.value)}
+        >
           <option value="">{labels.notAgainstOne}</option>
-          {lines.map((line) => (
+          {owing.map((line) => (
             <option key={line.id} value={line.id}>
               {line.seq}. {line.label} . {line.amount}
             </option>
@@ -70,7 +110,16 @@ export function PaymentForm({
       </div>
       <div>
         <label className="label">{labels.amount}</label>
-        <input name="amount" required className="input" />
+        <input
+          ref={amount}
+          name="amount"
+          required
+          className="input"
+          onInput={(event) => {
+            /* Typed over by hand, so stop offering. */
+            (event.currentTarget as HTMLInputElement).dataset.offered = "no";
+          }}
+        />
       </div>
       <div>
         <label className="label">{labels.date}</label>

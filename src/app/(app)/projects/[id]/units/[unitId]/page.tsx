@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { contracts, projects, units } from "@/db/schema";
+import { contracts, installments, payments, projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import { documentsForUnit } from "@/lib/documents";
@@ -48,6 +48,31 @@ export default async function EditUnitPage({
     db.select({ contract: contracts }).from(contracts).where(eq(contracts.unitId, unitId)),
     documentsForUnit(unitId),
   ]);
+
+  /*
+    Whether each of those contracts has been collected in full, so the
+    apartment's own page can say it. An apartment reading sold next to a
+    contract with nothing left owing should not make anybody open the contract
+    to find that out.
+  */
+  const settled = new Set(
+    (
+      await Promise.all(
+        sold.map(async ({ contract }) => {
+          const [owed] = await db
+            .select({ due: sql<string>`coalesce(sum(${installments.totalAmount}), 0)` })
+            .from(installments)
+            .where(eq(installments.contractId, contract.id));
+          const [got] = await db
+            .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+            .from(payments)
+            .where(eq(payments.contractId, contract.id));
+          const due = toCents(owed?.due ?? "0");
+          return due > 0 && toCents(got?.paid ?? "0") >= due ? contract.id : null;
+        }),
+      )
+    ).filter((id): id is string => id !== null),
+  );
 
   // Grouped under a heading per category, in a fixed order.
   const groups = GROUP_ORDER.map((category) => ({
@@ -109,7 +134,10 @@ export default async function EditUnitPage({
                     >
                       {s.contract.reference}
                     </Link>
-                    <span className="tabular-nums">
+                    <span className="flex items-center gap-2 tabular-nums">
+                      {settled.has(s.contract.id) ? (
+                        <Pill tone="good">{t("contracts.paidInFull")}</Pill>
+                      ) : null}
                       {formatAmount(toCents(s.contract.netPrice), locale)}
                     </span>
                   </li>

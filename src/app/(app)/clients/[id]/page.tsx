@@ -671,6 +671,13 @@ export default async function ClientPage({
                           {formatAmount(paid, locale)} {t("contracts.paid").toLowerCase()} of{" "}
                           {formatAmount(scheduled, locale)}
                         </div>
+                        {/* Nothing left to collect, said where the buyer's
+                            money is read rather than only on the contract. */}
+                        {scheduled > 0 && paid >= scheduled ? (
+                          <div className="mt-1">
+                            <Pill tone="good">{t("contracts.paidInFull")}</Pill>
+                          </div>
+                        ) : null}
                         {row.contract.kind === "LAND_EXCHANGE" ? (
                           <div className="mt-1">
                             <Pill tone="teal">{t("contracts.kind.LAND_EXCHANGE")}</Pill>
@@ -914,6 +921,12 @@ export default async function ClientPage({
                             seq: l.seq,
                             label: l.label,
                             amount: formatAmount(toCents(l.totalAmount), locale),
+                            owing: String(
+                              Math.max(
+                                0,
+                                toCents(l.totalAmount) - (paidByInstallment.get(l.id) ?? 0),
+                              ) / 100,
+                            ),
                           }))}
                           labels={{
                             stage: t("contracts.stage"),

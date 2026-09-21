@@ -959,6 +959,10 @@ export const dictionaries = {
     "contracts.exchangeApartments": "Apartments the owner receives",
     "contracts.noExchangeApartments": "No apartments named yet",
     "contracts.openTheContract": "Open the contract",
+    "contracts.paidInFull": "Paid in full",
+    "contracts.paidInFullNote":
+      "Every installment on this contract has been receipted, so there is nothing left to collect. The apartment reads sold. Delivered is set by hand, on the day the keys change hands.",
+    "said.paidInFull": "That contract is paid in full",
     "contracts.togetherWithCash": "The agreement and the cash together",
     "contracts.thePlot": "The land given",
     "contracts.thePlotHint":
@@ -2052,6 +2056,10 @@ export const dictionaries = {
     "contracts.exchangeApartments": "Διαμερίσματα που παίρνει ο ιδιοκτήτης",
     "contracts.noExchangeApartments": "Δεν έχουν οριστεί ακόμη διαμερίσματα",
     "contracts.openTheContract": "Άνοιγμα συμβολαίου",
+    "contracts.paidInFull": "Εξοφλήθηκε",
+    "contracts.paidInFullNote":
+      "Όλες οι δόσεις του συμβολαίου έχουν εισπραχθεί, οπότε δεν μένει τίποτα να εισπραχθεί. Το διαμέρισμα είναι πουλημένο. Το παραδομένο μπαίνει με το χέρι, την ημέρα που δίνονται τα κλειδιά.",
+    "said.paidInFull": "Το συμβόλαιο εξοφλήθηκε",
     "contracts.togetherWithCash": "Το συμβόλαιο και τα μετρητά μαζί",
     "contracts.thePlot": "Η γη που δόθηκε",
     "contracts.thePlotHint":

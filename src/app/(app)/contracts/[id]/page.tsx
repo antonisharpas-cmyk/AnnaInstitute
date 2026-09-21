@@ -68,6 +68,17 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
   const { contract, unit, project, client, agent, installments: lines, totals, payments } = detail;
 
+  /*
+    Paid off, said out loud.
+
+    The office filled a schedule in, receipted every line of it, and the only
+    sign of that was an outstanding figure of nought, which reads the same as a
+    contract with no schedule at all. So when there is something owed and it has
+    all come in, the contract says so in words, in the header and over the
+    schedule, and every list that shows the money says it too.
+  */
+  const paidInFull = totals.scheduleTotalCents > 0 && totals.outstandingCents <= 0;
+
   return (
     <>
       <BackLink
@@ -93,6 +104,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             {contract.kind === "LAND_EXCHANGE" ? (
               <Pill tone="teal">{t("contracts.kind.LAND_EXCHANGE")}</Pill>
             ) : null}
+            {paidInFull ? <Pill tone="good">{t("contracts.paidInFull")}</Pill> : null}
             <Pill tone={contractStatusTone(contract.status) as "good" | "warn" | "bad" | "teal"}>
               {t(`contracts.status.${contract.status}` as MessageKey)}
             </Pill>
@@ -354,6 +366,13 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           title={t("contracts.schedule")}
           className={contract.kind === "LAND_EXCHANGE" && lines.length === 0 ? "hidden" : ""}
         >
+          {paidInFull ? (
+            <p className="mb-4 rounded border border-[color:var(--color-positive)] bg-brand-surface px-3 py-2 text-sm">
+              <span className="font-semibold">{t("contracts.paidInFull")}</span>{" "}
+              <span className="text-brand-graphite/70">{t("contracts.paidInFullNote")}</span>
+            </p>
+          ) : null}
+
           <form
             action={setDates.bind(null, id)}
             className="mb-4 flex flex-wrap items-end gap-2 border-b border-brand-line pb-4"
@@ -529,6 +548,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 seq: l.seq,
                 label: l.label,
                 amount: formatAmount(l.totalCents, locale),
+                owing: String(Math.max(0, l.totalCents - l.paidCents) / 100),
               }))}
               labels={{
                 stage: t("contracts.stage"),

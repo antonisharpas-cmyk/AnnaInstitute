@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -844,11 +844,34 @@ export async function recordPayment(contractId: string, formData: FormData) {
     userEmail: user.email,
   });
 
-  await flash("said.paymentRecorded");
+  /*
+    The payment that finishes a contract is worth a different sentence from the
+    nine before it. The office should not have to read an outstanding column to
+    find out that they are done collecting.
+  */
+  await flash(
+    (await nothingLeftToCollect(contractId)) ? "said.paidInFull" : "said.paymentRecorded",
+  );
 
   revalidatePath(`/contracts/${contractId}`);
   await alsoTheBuyer(contractId);
   revalidatePath("/contracts");
+}
+
+/** Is everything the schedule asks for now receipted? */
+async function nothingLeftToCollect(contractId: string): Promise<boolean> {
+  const [owed] = await db
+    .select({ due: sql<string>`coalesce(sum(${installments.totalAmount}), 0)` })
+    .from(installments)
+    .where(eq(installments.contractId, contractId));
+
+  const [received] = await db
+    .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+    .from(payments)
+    .where(eq(payments.contractId, contractId));
+
+  const due = toCents(owed?.due ?? "0");
+  return due > 0 && toCents(received?.paid ?? "0") >= due;
 }
 
 export async function deletePayment(paymentId: string, contractId: string) {

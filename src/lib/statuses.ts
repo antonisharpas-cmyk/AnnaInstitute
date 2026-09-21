@@ -38,13 +38,21 @@ import { recalculateCommission } from "@/lib/commissions";
 
 type Who = { id: string; email: string } | null;
 
-/** What one contract's money says its apartment's status should be. */
+/**
+ * What one contract's money says its apartment's status should be.
+ *
+ * Money can say reserved and it can say sold. It cannot say delivered: a
+ * building finishing in 2027 has apartments that are paid for and handed over
+ * to nobody, so delivered is the office's word about the keys and is set by
+ * hand. What the money does instead, once a contract is paid off, is say so in
+ * plain words wherever the figures are shown.
+ */
 function deserved(
   dueCents: number,
   paidCents: number,
   current: "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED",
 ): "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED" {
-  if (dueCents > 0 && paidCents >= dueCents) return "DELIVERED";
+  void dueCents;
   if (paidCents > 0) return "SOLD";
   /**
    * A contract exists but nothing has come in against it yet, which is exactly
@@ -97,20 +105,51 @@ export async function followTheMoney(contractId: string, who: Who = null): Promi
 
   if (!unit) return;
 
-  if (unit.byHand === null) {
+  {
     const should = deserved(toCents(owed?.due ?? "0"), toCents(received?.paid ?? "0"), unit.status);
 
-    if (should !== unit.status) {
+    /*
+      A status set by hand is a floor, not a freeze.
+
+      It used to be a freeze, and that was wrong in the one case that matters
+      most: an apartment brought in as reserved, or marked reserved by the
+      office months ago, stayed reserved however much the buyer paid. The money
+      had said sold and then said paid in full, and the list still said
+      reserved, which is the CRM contradicting its own receipts.
+
+      So a hand-set status still holds the apartment where it is against the
+      money pulling it back, which is the reason it exists: the office records a
+      handover before the last euro arrives and does not want the schedule
+      undoing it. But when the money has gone further than the hand did, the
+      money wins and the apartment moves forward.
+    */
+    const rank = { AVAILABLE: 0, RESERVED: 1, SOLD: 2, DELIVERED: 3 } as const;
+    const forwards = rank[should] > rank[unit.status];
+    const mayMove = unit.byHand === null || forwards;
+
+    if (should !== unit.status && mayMove) {
       await db
         .update(units)
-        .set({ status: should, updatedAt: new Date() })
+        .set({
+          status: should,
+          /*
+            Once the money has carried an apartment past what somebody typed,
+            that hand-set status has had its say. Clearing it hands the
+            apartment back to the payments, which is also what the office would
+            have to do by hand otherwise.
+          */
+          ...(unit.byHand === null ? {} : { statusByHandAt: null, statusByHandById: null }),
+          updatedAt: new Date(),
+        })
         .where(eq(units.id, unit.id));
 
       await recordAudit({
         action: "unit.status.money",
         entity: "unit",
         entityId: unit.id,
-        detail: `${unit.code}: ${unit.status} to ${should} on contract ${contract.reference}`,
+        detail: `${unit.code}: ${unit.status} to ${should} on contract ${contract.reference}${
+          unit.byHand === null ? "" : ", past a status set by hand"
+        }`,
         userId: who?.id,
         userEmail: who?.email ?? "the payment schedule",
       });
