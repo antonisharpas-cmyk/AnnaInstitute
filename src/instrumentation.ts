@@ -17,9 +17,12 @@
  * in the environment, which the route checks. The same route also takes an API
  * key, for an office that would rather drive the whole thing from Windows Task
  * Scheduler or a cron line.
+ *
+ * Nothing is imported here on purpose. This file is compiled for the edge
+ * runtime as well as for node, and an edge build refuses a node: import
+ * outright, which stops the whole development server with a build error. The
+ * token comes from the Web Crypto that both runtimes already have.
  */
-import { randomBytes } from "node:crypto";
-
 export async function register() {
   /* The edge runtime has no timers worth having and no database at all. */
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -27,7 +30,7 @@ export async function register() {
   /* Nothing to schedule during a build. */
   if (process.env.NEXT_PHASE === "phase-production-build") return;
 
-  const token = randomBytes(24).toString("base64url");
+  const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
   process.env.OE_TICK_TOKEN = token;
 
   const port = process.env.PORT ?? "3000";
