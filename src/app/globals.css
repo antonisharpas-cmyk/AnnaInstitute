@@ -673,6 +673,33 @@ table.data tbody td.ctr {
   color: var(--color-brand-teal-dark);
 }
 
+/*
+  How many are pressing, on the bell itself.
+
+  A dot says only that something is there, which makes the office open the menu
+  to find out it was one overdue invoice. The number is the whole point, so it
+  is the number, in a red circle, and it grows to fit two digits without moving
+  the icon underneath it.
+*/
+.count {
+  position: absolute;
+  top: 0.05rem;
+  right: 0.05rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.22rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-negative);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 1.5px solid var(--color-brand-paper);
+}
+
 .dot {
   position: absolute;
   top: 0.3rem;
@@ -2538,6 +2565,19 @@ table.data thead th[data-sorted] {
   z-index: 60;
   top: calc(100% + 0.35rem);
   left: 0;
+}
+
+/*
+  Drawn at the end of the document, over everything.
+
+  A calendar that is a child of the field is clipped by any scrollbox the field
+  sits in, which is what cut the bottom off the one in the payment schedule.
+  This one is placed in page coordinates instead, so a table can scroll
+  sideways and the calendar still comes out whole.
+*/
+.calendar.floating {
+  position: fixed;
+  z-index: 80;
   width: 17.5rem;
   padding: 0.7rem;
   border: 1px solid var(--color-brand-line);

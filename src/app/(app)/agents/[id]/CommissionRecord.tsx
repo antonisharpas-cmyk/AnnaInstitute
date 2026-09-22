@@ -106,19 +106,33 @@ export default function CommissionRecord({
         ) : null}
       </dl>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      {/*
+        The two slots are one shape, deliberately.
+        
+        They sit in equal columns, each box stretches to the height of the
+        taller of the two, the heading and the line under it always take the
+        same two lines, and whatever is at the bottom of the box, a filed paper
+        or the field that asks for one, is pushed to the same place by mt-auto.
+        A slot that has been filled and a slot that is still waiting must not
+        read as two different sizes of thing, because the whole point of the
+        pair is that the eye can tell at a glance which of the two is missing.
+      */}
+      <div className="grid items-stretch gap-3 sm:grid-cols-2">
         {slots.map((slot) => (
-          <div key={slot.kind} className="rounded border border-brand-line bg-brand-paper p-3">
+          <div
+            key={slot.kind}
+            className="flex h-full min-h-28 flex-col rounded border border-brand-line bg-brand-paper p-3"
+          >
             <p className="text-xs font-semibold">{slot.title}</p>
-            <p className="mb-2 text-xs text-brand-graphite/60">{slot.hint}</p>
+            <p className="mb-2 min-h-8 text-xs text-brand-graphite/60">{slot.hint}</p>
 
             {slot.file ? (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="mt-auto flex flex-wrap items-center gap-2">
                 <a
                   href={`/api/files/${slot.file.id}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs font-medium text-brand-teal-dark hover:underline"
+                  className="w-full truncate text-xs font-medium text-brand-teal-dark hover:underline"
                 >
                   {slot.file.title}
                 </a>
@@ -131,21 +145,28 @@ export default function CommissionRecord({
                   {labels.open}
                 </a>
                 <form action={remove.bind(null, slot.file.id)}>
-                  <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                  <SubmitButton className="btn btn-secondary !px-2 !py-1 !text-xs">
                     {labels.replace}
-                  </button>
+                  </SubmitButton>
                 </form>
               </div>
             ) : (
+              /*
+                One file, one slot, one button. The field is told which slot it
+                belongs to through the name as well as the binding, so the paper
+                lands where the office put it whichever of the two it is.
+              */
               <form
                 action={upload.bind(null, slot.kind)}
-                className="flex flex-wrap items-end gap-2"
+                className="mt-auto flex flex-wrap items-center gap-2"
               >
+                <input type="hidden" name="kind" value={slot.kind} />
                 <input
                   name="files"
                   type="file"
                   required
-                  className="input !w-auto !flex-1 !py-1 !text-xs"
+                  aria-label={slot.title}
+                  className="input min-w-0 flex-1 !py-1 !text-xs"
                 />
                 <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">
                   {labels.add}

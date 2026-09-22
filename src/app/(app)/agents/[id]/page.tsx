@@ -79,13 +79,21 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/*
+        The three figures the office asks for by name, at the top where they are
+        read: what this agent has earned, what has actually been paid to them,
+        and what is still owed. Paid is the money recorded against the
+        commission lines, installment by installment, so the three always agree
+        with the payments below rather than with a rate on paper.
+      */}
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat
           label={t("agents.rate")}
           value={formatPercent(Number(agent.commissionRate), locale)}
         />
         <Stat label={t("agents.sales")} value={String(sales.length)} />
         <Stat label={t("agents.generated")} value={formatAmount(totals.generatedCents, locale)} />
+        <Stat label={t("agents.paidOut")} value={formatAmount(totals.paidCents, locale)} />
         <Stat label={t("agents.owed")} value={formatAmount(totals.outstandingCents, locale)} />
       </div>
 
@@ -614,11 +622,22 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
             )}
           </Card>
 
+          {/*
+            Every agent can be deleted. What goes with them is spelled out, and
+            when there is a history attached the sentence counts it, because the
+            office should be able to see what it is about to lose before it
+            presses rather than afterwards.
+          */}
           <DeleteRecord
             action={deleteAgent.bind(null, id)}
             label={t("remove.agent")}
-            what={t("remove.agentWhat")}
-            blocked={goes.commissions > 0 || goes.payments > 0 ? t("remove.agentBlocked") : null}
+            what={
+              goes.commissions > 0 || goes.payments > 0
+                ? `${t("remove.agentWhat")} ${t("remove.agentAlsoGoes")
+                    .replace("{lines}", String(goes.commissions))
+                    .replace("{payments}", String(goes.payments))}`
+                : t("remove.agentWhat")
+            }
             confirm={t("remove.confirm")}
           />
         </div>

@@ -28,6 +28,7 @@ export default function Pick({
   chosen,
   choices,
   anything,
+  only = false,
 }: {
   /** The parameter this writes into the address. */
   name: string;
@@ -37,6 +38,14 @@ export default function Pick({
   choices: Choice[];
   /** What the button says when nothing is chosen. */
   anything: string;
+  /**
+   * One at a time.
+   *
+   * Most of these filters answer "which of these", where ticking several is
+   * the point. A few answer "which one", where two answers at once is not a
+   * question anybody asks, so picking one replaces the other.
+   */
+  only?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<string[]>(chosen);
@@ -82,7 +91,10 @@ export default function Pick({
   };
 
   const toggle = (value: string) =>
-    setPicked((now) => (now.includes(value) ? now.filter((v) => v !== value) : [...now, value]));
+    setPicked((now) => {
+      if (only) return now.includes(value) ? [] : [value];
+      return now.includes(value) ? now.filter((v) => v !== value) : [...now, value];
+    });
 
   const chosenLabels = choices.filter((c) => picked.includes(c.value)).map((c) => c.label);
   const says =

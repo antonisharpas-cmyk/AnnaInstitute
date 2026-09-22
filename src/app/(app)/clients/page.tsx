@@ -208,7 +208,17 @@ export default async function ClientsPage({
               client's own source is the one the office sets and the one the
               column shows, so that is the one to filter by.
             */
-            choices={(["BUYER", "ENQUIRY", "AGENT_REFERRAL", "LAND_OWNER", "OTHER"] as const).map(
+            choices={(
+              [
+                "BUYER",
+                "ENQUIRY",
+                "WEBSITE",
+                "WHATSAPP",
+                "AGENT_REFERRAL",
+                "LAND_OWNER",
+                "OTHER",
+              ] as const
+            ).map(
               (one) => ({
                 value: `own:${one}`,
                 label: t(`clients.source.${one}` as MessageKey),
@@ -488,16 +498,22 @@ export default async function ClientsPage({
 
                         {on("source") ? (
                           <td className="text-xs whitespace-nowrap">
-                            {r.leadSource ? (
-                              <>
-                                {t(`leads.source.${r.leadSource}` as MessageKey)}
-                                {r.leadSourceText ? (
-                                  <div className="text-brand-graphite/55">{r.leadSourceText}</div>
-                                ) : null}
-                              </>
-                            ) : (
-                              t(`clients.source.${r.client.source}` as MessageKey)
-                            )}
+                            {/*
+                              The client's own source, and nothing else.
+
+                              This column used to prefer the source of the
+                              enquiry behind the client, so the list said
+                              WhatsApp while the client's own record said
+                              Enquiry, and editing the client showed the second
+                              one. The conversion now carries the source over,
+                              so there is one answer and this is it. Whatever
+                              the enquiry said in its own words is kept
+                              underneath.
+                            */}
+                            {t(`clients.source.${r.client.source}` as MessageKey)}
+                            {r.leadSourceText ? (
+                              <div className="text-brand-graphite/55">{r.leadSourceText}</div>
+                            ) : null}
                           </td>
                         ) : null}
 

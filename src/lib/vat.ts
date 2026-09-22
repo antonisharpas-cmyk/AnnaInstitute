@@ -192,23 +192,59 @@ export function addMonths(from: Date, months: number): Date {
 /**
  * Equal periodic payments: twelve monthly, eight quarterly, whatever they ask
  * for. The amounts are split to the cent, so the parts always add up.
+ *
+ * A monthly or quarterly contract does not really begin with the first
+ * installment. The buyer reserves, then signs, and the installments are what is
+ * left after those two, so both can be given here and both come off the price
+ * before it is split. The reservation falls on the start date, the signing a
+ * month after it, and the installments run every month or every quarter from
+ * there. Give neither and it is a plain run of equal payments, which is what it
+ * was before.
  */
 export function periodicPlan(
   netCents: number,
   count: number,
   periodMonths: number,
   startDate: Date | null,
+  opening?: { reservationCents?: number; onSigningCents?: number },
 ): { label: string; labelEl: string; percentage: number; dueDate: Date | null }[] {
   const safeCount = Math.max(1, Math.min(count, 240));
-  const parts = distributeCents(netCents, Array(safeCount).fill(1));
+  const every = Math.max(1, periodMonths);
+  const percent = (cents: number) => (netCents > 0 ? (cents / netCents) * 100 : 0);
 
-  return parts.map((cents, i) => {
-    const dueDate = startDate ? addMonths(startDate, i * Math.max(1, periodMonths)) : null;
-    return {
+  const reservationCents = Math.max(0, Math.round(opening?.reservationCents ?? 0));
+  const onSigningCents = Math.max(0, Math.round(opening?.onSigningCents ?? 0));
+
+  const head: { label: string; labelEl: string; percentage: number; dueDate: Date | null }[] = [];
+  if (reservationCents > 0) {
+    head.push({
+      label: "Reservation",
+      labelEl: "Κράτηση",
+      percentage: percent(reservationCents),
+      dueDate: startDate,
+    });
+  }
+  if (onSigningCents > 0) {
+    head.push({
+      label: "On signing of contract",
+      labelEl: "Υπογραφή συμβολαίου",
+      percentage: percent(onSigningCents),
+      dueDate: startDate ? addMonths(startDate, 1) : null,
+    });
+  }
+
+  const left = Math.max(0, netCents - reservationCents - onSigningCents);
+  const parts = distributeCents(left, Array(safeCount).fill(1));
+  const from = startDate ? addMonths(startDate, head.length > 1 ? 1 : 0) : null;
+  const shift = head.length > 0 ? 1 : 0;
+
+  return [
+    ...head,
+    ...parts.map((cents, i) => ({
       label: `Installment ${i + 1}`,
       labelEl: `Δόση ${i + 1}`,
-      percentage: netCents > 0 ? (cents / netCents) * 100 : 100 / safeCount,
-      dueDate,
-    };
-  });
+      percentage: left > 0 ? percent(cents) : 100 / safeCount,
+      dueDate: from ? addMonths(from, (i + shift) * every) : null,
+    })),
+  ];
 }

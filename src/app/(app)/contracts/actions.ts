@@ -445,6 +445,27 @@ export async function createContract(
   });
 
   revalidatePath("/contracts");
+  /*
+    The buyer's own page has to be redrawn too.
+
+    A contract written from the contracts screen appeared there at once and was
+    missing from the client's profile until somebody reloaded the browser,
+    because nothing had told that page it was out of date. The apartment and
+    the development are marked as well, since a new contract changes what they
+    say about who has what.
+  */
+  await alsoTheBuyer(contractId);
+  if (parsed.unitId) {
+    const [unit] = await db
+      .select({ projectId: units.projectId })
+      .from(units)
+      .where(eq(units.id, parsed.unitId))
+      .limit(1);
+    if (unit) {
+      revalidatePath(`/projects/${unit.projectId}`);
+      revalidatePath(`/projects/${unit.projectId}/units/${parsed.unitId}`);
+    }
+  }
   redirect(`/contracts/${contractId}`);
 }
 

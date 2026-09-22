@@ -285,7 +285,23 @@ async function makeClient(
       email: lead.email,
       phone: lead.phone,
       country: lead.country,
-      source: lead.sourceKind === "AGENT" ? "AGENT_REFERRAL" : "ENQUIRY",
+      /*
+        The source carries over as it stands.
+        
+        It used to be flattened to "Enquiry" unless an agent had brought it,
+        which threw away the one thing the office knew about where the buyer
+        came from. A WhatsApp enquiry is now a WhatsApp client.
+      */
+      source:
+        lead.sourceKind === "AGENT"
+          ? "AGENT_REFERRAL"
+          : lead.sourceKind === "WHATSAPP"
+            ? "WHATSAPP"
+            : lead.sourceKind === "WEBSITE"
+              ? "WEBSITE"
+              : lead.sourceKind === "OTHER"
+                ? "OTHER"
+                : "ENQUIRY",
       marketingOptIn: optIn,
       marketingOptInAt: optIn ? new Date() : null,
       marketingOptInSource: optIn ? (lead.consentText ?? "the enquiry") : null,

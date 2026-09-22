@@ -8,6 +8,7 @@ import CommandPalette, { type PaletteLabels } from "@/components/CommandPalette"
 import {
   IconAlert,
   IconBell,
+  IconSettings,
   IconClose,
   IconKeyboard,
   IconLogout,
@@ -39,6 +40,7 @@ export type ShellLabels = {
   groups: Record<string, string>;
   quickAdd: string;
   alerts: string;
+  settings: string;
   noAlerts: string;
   theme: string;
   themeDay: string;
@@ -408,7 +410,12 @@ export default function AppShell({
                 onClick={() => setMenu(menu === "alerts" ? null : "alerts")}
               >
                 <IconBell size={19} />
-                {pressing > 0 ? <span className="dot" /> : null}
+                {/* How many, not merely that there are some: a red dot makes
+                    somebody open the menu to find out it was one overdue
+                    invoice. */}
+                {pressing > 0 ? (
+                  <span className="count">{pressing > 99 ? "99+" : pressing}</span>
+                ) : null}
               </button>
               {menu === "alerts" ? (
                 <div className="menu">
@@ -501,6 +508,13 @@ export default function AppShell({
                     ))}
                   </div>
                   <div className="my-1 border-t border-brand-line" />
+                  {/* Settings is an administrator's occasional errand, not a
+                      place anybody works, so it sits with the account rather
+                      than taking a line in the navigation all day. */}
+                  <a className="menuitem" href="/settings">
+                    <IconSettings size={15} />
+                    {labels.settings}
+                  </a>
                   <button type="button" className="menuitem" onClick={() => setHelp(true)}>
                     <IconKeyboard size={15} />
                     {labels.shortcuts}

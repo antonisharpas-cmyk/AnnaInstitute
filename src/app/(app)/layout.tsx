@@ -104,7 +104,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/commissions", label: t("nav.commissions"), group: "money" },
     { href: "/invoices", label: t("nav.invoices"), group: "money", count: bills?.total ?? 0 },
     { href: "/reports", label: t("nav.reports"), group: "insight" },
-    { href: "/settings", label: t("nav.settings"), group: "insight" },
   ];
 
   const creates = [
@@ -165,6 +164,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         }
         labels={{
           subtitle: t("app.subtitle"),
+          settings: t("nav.settings"),
           search: t("shell.search"),
           searchHint: t("shell.searchHint"),
           nothing: t("shell.nothingFound"),

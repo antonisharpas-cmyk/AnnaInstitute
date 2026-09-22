@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState, type ComponentPropsWithoutRef } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * A date, with a calendar of our own rather than the browser's.
@@ -106,7 +107,12 @@ export default function DateField({
     if (!open) return;
 
     const away = (event: MouseEvent) => {
-      if (!box.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      /* The calendar is drawn at the end of the document now, so "inside the
+         field" is no longer the whole test for "inside the calendar". */
+      if (box.current?.contains(target)) return;
+      if ((target as HTMLElement)?.closest?.(".calendar")) return;
+      setOpen(false);
     };
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -117,6 +123,44 @@ export default function DateField({
     return () => {
       document.removeEventListener("mousedown", away);
       document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  /**
+   * Where to draw the calendar, in the page's own coordinates.
+   *
+   * It used to be an absolutely positioned child of the field, which is fine
+   * until the field sits in a table that scrolls sideways: a scrollbox clips
+   * whatever hangs out of it, so on the payment schedule the calendar came out
+   * with its bottom half cut off. It is now drawn at the end of the document,
+   * over everything, at the place the field happens to be, and flipped above
+   * the field when there is no room below it.
+   */
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setAt(null);
+      return;
+    }
+
+    const place = () => {
+      const field = box.current?.querySelector("input");
+      if (!field) return;
+      const rect = field.getBoundingClientRect();
+      const height = 320;
+      const below = window.innerHeight - rect.bottom;
+      const top = below < height && rect.top > height ? rect.top - height - 6 : rect.bottom + 6;
+      const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - 288));
+      setAt({ top, left });
+    };
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
     };
   }, [open]);
 
@@ -165,8 +209,16 @@ export default function DateField({
         className={`input datefield ${className}`}
       />
 
-      {open ? (
-        <div className="calendar" role="dialog" aria-label={monthName} aria-describedby={labelId}>
+      {open && at && typeof document !== "undefined" ? (
+        createPortal(
+        <div
+          className="calendar floating"
+          style={{ top: at.top, left: at.left }}
+          role="dialog"
+          aria-label={monthName}
+          aria-describedby={labelId}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
           <div className="calhead">
             <button
               type="button"
@@ -234,7 +286,9 @@ export default function DateField({
               {words.clear}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
+        )
       ) : null}
     </div>
   );

@@ -73,3 +73,27 @@ test("quarterly dates step three months at a time", () => {
     [0, 3, 6, 9],
   );
 });
+
+test("a periodic plan can open with the reservation and the signing", () => {
+  const net = toCents("300000");
+  const plan = periodicPlan(net, 12, 1, new Date("2026-01-10T00:00:00Z"), {
+    reservationCents: toCents("15000"),
+    onSigningCents: toCents("75000"),
+  });
+
+  // The two opening payments, then the twelve installments.
+  assert.equal(plan.length, 14);
+  assert.equal(plan[0].label, "Reservation");
+  assert.equal(plan[1].label, "On signing of contract");
+  assert.equal(plan[2].label, "Installment 1");
+
+  // The reservation on the day, the signing a month later, the first
+  // installment a month after that.
+  assert.equal(plan[0].dueDate?.getUTCMonth(), 0);
+  assert.equal(plan[1].dueDate?.getUTCMonth(), 1);
+  assert.equal(plan[2].dueDate?.getUTCMonth(), 2);
+
+  // And the whole of it is still the price, to the cent.
+  const lines = buildSchedule({ netCents: net, rate: 5 }, planFrom(plan));
+  assert.equal(scheduleTotals(lines).netCents, net);
+});

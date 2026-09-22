@@ -2,10 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { agents, commissionPayments, commissions, contracts, leads, users } from "@/db/schema";
+import {
+  agents,
+  commissionPayments,
+  commissions,
+  contracts,
+  documents,
+  leads,
+  users,
+} from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
@@ -484,15 +492,35 @@ export async function uploadCommissionPaper(
   const files = formData
     .getAll("files")
     .filter((entry): entry is File => entry instanceof File && entry.size > 0);
-  if (files.length === 0) return;
+  if (files.length === 0) {
+    await flash("said.noFile", "bad");
+    revalidatePath(`/agents/${agentId}`);
+    return;
+  }
+
+  /* The slot says which paper this is twice, in the binding and in the form
+     itself, and the form wins. Two slots side by side on one page is exactly
+     where a paper ends up in the wrong one, and an invoice filed as a receipt
+     settles a commission that nobody has paid. */
+  const said = formData.get("kind");
+  const slot: "AGENT_INVOICE" | "AGENT_RECEIPT" =
+    said === "AGENT_INVOICE" || said === "AGENT_RECEIPT" ? said : kind;
 
   const rows = await db.select().from(commissions).where(eq(commissions.id, commissionId)).limit(1);
   if (!rows[0]) throw new Error("Commission not found");
 
+  /*
+   * The paper is filed under its own file name, not under the name of the slot.
+   * The slot already says what it is, in the heading above it, so titling the
+   * document "Invoice from the agent" as well put the same four words twice in
+   * the same little box and made a filed paper look like an empty one. The file
+   * name is the one thing in there that tells the office which paper it is.
+   */
+  const named = files[0].name.trim();
   await storeDocuments({
     files: [files[0]],
-    title: kind === "AGENT_INVOICE" ? "Invoice from the agent" : "Receipt of payment",
-    category: kind,
+    title: named || (slot === "AGENT_INVOICE" ? "Invoice from the agent" : "Receipt of payment"),
+    category: slot,
     attachTo: { commissionId },
     user,
   });
@@ -503,7 +531,7 @@ export async function uploadCommissionPaper(
     action: complete ? "commission.completed" : "commission.paper.add",
     entity: "agent",
     entityId: agentId,
-    detail: `${commissionId}, ${kind}${complete ? ", both papers in" : ""}`,
+    detail: `${commissionId}, ${slot}${complete ? ", both papers in" : ""}`,
     userId: user.id,
     userEmail: user.email,
   });
@@ -538,13 +566,17 @@ export async function removeCommissionPaper(
 /**
  * Getting rid of an agent.
  *
- * Only one who has earned nothing. A commission line is the office's record of
- * what was owed and what was paid, with the invoice and the receipt filed
- * against it, and an agent cannot take that away with them. For the ones who
- * have stopped working with us there is the active switch, which is what it is
- * for: the history stays and they leave the pickers.
+ * Every agent can go, because a record made twice, or made by mistake, has to
+ * be able to leave. What goes with them is said in plain words before anybody
+ * presses it: their commission lines, the payments recorded against those
+ * lines, and the invoices and receipts filed with them. The sales themselves
+ * are not touched. A contract belongs to the buyer and the apartment, not to
+ * the agent, so it keeps everything it has and simply stops naming anybody,
+ * which is exactly what an unclaimed sale is.
  *
- * An agent who is simply an entry made twice has nothing attached, and goes.
+ * For an agent who has merely stopped working with us there is still the active
+ * switch, which is the better answer: the history stays and they leave the
+ * pickers. The page says so. But it is a suggestion now, not a wall.
  */
 export async function deleteAgent(agentId: string) {
   const user = await requireUser(["ADMIN"]);
@@ -553,11 +585,29 @@ export async function deleteAgent(agentId: string) {
   if (!agent) return;
 
   const attached = await whatGoesWithAgent(agentId);
-  if (attached.commissions > 0 || attached.payments > 0) {
-    await flash("said.agentHasCommissions", "bad");
-    revalidatePath("/agents");
-    return;
+
+  /* The papers filed against this agent's commission lines go with the lines,
+     files and all, rather than being left behind pointing at nothing. */
+  const lines = await db
+    .select({ id: commissions.id })
+    .from(commissions)
+    .where(eq(commissions.agentId, agentId));
+
+  if (lines.length > 0) {
+    const papers = await db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(
+        inArray(
+          documents.commissionId,
+          lines.map((line) => line.id),
+        ),
+      );
+    for (const paper of papers) await removeDocument(paper.id, user);
   }
+
+  await db.delete(commissionPayments).where(eq(commissionPayments.agentId, agentId));
+  await db.delete(commissions).where(eq(commissions.agentId, agentId));
 
   /* The sales they were named on keep their own contracts and simply stop
      naming anybody, which is exactly what an unclaimed sale is. */
@@ -570,7 +620,7 @@ export async function deleteAgent(agentId: string) {
     action: "agent.delete",
     entity: "agent",
     entityId: agentId,
-    detail: `${agent.name}, ${attached.sales.length} sales released`,
+    detail: `${agent.name}, ${attached.commissions} commission lines, ${attached.payments} payments, ${attached.sales.length} sales released`,
     userId: user.id,
     userEmail: user.email,
   });

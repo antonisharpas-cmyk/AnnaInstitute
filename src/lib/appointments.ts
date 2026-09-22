@@ -52,8 +52,13 @@ export async function howManyNeedAnAnswer(): Promise<number> {
 
 export type AppointmentFilter = {
   q?: string;
-  /** "next" for what is coming, "past" for what has been, "waiting" for the unanswered. */
-  when?: string;
+  /**
+   * What to show, in the office's own words: everything, the ones still to
+   * come, the ones that were done, the ones that were cancelled, or the ones
+   * whose day has passed with nobody saying which.
+   */
+  show?: string;
+  q_unused?: never;
   status?: string;
   /** One person's own appointments, which is what they came to the page for. */
   assignedTo?: string;
@@ -77,8 +82,23 @@ export async function listAppointments(filter: AppointmentFilter) {
     );
   }
 
-  if (filter.status === "PLANNED" || filter.status === "DONE" || filter.status === "MISSED") {
-    parts.push(eq(appointments.status, filter.status));
+  /*
+    One filter, five answers, and each one is a plain sentence about the list.
+
+    It used to be three buttons above the table that changed the whole view,
+    which read as three different pages rather than as a filter, and the office
+    said so. Now it is a filter like the ones on every other list.
+  */
+  const show = filter.show ?? "all";
+  if (show === "upcoming") {
+    parts.push(eq(appointments.status, "PLANNED"));
+    parts.push(gte(appointments.at, startOfToday()));
+  } else if (show === "done") {
+    parts.push(eq(appointments.status, "DONE"));
+  } else if (show === "cancelled") {
+    parts.push(eq(appointments.status, "MISSED"));
+  } else if (show === "waiting") {
+    parts.push(unanswered());
   }
 
   if (filter.assignedTo === "nobody") parts.push(isNull(appointments.assignedToId));
@@ -89,11 +109,6 @@ export async function listAppointments(filter: AppointmentFilter) {
     parts.push(eq(appointments.type, filter.type as (typeof KINDS)[number] as never));
   }
 
-  const when = filter.when ?? "next";
-  if (when === "next") parts.push(gte(appointments.at, startOfToday()));
-  if (when === "past") parts.push(lt(appointments.at, startOfToday()));
-  if (when === "waiting") parts.push(unanswered());
-
   const where = parts.length > 0 ? and(...parts) : undefined;
 
   const rows = await db
@@ -103,8 +118,8 @@ export async function listAppointments(filter: AppointmentFilter) {
     .leftJoin(leads, eq(leads.id, appointments.leadId))
     .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(where)
-    /* What is coming up reads soonest first. What has been reads latest first. */
-    .orderBy(when === "next" ? asc(appointments.at) : desc(appointments.at))
+    /* What is coming up reads soonest first. Everything else reads latest first. */
+    .orderBy(show === "upcoming" ? asc(appointments.at) : desc(appointments.at))
     .limit(400);
 
   return rows;

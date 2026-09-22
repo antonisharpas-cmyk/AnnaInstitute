@@ -56,6 +56,8 @@ export function formLabels(t: (key: MessageKey) => string): Record<string, strin
     monthly: t("contracts.monthly"),
     quarterly: t("contracts.quarterly"),
     firstDue: t("contracts.firstDue"),
+    reservationDue: t("contracts.reservationDue"),
+    onSigningDue: t("contracts.onSigningDue"),
     generate: t("contracts.generate"),
     stage: t("contracts.stage"),
     net: t("contracts.net"),

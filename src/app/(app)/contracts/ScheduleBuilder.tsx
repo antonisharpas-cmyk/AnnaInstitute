@@ -109,6 +109,8 @@ export default function ScheduleBuilder({
     monthly: string;
     quarterly: string;
     startDate: string;
+    reservation: string;
+    onSigning: string;
     generate: string;
     stage: string;
     amount: string;
@@ -136,6 +138,15 @@ export default function ScheduleBuilder({
   const [count, setCount] = useState(initialPeriodMonths ? initialRows.length || 12 : 12);
   const [period, setPeriod] = useState(initialPeriodMonths ?? 1);
   const [start, setStart] = useState("");
+  /*
+   * A monthly or quarterly contract does not start with the first installment.
+   * The buyer reserves, then signs, and the instalments are what is left after
+   * those two. Both are offered filled in at the percentages the office
+   * normally asks for and both can be typed over, including down to nothing for
+   * the rare contract that has neither.
+   */
+  const [reservation, setReservation] = useState("");
+  const [onSigning, setOnSigning] = useState("");
 
   const netCents = toCents(netPrice);
   const rate = Number(vatRate) || 0;
@@ -169,19 +180,60 @@ export default function ScheduleBuilder({
     );
   };
 
+  /**
+   * A monthly or quarterly plan: the reservation, the signing, and the rest.
+   *
+   * The two opening payments come off the price first and whatever is left is
+   * what gets split into equal installments, so the schedule still adds up to
+   * the price exactly. The dates follow the same order: the reservation on the
+   * start date, the signing a month later, and then one installment every month
+   * or every quarter from there. Either opening payment left empty, or set to
+   * nothing, simply does not appear.
+   */
   const usePeriodic = () => {
     setType("PERIODIC");
     const safe = Math.max(1, Math.min(Number(count) || 1, 240));
-    const parts = netCents > 0 ? split(netCents, safe) : Array(safe).fill(0);
-    setRows(
-      parts.map((cents, i) => ({
+
+    const opening: { label: string; labelEl: string; cents: number; dueDate: string }[] = [];
+    const reservationCents = Math.max(0, toCents(reservation));
+    const signingCents = Math.max(0, toCents(onSigning));
+    if (reservationCents > 0) {
+      opening.push({
+        label: "Reservation",
+        labelEl: "Κράτηση",
+        cents: reservationCents,
+        dueDate: start,
+      });
+    }
+    if (signingCents > 0) {
+      opening.push({
+        label: "On signing of contract",
+        labelEl: "Υπογραφή συμβολαίου",
+        cents: signingCents,
+        dueDate: start ? addMonths(start, 1) : "",
+      });
+    }
+
+    const left = Math.max(0, netCents - reservationCents - signingCents);
+    const parts = left > 0 ? split(left, safe) : Array(safe).fill(0);
+    const from = start ? addMonths(start, opening.length > 1 ? 1 : 0) : "";
+
+    setRows([
+      ...opening.map((one) => ({
+        key: nextKey(),
+        label: one.label,
+        labelEl: one.labelEl,
+        amount: whole(one.cents),
+        dueDate: one.dueDate,
+      })),
+      ...parts.map((cents, i) => ({
         key: nextKey(),
         label: `Installment ${i + 1}`,
         labelEl: `Δόση ${i + 1}`,
-        amount: netCents > 0 ? whole(cents) : "",
-        dueDate: start ? addMonths(start, i * period) : "",
+        amount: left > 0 ? whole(cents) : "",
+        dueDate: from ? addMonths(from, (i + 1) * period) : "",
       })),
-    );
+    ]);
   };
 
   const spreadRest = () => {
@@ -236,7 +288,33 @@ export default function ScheduleBuilder({
           >
             {labels.standard}
           </button>
-          <div className="flex items-end gap-2 rounded border border-brand-line bg-brand-surface px-2 py-1.5">
+          <div className="flex flex-wrap items-end gap-2 rounded border border-brand-line bg-brand-surface px-2 py-1.5">
+            <div>
+              <label className="label" htmlFor="periodicReservation">
+                {labels.reservation}
+              </label>
+              <input
+                id="periodicReservation"
+                inputMode="decimal"
+                value={reservation}
+                onChange={(e) => setReservation(e.target.value)}
+                placeholder={netCents > 0 ? whole(Math.round(netCents * 0.05)) : "0"}
+                className="input !w-24 !py-1 !text-xs"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="periodicSigning">
+                {labels.onSigning}
+              </label>
+              <input
+                id="periodicSigning"
+                inputMode="decimal"
+                value={onSigning}
+                onChange={(e) => setOnSigning(e.target.value)}
+                placeholder={netCents > 0 ? whole(Math.round(netCents * 0.25)) : "0"}
+                className="input !w-24 !py-1 !text-xs"
+              />
+            </div>
             <div>
               <label className="label" htmlFor="periodicCount">
                 {labels.count}

@@ -444,6 +444,8 @@ export default function ContractForm({
           monthly: labels.monthly,
           quarterly: labels.quarterly,
           startDate: labels.firstDue,
+          reservation: labels.reservationDue,
+          onSigning: labels.onSigningDue,
           generate: labels.generate,
           stage: labels.stage,
           amount: labels.net,

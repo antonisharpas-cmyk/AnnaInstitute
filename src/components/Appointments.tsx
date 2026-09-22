@@ -1,6 +1,7 @@
 import { Card, Empty, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
+import TimeField from "@/components/TimeField";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmButton from "@/components/ConfirmButton";
 import {
@@ -177,6 +178,7 @@ export default function Appointments({
                     <Form
                       action={updateAppointment.bind(null, row.id)}
                       labels={labels}
+                      locale={locale}
                       values={fieldValues(row.at)}
                       place={row.place}
                       type={row.type}
@@ -222,7 +224,7 @@ export default function Appointments({
       {/* 4. Arranging the next one, without leaving the card. */}
       <div className="mt-3">
         <Disclosure showLabel={labels.add} hideLabel={labels.cancel}>
-          <Form action={createAppointment} labels={labels} withWhom={withWhom} />
+          <Form action={createAppointment} labels={labels} locale={locale} withWhom={withWhom} />
         </Disclosure>
       </div>
     </Card>
@@ -233,6 +235,7 @@ export default function Appointments({
 function Form({
   action,
   labels,
+  locale,
   values,
   place,
   type,
@@ -241,6 +244,7 @@ function Form({
 }: {
   action: (formData: FormData) => void | Promise<void>;
   labels: AppointmentLabels;
+  locale: string;
   values?: { day: string; time: string };
   place?: string;
   type?: string;
@@ -294,13 +298,7 @@ function Form({
       </div>
       <div>
         <label className="label">{labels.time}</label>
-        <input
-          name="time"
-          type="time"
-          required
-          defaultValue={values?.time ?? "16:00"}
-          className="input"
-        />
+        <TimeField name="time" defaultValue={values?.time ?? "16:00"} locale={locale} />
       </div>
 
       <div className="flex items-end sm:col-span-2">

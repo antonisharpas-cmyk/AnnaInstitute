@@ -62,6 +62,16 @@ export const contactSourceEnum = pgEnum("contact_source", [
    */
   "LAND_OWNER",
   "OTHER",
+  /*
+   * The two an enquiry can arrive by that a client had no word for.
+   *
+   * A lead that came in on WhatsApp became a client whose source read
+   * "Enquiry", so the one thing the office knew about where the buyer came
+   * from was thrown away at the moment of conversion. The client's own source
+   * now holds every way somebody can reach us.
+   */
+  "WEBSITE",
+  "WHATSAPP",
 ]);
 export const documentCategoryEnum = pgEnum("document_category", [
   "IDENTIFICATION",

@@ -7,6 +7,8 @@ import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import SearchBox from "@/components/SearchBox";
 import Pagination, { paginate } from "@/components/Pagination";
+import ConfirmButton from "@/components/ConfirmButton";
+import { deleteAgent } from "./actions";
 
 const PER_PAGE = 10;
 
@@ -143,12 +145,20 @@ export default async function AgentsPage({
                         </Pill>
                       </td>
                       <td>
-                        <Link
-                          href={`/agents/${r.agent.id}/edit`}
-                          className="btn btn-secondary !px-3 !py-1 !text-xs"
-                        >
-                          {t("common.edit")}
-                        </Link>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/agents/${r.agent.id}/edit`}
+                            className="btn btn-secondary !px-3 !py-1 !text-xs"
+                          >
+                            {t("common.edit")}
+                          </Link>
+                          <ConfirmButton
+                            action={deleteAgent.bind(null, r.agent.id)}
+                            label={t("common.delete")}
+                            confirm={t("remove.sure")}
+                            title={t("remove.agentWhat")}
+                          />
+                        </div>
                       </td>
                     </tr>
                   );

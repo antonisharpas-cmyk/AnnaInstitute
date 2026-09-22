@@ -37,7 +37,10 @@ export default async function NewLeadPage() {
               source: t("leads.camefrom"),
               sourceOther: t("leads.sourceOther"),
               sourceOtherHint: t("leads.sourceOtherHint"),
-              project: t("leads.project"),
+              /* What the enquiry is about, in the office's word for it. It was
+                 labelled Development, which asked for something narrower than
+                 what people actually write in it. */
+              project: t("leads.about"),
               note: t("leads.note"),
               noteHint: t("leads.noteHint"),
               contactNote: t("leads.contactNote"),
