@@ -928,7 +928,7 @@ export const dictionaries = {
     "agents.saleApartment": "The apartment sold",
     "agents.chooseSale": "Choose the apartment",
     "agents.saleNote":
-      "The commission appears once the first installment on that apartment has been received. Leave the rate empty to use this agent's own rate.",
+      "The commission appears once the opening of that contract has been received, which is the reservation and the signing where the contract has them, and the signing alone where it has no reservation. Leave the rate empty to use this agent's own rate.",
     "said.saleRecorded": "Sale recorded",
     "said.chooseApartment": "Choose the apartment first",
     "clients.statement": "Statement of account",
@@ -1169,16 +1169,17 @@ export const dictionaries = {
     "commissions.extraNote":
       "The amount is filled in with the difference between what the apartment was priced at and what it went for. Change it to whatever was agreed.",
     "commissions.markPaid": "Mark as paid",
+    "contracts.receiptNote": "Given automatically, in this year's run. Type over it if the receipt was written by hand.",
     "commissions.settled": "paid",
     "commissions.recordNote":
-      "Created when the buyer paid the first installment. It is finished once both papers below are on it.",
+      "Created when the buyer paid the opening of the contract. It is finished once both papers below are on it.",
     "commissions.fullValue": "The full value of the property",
     "commissions.onTheContract": "on the contract and",
     "commissions.inCash": "in cash",
     "commissions.notYetEarned":
-      "No commission yet. It is generated the moment the first installment on this apartment is received, and then it appears here as its own record with a place for the invoice and the receipt.",
+      "No commission yet. It is generated the moment the opening of this contract is received, the reservation and the signing where there are both, and then it appears here as its own record with a place for the invoice and the receipt.",
     "commissions.generatedOn": "Generated on",
-    "commissions.onFirstPayment": "when the first installment was received",
+    "commissions.onFirstPayment": "when the opening of the contract was received",
     "commissions.completed": "Completed",
     "commissions.notCompleted": "Not completed yet",
     "commissions.agentInvoice": "Invoice from the agent",
@@ -2139,7 +2140,7 @@ export const dictionaries = {
     "agents.saleApartment": "Το διαμέρισμα που πωλήθηκε",
     "agents.chooseSale": "Επιλογή διαμερίσματος",
     "agents.saleNote":
-      "Η προμήθεια εμφανίζεται μόλις εισπραχθεί η πρώτη δόση. Αφήστε το ποσοστό κενό για το ποσοστό του συνεργάτη.",
+      "Η προμήθεια εμφανίζεται μόλις εισπραχθεί η αρχή του συμβολαίου, δηλαδή η κράτηση και η υπογραφή όπου υπάρχουν και οι δύο, ή μόνο η υπογραφή όπου δεν υπάρχει κράτηση. Αφήστε το ποσοστό κενό για το ποσοστό του συνεργάτη.",
     "said.saleRecorded": "Η πώληση καταχωρήθηκε",
     "said.chooseApartment": "Επιλέξτε πρώτα το διαμέρισμα",
     "clients.statement": "Κατάσταση λογαριασμού",
@@ -2380,16 +2381,17 @@ export const dictionaries = {
     "commissions.extraNote":
       "Το ποσό συμπληρώνεται με τη διαφορά τιμής. Αλλάξτε το σε ό,τι συμφωνήθηκε.",
     "commissions.markPaid": "Σήμανση ως πληρωμένο",
+    "contracts.receiptNote": "Δίνεται αυτόματα, στη σειρά της χρονιάς. Γράψτε πάνω του αν η απόδειξη κόπηκε χειρόγραφα.",
     "commissions.settled": "πληρωμένο",
     "commissions.recordNote":
-      "Δημιουργήθηκε όταν ο αγοραστής πλήρωσε την πρώτη δόση. Ολοκληρώνεται μόλις μπουν και τα δύο έγγραφα πιο κάτω.",
+      "Δημιουργήθηκε όταν ο αγοραστής πλήρωσε την αρχή του συμβολαίου. Ολοκληρώνεται μόλις μπουν και τα δύο έγγραφα πιο κάτω.",
     "commissions.fullValue": "Η πλήρης αξία του ακινήτου",
     "commissions.onTheContract": "στο συμβόλαιο και",
     "commissions.inCash": "μετρητά",
     "commissions.notYetEarned":
-      "Δεν υπάρχει ακόμη προμήθεια. Δημιουργείται τη στιγμή που εισπράττεται η πρώτη δόση για αυτό το διαμέρισμα, και τότε εμφανίζεται εδώ ως δική της καρτέλα με θέση για το τιμολόγιο και την απόδειξη.",
+      "Δεν υπάρχει ακόμη προμήθεια. Δημιουργείται τη στιγμή που εισπράττεται η αρχή αυτού του συμβολαίου, η κράτηση και η υπογραφή όπου υπάρχουν και οι δύο, και τότε εμφανίζεται εδώ ως δική της καρτέλα με θέση για το τιμολόγιο και την απόδειξη.",
     "commissions.generatedOn": "Δημιουργήθηκε στις",
-    "commissions.onFirstPayment": "όταν εισπράχθηκε η πρώτη δόση",
+    "commissions.onFirstPayment": "όταν εισπράχθηκε η αρχή του συμβολαίου",
     "commissions.completed": "Ολοκληρωμένη",
     "commissions.notCompleted": "Δεν ολοκληρώθηκε ακόμη",
     "commissions.agentInvoice": "Τιμολόγιο από τον συνεργάτη",

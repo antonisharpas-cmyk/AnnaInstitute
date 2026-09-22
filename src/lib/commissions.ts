@@ -13,6 +13,7 @@ import {
   commissions,
   contracts,
   documents,
+  installments,
   payments,
   projects,
   units,
@@ -181,19 +182,90 @@ export function fullValueOf(contract: { netPrice: string; cashAmount?: string | 
   return { priceCents, cashCents, fullCents: priceCents + cashCents };
 }
 
+/**
+ * The stages that open a contract, in either language.
+ *
+ * Matched on the words the schedule builder writes and the words the office
+ * picks from the dropdown, so a contract typed in Greek is read the same as one
+ * typed in English.
+ */
+const OPENING = [
+  ["reservation", "κρατηση"],
+  ["on signing of contract", "υπογραφη συμβολαιου"],
+];
+
+const plainly = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+function isOpening(line: { label: string; labelEl: string | null }): boolean {
+  const words = [plainly(line.label), plainly(line.labelEl ?? "")];
+  return OPENING.some((pair) => pair.some((one) => words.includes(one)));
+}
+
+/**
+ * Has the buyer paid the opening of this contract?
+ *
+ * The comparison is gross against gross: an installment's total includes its
+ * VAT and so does the money the buyer hands over, which is how the rest of the
+ * CRM reads a schedule. Money receipted against no particular installment still
+ * counts, because it is money the office has, and a buyer who pays the first
+ * two stages in one transfer has still paid the first two stages.
+ */
+export async function openingIsPaid(contractId: string): Promise<boolean> {
+  const [got] = await db
+    .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+    .from(payments)
+    .where(eq(payments.contractId, contractId));
+  const paidCents = toCents(got?.paid ?? "0");
+
+  const lines = await db
+    .select({
+      id: installments.id,
+      label: installments.label,
+      labelEl: installments.labelEl,
+      totalAmount: installments.totalAmount,
+    })
+    .from(installments)
+    .where(eq(installments.contractId, contractId))
+    .orderBy(asc(installments.seq));
+
+  if (lines.length === 0) return paidCents > 0;
+
+  const opening = lines.filter(isOpening);
+  const wanted = opening.length > 0 ? opening : [lines[0]];
+  const wantedCents = wanted.reduce((all, one) => all + toCents(one.totalAmount), 0);
+
+  if (wantedCents <= 0) return paidCents > 0;
+  return paidCents >= wantedCents;
+}
+
 export async function recalculateCommission(contractId: string) {
   const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
   const contract = rows[0];
   if (!contract) return;
 
   /**
-   * A commission exists once the buyer has paid, and not before.
+   * A commission exists once the buyer has paid the opening of the contract,
+   * and not before.
    *
-   * The office's rule in their own words: the client signs and pays the first
-   * installment, and at that moment the agent has earned their commission. A
-   * contract signed last week with nothing received against it is not a
-   * commission yet, and showing one would put money on the commissions page
-   * that nobody owes.
+   * The office's rule in their own words: the reservation and the signing of
+   * the contract are what make the sale real, and at that moment the agent has
+   * earned their commission. A contract signed last week with nothing received
+   * against it is not a commission yet, and showing one would put money on the
+   * commissions page that nobody owes.
+   *
+   * Not every contract has both, which is the part that matters here. Some are
+   * written with no reservation at all, and a monthly or quarterly contract has
+   * the same two payments at the front followed by its installments. So the
+   * rule reads the contract rather than assuming its shape: whichever of the
+   * two opening stages the schedule actually has, all of them have to be in.
+   * A schedule with neither named waits for its first installment, and a
+   * contract with no schedule at all falls back to any money received, because
+   * money in the bank is never worth less than a stage on paper.
    *
    * The test is the money itself rather than the apartment's status, which
    * matters more than it sounds: a status somebody set by hand no longer
@@ -201,12 +273,7 @@ export async function recalculateCommission(contractId: string) {
    * was recorded in error, and the line goes with it. An extra the office
    * granted by hand is left alone either way.
    */
-  const [received] = await db
-    .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
-    .from(payments)
-    .where(eq(payments.contractId, contractId));
-
-  const earned = toCents(received?.paid ?? "0") > 0;
+  const earned = await openingIsPaid(contractId);
 
   /**
    * A commission with its paperwork on it is never withdrawn automatically.

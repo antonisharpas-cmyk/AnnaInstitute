@@ -36,16 +36,25 @@ export type ScheduleLine = {
 export function PaymentForm({
   action,
   lines,
+  nextReceipt,
   labels,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   lines: ScheduleLine[];
+  /**
+   * The next number in this year's run, worked out on the server. It arrives in
+   * the box already typed so the ordinary receipt is numbered without anybody
+   * thinking about it, and it can be typed straight over when the office is
+   * writing from their own book.
+   */
+  nextReceipt?: string;
   labels: {
     stage: string;
     notAgainstOne: string;
     amount: string;
     date: string;
     receipt: string;
+    receiptNote: string;
     method: string;
     methods: Record<string, string>;
     chooseMethod: string;
@@ -127,7 +136,15 @@ export function PaymentForm({
       </div>
       <div>
         <label className="label">{labels.receipt}</label>
-        <input name="receiptNumber" className="input" />
+        <input
+          name="receiptNumber"
+          defaultValue={nextReceipt ?? ""}
+          placeholder={nextReceipt ?? ""}
+          className="input"
+        />
+        {nextReceipt ? (
+          <p className="mt-1 text-xs text-brand-graphite/60">{labels.receiptNote}</p>
+        ) : null}
       </div>
       <div>
         <label className="label">{labels.method}</label>

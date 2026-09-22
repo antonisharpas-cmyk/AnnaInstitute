@@ -6,6 +6,7 @@ import { changeRequests } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
 import { contractStatusTone, getContract, landExchangeUnits } from "@/lib/contracts";
+import { nextReceiptNumber } from "@/lib/receipts";
 import { STAGE_CHOICES } from "@/lib/vat";
 import { documentsByPayment, documentsForContract } from "@/lib/documents";
 import { titleWithExtension } from "@/lib/fileLabels";
@@ -56,7 +57,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const theirApartments =
     detail.contract.kind === "LAND_EXCHANGE" ? await landExchangeUnits(id) : [];
 
-  const [requests, contractDocuments, paymentFiles] = await Promise.all([
+  const [requests, contractDocuments, paymentFiles, nextReceipt] = await Promise.all([
     db
       .select()
       .from(changeRequests)
@@ -64,6 +65,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       .orderBy(desc(changeRequests.requestedOn)),
     documentsForContract(id),
     documentsByPayment(id),
+    /* The number the next receipt will carry, so the form opens with it in. */
+    nextReceiptNumber(),
   ]);
 
   const { contract, unit, project, client, agent, installments: lines, totals, payments } = detail;
@@ -543,6 +546,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           <Disclosure showLabel={t("contracts.recordPayment")} hideLabel={t("common.cancel")}>
             <PaymentForm
               action={recordPayment.bind(null, id)}
+              nextReceipt={nextReceipt}
               lines={lines.map((l) => ({
                 id: l.id,
                 seq: l.seq,
@@ -556,6 +560,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 amount: t("contracts.amount"),
                 date: t("common.date"),
                 receipt: t("contracts.receipt"),
+                receiptNote: t("contracts.receiptNote"),
                 method: t("contracts.method"),
                 methods: {
                   CASH: t("contracts.method.CASH"),

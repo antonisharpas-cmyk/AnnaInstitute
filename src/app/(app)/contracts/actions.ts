@@ -20,6 +20,7 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { removeDocument, storeChosenDocuments, storeDocuments } from "@/lib/uploads";
 import { fromCents, toCents } from "@/lib/money";
+import { looksGenerated, nextReceiptNumber, receiptNumberTaken } from "@/lib/receipts";
 import {
   addMonths,
   buildSchedule,
@@ -821,15 +822,37 @@ export async function recordPayment(contractId: string, formData: FormData) {
 
   if (amountCents <= 0) throw new Error("The amount must be more than zero.");
 
+  const when = paidOn ? new Date(paidOn) : new Date();
+
+  /*
+   * The receipt number.
+   *
+   * The form arrives with the next one in this year's run already in the box,
+   * so the ordinary payment is numbered without anybody thinking about it. Two
+   * things are still guarded against. A box somebody emptied gets a number
+   * anyway, because a receipt with nothing to call it is a receipt nobody can
+   * find again. And a number that came from us rather than from the office,
+   * which is already on another receipt because the page had been sitting open
+   * a while, quietly moves on to the next free one. A number the office typed
+   * itself is never moved: if they have written 0041 in their own book then
+   * 0041 is what this receipt is, and the CRM is not the one to argue.
+   */
+  const typed = String(formData.get("receiptNumber") ?? "").trim();
+  let receipt = typed;
+  if (!receipt) receipt = await nextReceiptNumber(when);
+  else if (looksGenerated(receipt) && (await receiptNumberTaken(receipt))) {
+    receipt = await nextReceiptNumber(when);
+  }
+
   const inserted = await db
     .insert(payments)
     .values({
       contractId,
       installmentId,
       amount: fromCents(amountCents),
-      paidOn: paidOn ? new Date(paidOn) : new Date(),
+      paidOn: when,
       method: String(formData.get("method") ?? "") || null,
-      receiptNumber: String(formData.get("receiptNumber") ?? "") || null,
+      receiptNumber: receipt,
       notes: String(formData.get("notes") ?? "") || null,
       recordedById: user.id,
     })
@@ -846,7 +869,7 @@ export async function recordPayment(contractId: string, formData: FormData) {
       files,
       title:
         String(formData.get("fileTitle") ?? "").trim() ||
-        `Receipt ${String(formData.get("receiptNumber") ?? "").trim() || fromCents(amountCents)}`,
+        `Receipt ${receipt}`,
       category: "RECEIPT",
       attachTo: { contractId, paymentId: inserted[0].id },
       user,

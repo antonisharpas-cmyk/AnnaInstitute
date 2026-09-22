@@ -17,6 +17,7 @@ import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { apartmentsByClient, assignableUnits } from "@/lib/clients";
 import { landExchangesForClient } from "@/lib/contracts";
+import { nextReceiptNumber } from "@/lib/receipts";
 import { appointmentsForClient } from "@/lib/appointments";
 import { whoCanGo } from "@/lib/team";
 import Appointments from "@/components/Appointments";
@@ -107,7 +108,12 @@ export default async function ClientPage({
 
   /* Where the office is meeting them, what came of the last one, and who is
      free to be given the next one. */
-  const [meetings, team] = await Promise.all([appointmentsForClient(id), whoCanGo()]);
+  const [meetings, team, nextReceipt] = await Promise.all([
+    appointmentsForClient(id),
+    whoCanGo(),
+    /* The number the next receipt will carry, so the form opens with it in. */
+    nextReceiptNumber(),
+  ]);
 
   const contractIds = contractRows.map((r) => r.contract.id);
 
@@ -972,6 +978,7 @@ export default async function ClientPage({
                       >
                         <PaymentForm
                           action={recordPayment.bind(null, row.contract.id)}
+                          nextReceipt={nextReceipt}
                           lines={lines.map((l) => ({
                             id: l.id,
                             seq: l.seq,
@@ -990,6 +997,7 @@ export default async function ClientPage({
                             amount: t("contracts.amount"),
                             date: t("common.date"),
                             receipt: t("contracts.receipt"),
+                            receiptNote: t("contracts.receiptNote"),
                             method: t("contracts.method"),
                             methods: {
                               CASH: t("contracts.method.CASH"),

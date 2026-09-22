@@ -39,6 +39,57 @@ export function receiptNumber(kind: "B" | "A", id: string, when: Date): string {
   return `${kind}${year}-${id.slice(0, 6).toUpperCase()}`;
 }
 
+/**
+ * The number the CRM gives a receipt of its own accord.
+ *
+ * A running count per year, B2026-0001 onwards, so the receipts the office
+ * hands out come in an order anybody can follow and an auditor can count. It is
+ * offered rather than imposed: the box on the payment form arrives filled in
+ * with the next one and can be typed straight over, which is what the office
+ * needs on the day a receipt is written out of its own book.
+ *
+ * The count is taken from the numbers already used rather than from a counter
+ * kept somewhere, so it cannot drift away from the record it is describing, and
+ * a number typed by hand that happens to look like ours is simply counted with
+ * the rest.
+ */
+const GENERATED = /^B(\d{4})-(\d{4,})$/;
+
+/** Whether this number is one the CRM offered rather than one somebody typed. */
+export function looksGenerated(value: string): boolean {
+  return GENERATED.test(value.trim().toUpperCase());
+}
+
+export async function nextReceiptNumber(when: Date = new Date()): Promise<string> {
+  const year = new Date(when).getFullYear();
+
+  const used = await db
+    .select({ number: payments.receiptNumber })
+    .from(payments)
+    .where(sql`${payments.receiptNumber} ilike ${`B${year}-%`}`);
+
+  let highest = 0;
+  for (const row of used) {
+    const match = GENERATED.exec((row.number ?? "").trim().toUpperCase());
+    if (!match || Number(match[1]) !== year) continue;
+    highest = Math.max(highest, Number(match[2]));
+  }
+
+  return `B${year}-${String(highest + 1).padStart(4, "0")}`;
+}
+
+/** Is this number already on another receipt? */
+export async function receiptNumberTaken(value: string): Promise<boolean> {
+  const wanted = value.trim();
+  if (!wanted) return false;
+  const [row] = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(sql`upper(${payments.receiptNumber}) = ${wanted.toUpperCase()}`)
+    .limit(1);
+  return Boolean(row);
+}
+
 export type BuyerReceipt = Awaited<ReturnType<typeof buyerReceipt>>;
 
 /**
