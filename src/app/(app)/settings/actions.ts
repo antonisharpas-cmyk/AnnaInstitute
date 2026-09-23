@@ -26,6 +26,12 @@ export async function saveAppointmentSettings(formData: FormData) {
     formData.get("whenEmpty") === "on" ? "yes" : "no",
   );
 
+  /* The buyer's reminder the day before. Not after 20:00, so it never lands at night. */
+  const reminder = Number(String(formData.get("reminderHour") ?? "10"));
+  const safeReminder = Number.isFinite(reminder) ? Math.min(20, Math.max(0, Math.trunc(reminder))) : 10;
+  await writeSetting("appointments.reminderOn", formData.get("reminderOn") === "on" ? "yes" : "no");
+  await writeSetting("appointments.reminderHour", String(safeReminder));
+
   await recordAudit({
     action: "settings.appointments",
     entity: "settings",

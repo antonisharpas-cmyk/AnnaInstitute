@@ -37,7 +37,18 @@ export default async function BuyerReceiptPage({
         <Link href={`/clients/${id}`} className="btn btn-secondary">
           {"←"} {t("common.backTo")} {name}
         </Link>
-        <p className="text-xs text-brand-graphite/60">{t("receipts.checkFirst")}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs text-brand-graphite/60">{t("receipts.checkFirst")}</p>
+          {/* The PDF the automatic letter carries, exactly as the buyer gets it. */}
+          <a
+            href={`/api/receipts/${paymentId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-secondary !px-3 !py-1 !text-xs"
+          >
+            {t("receipts.pdf")}
+          </a>
+        </div>
       </div>
 
       <ReceiptSheet

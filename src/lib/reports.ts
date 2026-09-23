@@ -208,6 +208,9 @@ export async function salesByMonth(range: Range, only: string[] | null = null) {
         gte(contracts.contractDate, range.from),
         lte(contracts.contractDate, range.to),
         contractsIn(only),
+        /* Sales are sales. A land exchange pays the owner in apartments, so it
+           is not counted as an apartment sold or as money signed for. */
+        eq(contracts.kind, "SALE"),
       ) as SQL,
     );
 
@@ -244,7 +247,7 @@ export async function salesByProject(only: string[] | null = null) {
       contracted: sql<string>`coalesce((
         select sum(c.net_price) from contracts c
         join units cu on cu.id = c.unit_id
-        where cu.project_id = projects.id
+        where cu.project_id = projects.id and c.kind = 'SALE'
       ), 0)`,
     })
     .from(projects)
@@ -308,6 +311,7 @@ export async function salesByAgent(
         gte(contracts.contractDate, range.from),
         lte(contracts.contractDate, range.to),
         contractsIn(only),
+        eq(contracts.kind, "SALE"),
       ),
     )
     .groupBy(agents.id)
@@ -519,7 +523,8 @@ export async function moneyTotals(only: string[] | null = null) {
 
   const [row] = await db
     .select({
-      contracted: sql<string>`coalesce((select sum(c.net_price) from contracts c where ${scoped}), 0)`,
+      /* Signed for is sales only: a land exchange is valued, not sold. */
+      contracted: sql<string>`coalesce((select sum(c.net_price) from contracts c where ${scoped} and c.kind = 'SALE'), 0)`,
       scheduledNet: sql<string>`coalesce((select sum(i.net_amount) from installments i join contracts c on c.id = i.contract_id where ${scoped}), 0)`,
       scheduledVat: sql<string>`coalesce((select sum(i.vat_amount) from installments i join contracts c on c.id = i.contract_id where ${scoped}), 0)`,
       scheduledTotal: sql<string>`coalesce((select sum(i.total_amount) from installments i join contracts c on c.id = i.contract_id where ${scoped}), 0)`,

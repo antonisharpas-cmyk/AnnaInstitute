@@ -10,6 +10,7 @@ import { flash } from "@/lib/flash";
 import { getLocale } from "@/i18n";
 import { emailConfigured, sendAndRecord } from "@/lib/messaging";
 import { agentReceipt, agentReceiptEmail, buyerReceipt, buyerReceiptEmail } from "@/lib/receipts";
+import { receiptPdf } from "@/lib/paymentPdf";
 
 /**
  * Send a receipt, and only when somebody presses the button.
@@ -47,6 +48,10 @@ export async function sendBuyerReceipt(paymentId: string) {
 
   const { subject, body } = buyerReceiptEmail(receipt, locale);
 
+  /* The same PDF the automatic letter carries, so sending it again by hand
+     gives the buyer exactly the paper they would have had. */
+  const drawn = await receiptPdf(paymentId).catch(() => null);
+
   const result = await sendAndRecord({
     channel: "EMAIL",
     recipient: {
@@ -58,6 +63,9 @@ export async function sendBuyerReceipt(paymentId: string) {
     body,
     // A receipt is not marketing, so it carries no unsubscribe footer.
     withOptOut: false,
+    attachments: drawn
+      ? [{ filename: drawn.filename, content: drawn.content, contentType: "application/pdf" }]
+      : undefined,
   });
 
   await recordAudit({

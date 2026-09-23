@@ -45,6 +45,7 @@ export default async function ClientsPage({
     partner?: string;
     source?: string;
     agent?: string;
+    state?: string;
     sort?: string;
     dir?: string;
     page?: string;
@@ -68,6 +69,7 @@ export default async function ClientsPage({
   const partner = params.partner ?? "";
   const source = params.source ?? "";
   const agent = params.agent ?? "";
+  const state = params.state === "closed" ? "closed" : "";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
   const sort = readSort(params as Record<string, string | undefined>, Object.keys(CLIENT_ORDER), {
     key: "name",
@@ -75,7 +77,19 @@ export default async function ClientsPage({
   });
   const order = sort.dir === "asc" ? asc(CLIENT_ORDER[sort.key]) : desc(CLIENT_ORDER[sort.key]);
   const filters = filterQuery(params as Record<string, string | undefined>);
-  const where = clientFilters({ query, project, partner, source, agent });
+  const where = clientFilters({ query, project, partner, source, agent, state });
+
+  /* How many are on each list, for the two tabs. */
+  const [[openCount], [closedCount]] = await Promise.all([
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(clients)
+      .where(sql`${clients.deletedAt} is null and ${clients.closedAt} is null`),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(clients)
+      .where(sql`${clients.deletedAt} is null and ${clients.closedAt} is not null`),
+  ]);
 
   const [[counted], rows, views, hidden, buildings, partnerList, agentList] = await Promise.all([
     db
@@ -140,6 +154,30 @@ export default async function ClientsPage({
         }
       />
 
+      {/*
+        The working list and the Closed one, side by side.
+
+        Plain links, because they go to the same address with a different
+        question on it, which is the navigation the router has been known to
+        fetch and never show.
+      */}
+      {/* eslint-disable @next/next/no-html-link-for-pages */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <a href="/clients?all=1" className="tab" data-on={state === "" ? "true" : "false"}>
+          {t("clients.tab.open")}
+          <span className="tabcount">{openCount?.total ?? 0}</span>
+        </a>
+        <a
+          href="/clients?state=closed"
+          className="tab"
+          data-on={state === "closed" ? "true" : "false"}
+        >
+          {t("clients.tab.closed")}
+          <span className="tabcount">{closedCount?.total ?? 0}</span>
+        </a>
+      </div>
+      {/* eslint-enable @next/next/no-html-link-for-pages */}
+
       <Card>
         <ViewsBar
           list="clients"
@@ -177,7 +215,7 @@ export default async function ClientsPage({
           placeholder={t("clients.searchPlaceholder")}
           searchLabel={t("common.search")}
           clearLabel={t("common.clear")}
-          keep={{ view: params.view }}
+          keep={{ view: params.view, state: state || undefined }}
           filtered={anyFilter(params as Record<string, string | undefined>)}
           resetLabel={t("list.resetAll")}
         >

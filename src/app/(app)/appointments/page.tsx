@@ -36,9 +36,16 @@ import {
 /** The six kinds, in the order the office listed them. */
 const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
 
-/** What to show. All is the default: a list that hides things without saying so
-    is the thing the office reported as a bug everywhere else. */
-const SHOW = ["all", "upcoming", "done", "cancelled", "waiting"] as const;
+/**
+ * What to show: the same words as the status on every row.
+ *
+ * All is the default, because a list that hides things without saying so is
+ * the thing the office reported as a bug everywhere else. The two older words,
+ * upcoming and waiting, are still understood from links made before today but
+ * are not offered, so the filter and the rows can never use different words.
+ */
+const SHOW = ["all", "pending", "done", "cancelled"] as const;
+const UNDERSTOOD = [...SHOW, "upcoming", "waiting"] as const;
 
 export default async function AppointmentsPage({
   searchParams,
@@ -54,7 +61,7 @@ export default async function AppointmentsPage({
   await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
 
-  const show = (SHOW as readonly string[]).includes(params.show ?? "")
+  const show = (UNDERSTOOD as readonly string[]).includes(params.show ?? "")
     ? (params.show as string)
     : "all";
 
@@ -113,7 +120,7 @@ export default async function AppointmentsPage({
           <Pick
             name="show"
             label={t("appointments.show")}
-            chosen={show === "all" ? [] : [show]}
+            chosen={show === "all" ? [] : [show === "upcoming" || show === "waiting" ? "pending" : show]}
             anything={t("appointments.showAll")}
             choices={SHOW.filter((one) => one !== "all").map((one) => ({
               value: one,
@@ -178,22 +185,19 @@ export default async function AppointmentsPage({
                 <label className="label" htmlFor="with">
                   {t("appointments.who")}
                 </label>
+                {/*
+                  Clients only. An enquiry is followed up rather than met: the
+                  follow up already carries a day, a time and a line about what
+                  it is for, and it has its own section. Appointments already
+                  made with an enquiry stay on the list as they are.
+                */}
                 <select id="with" name="with" required className="select" defaultValue="">
                   <option value="">{t("common.choose")}</option>
-                  <optgroup label={t("nav.clients")}>
-                    {people.clients.map((one) => (
-                      <option key={one.id} value={`client:${one.id}`}>
-                        {one.firstName} {one.lastName}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label={t("nav.leads")}>
-                    {people.leads.map((one) => (
-                      <option key={one.id} value={`lead:${one.id}`}>
-                        {one.firstName} {one.lastName}
-                      </option>
-                    ))}
-                  </optgroup>
+                  {people.clients.map((one) => (
+                    <option key={one.id} value={`client:${one.id}`}>
+                      {one.firstName} {one.lastName}
+                    </option>
+                  ))}
                 </select>
               </div>
               <KindField
@@ -318,8 +322,13 @@ export default async function AppointmentsPage({
                       <td className="ctr nowrap">{dayOf(appointment.at)}</td>
                       <td className="ctr nowrap">{timeOf(appointment.at)}</td>
                       <td>
+                        {/*
+                          Still pending with its day gone: the same status, said
+                          louder, because it is the one somebody has to answer
+                          for. Not a fourth status, just Pending that is late.
+                        */}
                         {asking ? (
-                          <Pill tone="warn">{t("appointments.show.waiting")}</Pill>
+                          <Pill tone="bad">{t("appointments.overdue")}</Pill>
                         ) : (
                           <Pill
                             tone={
@@ -369,8 +378,15 @@ export default async function AppointmentsPage({
                             appointment moves: the time, the person going, the
                             kind, even the place, and until now the only way to
                             change any of it was to delete it and start again.
+
+                            The key is what closes it again. It changes whenever
+                            the appointment does, saved or answered, so the
+                            window folds away the moment the change is made
+                            rather than sitting open over a row that already
+                            says the new thing.
                           */}
                           <Disclosure
+                            key={`${appointment.id}-${new Date(appointment.updatedAt).getTime()}-${appointment.status}`}
                             showLabel={t("common.edit")}
                             hideLabel={t("common.cancel")}
                             tone="secondary"

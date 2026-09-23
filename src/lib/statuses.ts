@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { contracts, installments, payments, projects, units } from "@/db/schema";
 import { toCents } from "@/lib/money";
@@ -74,12 +74,28 @@ function deserved(
  */
 export async function followTheMoney(contractId: string, who: Who = null): Promise<void> {
   const [contract] = await db
-    .select({ id: contracts.id, unitId: contracts.unitId, reference: contracts.reference })
+    .select({
+      id: contracts.id,
+      unitId: contracts.unitId,
+      reference: contracts.reference,
+      status: contracts.status,
+    })
     .from(contracts)
     .where(eq(contracts.id, contractId))
     .limit(1);
 
   if (!contract?.unitId) return;
+
+  /*
+   * A cancelled contract no longer speaks for its apartment.
+   *
+   * The money on it stays on the record, because it was received, but a buyer
+   * who walked away does not hold the apartment any more. Without this, the
+   * reservation they paid would push the apartment straight back to reserved
+   * the next time anything was recalculated, after the office had just put it
+   * back on the market.
+   */
+  if (contract.status === "CANCELLED") return;
 
   const [owed] = await db
     .select({ due: sql<string>`coalesce(sum(${installments.totalAmount}), 0)` })
@@ -263,7 +279,7 @@ export async function handUnitBackToMoney(unitId: string, who: Who): Promise<voi
   const [found] = await db
     .select({ contractId: contracts.id, projectId: units.projectId })
     .from(units)
-    .leftJoin(contracts, eq(contracts.unitId, units.id))
+    .leftJoin(contracts, and(eq(contracts.unitId, units.id), ne(contracts.status, "CANCELLED")))
     .where(eq(units.id, unitId))
     .limit(1);
 

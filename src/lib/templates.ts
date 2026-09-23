@@ -469,6 +469,88 @@ One Eleven`,
     toAgents: false,
     toSubowners: false,
   },
+  {
+    key: "appointment_reminder",
+    isAutomatic: true,
+    name: "A reminder the day before",
+    description:
+      "Goes the day before every appointment that is still pending, once, in the morning at the hour set in Settings. An appointment made the afternoon before does not get one as well, because the confirmation it has just had says the same thing.",
+    subject: "A reminder: your appointment tomorrow at {{time}}",
+    body: `Dear {{first_name}},
+
+A reminder of your appointment tomorrow.
+
+Where: {{place}}
+What it is about: {{kind}}
+Day: {{day}}
+Time: {{time}}
+You will be meeting: {{who}}
+
+If something has come up, reply to this email and we will find another time.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, a reminder: {{place}} tomorrow, {{day}}, at {{time}} with {{who}}.",
+    subjectEl: "Υπενθύμιση: το ραντεβού σας αύριο στις {{time}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Σας υπενθυμίζουμε το αυριανό σας ραντεβού.
+
+Πού: {{place}}
+Θέμα: {{kind}}
+Ημέρα: {{day}}
+Ώρα: {{time}}
+Θα σας δει: {{who}}
+
+Αν προέκυψε κάτι, απαντήστε σε αυτό το email και βρίσκουμε άλλη ώρα.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, υπενθύμιση: {{place}} αύριο, {{day}}, στις {{time}} με {{who}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "agent_commission",
+    isAutomatic: true,
+    name: "Commission generated, to the agent",
+    description:
+      "Goes to the agent the moment their commission comes into being, which is when the buyer has paid the opening of the contract: the reservation and the signing where there are both. It says which sale, what the commission is, and that the invoice is now due from them.",
+    subject: "Your commission on {{unit}} at {{project}}",
+    body: `Dear {{first_name}},
+
+{{buyer}} has paid the signing of the contract for {{unit}} at {{project}}, and your commission on the sale has been generated.
+
+Commission: {{amount}}
+Worked out on: {{base}}
+
+Please send us your invoice for it, and we will settle it and send you the receipt.
+
+Thank you for the sale.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, your commission of {{amount}} on {{unit}} at {{project}} has been generated. Please send us your invoice.",
+    subjectEl: "Η προμήθειά σας για το {{unit}} στο {{project}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Ο/Η {{buyer}} πλήρωσε την υπογραφή του συμβολαίου για το {{unit}} στο {{project}}, και η προμήθειά σας για την πώληση δημιουργήθηκε.
+
+Προμήθεια: {{amount}}
+Υπολογισμένη επί: {{base}}
+
+Παρακαλούμε στείλτε μας το τιμολόγιό σας, και θα την εξοφλήσουμε και θα σας στείλουμε την απόδειξη.
+
+Σας ευχαριστούμε για την πώληση.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, η προμήθειά σας {{amount}} για το {{unit}} στο {{project}} δημιουργήθηκε. Στείλτε μας το τιμολόγιο.",
+    toClients: false,
+    toAgents: true,
+    toSubowners: false,
+  },
 ];
 
 /** The letters the CRM sends by itself, in the order things happen. */
@@ -480,6 +562,8 @@ export const AUTOMATIC_KEYS = [
   "appointment_made",
   "appointment_moved",
   "appointment_cancelled",
+  "appointment_reminder",
+  "agent_commission",
 ] as const;
 
 export type AutomaticKey = (typeof AUTOMATIC_KEYS)[number];

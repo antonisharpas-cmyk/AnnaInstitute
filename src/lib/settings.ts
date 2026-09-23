@@ -22,6 +22,10 @@ export const DEFAULTS = {
   "appointments.summaryLastSent": "",
   /** What happened on that run, in one line, for the settings page to show. */
   "appointments.summaryLastResult": "",
+  /** Whether clients get a reminder the day before an appointment. */
+  "appointments.reminderOn": "yes",
+  /** The hour of the morning the day before when reminders start going. */
+  "appointments.reminderHour": "10",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

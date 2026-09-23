@@ -27,6 +27,7 @@ import { titleWithExtension } from "@/lib/fileLabels";
 import { clientFileLabel } from "@/lib/fileLabels";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
+import SubmitButton from "@/components/SubmitButton";
 import InstallmentsPanel from "./InstallmentsPanel";
 import PersonalInfo from "./PersonalInfo";
 import DocumentUpload from "@/components/DocumentUpload";
@@ -35,7 +36,9 @@ import { addChangeRequest, recordPayment } from "../../contracts/actions";
 import { undoConversion } from "../../leads/actions";
 import {
   assignApartment,
+  closeClient,
   deleteClientDocument,
+  reopenClient,
   setMarketingConsent,
   unassignApartment,
   unsubscribeClient,
@@ -289,6 +292,32 @@ export default async function ClientPage({
       />
 
       <div className="max-w-4xl space-y-4">
+        {/*
+          Closed, said at the top.
+
+          A client on the Closed list is still a whole record, with their money
+          and their papers, so the card opens as normal. But the first thing it
+          says is that they walked away, when, and why, so nobody rings them
+          about a payment that is no longer due.
+        */}
+        {client.closedAt ? (
+          <div className="card flex flex-wrap items-center justify-between gap-3 border-[color:var(--color-warning)] p-3">
+            <div className="text-sm">
+              <span className="font-semibold">
+                {t("clients.closedOn")} {day(client.closedAt, locale)}
+              </span>
+              {client.closedReason ? (
+                <span className="text-brand-graphite/70">{` . ${client.closedReason}`}</span>
+              ) : null}
+            </div>
+            <form action={reopenClient.bind(null, id)}>
+              <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                {t("clients.reopen")}
+              </SubmitButton>
+            </form>
+          </div>
+        ) : null}
+
         {/* 1. Personal information, edited in place. */}
         <PersonalInfo
           client={{
@@ -1207,6 +1236,35 @@ export default async function ClientPage({
             </form>
           </Card>
         ) : null}
+
+        {/*
+          Closing a client who walked away.
+
+          At the foot of the card, behind a button, with the reason asked for,
+          because it releases an apartment and cancels a contract. It says so
+          in plain words before anybody presses it.
+        */}
+        {client.closedAt ? null : (
+          <div className="rounded border border-brand-line bg-brand-surface p-3">
+            <Disclosure showLabel={t("clients.close")} hideLabel={t("common.cancel")} tone="secondary">
+              <form action={closeClient.bind(null, id)} className="space-y-2">
+                <p className="max-w-prose text-xs text-brand-graphite/70">{t("clients.closeWhat")}</p>
+                <div>
+                  <label className="label" htmlFor="closeReason">
+                    {t("clients.closeReason")}
+                  </label>
+                  <input
+                    id="closeReason"
+                    name="reason"
+                    placeholder={t("clients.closeReasonHint")}
+                    className="input"
+                  />
+                </div>
+                <SubmitButton className="btn btn-danger">{t("clients.closeConfirm")}</SubmitButton>
+              </form>
+            </Disclosure>
+          </div>
+        )}
       </div>
     </>
   );

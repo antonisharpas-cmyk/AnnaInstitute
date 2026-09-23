@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { manyOf } from "@/lib/filters";
 import {
@@ -310,7 +310,8 @@ export async function unitsWithoutContract(keepUnitId?: string) {
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
     .leftJoin(clients, eq(clients.id, units.clientId))
-    .leftJoin(contracts, eq(contracts.unitId, units.id))
+    /* A cancelled contract no longer holds its apartment. */
+    .leftJoin(contracts, and(eq(contracts.unitId, units.id), ne(contracts.status, "CANCELLED")))
     .orderBy(asc(projects.name), asc(units.code));
 
   return rows.filter((r) => r.contractId === null || r.unit.id === keepUnitId);
@@ -481,7 +482,8 @@ export async function buyersByUnit(unitIds: string[]) {
     })
     .from(contracts)
     .innerJoin(clients, eq(clients.id, contracts.clientId))
-    .where(inArray(contracts.unitId, unitIds));
+    /* A cancelled sale names nobody: the apartment is back on the market. */
+    .where(and(inArray(contracts.unitId, unitIds), ne(contracts.status, "CANCELLED")));
 
   const shared = await db
     .select({

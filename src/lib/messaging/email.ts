@@ -30,11 +30,16 @@ function getTransport() {
   return transport;
 }
 
+/**
+ * A file to send with an email.
+ *
+ * Either one already on disk, by its path, or one drawn up on the spot, by its
+ * bytes: the receipt the CRM makes for a payment never touches the disk at all.
+ */
 export type EmailAttachment = {
   filename: string;
-  path: string;
   contentType?: string;
-};
+} & ({ path: string; content?: never } | { content: Buffer; path?: never });
 
 export async function sendEmail(options: {
   to: string;

@@ -83,14 +83,21 @@ export async function listAppointments(filter: AppointmentFilter) {
   }
 
   /*
-    One filter, five answers, and each one is a plain sentence about the list.
+    The filter says the same words as the status.
 
-    It used to be three buttons above the table that changed the whole view,
-    which read as three different pages rather than as a filter, and the office
-    said so. Now it is a filter like the ones on every other list.
+    An appointment is Pending from the moment it is made, Done when somebody
+    in the office says it happened, or Cancelled. The filter offers exactly
+    those, so what a row says and what the filter asks for can never disagree,
+    which is what the office meant by "the same logic and terminology".
+
+    Two older words are still understood so that links made before today keep
+    working: upcoming is pending from today on, and waiting is pending with its
+    day already gone, which is what the bell points at.
   */
   const show = filter.show ?? "all";
-  if (show === "upcoming") {
+  if (show === "pending") {
+    parts.push(eq(appointments.status, "PLANNED"));
+  } else if (show === "upcoming") {
     parts.push(eq(appointments.status, "PLANNED"));
     parts.push(gte(appointments.at, startOfToday()));
   } else if (show === "done") {
@@ -118,8 +125,13 @@ export async function listAppointments(filter: AppointmentFilter) {
     .leftJoin(leads, eq(leads.id, appointments.leadId))
     .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(where)
-    /* What is coming up reads soonest first. Everything else reads latest first. */
-    .orderBy(show === "upcoming" ? asc(appointments.at) : desc(appointments.at))
+    /* What is still to happen reads soonest first, so an overdue one is at the
+       top where it cannot be missed. What has happened reads latest first. */
+    .orderBy(
+      show === "pending" || show === "upcoming" || show === "waiting"
+        ? asc(appointments.at)
+        : desc(appointments.at),
+    )
     .limit(400);
 
   return rows;
@@ -167,7 +179,8 @@ export async function whoCanBeMet() {
     db
       .select({ id: clients.id, firstName: clients.firstName, lastName: clients.lastName })
       .from(clients)
-      .where(isNull(clients.deletedAt))
+      /* Not the ones who walked away: bring them back first, then meet them. */
+      .where(and(isNull(clients.deletedAt), isNull(clients.closedAt)))
       .orderBy(asc(clients.lastName), asc(clients.firstName)),
     db
       .select({ id: leads.id, firstName: leads.firstName, lastName: leads.lastName })

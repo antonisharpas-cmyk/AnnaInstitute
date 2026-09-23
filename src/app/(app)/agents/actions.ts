@@ -20,6 +20,7 @@ import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
 import { recalculateCommission, refreshCommissionPapers } from "@/lib/commissions";
 import { whatGoesWithAgent } from "@/lib/deletes";
+import { letterForCommission } from "@/lib/automaticEmails";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
 
 const agentSchema = z.object({
@@ -450,6 +451,7 @@ export async function recordSale(agentId: string, formData: FormData) {
     .where(eq(contracts.id, contractId));
 
   await recalculateCommission(contractId);
+  await letterForCommission(contractId);
 
   await recordAudit({
     action: "commission.sale",

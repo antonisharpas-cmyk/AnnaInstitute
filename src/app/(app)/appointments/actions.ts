@@ -69,7 +69,9 @@ export async function createAppointment(formData: FormData) {
     await flash("said.appointmentNeedsDay", "bad");
     return;
   }
-  if (!clientId && !leadId) {
+  /* A client, specifically. An enquiry is followed up rather than met, which
+     is the office's own split: appointments for clients, follow ups for leads. */
+  if (!clientId) {
     await flash("said.appointmentNeedsPerson", "bad");
     return;
   }

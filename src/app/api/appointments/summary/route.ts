@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { keyFromRequest, touchApiKey } from "@/lib/apiKeys";
 import { sendDailySummary, summaryIsDue } from "@/lib/appointmentSummary";
+import { sendAppointmentReminders } from "@/lib/automaticEmails";
+import { readSettings } from "@/lib/settings";
 
 /**
  * Where the day's summaries are asked for.
@@ -47,8 +49,31 @@ export async function POST(request: Request) {
     onlyIfDue = false;
   }
 
+  /*
+   * The reminders ride on the same clock.
+   *
+   * Every knock also looks for tomorrow's appointments that have not had their
+   * reminder, inside the hours the office set. It answers to itself, so the
+   * ten minute ticker sends each reminder exactly once, and it never gets in
+   * the way of the summary, which carries on below whatever happens here.
+   */
+  let reminders = { sent: 0, looked: 0 };
+  try {
+    const config = await readSettings(["appointments.reminderOn", "appointments.reminderHour"]);
+    if (config["appointments.reminderOn"] !== "no") {
+      reminders = await sendAppointmentReminders({
+        hour: Number.isFinite(Number(config["appointments.reminderHour"]))
+          ? Number(config["appointments.reminderHour"])
+          : 10,
+        byHand: !onlyIfDue,
+      });
+    }
+  } catch {
+    /* A reminder that fails is recorded as failed where it failed. */
+  }
+
   if (onlyIfDue && !(await summaryIsDue())) {
-    return NextResponse.json({ ok: true, skipped: true });
+    return NextResponse.json({ ok: true, skipped: true, reminders });
   }
 
   const outcomes = await sendDailySummary({ byHand: !onlyIfDue });
@@ -58,5 +83,6 @@ export async function POST(request: Request) {
     sent: outcomes.filter((one) => one.sent).length,
     of: outcomes.length,
     outcomes,
+    reminders,
   });
 }

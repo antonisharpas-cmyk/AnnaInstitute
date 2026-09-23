@@ -250,6 +250,28 @@ export async function recalculateCommission(contractId: string) {
   const contract = rows[0];
   if (!contract) return;
 
+  /*
+   * A cancelled contract is left exactly as it stands.
+   *
+   * No new commission is generated on a sale that fell through, and one that
+   * was already generated is not quietly taken away either: whether the agent
+   * keeps it is a conversation between the office and the agent, and the line
+   * stays on their record until somebody removes it by hand.
+   */
+  if (contract.status === "CANCELLED") return;
+
+  /*
+   * A land exchange is not a sale, so it carries no commission of its own.
+   *
+   * The owner gives land and receives apartments; there is no sale price for a
+   * rate to be taken on, and working one out of the value of the agreement
+   * would put a figure on an agent's record that nobody agreed to. Where an
+   * agent did bring a land deal and was promised something, the office adds it
+   * by hand as an extra on the agent's page, which is exactly what extras are
+   * for.
+   */
+  if (contract.kind === "LAND_EXCHANGE") return;
+
   /**
    * A commission exists once the buyer has paid the opening of the contract,
    * and not before.

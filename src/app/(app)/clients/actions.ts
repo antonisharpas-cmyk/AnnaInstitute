@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { clients, contracts, units } from "@/db/schema";
+import { clients, contractUnits, contracts, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { followTheApartments, markUnitByHand } from "@/lib/statuses";
@@ -252,7 +252,7 @@ export async function unassignApartment(unitId: string, clientId: string) {
   const [contract] = await db
     .select({ id: contracts.id })
     .from(contracts)
-    .where(eq(contracts.unitId, unitId))
+    .where(and(eq(contracts.unitId, unitId), ne(contracts.status, "CANCELLED")))
     .limit(1);
 
   // A contract has to go first, otherwise the payment schedule would be left
@@ -495,5 +495,164 @@ export async function bulkClientBin(formData: FormData) {
     removable.length > 0 ? "said.movedToBin" : "said.clientHasContract",
     removable.length > 0 ? "good" : "bad",
   );
+  revalidatePath("/clients");
+}
+
+/* ---------------------------------------------------------------------------
+   Closing a client who walked away
+
+   The office's case, in their words: the client paid the reservation and is
+   not interested any more. Close him, release the apartment, and put him
+   somewhere. Deleting is wrong for this, because money was received and the
+   record of it has to stay; leaving him as he is is wrong too, because the
+   apartment is sitting there held by somebody who is not buying it.
+   --------------------------------------------------------------------------- */
+
+export async function closeClient(clientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+
+  const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!client) return;
+
+  /* 1. Their contracts are marked cancelled, not deleted. The schedule and
+        every payment stay exactly as they were, because they are the record
+        of money that really moved. A completed contract is left alone: a
+        client who has finished paying is not somebody walking away. */
+  const theirs = await db
+    .select({
+      id: contracts.id,
+      unitId: contracts.unitId,
+      status: contracts.status,
+      kind: contracts.kind,
+    })
+    .from(contracts)
+    .where(eq(contracts.clientId, clientId));
+
+  /* Sales only. A land exchange is an agreement over land that has already
+     been given, so a landowner is never "walking away" from it here, and the
+     apartments they receive for it stay theirs. */
+  const open = theirs.filter(
+    (one) => one.kind === "SALE" && one.status !== "COMPLETED" && one.status !== "CANCELLED",
+  );
+
+  const exchanged = theirs.filter((one) => one.kind === "LAND_EXCHANGE").map((one) => one.id);
+  const ownersShare = new Set(
+    exchanged.length > 0
+      ? (
+          await db
+            .select({ unitId: contractUnits.unitId })
+            .from(contractUnits)
+            .where(inArray(contractUnits.contractId, exchanged))
+        ).map((row) => row.unitId)
+      : [],
+  );
+  if (open.length > 0) {
+    await db
+      .update(contracts)
+      .set({ status: "CANCELLED", updatedAt: new Date() })
+      .where(
+        inArray(
+          contracts.id,
+          open.map((one) => one.id),
+        ),
+      );
+  }
+
+  /* 2. The apartments go back on the market: the ones assigned to them, and
+        the ones on the contracts that were just cancelled. */
+  const assigned = await db
+    .select({ id: units.id, projectId: units.projectId, code: units.code })
+    .from(units)
+    .where(eq(units.clientId, clientId));
+
+  const onContracts = open.map((one) => one.unitId).filter(Boolean) as string[];
+  const fromContracts =
+    onContracts.length > 0
+      ? await db
+          .select({ id: units.id, projectId: units.projectId, code: units.code })
+          .from(units)
+          .where(inArray(units.id, onContracts))
+      : [];
+
+  const released = [
+    ...new Map([...assigned, ...fromContracts].map((one) => [one.id, one])).values(),
+  ].filter((one) => !ownersShare.has(one.id));
+
+  if (released.length > 0) {
+    await db
+      .update(units)
+      .set({
+        clientId: null,
+        status: "AVAILABLE",
+        statusByHandAt: null,
+        statusByHandById: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        inArray(
+          units.id,
+          released.map((one) => one.id),
+        ),
+      );
+    for (const project of new Set(released.map((one) => one.projectId))) {
+      await followTheApartments(project, user);
+    }
+  }
+
+  /* 3. And the client moves to the Closed list, with the reason. */
+  await db
+    .update(clients)
+    .set({ closedAt: new Date(), closedReason: reason, updatedAt: new Date() })
+    .where(eq(clients.id, clientId));
+
+  await recordAudit({
+    action: "client.closed",
+    entity: "client",
+    entityId: clientId,
+    detail: [
+      reason,
+      open.length > 0 ? `${open.length} contract${open.length === 1 ? "" : "s"} cancelled` : null,
+      released.length > 0 ? `${released.map((one) => one.code).join(", ")} back on the market` : null,
+    ]
+      .filter(Boolean)
+      .join(". "),
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.clientClosed");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/clients");
+  revalidatePath("/projects");
+  revalidatePath("/contracts");
+}
+
+/**
+ * Back from the Closed list.
+ *
+ * The client comes back, their contracts stay cancelled, and their apartments
+ * are not taken back: somebody else may have been sold them in the meantime.
+ * If the deal is on again, the office assigns the apartment and writes the
+ * contract afresh, which is the honest record of what happened.
+ */
+export async function reopenClient(clientId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  await db
+    .update(clients)
+    .set({ closedAt: null, closedReason: null, updatedAt: new Date() })
+    .where(eq(clients.id, clientId));
+
+  await recordAudit({
+    action: "client.reopened",
+    entity: "client",
+    entityId: clientId,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.clientReopened");
+  revalidatePath(`/clients/${clientId}`);
   revalidatePath("/clients");
 }

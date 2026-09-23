@@ -8,7 +8,9 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createId } from "@/lib/id";
 
 const id = () => text("id").primaryKey().$defaultFn(createId);
@@ -244,6 +246,16 @@ export const clients = pgTable("clients", {
    * dated here, disappears from every list, and can be put back for thirty days.
    */
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  /**
+   * Closed: the client walked away, and the office has put them to one side.
+   *
+   * Not deleted, because they paid money and the record of it has to stay. The
+   * apartment they held goes back on the market, their contract is marked
+   * cancelled, and they move to the Closed list with the reason written down,
+   * so the office can find them again if they come back.
+   */
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  closedReason: text("closed_reason"),
   createdAt: created(),
   updatedAt: updated(),
 });
@@ -404,9 +416,11 @@ export const contracts = pgTable("contracts", {
    * left nullable in the database so an older record is never thrown away and a
    * draft can exist for a moment without one.
    */
-  unitId: text("unit_id")
-    .references(() => units.id)
-    .unique(),
+  /*
+   * One live contract per apartment. A cancelled one keeps the apartment it
+   * was for, as a record, and no longer stands in the way of the next buyer.
+   */
+  unitId: text("unit_id").references(() => units.id),
   clientId: text("client_id").references(() => clients.id),
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   commissionRate: rate("commission_rate"),
@@ -463,7 +477,9 @@ export const contracts = pgTable("contracts", {
   notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
-});
+}, (t) => ({
+  unitOpenOnce: uniqueIndex("contracts_unit_open").on(t.unitId).where(sql`status <> 'CANCELLED'`),
+}));
 
 /**
  * The apartments a contract covers when one is not enough.
@@ -1102,6 +1118,12 @@ export const automaticEmails = pgTable("automatic_emails", {
   contractId: text("contract_id").references(() => contracts.id, { onDelete: "cascade" }),
   paymentId: text("payment_id").references(() => payments.id, { onDelete: "cascade" }),
   clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+  /** The appointment a confirmation, a change, a cancellation or a reminder is about. */
+  appointmentId: text("appointment_id").references(() => appointments.id, {
+    onDelete: "cascade",
+  }),
+  /** The agent a commission letter went to. */
+  agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   status: automaticEmailStatusEnum("status").default("SENT").notNull(),
   /** Why it is waiting, or why it did not go, in plain words. */
   reason: text("reason"),

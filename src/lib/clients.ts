@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { many } from "@/lib/filters";
 import { clients, contracts, projects, units } from "@/db/schema";
@@ -34,7 +34,7 @@ export async function apartmentsByClient(
     })
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(contracts, eq(contracts.unitId, units.id))
+    .leftJoin(contracts, and(eq(contracts.unitId, units.id), ne(contracts.status, "CANCELLED")))
     .where(inArray(units.clientId, clientIds))
     .orderBy(asc(projects.name), asc(units.code));
 
@@ -101,6 +101,7 @@ export function clientFilters({
   partner = "",
   source = "",
   agent = "",
+  state = "",
 }: {
   query?: string;
   held?: string;
@@ -112,8 +113,21 @@ export function clientFilters({
   source?: string;
   /** An agent: they introduced the enquiry, or they are named on a contract. */
   agent?: string;
+  /** "closed" for the ones who walked away; anything else is the working list. */
+  state?: string;
 }) {
   const parts: SQL[] = [isNull(clients.deletedAt) as SQL];
+
+  /*
+   * The working list, or the Closed one.
+   *
+   * A closed client is somebody who walked away, so they are out of the list
+   * the office works from every day and on a list of their own, one click
+   * away, where they can be found again if they come back.
+   */
+  parts.push(
+    (state === "closed" ? sql`${clients.closedAt} is not null` : sql`${clients.closedAt} is null`) as SQL,
+  );
 
   if (query) {
     parts.push(
@@ -266,6 +280,7 @@ export async function matchingClientIds(input: {
   partner?: string;
   source?: string;
   agent?: string;
+  state?: string;
 }) {
   const rows = await db
     .select({ id: clients.id })

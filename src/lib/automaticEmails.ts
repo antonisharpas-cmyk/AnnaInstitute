@@ -2,9 +2,11 @@ import "server-only";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  agents,
   appointments,
   automaticEmails,
   clients,
+  commissions,
   contracts,
   documents,
   installments,
@@ -18,6 +20,8 @@ import { formatAmount, toCents } from "@/lib/money";
 import { sendAndRecord } from "@/lib/messaging";
 import { resolveStored } from "@/lib/storage";
 import { templateByKey, type AutomaticKey } from "@/lib/templates";
+import { receiptPdf } from "@/lib/paymentPdf";
+import type { EmailAttachment } from "@/lib/messaging/email";
 
 /**
  * The letters that follow the money.
@@ -61,22 +65,25 @@ function fill(text: string, values: Record<string, string>): string {
   return text.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (whole, key: string) => values[key] ?? whole);
 }
 
-type Papers = { filename: string; path: string; contentType?: string };
+type Papers = EmailAttachment;
 
-/** The receipt the office filed against this payment, if they filed one. */
-async function receiptFor(paymentId: string): Promise<Papers | null> {
-  const [row] = await db
+/**
+ * Every file the office filed against this payment.
+ *
+ * The invoice, the receipt, the bank slip: whatever was attached when the money
+ * was recorded goes with the letter, all of it, not only the newest one.
+ */
+async function filedWith(paymentId: string): Promise<Papers[]> {
+  const rows = await db
     .select()
     .from(documents)
-    .where(and(eq(documents.paymentId, paymentId), eq(documents.category, "RECEIPT")))
-    .orderBy(desc(documents.createdAt))
-    .limit(1);
-  if (!row) return null;
-  return {
+    .where(eq(documents.paymentId, paymentId))
+    .orderBy(asc(documents.createdAt));
+  return rows.map((row) => ({
     filename: row.originalName || row.title,
     path: resolveStored(row.filePath),
     contentType: row.mimeType ?? undefined,
-  };
+  }));
 }
 
 /** The contract itself, filed against the contract record. */
@@ -170,6 +177,19 @@ export async function letterForPayment(paymentId: string): Promise<void> {
     }
   };
 
+  /*
+   * A land exchange is not a sale, so the buyer's letters are not for it.
+   *
+   * They welcome somebody to an apartment they are buying, congratulate them on
+   * paying it off and talk about the keys, none of which is true of an owner
+   * who gave land. Money recorded on a land exchange is still recorded; it is
+   * only the letter that does not go, and the record says why.
+   */
+  if (row.contract.kind === "LAND_EXCHANGE") {
+    await note("SKIPPED", "A land exchange is not a sale, so the buyer's letters do not go.");
+    return;
+  }
+
   const template = await templateByKey(key);
   if (!template) return;
   if (!template.isActive) {
@@ -200,8 +220,23 @@ export async function letterForPayment(paymentId: string): Promise<void> {
     papers.push(theContract);
   }
 
-  const receipt = await receiptFor(paymentId);
-  if (receipt) papers.push(receipt);
+  /*
+   * The receipt the CRM draws up, first, and then whatever the office filed.
+   *
+   * The drawn up one is always there, so a buyer has a paper for their money
+   * even when nothing was scanned. If making it fails for any reason the letter
+   * still goes with the rest, because a missing PDF is no reason to leave a
+   * buyer without the letter.
+   */
+  try {
+    const drawn = await receiptPdf(paymentId);
+    if (drawn) {
+      papers.push({ filename: drawn.filename, content: drawn.content, contentType: "application/pdf" });
+    }
+  } catch {
+    /* Carry on without it. */
+  }
+  papers.push(...(await filedWith(paymentId)));
 
   /* Their own language when the record says so, otherwise English, which is
      what the office writes in unless told otherwise. */
@@ -309,7 +344,7 @@ const KIND_WORDS: Record<string, string> = {
  */
 export async function letterForAppointment(
   appointmentId: string,
-  kind: "made" | "moved" | "cancelled",
+  kind: "made" | "moved" | "cancelled" | "reminder",
 ): Promise<void> {
   const [row] = await db
     .select({ appointment: appointments, client: clients, lead: leads, member: teamMembers })
@@ -327,7 +362,9 @@ export async function letterForAppointment(
       ? "appointment_made"
       : kind === "moved"
         ? "appointment_moved"
-        : "appointment_cancelled";
+        : kind === "reminder"
+          ? "appointment_reminder"
+          : "appointment_cancelled";
 
   const to = row.client
     ? {
@@ -351,6 +388,8 @@ export async function letterForAppointment(
       contractId: null,
       paymentId: null,
       clientId: to?.clientId ?? null,
+      /* Which appointment, so a reminder is never sent twice for the same one. */
+      appointmentId,
       status,
       reason: `${row.appointment.place}: ${reason}`,
       sentAt: status === "SENT" ? new Date() : null,
@@ -391,6 +430,164 @@ export async function letterForAppointment(
     recipient: { name: to.name, email: to.email, clientId: to.clientId ?? undefined },
     subject,
     body,
+    withOptOut: false,
+  });
+
+  if (result.status === "SENT") await note("SENT", "Sent.");
+  else if (result.status === "SIMULATED")
+    await note("SKIPPED", "Email is not set up yet, so nothing left the building.");
+  else await note("FAILED", result.error ?? "It did not go.");
+}
+
+/* ---------------------------------------------------------------------------
+   The reminder the day before
+   --------------------------------------------------------------------------- */
+
+/**
+ * Remind everybody who has an appointment tomorrow.
+ *
+ * Called every few minutes by the same clock that sends the evening summary,
+ * and it answers to itself: it only acts inside the hours the office set, and
+ * an appointment that has already had its reminder is never sent another, so
+ * calling it a hundred times sends each reminder once.
+ *
+ * An appointment made in the last six hours is left alone. Somebody who agreed
+ * to a meeting at three this afternoon and was sent a confirmation at three
+ * does not need a reminder at four saying the same thing.
+ */
+export async function sendAppointmentReminders(options?: {
+  /** Pressed by hand, so the hour does not matter. */
+  byHand?: boolean;
+  hour?: number;
+}): Promise<{ sent: number; looked: number }> {
+  const now = new Date();
+  const hour = options?.hour ?? 10;
+  if (!options?.byHand && (now.getHours() < hour || now.getHours() >= 21)) {
+    return { sent: 0, looked: 0 };
+  }
+
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const dayAfter = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+  const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+
+  const due = await db
+    .select({ id: appointments.id, createdAt: appointments.createdAt })
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.status, "PLANNED"),
+        sql`${appointments.at} >= ${tomorrow} and ${appointments.at} < ${dayAfter}`,
+      ),
+    );
+
+  let sent = 0;
+  for (const one of due) {
+    if (new Date(one.createdAt) > sixHoursAgo) continue;
+
+    const [already] = await db
+      .select({ id: automaticEmails.id })
+      .from(automaticEmails)
+      .where(
+        and(
+          eq(automaticEmails.appointmentId, one.id),
+          eq(automaticEmails.templateKey, "appointment_reminder"),
+        ),
+      )
+      .limit(1);
+    if (already) continue;
+
+    await letterForAppointment(one.id, "reminder");
+    sent += 1;
+  }
+
+  return { sent, looked: due.length };
+}
+
+/* ---------------------------------------------------------------------------
+   The letter to the agent
+   --------------------------------------------------------------------------- */
+
+/**
+ * Tell the agent their commission has been generated.
+ *
+ * Called after anything that can bring a commission into being, a payment
+ * above all, and it looks rather than being told: if this contract now has a
+ * commission line and the agent has not been written to about it, the letter
+ * goes. That way it does not matter which of the several paths through the CRM
+ * created the line, and it is never written twice.
+ */
+export async function letterForCommission(contractId: string): Promise<void> {
+  const [line] = await db
+    .select({
+      commission: commissions,
+      agent: agents,
+      contract: contracts,
+      client: clients,
+      unit: units,
+      project: projects,
+    })
+    .from(commissions)
+    .innerJoin(agents, eq(agents.id, commissions.agentId))
+    .innerJoin(contracts, eq(contracts.id, commissions.contractId))
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")))
+    .limit(1);
+
+  if (!line) return;
+
+  const [already] = await db
+    .select({ id: automaticEmails.id })
+    .from(automaticEmails)
+    .where(
+      and(
+        eq(automaticEmails.contractId, contractId),
+        eq(automaticEmails.templateKey, "agent_commission"),
+      ),
+    )
+    .limit(1);
+  if (already) return;
+
+  const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
+    await db.insert(automaticEmails).values({
+      templateKey: "agent_commission",
+      contractId,
+      clientId: line.client?.id ?? null,
+      agentId: line.agent.id,
+      status,
+      reason: `${line.agent.name}: ${reason}`,
+      sentAt: status === "SENT" ? new Date() : null,
+    });
+  };
+
+  const template = await templateByKey("agent_commission");
+  if (!template) return;
+  if (!template.isActive) {
+    await note("SKIPPED", "This letter is switched off in the automatic emails section.");
+    return;
+  }
+  if (!line.agent.email) {
+    await note("SKIPPED", "The agent has no email address on their record.");
+    return;
+  }
+
+  const money = (cents: number) => formatAmount(cents, "en");
+  const values: Record<string, string> = {
+    first_name: line.agent.name.split(" ")[0] ?? line.agent.name,
+    name: line.agent.name,
+    buyer: line.client ? `${line.client.firstName ?? ""} ${line.client.lastName ?? ""}`.trim() : "The buyer",
+    unit: line.unit?.code ?? line.contract.reference ?? "",
+    project: line.project?.name ?? "",
+    amount: money(toCents(line.commission.amount)),
+    base: `${Number(line.commission.rate)}% of ${money(toCents(line.commission.baseAmount))}`,
+  };
+
+  const result = await sendAndRecord({
+    channel: "EMAIL",
+    recipient: { name: line.agent.name, email: line.agent.email, agentId: line.agent.id },
+    subject: fill(template.subject ?? "", values),
+    body: fill(template.body, values),
     withOptOut: false,
   });
 

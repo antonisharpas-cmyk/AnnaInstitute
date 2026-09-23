@@ -21,7 +21,7 @@ import { flash } from "@/lib/flash";
 import { removeDocument, storeChosenDocuments, storeDocuments } from "@/lib/uploads";
 import { fromCents, toCents } from "@/lib/money";
 import { looksGenerated, nextReceiptNumber, receiptNumberTaken } from "@/lib/receipts";
-import { letterForPayment, sendWaitingFor } from "@/lib/automaticEmails";
+import { letterForCommission, letterForPayment, sendWaitingFor } from "@/lib/automaticEmails";
 import {
   addMonths,
   buildSchedule,
@@ -217,9 +217,12 @@ async function unitIsFree(unitId: string | undefined, exceptId?: string) {
     .select({ id: contracts.id })
     .from(contracts)
     .where(
-      exceptId
-        ? and(eq(contracts.unitId, unitId), ne(contracts.id, exceptId))
-        : eq(contracts.unitId, unitId),
+      and(
+        eq(contracts.unitId, unitId),
+        /* A cancelled contract no longer holds its apartment. */
+        ne(contracts.status, "CANCELLED"),
+        exceptId ? ne(contracts.id, exceptId) : undefined,
+      ),
     )
     .limit(1);
   return rows.length === 0;
@@ -891,6 +894,9 @@ export async function recordPayment(contractId: string, formData: FormData) {
    */
   await letterForPayment(inserted[0].id);
 
+  /* And the agent's, once this money is the one that earns their commission. */
+  await letterForCommission(contractId);
+
   await recordAudit({
     action: "payment.record",
     entity: "contract",
@@ -1082,4 +1088,5 @@ export async function setChangeRequestStatus(
  */
 export async function syncCommission(contractId: string) {
   await recalculateCommission(contractId);
+  await letterForCommission(contractId);
 }

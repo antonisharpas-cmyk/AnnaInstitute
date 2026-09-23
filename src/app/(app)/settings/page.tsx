@@ -25,6 +25,8 @@ export default async function SettingsPage() {
     "appointments.summaryHour",
     "appointments.summaryWhenEmpty",
     "appointments.summaryLastResult",
+    "appointments.reminderOn",
+    "appointments.reminderHour",
   ]);
 
   const summaries = await buildSummaries(0);
@@ -82,6 +84,39 @@ export default async function SettingsPage() {
                   </span>
                 </span>
               </label>
+
+              {/* The buyer's own reminder, the day before their appointment. */}
+              <div className="space-y-3 border-t border-brand-line pt-4">
+                <label className="flex items-start gap-2 rounded border border-brand-line bg-brand-surface p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    name="reminderOn"
+                    defaultChecked={config["appointments.reminderOn"] === "yes"}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    {t("settings.reminderOn")}
+                    <span className="mt-0.5 block text-xs text-brand-graphite/60">
+                      {t("settings.reminderOnHint")}
+                    </span>
+                  </span>
+                </label>
+                <div className="sm:w-48">
+                  <label className="label" htmlFor="reminderHour">
+                    {t("settings.reminderHour")}
+                  </label>
+                  <input
+                    id="reminderHour"
+                    name="reminderHour"
+                    inputMode="numeric"
+                    defaultValue={config["appointments.reminderHour"]}
+                    className="input"
+                  />
+                  <p className="mt-1 text-xs text-brand-graphite/60">
+                    {t("settings.reminderHourHint")}
+                  </p>
+                </div>
+              </div>
 
               <div className="flex flex-wrap items-center gap-3 border-t border-brand-line pt-4">
                 <SubmitButton>{t("common.save")}</SubmitButton>
