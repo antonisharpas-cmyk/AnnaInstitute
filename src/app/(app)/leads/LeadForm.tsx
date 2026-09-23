@@ -38,6 +38,7 @@ export default function LeadForm({
     sourceOther: string;
     sourceOtherHint: string;
     project: string;
+    projectHint: string;
     note: string;
     noteHint: string;
     contactNote: string;
@@ -142,33 +143,44 @@ export default function LeadForm({
           </select>
         </div>
 
-        {source === "OTHER" ? (
-          <div>
-            <label className="label" htmlFor="sourceOther">
-              {labels.sourceOther}
-            </label>
-            <input
-              id="sourceOther"
-              name="sourceOther"
-              defaultValue={was.sourceOther ?? ""}
-              placeholder={labels.sourceOtherHint}
-              className="input"
-            />
-          </div>
-        ) : (
-          <div>
-            <label className="label" htmlFor="projectName">
-              {labels.project}
-            </label>
-            <input
-              id="projectName"
-              name="projectName"
-              defaultValue={was.projectName ?? ""}
-              className="input"
-            />
-          </div>
-        )}
+        {/*
+          What the enquiry is about, always.
+
+          It used to be swapped out for "where exactly" as soon as the source
+          was Other, so the one enquiry where somebody walked in off the street
+          and asked about Quattro 201 and 202 was the one with nowhere to write
+          that down. The two questions are different: what they are asking about
+          and how they reached us, so both are here and Other adds a field
+          rather than taking one away.
+        */}
+        <div>
+          <label className="label" htmlFor="projectName">
+            {labels.project}
+          </label>
+          <input
+            id="projectName"
+            name="projectName"
+            defaultValue={was.projectName ?? ""}
+            placeholder={labels.projectHint}
+            className="input"
+          />
+        </div>
       </div>
+
+      {source === "OTHER" ? (
+        <div className="sm:w-1/2">
+          <label className="label" htmlFor="sourceOther">
+            {labels.sourceOther}
+          </label>
+          <input
+            id="sourceOther"
+            name="sourceOther"
+            defaultValue={was.sourceOther ?? ""}
+            placeholder={labels.sourceOtherHint}
+            className="input"
+          />
+        </div>
+      ) : null}
 
       {/*
         Whose enquiry this is.

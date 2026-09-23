@@ -35,7 +35,7 @@ import {
   recalculateSchedule,
   vatSummary,
 } from "@/lib/contracts";
-import { followTheApartments, followTheMoney } from "@/lib/statuses";
+import { followTheMoney, markUnitByHand } from "@/lib/statuses";
 import { recalculateCommission } from "@/lib/commissions";
 
 const detailsSchema = z.object({
@@ -604,15 +604,19 @@ export async function deleteContract(contractId: string) {
   if (!detail) return;
 
   await db.delete(contracts).where(eq(contracts.id, contractId));
-  if (detail.contract.unitId) {
-    await releaseUnit(detail.contract.unitId);
-    const [unit] = await db
-      .select({ projectId: units.projectId })
-      .from(units)
-      .where(eq(units.id, detail.contract.unitId))
-      .limit(1);
-    if (unit) await followTheApartments(unit.projectId, user);
-  }
+
+  /*
+   * The apartment stays where the office left it.
+   *
+   * Deleting a contract used to put the apartment straight back on the market,
+   * which is the office's own decision to make and not the CRM's: a contract is
+   * usually deleted because it is being written again, and an apartment that
+   * flickers back to available in the middle of that is an apartment somebody
+   * else can be shown. So the status is kept as it stands and marked as the
+   * office's own, and they free it themselves on the apartment when the deal is
+   * really off.
+   */
+  if (detail.contract.unitId) await markUnitByHand(detail.contract.unitId, user);
 
   await recordAudit({
     action: "contract.delete",
@@ -868,9 +872,7 @@ export async function recordPayment(contractId: string, formData: FormData) {
   if (files.length > 0) {
     await storeDocuments({
       files,
-      title:
-        String(formData.get("fileTitle") ?? "").trim() ||
-        `Receipt ${receipt}`,
+      title: String(formData.get("fileTitle") ?? "").trim() || `Receipt ${receipt}`,
       category: "RECEIPT",
       attachTo: { contractId, paymentId: inserted[0].id },
       user,

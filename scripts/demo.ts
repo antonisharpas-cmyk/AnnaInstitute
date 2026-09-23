@@ -23,7 +23,7 @@ import {
   units,
 } from "../src/db/schema";
 import { fromCents, toCents } from "../src/lib/money";
-import { DEFAULT_STAGES, buildSchedule } from "../src/lib/vat";
+import { DEFAULT_STAGES, EXAMPLE_SPLIT, buildSchedule } from "../src/lib/vat";
 
 const FIRST = ["Andreas", "Maria", "Petros", "Elena", "Nikos", "Sofia", "Georgios", "Anna"];
 const LAST = ["Georgiou", "Christodoulou", "Ioannou", "Charalambous", "Kyriakou", "Demetriou"];
@@ -138,7 +138,8 @@ async function main() {
     const plan = DEFAULT_STAGES.map((stage, i) => ({
       seq: i + 1,
       label: stage.label,
-      percentage: stage.percentage,
+      /* Made up money, so the demonstration has something in it. */
+      percentage: EXAMPLE_SPLIT[i] ?? 0,
       locked: false,
     }));
     const lines = buildSchedule({ netCents, rate }, plan);

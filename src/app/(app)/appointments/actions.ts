@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { appointments, teamMembers } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { letterForAppointment } from "@/lib/automaticEmails";
 import { flash } from "@/lib/flash";
 
 /*
@@ -81,6 +82,11 @@ export async function createAppointment(formData: FormData) {
       clientId,
       leadId,
       type: kindOf(String(formData.get("type") ?? "OTHER")),
+      /* What Other was, kept only when Other is what was chosen. */
+      typeOther:
+        kindOf(String(formData.get("type") ?? "OTHER")) === "OTHER"
+          ? String(formData.get("typeOther") ?? "").trim() || null
+          : null,
       assignedToId: String(formData.get("assignedToId") ?? "") || null,
       createdById: user.id,
     })
@@ -94,6 +100,15 @@ export async function createAppointment(formData: FormData) {
     userId: user.id,
     userEmail: user.email,
   });
+
+  /*
+   * The person being met is told, at once.
+   *
+   * After the appointment is safely written down, never before, and never in a
+   * way that can lose it: whatever becomes of the letter is recorded in the
+   * automatic emails section and the appointment stands either way.
+   */
+  await letterForAppointment(made.id, "made");
 
   await flash("said.appointmentMade");
   await redraw(clientId, leadId);
@@ -114,14 +129,35 @@ export async function updateAppointment(appointmentId: string, formData: FormDat
   const at =
     moment(String(formData.get("day") ?? ""), String(formData.get("time") ?? "")) ?? row.at;
   const type = formData.has("type") ? kindOf(String(formData.get("type"))) : row.type;
+  const typeOther =
+    type === "OTHER"
+      ? formData.has("typeOther")
+        ? String(formData.get("typeOther") ?? "").trim() || null
+        : row.typeOther
+      : null;
   const assignedToId = formData.has("assignedToId")
     ? String(formData.get("assignedToId") ?? "") || null
     : row.assignedToId;
 
   await db
     .update(appointments)
-    .set({ place, at, type, assignedToId, updatedAt: new Date() })
+    .set({ place, at, type, typeOther, assignedToId, updatedAt: new Date() })
     .where(eq(appointments.id, appointmentId));
+
+  /*
+   * Moved, so the person being met is told it moved.
+   *
+   * Only when something they would notice has changed. Correcting a spelling in
+   * the place does not deserve a second letter, but a different day, time,
+   * place, kind or person does, because those are the things somebody writes in
+   * their own diary.
+   */
+  const moved =
+    place !== row.place ||
+    at.getTime() !== new Date(row.at).getTime() ||
+    type !== row.type ||
+    assignedToId !== row.assignedToId;
+  if (moved) await letterForAppointment(appointmentId, "moved");
 
   await recordAudit({
     action: "appointment.update",
@@ -176,6 +212,12 @@ export async function answerAppointment(
     userId: user.id,
     userEmail: user.email,
   });
+
+  /* Cancelled, so nobody is left waiting outside a showroom. Only on the way
+     into cancelled, so pressing it twice does not write twice. */
+  if (answer === "MISSED" && row.status !== "MISSED") {
+    await letterForAppointment(appointmentId, "cancelled");
+  }
 
   await flash(
     answer === "DONE"

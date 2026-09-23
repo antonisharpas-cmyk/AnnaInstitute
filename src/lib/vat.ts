@@ -123,37 +123,65 @@ export function scheduleTotals(lines: ScheduleLine[]) {
   );
 }
 
-/** The classic stages of a Cyprus development contract. */
+/**
+ * The office's own standard contract, in their own seven stages.
+ *
+ * The amounts are deliberately left at nothing. The office told us the stages
+ * and not the split, because the split is not the same on every deal: a buyer
+ * who pays a large reservation and one who pays none sign the same seven lines
+ * with different figures against them. So the button writes the seven stages in
+ * order, with the dates if a start date was given, and the office types what
+ * was agreed. The running total underneath keeps them honest.
+ */
 export const DEFAULT_STAGES: {
   label: string;
   labelEl: string;
   percentage: number;
 }[] = [
-  { label: "Reservation", labelEl: "Κράτηση", percentage: 5 },
+  { label: "Reservation", labelEl: "Κράτηση", percentage: 0 },
   {
-    label: "On signing of contract",
+    label: "On signing of the contract",
     labelEl: "Υπογραφή συμβολαίου",
-    percentage: 25,
+    percentage: 0,
   },
-  { label: "Foundations", labelEl: "Θεμέλια", percentage: 20 },
-  { label: "Frame", labelEl: "Σκελετός", percentage: 20 },
-  { label: "Plastering", labelEl: "Σοβάντισμα", percentage: 20 },
-  { label: "On delivery", labelEl: "Παράδοση", percentage: 10 },
+  { label: "Completion of the Structure", labelEl: "Ολοκλήρωση σκελετού", percentage: 0 },
+  { label: "Completion of the Brickwork", labelEl: "Ολοκλήρωση τοιχοποιίας", percentage: 0 },
+  { label: "Completion of the Tiling", labelEl: "Ολοκλήρωση πλακιδίων", percentage: 0 },
+  { label: "Completion of the Aluminium", labelEl: "Ολοκλήρωση αλουμινίων", percentage: 0 },
+  { label: "Completion of the Property", labelEl: "Ολοκλήρωση ακινήτου", percentage: 0 },
 ];
+
+/**
+ * A split for made up data only.
+ *
+ * The standard contract carries no figures, because the office writes what was
+ * agreed on the deal. A seeded or demonstration contract still has to have
+ * money in it or there is nothing to look at, so the scripts that invent
+ * contracts use this and nothing else does.
+ */
+export const EXAMPLE_SPLIT = [5, 25, 20, 15, 15, 10, 10];
 
 /**
  * The stages the office actually writes on a contract.
  *
- * These are offered as a dropdown wherever a stage is named, so the same six
- * words are used on every contract and a line can still be typed by hand when a
- * deal needs something of its own. "On completion of the apartment" is the stage
- * that falls between the building being finished and the keys changing hands.
+ * The seven of the standard contract first, in their order, then the three that
+ * turn up on a deal of its own. The older words are still recognised when they
+ * are read back, so a contract written before this list changed still says what
+ * it always said.
  */
 export const STAGE_CHOICES: { label: string; labelEl: string }[] = [
-  ...DEFAULT_STAGES.slice(0, 5).map((s) => ({ label: s.label, labelEl: s.labelEl })),
-  { label: "On completion of the apartment", labelEl: "Ολοκλήρωση διαμερίσματος" },
+  ...DEFAULT_STAGES.map((s) => ({ label: s.label, labelEl: s.labelEl })),
   { label: "On delivery", labelEl: "Παράδοση" },
   { label: "On the title deed", labelEl: "Τίτλος ιδιοκτησίας" },
+  { label: "On completion of the apartment", labelEl: "Ολοκλήρωση διαμερίσματος" },
+];
+
+/** The stages of contracts written before the seven, kept so they still read. */
+export const OLDER_STAGES: { label: string; labelEl: string }[] = [
+  { label: "On signing of contract", labelEl: "Υπογραφή συμβολαίου" },
+  { label: "Foundations", labelEl: "Θεμέλια" },
+  { label: "Frame", labelEl: "Σκελετός" },
+  { label: "Plastering", labelEl: "Σοβάντισμα" },
 ];
 
 /**
@@ -166,7 +194,7 @@ export const STAGE_CHOICES: { label: string; labelEl: string }[] = [
 export function stageFromAnyLanguage(value: string): { label: string; labelEl: string } | null {
   const typed = value.trim().toLowerCase();
   return (
-    STAGE_CHOICES.find(
+    [...STAGE_CHOICES, ...OLDER_STAGES].find(
       (s) => s.label.toLowerCase() === typed || s.labelEl.toLowerCase() === typed,
     ) ?? null
   );
@@ -226,7 +254,7 @@ export function periodicPlan(
   }
   if (onSigningCents > 0) {
     head.push({
-      label: "On signing of contract",
+      label: "On signing of the contract",
       labelEl: "Υπογραφή συμβολαίου",
       percentage: percent(onSigningCents),
       dueDate: startDate ? addMonths(startDate, 1) : null,

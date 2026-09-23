@@ -11,6 +11,7 @@ import {
   leadFollowUps,
   leadNotes,
   leads,
+  teamMembers,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
@@ -185,6 +186,15 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
     return;
   }
 
+  /* Read what it was, so the history says where it moved from rather than only
+     where it landed. "Contacted to No response" is the sentence somebody wants
+     three weeks later. */
+  const [was] = await db
+    .select({ status: leads.status })
+    .from(leads)
+    .where(eq(leads.id, leadId))
+    .limit(1);
+
   await db
     .update(leads)
     .set({ status: status as LeadStatus, updatedAt: new Date() })
@@ -194,7 +204,7 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
     action: "lead.status",
     entity: "lead",
     entityId: leadId,
-    detail: status,
+    detail: was?.status && was.status !== status ? `${was.status} to ${status}` : status,
     userId: user.id,
     userEmail: user.email,
   });
@@ -490,6 +500,15 @@ export async function setLeadStatusInline(
     return {};
   }
 
+  /* Read what it was, so the history says where it moved from rather than only
+     where it landed. "Contacted to No response" is the sentence somebody wants
+     three weeks later. */
+  const [was] = await db
+    .select({ status: leads.status })
+    .from(leads)
+    .where(eq(leads.id, leadId))
+    .limit(1);
+
   await db
     .update(leads)
     .set({ status: status as LeadStatus, updatedAt: new Date() })
@@ -499,7 +518,7 @@ export async function setLeadStatusInline(
     action: "lead.status",
     entity: "lead",
     entityId: leadId,
-    detail: status,
+    detail: was?.status && was.status !== status ? `${was.status} to ${status}` : status,
     userId: user.id,
     userEmail: user.email,
   });
@@ -746,11 +765,20 @@ export async function assignLead(leadId: string, formData: FormData) {
     .set({ assignedToId, updatedAt: new Date() })
     .where(eq(leads.id, leadId));
 
+  /* By name in the history, because an id tells nobody anything. */
+  const [member] = assignedToId
+    ? await db
+        .select({ name: teamMembers.name })
+        .from(teamMembers)
+        .where(eq(teamMembers.id, assignedToId))
+        .limit(1)
+    : [];
+
   await recordAudit({
     action: "lead.assigned",
     entity: "lead",
     entityId: leadId,
-    detail: assignedToId ?? "nobody",
+    detail: member?.name ?? "nobody",
     userId: user.id,
     userEmail: user.email,
   });

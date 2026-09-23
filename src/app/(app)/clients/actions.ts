@@ -434,6 +434,52 @@ export async function bulkClientBin(formData: FormData) {
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(inArray(clients.id, removable));
 
+    /*
+     * The apartments they were holding go back on the market.
+     *
+     * This is the case the office found: the contract was deleted, then the
+     * client, and the apartment was left sold to nobody. A client who is gone
+     * holds nothing, so the apartment is nobody's and it is free, and the
+     * development's own list says so without anybody going round after the
+     * deletion putting it right.
+     */
+    const held = await db
+      .select({ id: units.id, projectId: units.projectId, code: units.code })
+      .from(units)
+      .where(inArray(units.clientId, removable));
+
+    if (held.length > 0) {
+      await db
+        .update(units)
+        .set({
+          clientId: null,
+          status: "AVAILABLE",
+          /* Free by the record rather than by somebody's decision, so the
+             money is allowed to move it again if a contract is written. */
+          statusByHandAt: null,
+          statusByHandById: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          inArray(
+            units.id,
+            held.map((one) => one.id),
+          ),
+        );
+
+      for (const project of new Set(held.map((one) => one.projectId))) {
+        await followTheApartments(project, user);
+      }
+
+      await recordAudit({
+        action: "unit.released",
+        entity: "client",
+        detail: `${held.map((one) => one.code).join(", ")} back on the market`,
+        userId: user.id,
+        userEmail: user.email,
+      });
+    }
+
     await offerUndo({ kind: "client.deleted", was: removable.map((id) => ({ id })) });
   }
 

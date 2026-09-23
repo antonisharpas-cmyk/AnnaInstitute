@@ -8,10 +8,9 @@ import { leadStatusTone, notesForLead } from "@/lib/leads";
 import { BackLink, Card, PageHeader, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import NoteList from "@/components/NoteList";
-import Appointments from "@/components/Appointments";
-import { appointmentsForLead } from "@/lib/appointments";
 import { whoCanGo } from "@/lib/team";
 import { followUpsForLead } from "@/lib/followUps";
+import { historyForLead } from "@/lib/leads";
 import { CHOOSABLE_LEAD_STATUSES } from "@/lib/leads";
 import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
@@ -42,9 +41,6 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-/** The six kinds, in the order the office listed them. */
-const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
-
 export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { locale, t } = await getTranslator();
@@ -64,17 +60,15 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
   const notes = await notesForLead(id);
 
-  /*
-    Viewings arranged with somebody who is still only an enquiry, which is most
-    first viewings. They follow the person, so when the enquiry becomes a client
-    the history of what was shown to them is already there.
-  */
-  const [meetings, team, followUps] = await Promise.all([
-    appointmentsForLead(id),
+  /* The office, for whoever this enquiry belongs to, and what is next on it. */
+  const [team, followUps, history] = await Promise.all([
     whoCanGo(),
     /* What happens next on this enquiry, which is the one thing a list of
        notes never tells anybody. */
     followUpsForLead(id),
+    /* Everything that has happened to this enquiry, read from the audit trail
+       so it cannot disagree with what was actually done. */
+    historyForLead(id),
   ]);
 
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?";
@@ -94,47 +88,17 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <Appointments
-            rows={meetings}
-            with={`lead:${id}`}
-            locale={locale}
-            labels={{
-              title: t("appointments.title"),
-              waiting: t("appointments.waiting"),
-              waitingHint: t("appointments.waitingHint"),
-              next: t("appointments.next"),
-              been: t("appointments.been"),
-              none: t("appointments.none"),
-              add: t("appointments.add"),
-              place: t("appointments.place"),
-              placeHint: t("appointments.placeHint"),
-              day: t("appointments.day"),
-              time: t("appointments.time"),
-              save: t("common.save"),
-              cancel: t("common.cancel"),
-              itHappened: t("appointments.itHappened"),
-              itDidNot: t("appointments.itDidNot"),
-              statusDone: t("appointments.done"),
-              statusMissed: t("appointments.missed"),
-              statusPlanned: t("appointments.planned"),
-              move: t("appointments.move"),
-              remove: t("common.delete"),
-              sure: t("remove.sure"),
-              type: t("appointments.type"),
-              kinds: KINDS.map((one) => ({
-                value: one,
-                label: t(`appointments.type.${one}` as MessageKey),
-              })),
-              kindOf: Object.fromEntries(
-                KINDS.map((one) => [one, t(`appointments.type.${one}` as MessageKey)]),
-              ),
-              assignedTo: t("appointments.assignedTo"),
-              assignTo: t("appointments.assignTo"),
-              nobody: t("appointments.nobody"),
-              team,
-            }}
-          />
+          {/*
+            No appointments card here.
 
+            An enquiry is followed up, and a follow up is the thing with the
+            date on it and the nagging attached. Two cards asking for the next
+            contact, one of them without the nagging, is how an office ends up
+            keeping the same thing in two places and trusting neither. Meetings
+            with somebody who is still only an enquiry are arranged from the
+            appointments section itself, which lists enquiries as well as
+            clients.
+          */}
           <Card title={t("leads.theEnquiry")}>
             <Line label={t("leads.email")}>
               {lead.email ? <a href={`mailto:${lead.email}`}>{lead.email}</a> : ""}
@@ -345,6 +309,39 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               }}
               remove={removeLeadNote.bind(null, id)}
             />
+          </Card>
+
+          {/*
+            What has happened to this enquiry, in order.
+
+            The status moves, who it was given to, the follow ups made and
+            answered, the notes, the appointments, the conversion. It is read
+            out of the audit trail, which is written by the actions themselves,
+            so nothing here is a second copy of anything.
+          */}
+          <Card title={t("leads.history")}>
+            {history.length === 0 ? (
+              <p className="text-sm text-brand-graphite/60">{t("leads.historyNone")}</p>
+            ) : (
+              <ol className="divide-y divide-brand-line text-sm">
+                {history.map((line) => (
+                  <li key={line.id} className="flex flex-wrap items-baseline gap-2 py-2">
+                    <span className="w-40 shrink-0 text-xs text-brand-graphite/60">
+                      {when(line.at, locale)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      {line.said}
+                      {line.detail ? (
+                        <span className="text-brand-graphite/70">{` . ${line.detail}`}</span>
+                      ) : null}
+                      {line.who ? (
+                        <span className="block text-xs text-brand-graphite/55">{line.who}</span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
           </Card>
 
           {lead.payload ? (

@@ -191,7 +191,9 @@ export function fullValueOf(contract: { netPrice: string; cashAmount?: string | 
  */
 const OPENING = [
   ["reservation", "κρατηση"],
-  ["on signing of contract", "υπογραφη συμβολαιου"],
+  /* Both wordings of the signing: the office's seven stages say "of the
+     contract", and every contract written before that says "of contract". */
+  ["on signing of the contract", "on signing of contract", "υπογραφη συμβολαιου"],
 ];
 
 const plainly = (value: string) =>

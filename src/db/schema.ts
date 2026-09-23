@@ -1212,6 +1212,14 @@ export const appointments = pgTable("appointments", {
   place: text("place").notNull(),
   /** Which of the office's six kinds of appointment this is. */
   type: appointmentTypeEnum("type").default("OTHER").notNull(),
+  /**
+   * What Other was.
+   *
+   * Five of the six kinds say what they are. Other says nothing, which is the
+   * one that needed a line of its own: the valuer, the bank, the lawyer. Asked
+   * for when Other is chosen and shown wherever the kind is shown.
+   */
+  typeOther: text("type_other"),
   /** Who is going. Nothing happens without somebody's name on it. */
   assignedToId: text("assigned_to_id").references(() => teamMembers.id, {
     onDelete: "set null",

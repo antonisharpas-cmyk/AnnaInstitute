@@ -138,6 +138,7 @@ const withMember = {
   at: appointments.at,
   status: appointments.status,
   type: appointments.type,
+  typeOther: appointments.typeOther,
   assignedToId: appointments.assignedToId,
   assignedToName: teamMembers.name,
 };

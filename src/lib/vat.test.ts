@@ -11,25 +11,48 @@ test("VAT is the rate on the price before VAT", () => {
   assert.equal(vatOn(toCents("200000"), 19), toCents("38000"));
 });
 
-test("the classic stages add up to the price and its VAT", () => {
+test("the standard contract is the office's seven stages, in order", () => {
+  assert.deepEqual(
+    DEFAULT_STAGES.map((stage) => stage.label),
+    [
+      "Reservation",
+      "On signing of the contract",
+      "Completion of the Structure",
+      "Completion of the Brickwork",
+      "Completion of the Tiling",
+      "Completion of the Aluminium",
+      "Completion of the Property",
+    ],
+  );
+
+  /* And it carries no figures: the office types what was agreed on the deal. */
+  assert.deepEqual(
+    DEFAULT_STAGES.map((stage) => stage.percentage),
+    [0, 0, 0, 0, 0, 0, 0],
+  );
+});
+
+test("a schedule adds up to the price and its VAT", () => {
   const setup = { netCents: toCents("200000"), rate: 5 };
-  const lines = buildSchedule(setup, planFrom(DEFAULT_STAGES));
+  const split = [5, 25, 20, 15, 15, 10, 10];
+  const lines = buildSchedule(
+    setup,
+    planFrom(DEFAULT_STAGES.map((stage, i) => ({ ...stage, percentage: split[i] }))),
+  );
   const totals = scheduleTotals(lines);
 
-  assert.equal(lines.length, 6);
+  assert.equal(lines.length, 7);
   assert.equal(totals.netCents, toCents("200000"));
   assert.equal(totals.vatCents, toCents("10000"));
   assert.equal(totals.totalCents, toCents("210000"));
 });
 
 test("a paid installment keeps the figures it was invoiced at", () => {
-  const before = buildSchedule(
-    { netCents: toCents("200000"), rate: 8.5 },
-    planFrom(DEFAULT_STAGES),
-  );
+  const evenly = DEFAULT_STAGES.map((stage) => ({ ...stage, percentage: 100 / 7 }));
+  const before = buildSchedule({ netCents: toCents("200000"), rate: 8.5 }, planFrom(evenly));
   const first = before[0];
 
-  const plan = planFrom(DEFAULT_STAGES).map((p, i) =>
+  const plan = planFrom(evenly).map((p, i) =>
     i === 0
       ? {
           ...p,
@@ -84,7 +107,7 @@ test("a periodic plan can open with the reservation and the signing", () => {
   // The two opening payments, then the twelve installments.
   assert.equal(plan.length, 14);
   assert.equal(plan[0].label, "Reservation");
-  assert.equal(plan[1].label, "On signing of contract");
+  assert.equal(plan[1].label, "On signing of the contract");
   assert.equal(plan[2].label, "Installment 1");
 
   // The reservation on the day, the signing a month later, the first

@@ -46,6 +46,7 @@ export default async function NewLeadPage() {
                  labelled Development, which asked for something narrower than
                  what people actually write in it. */
               project: t("leads.about"),
+              projectHint: t("leads.aboutHint"),
               note: t("leads.note"),
               noteHint: t("leads.noteHint"),
               contactNote: t("leads.contactNote"),

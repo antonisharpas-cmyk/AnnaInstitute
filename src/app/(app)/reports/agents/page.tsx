@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { getTranslator } from "@/i18n";
 import { formatAmount, formatPercent } from "@/lib/money";
-import { rangeFrom, salesByAgent, projectsInScope, scopeChoices, scopeFrom } from "@/lib/reports";
+import {
+  commissionsAreOurs,
+  projectsInScope,
+  rangeFrom,
+  salesByAgent,
+  scopeChoices,
+  scopeFrom,
+} from "@/lib/reports";
 import { BackLink, Card, Empty, PageHeader } from "@/components/ui";
 import { Breakdown, Figure, SERIES } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -25,7 +32,10 @@ export default async function AgentsReportPage({
   const scope = scopeFrom(params);
   const [only, choices] = await Promise.all([projectsInScope(scope), scopeChoices()]);
 
-  const rows = await salesByAgent(range, only);
+  /* A commission is the partner company's expense, not One Eleven's, so a page
+     narrowed to our own books shows the sales without it. */
+  const ours = commissionsAreOurs(scope);
+  const rows = await salesByAgent(range, only, ours);
   const money = (cents: number) => formatAmount(cents, locale);
   const query = periodQuery(params);
 
@@ -40,6 +50,12 @@ export default async function AgentsReportPage({
         label={`${t("common.backTo")} ${t("reports.title").toLowerCase()}`}
       />
       <PageHeader title={t("reports.agents")} subtitle={t("reports.agentsNote")} />
+
+      {ours ? null : (
+        <div className="card mb-4 p-3 text-sm text-brand-graphite/70">
+          {t("reports.commissionNotOurs")}
+        </div>
+      )}
 
       <PeriodPicker
         basePath="/reports/agents"

@@ -15,7 +15,17 @@ import {
 } from "drizzle-orm";
 import { db } from "@/db";
 import { many, manyOf } from "@/lib/filters";
-import { agents, clients, leadNotes, leads, projects, teamMembers, users } from "@/db/schema";
+import {
+  agents,
+  appointments,
+  auditLogs,
+  clients,
+  leadNotes,
+  leads,
+  projects,
+  teamMembers,
+  users,
+} from "@/db/schema";
 
 /**
  * What arrives from the website, and what the office sees.
@@ -466,4 +476,88 @@ export async function latestNoteByLead(leadIds: string[]): Promise<Map<string, s
     if (!found.has(row.leadId)) found.set(row.leadId, row.body);
   }
   return found;
+}
+
+/* ---------------------------------------------------------------------------
+   The history of an enquiry
+   --------------------------------------------------------------------------- */
+
+export type HistoryLine = {
+  id: string;
+  at: Date;
+  /** "status", "assigned", "followUp", "note", "converted", "appointment". */
+  kind: string;
+  /** The sentence, already in the office's words. */
+  said: string;
+  /** What the action itself recorded: the status, the name, the day. */
+  detail: string | null;
+  who: string | null;
+};
+
+/**
+ * Everything that has happened to one enquiry, newest first.
+ *
+ * Read out of the audit trail rather than kept a second time, which matters
+ * more than it sounds: a history written alongside the records drifts from them
+ * the first time somebody changes one without the other, and then nobody
+ * trusts either. The audit trail is written by the actions themselves, so this
+ * cannot disagree with what was done.
+ *
+ * Appointments arranged with this enquiry are in here too, by their own ids,
+ * because "who moved the viewing" is exactly the question this card exists to
+ * answer.
+ */
+export async function historyForLead(leadId: string): Promise<HistoryLine[]> {
+  const mine = await db
+    .select({ id: appointments.id })
+    .from(appointments)
+    .where(eq(appointments.leadId, leadId));
+
+  const ids = [leadId, ...mine.map((row) => row.id)];
+
+  const rows = await db
+    .select({ log: auditLogs })
+    .from(auditLogs)
+    .where(and(inArray(auditLogs.entityId, ids), inArray(auditLogs.entity, ["lead", "appointment"])))
+    .orderBy(desc(auditLogs.createdAt))
+    .limit(200);
+
+  const WORDS: Record<string, string> = {
+    "lead.create": "The enquiry was written down",
+    "lead.update": "The enquiry was edited",
+    "lead.status": "The status was moved",
+    "lead.status.bulk": "The status was moved",
+    "lead.assigned": "It was given to somebody",
+    "lead.note": "A note was written",
+    "lead.note.remove": "A note was taken off",
+    "lead.followUp.add": "A follow up was arranged",
+    "lead.followUp.status": "A follow up was answered",
+    "lead.followUp.delete": "A follow up was taken off",
+    "lead.converted": "It became a client",
+    "lead.conversion.undone": "The conversion was undone",
+    "lead.binned": "It was moved to the bin",
+    "lead.binned.bulk": "It was moved to the bin",
+    "lead.restored": "It was brought back from the bin",
+    "appointment.create": "An appointment was arranged",
+    "appointment.update": "The appointment was changed",
+    "appointment.answer": "The appointment was answered for",
+    "appointment.delete": "The appointment was taken off",
+  };
+
+  const KIND: Record<string, string> = {
+    "lead.status": "status",
+    "lead.status.bulk": "status",
+    "lead.assigned": "assigned",
+    "lead.note": "note",
+    "lead.converted": "converted",
+  };
+
+  return rows.map(({ log }) => ({
+    id: log.id,
+    at: log.createdAt,
+    kind: KIND[log.action] ?? (log.action.startsWith("lead.followUp") ? "followUp" : "other"),
+    said: WORDS[log.action] ?? log.action,
+    detail: log.detail,
+    who: log.userEmail,
+  }));
 }

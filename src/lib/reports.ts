@@ -272,7 +272,22 @@ export async function salesByProject(only: string[] | null = null) {
 }
 
 /** What each agent sold in the period, and what it earned them. */
-export async function salesByAgent(range: Range, only: string[] | null = null) {
+/**
+ * Whose expense a commission is.
+ *
+ * The office's own rule: the agent's commission is borne by the partner company
+ * that holds the development, not by One Eleven. So a report narrowed to One
+ * Eleven alone shows the sales, and shows no commission against them, because
+ * none of it is ours to pay. Narrowed to a partner, or not narrowed at all, the
+ * commissions are there as they always were.
+ */
+export const commissionsAreOurs = (scope: Scope) => scope.partner !== "ours";
+
+export async function salesByAgent(
+  range: Range,
+  only: string[] | null = null,
+  withCommission = true,
+) {
   const rows = await db
     .select({
       agent: agents,
@@ -301,9 +316,11 @@ export async function salesByAgent(range: Range, only: string[] | null = null) {
   return rows.map((row) => ({
     ...row,
     valueCents: toCents(row.value),
-    generatedCents: toCents(row.generated),
-    paidCents: toCents(row.paid),
-    owedCents: toCents(row.generated) - toCents(row.paid),
+    /* Not ours to pay when the page is One Eleven's own books. The sales stay,
+       because they are ours; the commission on them is the partner's. */
+    generatedCents: withCommission ? toCents(row.generated) : 0,
+    paidCents: withCommission ? toCents(row.paid) : 0,
+    owedCents: withCommission ? toCents(row.generated) - toCents(row.paid) : 0,
   }));
 }
 

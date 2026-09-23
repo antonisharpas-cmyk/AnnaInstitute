@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { emailTemplates } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { requireUser } from "@/lib/auth";
-import { ensureSystemTemplates, requiredKeys } from "@/lib/templates";
+import { AUTOMATIC_KEYS, ensureSystemTemplates, requiredKeys } from "@/lib/templates";
 import { automaticHistory } from "@/lib/automaticEmails";
 import { emailConfigured } from "@/lib/messaging";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
@@ -30,7 +30,7 @@ export default async function AutomaticEmailsPage() {
 
   await ensureSystemTemplates();
 
-  const [letters, history] = await Promise.all([
+  const [written, history] = await Promise.all([
     db
       .select()
       .from(emailTemplates)
@@ -38,6 +38,20 @@ export default async function AutomaticEmailsPage() {
       .orderBy(asc(emailTemplates.createdAt)),
     automaticHistory(30),
   ]);
+
+  /*
+   * In the order things happen to a buyer, not the order the rows were made.
+   *
+   * They are all written at the same instant the first time somebody opens this
+   * page, so the database has no opinion about which comes first. The office
+   * does: reservation, signing, installments, paid off, then the three that
+   * follow an appointment.
+   */
+  const order = (key: string) => {
+    const at = (AUTOMATIC_KEYS as readonly string[]).indexOf(key);
+    return at === -1 ? AUTOMATIC_KEYS.length : at;
+  };
+  const letters = [...written].sort((a, b) => order(a.key) - order(b.key));
 
   const when = (value: Date | null) =>
     value ? new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB") : "";

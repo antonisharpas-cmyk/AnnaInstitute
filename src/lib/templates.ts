@@ -345,14 +345,141 @@ One Eleven`,
     toAgents: false,
     toSubowners: false,
   },
+
+  /* -------------------------------------------------------------------------
+     And the three that follow an appointment.
+
+     A meeting somebody has agreed to is a promise on both sides, so the CRM
+     writes it down for the buyer as well: where, when, what it is about and who
+     they are meeting. If it moves they are told it moved, and if it is called
+     off they are told that too, because the worst version of this is a buyer
+     standing outside a showroom.
+     ------------------------------------------------------------------------- */
+  {
+    key: "appointment_made",
+    isAutomatic: true,
+    name: "An appointment is arranged",
+    description:
+      "Goes the moment an appointment is written down, to the client or the enquiry it is with. It says where, when, what it is about and who from the office they are meeting.",
+    subject: "Your appointment on {{day}} at {{time}}",
+    body: `Dear {{first_name}},
+
+This is to confirm your appointment.
+
+Where: {{place}}
+What it is about: {{kind}}
+Day: {{day}}
+Time: {{time}}
+You will be meeting: {{who}}
+
+If the day or the time does not suit you, reply to this email and we will move it.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, confirming {{place}} on {{day}} at {{time}} with {{who}}.",
+    subjectEl: "Το ραντεβού σας στις {{day}} στις {{time}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Επιβεβαιώνουμε το ραντεβού σας.
+
+Πού: {{place}}
+Θέμα: {{kind}}
+Ημέρα: {{day}}
+Ώρα: {{time}}
+Θα σας δει: {{who}}
+
+Αν η ημέρα ή η ώρα δεν σας εξυπηρετεί, απαντήστε σε αυτό το email και το μετακινούμε.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, επιβεβαιώνουμε {{place}} στις {{day}} στις {{time}} με {{who}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "appointment_moved",
+    isAutomatic: true,
+    name: "An appointment is moved",
+    description:
+      "Goes when the day, the time, the place, the kind or the person is changed on an appointment that has already been confirmed. It carries the new details, not the old ones.",
+    subject: "Your appointment has moved to {{day}} at {{time}}",
+    body: `Dear {{first_name}},
+
+Your appointment has been changed. These are the new details.
+
+Where: {{place}}
+What it is about: {{kind}}
+Day: {{day}}
+Time: {{time}}
+You will be meeting: {{who}}
+
+Our apologies for the change. Reply to this email if the new time does not suit you.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, your appointment has moved: {{place}} on {{day}} at {{time}} with {{who}}.",
+    subjectEl: "Το ραντεβού σας μετακινήθηκε στις {{day}} στις {{time}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Το ραντεβού σας άλλαξε. Αυτά είναι τα νέα στοιχεία.
+
+Πού: {{place}}
+Θέμα: {{kind}}
+Ημέρα: {{day}}
+Ώρα: {{time}}
+Θα σας δει: {{who}}
+
+Συγγνώμη για την αλλαγή. Απαντήστε αν η νέα ώρα δεν σας εξυπηρετεί.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, το ραντεβού μετακινήθηκε: {{place}} στις {{day}} στις {{time}} με {{who}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "appointment_cancelled",
+    isAutomatic: true,
+    name: "An appointment is cancelled",
+    description:
+      "Goes when an appointment is cancelled, so nobody is left waiting somewhere for a meeting that is not happening.",
+    subject: "Your appointment on {{day}} is cancelled",
+    body: `Dear {{first_name}},
+
+Your appointment at {{place}} on {{day}} at {{time}} has been cancelled.
+
+Our apologies. Reply to this email and we will arrange another one whenever suits you.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, the appointment at {{place}} on {{day}} at {{time}} is cancelled. We will arrange another.",
+    subjectEl: "Το ραντεβού σας στις {{day}} ακυρώθηκε",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Το ραντεβού σας στο {{place}} στις {{day}} στις {{time}} ακυρώθηκε.
+
+Συγγνώμη. Απαντήστε σε αυτό το email και κανονίζουμε άλλο όποτε σας εξυπηρετεί.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, το ραντεβού στο {{place}} στις {{day}} ακυρώθηκε.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
 ];
 
-/** The four letters the CRM sends by itself, in the order the money arrives. */
+/** The letters the CRM sends by itself, in the order things happen. */
 export const AUTOMATIC_KEYS = [
   "paid_reservation",
   "paid_signing",
   "paid_installment",
   "paid_final",
+  "appointment_made",
+  "appointment_moved",
+  "appointment_cancelled",
 ] as const;
 
 export type AutomaticKey = (typeof AUTOMATIC_KEYS)[number];

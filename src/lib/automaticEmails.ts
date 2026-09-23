@@ -2,13 +2,16 @@ import "server-only";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  appointments,
   automaticEmails,
   clients,
   contracts,
   documents,
   installments,
+  leads,
   payments,
   projects,
+  teamMembers,
   units,
 } from "@/db/schema";
 import { formatAmount, toCents } from "@/lib/money";
@@ -45,8 +48,11 @@ function letterFor(options: {
   /* Paid off is the last word, whatever stage it happened on: a buyer who
      clears the balance early gets the congratulations, not a statement. */
   if (options.outstandingCents <= 0) return "paid_final";
+  /* Both wordings of the signing, because contracts written before the office
+     settled on their seven stages say it the shorter way. */
+  const SIGNING = ["on signing of the contract", "on signing of contract", "υπογραφη συμβολαιου"];
   if (stage === "reservation" || stage === "κρατηση") return "paid_reservation";
-  if (stage === "on signing of contract" || stage === "υπογραφη συμβολαιου") return "paid_signing";
+  if (SIGNING.includes(stage)) return "paid_signing";
   return "paid_installment";
 }
 
@@ -273,4 +279,123 @@ export async function automaticHistory(limit = 30) {
     .leftJoin(contracts, eq(contracts.id, automaticEmails.contractId))
     .orderBy(desc(automaticEmails.createdAt))
     .limit(limit);
+}
+
+/* ---------------------------------------------------------------------------
+   The letters that follow an appointment
+   --------------------------------------------------------------------------- */
+
+/** The six kinds in words, for a letter that carries no stylesheet. */
+const KIND_WORDS: Record<string, string> = {
+  TIMBER: "Timber, Ocriam",
+  BATHROOMS_TILES: "Bathrooms and tiles, Studio Bagno",
+  OFFICE: "At our office",
+  PHONE_CALL: "A call",
+  BUILDING: "At the building",
+  OTHER: "",
+};
+
+/**
+ * Write to whoever the appointment is with.
+ *
+ * Made, moved, cancelled: the same letter three ways, because those are the
+ * three moments a person needs to hear from us. It goes to the client or to the
+ * enquiry, whichever the appointment is with, and it says the one thing that
+ * matters, which is where to be and when.
+ *
+ * Nothing here throws, for the same reason as the money letters: an appointment
+ * the office has written down must stay written down whatever the mail server
+ * is doing.
+ */
+export async function letterForAppointment(
+  appointmentId: string,
+  kind: "made" | "moved" | "cancelled",
+): Promise<void> {
+  const [row] = await db
+    .select({ appointment: appointments, client: clients, lead: leads, member: teamMembers })
+    .from(appointments)
+    .leftJoin(clients, eq(clients.id, appointments.clientId))
+    .leftJoin(leads, eq(leads.id, appointments.leadId))
+    .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
+    .where(eq(appointments.id, appointmentId))
+    .limit(1);
+
+  if (!row) return;
+
+  const key =
+    kind === "made"
+      ? "appointment_made"
+      : kind === "moved"
+        ? "appointment_moved"
+        : "appointment_cancelled";
+
+  const to = row.client
+    ? {
+        email: row.client.email,
+        first: row.client.firstName ?? "",
+        name: `${row.client.firstName ?? ""} ${row.client.lastName ?? ""}`.trim(),
+        clientId: row.client.id,
+      }
+    : row.lead
+      ? {
+          email: row.lead.email,
+          first: row.lead.firstName ?? "",
+          name: `${row.lead.firstName ?? ""} ${row.lead.lastName ?? ""}`.trim(),
+          clientId: null,
+        }
+      : null;
+
+  const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
+    await db.insert(automaticEmails).values({
+      templateKey: key,
+      contractId: null,
+      paymentId: null,
+      clientId: to?.clientId ?? null,
+      status,
+      reason: `${row.appointment.place}: ${reason}`,
+      sentAt: status === "SENT" ? new Date() : null,
+    });
+  };
+
+  const template = await templateByKey(key);
+  if (!template) return;
+  if (!template.isActive) {
+    await note("SKIPPED", "This letter is switched off in the automatic emails section.");
+    return;
+  }
+  if (!to || !to.email) {
+    await note("SKIPPED", "Nobody with an email address is named on this appointment.");
+    return;
+  }
+
+  const at = new Date(row.appointment.at);
+  const values: Record<string, string> = {
+    first_name: to.first,
+    name: to.name,
+    place: row.appointment.place,
+    /* Other says what it was, because "Other" tells the buyer nothing. */
+    kind:
+      row.appointment.type === "OTHER"
+        ? (row.appointment.typeOther ?? "").trim() || "A meeting"
+        : (KIND_WORDS[row.appointment.type] ?? row.appointment.type),
+    day: at.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" }),
+    time: at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
+    who: row.member?.name ?? "somebody from the office",
+  };
+
+  const subject = fill(template.subject ?? "", values);
+  const body = fill(template.body, values);
+
+  const result = await sendAndRecord({
+    channel: "EMAIL",
+    recipient: { name: to.name, email: to.email, clientId: to.clientId ?? undefined },
+    subject,
+    body,
+    withOptOut: false,
+  });
+
+  if (result.status === "SENT") await note("SENT", "Sent.");
+  else if (result.status === "SIMULATED")
+    await note("SKIPPED", "Email is not set up yet, so nothing left the building.");
+  else await note("FAILED", result.error ?? "It did not go.");
 }

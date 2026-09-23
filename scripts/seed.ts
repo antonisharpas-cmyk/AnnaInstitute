@@ -26,7 +26,7 @@ import {
 } from "../src/db/schema";
 import { hashPassword } from "../src/lib/passwords";
 import { fromCents, toCents } from "../src/lib/money";
-import { DEFAULT_STAGES, buildSchedule } from "../src/lib/vat";
+import { DEFAULT_STAGES, EXAMPLE_SPLIT, buildSchedule } from "../src/lib/vat";
 
 type UnitSeed = {
   code: string;
@@ -257,7 +257,8 @@ async function seedDemoContract() {
   const plan = DEFAULT_STAGES.map((s, i) => ({
     seq: i + 1,
     label: s.label,
-    percentage: s.percentage,
+    /* Made up money, so the example has something in it. */
+    percentage: EXAMPLE_SPLIT[i] ?? 0,
     locked: false,
   }));
   const lines = buildSchedule(setup, plan);

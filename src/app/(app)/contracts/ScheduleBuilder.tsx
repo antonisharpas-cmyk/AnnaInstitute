@@ -23,25 +23,37 @@ export type Row = {
 /** The stages offered in the dropdown on every line. */
 const CHOICES: { label: string; labelEl: string }[] = [
   { label: "Reservation", labelEl: "Κράτηση" },
-  { label: "On signing of contract", labelEl: "Υπογραφή συμβολαίου" },
-  { label: "Foundations", labelEl: "Θεμέλια" },
-  { label: "Frame", labelEl: "Σκελετός" },
-  { label: "Plastering", labelEl: "Σοβάντισμα" },
-  { label: "On completion of the apartment", labelEl: "Ολοκλήρωση διαμερίσματος" },
+  { label: "On signing of the contract", labelEl: "Υπογραφή συμβολαίου" },
+  { label: "Completion of the Structure", labelEl: "Ολοκλήρωση σκελετού" },
+  { label: "Completion of the Brickwork", labelEl: "Ολοκλήρωση τοιχοποιίας" },
+  { label: "Completion of the Tiling", labelEl: "Ολοκλήρωση πλακιδίων" },
+  { label: "Completion of the Aluminium", labelEl: "Ολοκλήρωση αλουμινίων" },
+  { label: "Completion of the Property", labelEl: "Ολοκλήρωση ακινήτου" },
   { label: "On delivery", labelEl: "Παράδοση" },
   { label: "On the title deed", labelEl: "Τίτλος ιδιοκτησίας" },
+  { label: "On completion of the apartment", labelEl: "Ολοκλήρωση διαμερίσματος" },
 ];
 
 const greekFor = (label: string) =>
   CHOICES.find((c) => c.label.toLowerCase() === label.trim().toLowerCase())?.labelEl ?? null;
 
+/**
+ * The office's standard contract: seven stages, no figures.
+ *
+ * The office gave us the stages and not the split, because the split is not the
+ * same on every deal. So the button lays out the seven lines in order, dates
+ * them if a start date was given, and leaves the amounts for whoever is writing
+ * the contract. Spread the rest, beside it, fills them equally for the times
+ * when that is what was agreed.
+ */
 const STANDARD: { label: string; labelEl: string; percentage: number }[] = [
-  { label: "Reservation", labelEl: "Κράτηση", percentage: 5 },
-  { label: "On signing of contract", labelEl: "Υπογραφή συμβολαίου", percentage: 25 },
-  { label: "Foundations", labelEl: "Θεμέλια", percentage: 20 },
-  { label: "Frame", labelEl: "Σκελετός", percentage: 20 },
-  { label: "Plastering", labelEl: "Σοβάντισμα", percentage: 20 },
-  { label: "On delivery", labelEl: "Παράδοση", percentage: 10 },
+  { label: "Reservation", labelEl: "Κράτηση", percentage: 0 },
+  { label: "On signing of the contract", labelEl: "Υπογραφή συμβολαίου", percentage: 0 },
+  { label: "Completion of the Structure", labelEl: "Ολοκλήρωση σκελετού", percentage: 0 },
+  { label: "Completion of the Brickwork", labelEl: "Ολοκλήρωση τοιχοποιίας", percentage: 0 },
+  { label: "Completion of the Tiling", labelEl: "Ολοκλήρωση πλακιδίων", percentage: 0 },
+  { label: "Completion of the Aluminium", labelEl: "Ολοκλήρωση αλουμινίων", percentage: 0 },
+  { label: "Completion of the Property", labelEl: "Ολοκλήρωση ακινήτου", percentage: 0 },
 ];
 
 let counter = 0;
@@ -160,19 +172,14 @@ export default function ScheduleBuilder({
 
   const useStandard = () => {
     setType("STANDARD");
-    const amounts =
-      netCents > 0 ? STANDARD.map((s) => Math.round((netCents * s.percentage) / 100)) : [];
-    // The percentages are exact, but rounding can still leave a cent over.
-    if (amounts.length > 0) {
-      const drift = netCents - amounts.reduce((a, b) => a + b, 0);
-      amounts[amounts.length - 1] += drift;
-    }
     setRows(
       STANDARD.map((s, i) => ({
         key: nextKey(),
         label: s.label,
         labelEl: s.labelEl,
-        amount: netCents > 0 ? whole(amounts[i]) : "",
+        /* No figures. The office writes what was agreed on this deal, and the
+           remaining figure below keeps the total honest as they type. */
+        amount: "",
         // The stages take dates too when a start date is given, since a buyer
         // signs in a particular month and the stages follow from there.
         dueDate: start ? addMonths(start, i * period) : "",
@@ -207,7 +214,7 @@ export default function ScheduleBuilder({
     }
     if (signingCents > 0) {
       opening.push({
-        label: "On signing of contract",
+        label: "On signing of the contract",
         labelEl: "Υπογραφή συμβολαίου",
         cents: signingCents,
         dueDate: start ? addMonths(start, 1) : "",

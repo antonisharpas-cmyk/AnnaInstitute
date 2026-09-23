@@ -98,6 +98,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       group: "everyDay",
       count: asking ?? 0,
     },
+    {
+      href: "/follow-ups",
+      label: t("nav.followUps"),
+      group: "everyDay",
+      count: followUps ?? 0,
+    },
     { href: "/projects", label: t("nav.projects"), group: "everyDay" },
     { href: "/contracts", label: t("nav.contracts"), group: "everyDay" },
     { href: "/team", label: t("nav.team"), group: "people" },

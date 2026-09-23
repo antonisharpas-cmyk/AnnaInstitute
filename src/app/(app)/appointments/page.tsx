@@ -10,6 +10,7 @@ import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmButton from "@/components/ConfirmButton";
+import KindField from "@/components/KindField";
 import SearchBox from "@/components/SearchBox";
 import Pick from "@/components/Pick";
 import {
@@ -148,6 +149,16 @@ export default async function AppointmentsPage({
         <div className="mb-4">
           <Disclosure showLabel={t("appointments.add")} hideLabel={t("common.cancel")}>
             <form
+              /*
+                A fresh form after every appointment.
+
+                Without the key, the boxes keep whatever was in them: arrange a
+                timber appointment and the next one opens with Timber already
+                chosen, which reads as though timber cannot be chosen again.
+                The key changes with the list, so saving one hands back an empty
+                form.
+              */
+              key={rows.length}
               action={createAppointment}
               className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-4"
             >
@@ -185,18 +196,18 @@ export default async function AppointmentsPage({
                   </optgroup>
                 </select>
               </div>
-              <div className="sm:col-span-2">
-                <label className="label" htmlFor="type">
-                  {t("appointments.type")}
-                </label>
-                <select id="type" name="type" className="select" defaultValue="OTHER">
-                  {KINDS.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {t(`appointments.type.${kind}` as MessageKey)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <KindField
+                id="type"
+                kinds={KINDS.map((kind) => ({
+                  value: kind,
+                  label: t(`appointments.type.${kind}` as MessageKey),
+                }))}
+                labels={{
+                  kind: t("appointments.type"),
+                  other: t("appointments.typeOther"),
+                  otherHint: t("appointments.typeOtherHint"),
+                }}
+              />
               <div className="sm:col-span-2">
                 <label className="label" htmlFor="assignedToId">
                   {t("appointments.assignTo")}
@@ -260,6 +271,10 @@ export default async function AppointmentsPage({
                             {t(`appointments.company.${appointment.type}` as MessageKey)}
                           </div>
                         ) : null}
+                        {/* Other, in the office's own words. */}
+                        {appointment.type === "OTHER" && appointment.typeOther ? (
+                          <div className="text-brand-graphite/60">{appointment.typeOther}</div>
+                        ) : null}
                       </td>
                       <td>
                         {client ? (
@@ -320,7 +335,7 @@ export default async function AppointmentsPage({
                                 ? "appointments.done"
                                 : appointment.status === "MISSED"
                                   ? "appointments.cancelled"
-                                  : "appointments.upcoming",
+                                  : "appointments.pending",
                             )}
                           </Pill>
                         )}
@@ -344,7 +359,7 @@ export default async function AppointmentsPage({
                           {appointment.status !== "PLANNED" ? (
                             <form action={answerAppointment.bind(null, appointment.id, "PLANNED")}>
                               <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
-                                {t("appointments.upcoming")}
+                                {t("appointments.pending")}
                               </SubmitButton>
                             </form>
                           ) : null}
@@ -372,20 +387,20 @@ export default async function AppointmentsPage({
                                   className="input"
                                 />
                               </div>
-                              <div>
-                                <label className="label">{t("appointments.type")}</label>
-                                <select
-                                  name="type"
-                                  className="select"
-                                  defaultValue={appointment.type}
-                                >
-                                  {KINDS.map((kind) => (
-                                    <option key={kind} value={kind}>
-                                      {t(`appointments.type.${kind}` as MessageKey)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
+                              <KindField
+                                id={`type-${appointment.id}`}
+                                defaultKind={appointment.type}
+                                defaultOther={appointment.typeOther ?? ""}
+                                kinds={KINDS.map((kind) => ({
+                                  value: kind,
+                                  label: t(`appointments.type.${kind}` as MessageKey),
+                                }))}
+                                labels={{
+                                  kind: t("appointments.type"),
+                                  other: t("appointments.typeOther"),
+                                  otherHint: t("appointments.typeOtherHint"),
+                                }}
+                              />
                               <div>
                                 <label className="label">{t("appointments.assignTo")}</label>
                                 <select

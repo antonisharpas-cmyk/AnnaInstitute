@@ -1,6 +1,7 @@
 import { Card, Empty, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
+import KindField from "@/components/KindField";
 import TimeField from "@/components/TimeField";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmButton from "@/components/ConfirmButton";
@@ -34,6 +35,7 @@ export type AppointmentRow = {
   at: Date;
   status: "PLANNED" | "DONE" | "MISSED";
   type: AppointmentKind;
+  typeOther: string | null;
   assignedToId: string | null;
   assignedToName: string | null;
 };
@@ -64,6 +66,8 @@ export type AppointmentLabels = {
   type: string;
   kinds: { value: string; label: string }[];
   kindOf: Record<string, string>;
+  typeOther: string;
+  typeOtherHint: string;
   assignedTo: string;
   assignTo: string;
   nobody: string;
@@ -128,7 +132,11 @@ export default function Appointments({
         {dayOf(row.at, locale)} . {timeOf(row.at, locale)}
       </span>
       <span className="block text-xs text-brand-graphite/60">
-        {labels.kindOf[row.type] ?? row.type} . {labels.assignedTo}:{" "}
+        {/* Other says what it was, because Other on its own tells nobody. */}
+        {row.type === "OTHER" && row.typeOther
+          ? row.typeOther
+          : (labels.kindOf[row.type] ?? row.type)}{" "}
+        . {labels.assignedTo}:{" "}
         {row.assignedToName ?? labels.nobody}
       </span>
     </span>
@@ -182,6 +190,7 @@ export default function Appointments({
                       values={fieldValues(row.at)}
                       place={row.place}
                       type={row.type}
+                      typeOther={row.typeOther}
                       assignedToId={row.assignedToId}
                     />
                   </Disclosure>
@@ -239,6 +248,7 @@ function Form({
   values,
   place,
   type,
+  typeOther,
   assignedToId,
   withWhom,
 }: {
@@ -248,6 +258,7 @@ function Form({
   values?: { day: string; time: string };
   place?: string;
   type?: string;
+  typeOther?: string | null;
   assignedToId?: string | null;
   withWhom?: string;
 }) {
@@ -258,16 +269,17 @@ function Form({
     >
       {withWhom ? <input type="hidden" name="with" value={withWhom} /> : null}
 
-      <div>
-        <label className="label">{labels.type}</label>
-        <select name="type" className="select" defaultValue={type ?? "OTHER"}>
-          {labels.kinds.map((kind) => (
-            <option key={kind.value} value={kind.value}>
-              {kind.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <KindField
+        id={`type-${withWhom}-${place ?? "new"}`}
+        defaultKind={type ?? "OTHER"}
+        defaultOther={typeOther ?? ""}
+        kinds={labels.kinds}
+        labels={{
+          kind: labels.type,
+          other: labels.typeOther,
+          otherHint: labels.typeOtherHint,
+        }}
+      />
 
       <div>
         <label className="label">{labels.assignTo}</label>

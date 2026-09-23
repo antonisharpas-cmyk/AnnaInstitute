@@ -361,6 +361,8 @@ export default async function ClientPage({
             kindOf: Object.fromEntries(
               KINDS.map((one) => [one, t(`appointments.type.${one}` as MessageKey)]),
             ),
+            typeOther: t("appointments.typeOther"),
+            typeOtherHint: t("appointments.typeOtherHint"),
             assignedTo: t("appointments.assignedTo"),
             assignTo: t("appointments.assignTo"),
             nobody: t("appointments.nobody"),
