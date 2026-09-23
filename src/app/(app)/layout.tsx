@@ -6,6 +6,7 @@ import { ensureSchema } from "@/lib/health";
 import { readFlash } from "@/lib/flash";
 import { howManyNeedAnAnswer } from "@/lib/appointments";
 import { readUndo } from "@/lib/undo";
+import { pressingFollowUpCount } from "@/lib/followUps";
 import { getTranslator, type MessageKey } from "@/i18n";
 import AppShell, { type Alert, type NavItem } from "@/components/AppShell";
 import Toaster from "@/components/Toaster";
@@ -58,7 +59,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       select sum(p.amount) from payments p where p.installment_id = installments.id
     ), 0) < ${installments.totalAmount}`;
 
-  const [[late], [waiting], [bills], asking, said, undo] = await Promise.all([
+  const [[late], [waiting], [bills], asking, followUps, said, undo] = await Promise.all([
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(installments)
@@ -81,6 +82,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       ),
     /* Appointments whose day has passed with nobody saying what happened. */
     howManyNeedAnAnswer(),
+    /* Follow ups due tomorrow or already due, still pending. */
+    pressingFollowUpCount(),
     readFlash(),
     readUndo(),
   ]);
@@ -101,6 +104,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/agents", label: t("nav.agents"), group: "people" },
     { href: "/subowners", label: t("nav.subowners"), group: "people" },
     { href: "/campaigns", label: t("nav.campaigns"), group: "people" },
+    { href: "/emails", label: t("nav.emails"), group: "people" },
     { href: "/commissions", label: t("nav.commissions"), group: "money" },
     { href: "/invoices", label: t("nav.invoices"), group: "money", count: bills?.total ?? 0 },
     { href: "/reports", label: t("nav.reports"), group: "insight" },

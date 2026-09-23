@@ -15,6 +15,8 @@ import { formatAmount, toCents } from "./money";
 
 export type TemplateSeed = {
   key: string;
+  /** The CRM sends this one by itself when something happens. */
+  isAutomatic?: boolean;
   name: string;
   description: string;
   subject: string;
@@ -195,7 +197,183 @@ One Eleven`,
     toAgents: true,
     toSubowners: false,
   },
+
+  /* -------------------------------------------------------------------------
+     The four letters the CRM sends by itself.
+
+     They follow the money on a contract: the reservation, the signing, every
+     payment after that, and the last one. Each carries what the buyer needs to
+     keep, which is the receipt for their money and, on the signing, the
+     contract itself. The office can rewrite every word of them and switch any
+     of them off, but the keys in braces are filled in by the CRM and have to
+     stay where they are, because a letter that says "Dear" with nothing after
+     it is worse than no letter.
+     ------------------------------------------------------------------------- */
+  {
+    key: "paid_reservation",
+    isAutomatic: true,
+    name: "Reservation received",
+    description:
+      "Goes to the buyer the moment the reservation is receipted, with the receipt filed against that payment attached. This is the first letter they get from us, so it is the welcome as well.",
+    subject: "Welcome to {{project}}, {{first_name}}",
+    body: `Dear {{first_name}},
+
+Thank you. We have received your reservation of {{amount}} for {{unit}} at {{project}}, and the apartment is now held for you.
+
+Your receipt is attached.
+
+What happens next is the contract. We will be in touch to arrange the signing, and everything you have paid is set against the price.
+
+Welcome to {{project}}.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, we have received your reservation of {{amount}} for {{unit}} at {{project}}. Welcome.",
+    subjectEl: "Καλώς ήρθατε στο {{project}}, {{first_name}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Σας ευχαριστούμε. Λάβαμε την κράτηση {{amount}} για το {{unit}} στο {{project}} και το διαμέρισμα κρατείται για εσάς.
+
+Η απόδειξή σας επισυνάπτεται.
+
+Ακολουθεί το συμβόλαιο. Θα επικοινωνήσουμε για να κανονίσουμε την υπογραφή, και ό,τι έχετε πληρώσει αφαιρείται από την τιμή.
+
+Καλώς ήρθατε στο {{project}}.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, λάβαμε την κράτηση {{amount}} για το {{unit}} στο {{project}}. Καλώς ήρθατε.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "paid_signing",
+    isAutomatic: true,
+    name: "Contract signed and paid",
+    description:
+      "Goes when the signing installment is receipted, and it carries the contract itself. If the contract has not been filed against the record yet, the letter waits and goes the moment somebody attaches it.",
+    subject: "Your contract for {{unit}} at {{project}}",
+    body: `Dear {{first_name}},
+
+Thank you. We have received {{amount}} on the signing of your contract for {{unit}} at {{project}}.
+
+Your contract is attached, together with the receipt for this payment. Please keep them both.
+
+The remaining installments are as set out in the contract, and we will write to you each time one is received.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, we have received {{amount}} on signing for {{unit}} at {{project}}. Your contract is on its way by email.",
+    subjectEl: "Το συμβόλαιό σας για το {{unit}} στο {{project}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Σας ευχαριστούμε. Λάβαμε {{amount}} με την υπογραφή του συμβολαίου σας για το {{unit}} στο {{project}}.
+
+Επισυνάπτεται το συμβόλαιό σας μαζί με την απόδειξη της πληρωμής. Παρακαλούμε κρατήστε και τα δύο.
+
+Οι υπόλοιπες δόσεις είναι όπως ορίζονται στο συμβόλαιο, και θα σας γράφουμε κάθε φορά που εισπράττεται μία.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, λάβαμε {{amount}} με την υπογραφή για το {{unit}} στο {{project}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "paid_installment",
+    isAutomatic: true,
+    name: "An installment received",
+    description:
+      "Goes for every payment after the signing, with the receipt filed against it attached. It says what was paid, what it was for, and what is left.",
+    subject: "Payment received for {{unit}} at {{project}}",
+    body: `Dear {{first_name}},
+
+Thank you. We have received {{amount}} for {{stage}} on {{unit}} at {{project}}.
+
+Your receipt is attached. The balance on your contract is now {{outstanding}}.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, we have received {{amount}} for {{unit}} at {{project}}. Balance {{outstanding}}.",
+    subjectEl: "Λάβαμε την πληρωμή για το {{unit}} στο {{project}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Σας ευχαριστούμε. Λάβαμε {{amount}} για {{stage}} στο {{unit}} στο {{project}}.
+
+Η απόδειξή σας επισυνάπτεται. Το υπόλοιπο του συμβολαίου σας είναι {{outstanding}}.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, λάβαμε {{amount}} για το {{unit}} στο {{project}}. Υπόλοιπο {{outstanding}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "paid_final",
+    isAutomatic: true,
+    name: "Paid in full",
+    description:
+      "Goes instead of the ordinary payment letter when the last installment is received and nothing is left owing. Congratulations rather than a statement.",
+    subject: "{{unit}} at {{project}} is fully paid",
+    body: `Dear {{first_name}},
+
+Thank you. With {{amount}} we have received the last installment for {{unit}} at {{project}}, and your contract is paid in full.
+
+Your receipt is attached.
+
+Congratulations. It has been a pleasure to have you with us, and we will be in touch about the handover and the keys.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, {{unit}} at {{project}} is fully paid. Congratulations, and thank you.",
+    subjectEl: "Το {{unit}} στο {{project}} εξοφλήθηκε",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Σας ευχαριστούμε. Με {{amount}} λάβαμε την τελευταία δόση για το {{unit}} στο {{project}}, και το συμβόλαιό σας εξοφλήθηκε.
+
+Η απόδειξή σας επισυνάπτεται.
+
+Συγχαρητήρια. Χαρήκαμε πολύ που σας είχαμε μαζί μας, και θα επικοινωνήσουμε για την παράδοση και τα κλειδιά.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, το {{unit}} στο {{project}} εξοφλήθηκε. Συγχαρητήρια.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
 ];
+
+/** The four letters the CRM sends by itself, in the order the money arrives. */
+export const AUTOMATIC_KEYS = [
+  "paid_reservation",
+  "paid_signing",
+  "paid_installment",
+  "paid_final",
+] as const;
+
+export type AutomaticKey = (typeof AUTOMATIC_KEYS)[number];
+
+/**
+ * The keys a letter must keep.
+ *
+ * Taken from the letter the CRM ships rather than from a list written out
+ * again, so the two can never disagree. The office can rewrite every word
+ * around them, in either language, but a key that is deleted takes a fact out
+ * of the letter, and the save says so rather than sending "Dear ," to a buyer.
+ */
+export function keysIn(text: string): string[] {
+  return [...new Set([...text.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]))];
+}
+
+export function requiredKeys(key: string): string[] {
+  const shipped = SYSTEM_TEMPLATES.find((one) => one.key === key);
+  if (!shipped) return [];
+  return keysIn(`${shipped.subject} ${shipped.body}`);
+}
 
 /**
  * The shipped templates, created once.
@@ -211,9 +389,13 @@ export async function ensureSystemTemplates() {
   const missing = SYSTEM_TEMPLATES.filter((template) => !have.has(template.key));
   if (missing.length === 0) return;
 
-  await db
-    .insert(emailTemplates)
-    .values(missing.map((template) => ({ ...template, isSystem: true })));
+  await db.insert(emailTemplates).values(
+    missing.map((template) => ({
+      ...template,
+      isSystem: true,
+      isAutomatic: Boolean(template.isAutomatic),
+    })),
+  );
 }
 
 export async function listTemplates() {

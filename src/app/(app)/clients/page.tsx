@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, contracts, projects, subowners } from "@/db/schema";
+import { agents, clients, contracts, projects, subowners } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { apartmentsByClient, clientFilters, CLIENT_ORDER } from "@/lib/clients";
@@ -44,6 +44,7 @@ export default async function ClientsPage({
     project?: string;
     partner?: string;
     source?: string;
+    agent?: string;
     sort?: string;
     dir?: string;
     page?: string;
@@ -54,7 +55,7 @@ export default async function ClientsPage({
 }) {
   const params = await searchParams;
   const user = await requireUser(["ADMIN"]);
-  const { t } = await getTranslator();
+  const { locale, t } = await getTranslator();
 
   if (shouldRestore(params)) {
     const jar = await cookies();
@@ -66,6 +67,7 @@ export default async function ClientsPage({
   const project = params.project ?? "";
   const partner = params.partner ?? "";
   const source = params.source ?? "";
+  const agent = params.agent ?? "";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
   const sort = readSort(params as Record<string, string | undefined>, Object.keys(CLIENT_ORDER), {
     key: "name",
@@ -73,9 +75,9 @@ export default async function ClientsPage({
   });
   const order = sort.dir === "asc" ? asc(CLIENT_ORDER[sort.key]) : desc(CLIENT_ORDER[sort.key]);
   const filters = filterQuery(params as Record<string, string | undefined>);
-  const where = clientFilters({ query, project, partner, source });
+  const where = clientFilters({ query, project, partner, source, agent });
 
-  const [[counted], rows, views, hidden, buildings, partnerList] = await Promise.all([
+  const [[counted], rows, views, hidden, buildings, partnerList, agentList] = await Promise.all([
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(clients)
@@ -111,6 +113,8 @@ export default async function ClientsPage({
       .from(subowners)
       .where(eq(subowners.isActive, true))
       .orderBy(asc(subowners.name)),
+    /* Every agent, for the filter: "which of these are Andreas's". */
+    db.select({ id: agents.id, name: agents.name }).from(agents).orderBy(asc(agents.name)),
   ]);
 
   const apartments = await apartmentsByClient(rows.map((r) => r.client.id));
@@ -225,6 +229,13 @@ export default async function ClientsPage({
               }),
             )}
           />
+          <Pick
+            name="agent"
+            label={t("contracts.agent")}
+            chosen={many(agent)}
+            anything={t("common.all")}
+            choices={agentList.map((one) => ({ value: one.id, label: one.name }))}
+          />
         </SearchBox>
 
         {rows.length === 0 ? (
@@ -334,6 +345,14 @@ export default async function ClientsPage({
                         by="source"
                         current={sort}
                         href={link("source")}
+                      />
+                    ) : null}
+                    {on("since") ? (
+                      <SortTh
+                        label={t("clients.since")}
+                        by="since"
+                        current={sort}
+                        href={link("since")}
                       />
                     ) : null}
                     {on("status") ? (
@@ -514,6 +533,15 @@ export default async function ClientsPage({
                             {r.leadSourceText ? (
                               <div className="text-brand-graphite/55">{r.leadSourceText}</div>
                             ) : null}
+                          </td>
+                        ) : null}
+
+                        {on("since") ? (
+                          <td className="text-xs whitespace-nowrap">
+                            {/* The day they became a client of ours. */}
+                            {new Date(r.client.createdAt).toLocaleDateString(
+                              locale === "el" ? "el-GR" : "en-GB",
+                            )}
                           </td>
                         ) : null}
 

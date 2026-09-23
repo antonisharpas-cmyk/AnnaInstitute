@@ -5,6 +5,7 @@ import { appointments, clients, leads, teamMembers } from "@/db/schema";
 import { sendAndRecord } from "@/lib/messaging";
 import { readSettings, writeSetting } from "@/lib/settings";
 import { recordAudit } from "@/lib/audit";
+import { followUpsOnDay } from "@/lib/followUps";
 
 /*
  * The day's summary, one email per person.
@@ -24,12 +25,27 @@ export type SummaryLine = {
   status: "PLANNED" | "DONE" | "MISSED";
 };
 
+/** One follow up on one enquiry, as the email prints it. */
+export type FollowUpLine = {
+  time: string;
+  who: string;
+  note: string;
+};
+
 export type MemberSummary = {
   id: string;
   name: string;
   email: string | null;
   today: SummaryLine[];
   tomorrow: SummaryLine[];
+  /**
+   * The enquiries this person is going back to tomorrow.
+   *
+   * In the same letter as the appointments rather than in one of its own, which
+   * is what the office asked for: one message a night, one place to look before
+   * going home.
+   */
+  followUps: FollowUpLine[];
 };
 
 /** Midnight at the start of a day, some number of days from today. */
@@ -97,7 +113,7 @@ export async function buildSummaries(offsetDays = 0): Promise<MemberSummary[]> {
   const tomorrow = dayStart(offsetDays + 1);
   const dayAfter = dayStart(offsetDays + 2);
 
-  const [people, todayLines, tomorrowLines] = await Promise.all([
+  const [people, todayLines, tomorrowLines, followUps] = await Promise.all([
     db
       .select()
       .from(teamMembers)
@@ -105,6 +121,8 @@ export async function buildSummaries(offsetDays = 0): Promise<MemberSummary[]> {
       .orderBy(asc(teamMembers.name)),
     linesFor(today, tomorrow),
     linesFor(tomorrow, dayAfter),
+    /* Tomorrow's follow ups, which is the whole point of an email sent tonight. */
+    followUpsOnDay(offsetDays + 1),
   ]);
 
   return people.map((member) => ({
@@ -113,6 +131,16 @@ export async function buildSummaries(offsetDays = 0): Promise<MemberSummary[]> {
     email: member.email,
     today: todayLines.filter((row) => row.assignedToId === member.id).map((row) => row.line),
     tomorrow: tomorrowLines.filter((row) => row.assignedToId === member.id).map((row) => row.line),
+    followUps: followUps
+      .filter((row) => row.lead.assignedToId === member.id)
+      .map((row) => ({
+        time: clock(row.followUp.at),
+        who:
+          `${row.lead.firstName ?? ""} ${row.lead.lastName ?? ""}`.trim() ||
+          row.lead.email ||
+          "an enquiry",
+        note: row.followUp.note ?? "",
+      })),
   }));
 }
 
@@ -131,6 +159,13 @@ export function summaryText(summary: MemberSummary, offsetDays = 0): string {
           )
           .join("\n");
 
+  const follow =
+    summary.followUps.length === 0
+      ? "   Nothing."
+      : summary.followUps
+          .map((one) => `   ${one.time} . ${one.who}${one.note ? ` . ${one.note}` : ""}`)
+          .join("\n");
+
   return [
     `Appointments for ${day}`,
     "",
@@ -139,6 +174,10 @@ export function summaryText(summary: MemberSummary, offsetDays = 0): string {
     `Tomorrow, ${next}`,
     "",
     block(summary.tomorrow),
+    "",
+    `Enquiries to follow up tomorrow, ${next}`,
+    "",
+    follow,
     "",
     "Anything still pending needs an answer in the CRM: it happened, or it did not.",
   ].join("\n");
@@ -194,7 +233,12 @@ export async function sendDailySummary(options?: {
     /* A day with nothing on it: either nothing is sent, or a line saying so.
        The office chooses, because both are reasonable and only they know
        whether a quiet inbox reads as "nothing on" or as "the CRM is broken". */
-    if (summary.today.length === 0 && summary.tomorrow.length === 0 && !whenEmpty) {
+    const nothingOn =
+      summary.today.length === 0 &&
+      summary.tomorrow.length === 0 &&
+      summary.followUps.length === 0;
+
+    if (nothingOn && !whenEmpty) {
       outcomes.push({
         name: summary.name,
         email: summary.email,
@@ -204,10 +248,9 @@ export async function sendDailySummary(options?: {
       continue;
     }
 
-    const body =
-      summary.today.length === 0 && summary.tomorrow.length === 0
-        ? `No appointments today.\n\n${summaryText(summary, offsetDays)}`
-        : summaryText(summary, offsetDays);
+    const body = nothingOn
+      ? `No appointments today.\n\n${summaryText(summary, offsetDays)}`
+      : summaryText(summary, offsetDays);
 
     const result = await sendAndRecord({
       channel: "EMAIL",

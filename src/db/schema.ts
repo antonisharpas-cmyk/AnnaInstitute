@@ -72,6 +72,16 @@ export const contactSourceEnum = pgEnum("contact_source", [
    */
   "WEBSITE",
   "WHATSAPP",
+  /*
+   * And the rest of the ways somebody reaches One Eleven, kept the same on both
+   * sides so a source survives the moment a lead becomes a client.
+   */
+  "INSTAGRAM",
+  "FACEBOOK",
+  "SOCIAL_MEDIA",
+  "PHONE",
+  "EMAIL",
+  "REFERRAL",
 ]);
 export const documentCategoryEnum = pgEnum("document_category", [
   "IDENTIFICATION",
@@ -855,21 +865,46 @@ export const shareLinks = pgTable("share_links", {
    turns the lead into a client.
    --------------------------------------------------------------------------- */
 
-/** Where a lead came to us. WEBSITE is what the API posts; the rest are typed in. */
+/**
+ * Where a lead came to us.
+ *
+ * The office's own list, in the office's own words. WEBSITE is the enquiry form
+ * on the website, which is what the API posts; everything else is typed in by
+ * whoever took the enquiry. ENQUIRY is kept because older leads carry it and
+ * nothing the office recorded is rewritten to suit a newer list.
+ */
 export const leadSourceEnum = pgEnum("lead_source_kind", [
   "WEBSITE",
   "ENQUIRY",
   "AGENT",
   "WHATSAPP",
   "OTHER",
+  "INSTAGRAM",
+  "FACEBOOK",
+  "SOCIAL_MEDIA",
+  "PHONE",
+  "EMAIL",
+  "REFERRAL",
 ]);
 
+/**
+ * Where an enquiry stands.
+ *
+ * NEW is written by the CRM the moment an enquiry arrives and is never chosen
+ * by hand. The rest are the office's own words: contacted, no response, not
+ * interested, on hold, active, became a client, closed. ACTIVE is the old
+ * word for ACTIVE and stays in the type so leads recorded under it are not
+ * lost, but it is not offered any more.
+ */
 export const leadStatusEnum = pgEnum("lead_status", [
   "NEW",
   "CONTACTED",
-  "QUALIFIED",
+  "ACTIVE",
   "CONVERTED",
   "CLOSED",
+  "NO_RESPONSE",
+  "NOT_INTERESTED",
+  "ON_HOLD",
 ]);
 
 export const leads = pgTable("leads", {
@@ -911,6 +946,17 @@ export const leads = pgTable("leads", {
    * so nobody has to remember who introduced a buyer six months ago.
    */
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  /**
+   * Whose enquiry this is.
+   *
+   * One person in the office owns every enquiry, by name, and it is the same
+   * list of people who go to the appointments, so nobody has to keep two ideas
+   * of who works here. The follow ups on this enquiry are theirs, and the
+   * evening email that lists tomorrow's follow ups goes to them.
+   */
+  assignedToId: text("assigned_to_id").references(() => teamMembers.id, {
+    onDelete: "set null",
+  }),
   /** The client this lead became, once the office accepted it. */
   clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
   notes: text("notes"),
@@ -941,6 +987,34 @@ export const leadNotes = pgTable("lead_notes", {
   body: text("body").notNull(),
   writtenById: text("written_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: created(),
+});
+
+/** A follow up is either still to be done or it has been done. */
+export const followUpStatusEnum = pgEnum("follow_up_status", ["PENDING", "DONE"]);
+
+/**
+ * The next time somebody is going back to this enquiry.
+ *
+ * A note on a lead says what happened. A follow up says what happens next, and
+ * when, and it does not go quiet: it sits in the notifications from the evening
+ * before until somebody marks it done, and it is in the email the assigned
+ * person gets the night before. That is the whole difference between a CRM and
+ * a notebook, and it is why the date is a column of its own rather than a
+ * sentence somebody wrote inside a note.
+ */
+export const leadFollowUps = pgTable("lead_follow_ups", {
+  id: id(),
+  leadId: text("lead_id")
+    .notNull()
+    .references(() => leads.id, { onDelete: "cascade" }),
+  /** The day and time of the next meeting or call. */
+  at: timestamp("at", { withTimezone: true }).notNull(),
+  note: text("note"),
+  status: followUpStatusEnum("status").default("PENDING").notNull(),
+  doneAt: timestamp("done_at", { withTimezone: true }),
+  createdById: text("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: created(),
+  updatedAt: updated(),
 });
 
 /**
@@ -989,6 +1063,49 @@ export const emailTemplates = pgTable("email_templates", {
   toSubowners: boolean("to_subowners").default(false).notNull(),
   /** A template the CRM ships with. It can be edited but not deleted. */
   isSystem: boolean("is_system").default(false).notNull(),
+  /**
+   * The CRM sends this one by itself, when something happens.
+   *
+   * A campaign template is chosen by a person and sent by a person. An
+   * automatic one goes out on its own, the moment a payment is receipted, so it
+   * lives in its own section with a switch beside it and the office can read
+   * exactly what will leave the building before it does.
+   */
+  isAutomatic: boolean("is_automatic").default(false).notNull(),
+  /** Off means the CRM stops sending it. The wording is kept either way. */
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/** Where an automatic email got to. */
+export const automaticEmailStatusEnum = pgEnum("automatic_email_status", [
+  "SENT",
+  "WAITING",
+  "FAILED",
+  "SKIPPED",
+]);
+
+/**
+ * One automatic email, and what became of it.
+ *
+ * Two jobs. It stops the same letter going twice, which is the thing that makes
+ * a buyer doubt everything else the office sends. And it holds the one that
+ * cannot go yet: the signing letter carries the contract, so if the money is
+ * receipted before the contract is filed, the letter waits here, marked
+ * waiting, and goes the moment somebody attaches it.
+ */
+export const automaticEmails = pgTable("automatic_emails", {
+  id: id(),
+  /** Which letter: paid_reservation, paid_signing, paid_installment, paid_final. */
+  templateKey: text("template_key").notNull(),
+  contractId: text("contract_id").references(() => contracts.id, { onDelete: "cascade" }),
+  paymentId: text("payment_id").references(() => payments.id, { onDelete: "cascade" }),
+  clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+  status: automaticEmailStatusEnum("status").default("SENT").notNull(),
+  /** Why it is waiting, or why it did not go, in plain words. */
+  reason: text("reason"),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: created(),
   updatedAt: updated(),
 });

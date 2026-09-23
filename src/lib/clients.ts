@@ -100,6 +100,7 @@ export function clientFilters({
   project = "",
   partner = "",
   source = "",
+  agent = "",
 }: {
   query?: string;
   held?: string;
@@ -109,6 +110,8 @@ export function clientFilters({
   partner?: string;
   /** Where they came from: "lead:WEBSITE" or "own:BUYER". */
   source?: string;
+  /** An agent: they introduced the enquiry, or they are named on a contract. */
+  agent?: string;
 }) {
   const parts: SQL[] = [isNull(clients.deletedAt) as SQL];
 
@@ -166,6 +169,24 @@ export function clientFilters({
       reasons.push(sql`${clients.source}::text in ${ourOwn}`);
     }
     parts.push(or(...reasons) as SQL);
+  }
+
+  /**
+   * The agent behind a client.
+   *
+   * Two ways an agent is attached to somebody: they introduced the enquiry, or
+   * they are named on the contract that was written. Either one counts, because
+   * the question the office asks is "which of these are Andreas's", and they do
+   * not mean one half of Andreas's.
+   */
+  const byAgent = many(agent).filter(Boolean);
+  if (byAgent.length > 0) {
+    parts.push(
+      or(
+        sql`exists (select 1 from leads l where l.client_id = ${clients.id} and l.agent_id in ${byAgent})`,
+        sql`exists (select 1 from contracts c where c.client_id = ${clients.id} and c.agent_id in ${byAgent})`,
+      ) as SQL,
+    );
   }
 
   const partners = many(partner);
@@ -227,6 +248,15 @@ export const CLIENT_ORDER: Record<string, SQL> = {
   status: sql`(select min(u.status::text) from units u where u.client_id = ${clients.id})`,
   contracts: sql`(select count(*) from contracts c where c.client_id = ${clients.id})`,
   marketing: sql`${clients.marketingOptIn}`,
+  /*
+   * The day they became a client.
+   *
+   * For somebody converted from an enquiry that is the day the conversion was
+   * made, which is the day this record was created; for somebody the office
+   * typed in directly it is the day they were typed in. Either way it is the
+   * first day they were a client of ours, which is what the column says.
+   */
+  since: sql`${clients.createdAt}`,
 };
 
 export async function matchingClientIds(input: {
@@ -235,6 +265,7 @@ export async function matchingClientIds(input: {
   project?: string;
   partner?: string;
   source?: string;
+  agent?: string;
 }) {
   const rows = await db
     .select({ id: clients.id })

@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm";
 import { db } from "@/db";
 import { many, manyOf } from "@/lib/filters";
-import { clients, leadNotes, leads, projects, users } from "@/db/schema";
+import { agents, clients, leadNotes, leads, projects, teamMembers, users } from "@/db/schema";
 
 /**
  * What arrives from the website, and what the office sees.
@@ -61,18 +61,75 @@ function splitName(full: string): { firstName: string; lastName: string | null }
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
 
-export const LEAD_SOURCES = ["WEBSITE", "ENQUIRY", "AGENT", "WHATSAPP", "OTHER"] as const;
+/**
+ * Where an enquiry came from, offered in the order the office thinks of them.
+ *
+ * ENQUIRY is not here. It was the word for "somebody got in touch", which is
+ * what every one of these is, so it says nothing; the leads that carry it keep
+ * it and read as Enquiry, and nobody is offered it again.
+ */
+export const LEAD_SOURCES = [
+  "WEBSITE",
+  "INSTAGRAM",
+  "FACEBOOK",
+  "SOCIAL_MEDIA",
+  "WHATSAPP",
+  "PHONE",
+  "EMAIL",
+  "AGENT",
+  "REFERRAL",
+  "OTHER",
+] as const;
 
-/** Every status an enquiry can hold, in the order the board reads. */
-export const LEAD_STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "CLOSED"] as const;
+/** Sources no longer offered, kept so the leads that hold them still read. */
+export const OLD_LEAD_SOURCES = ["ENQUIRY"] as const;
+
+/**
+ * Every status an enquiry can hold, in the order the board reads.
+ *
+ * NEW is written by the CRM when the enquiry arrives and is never chosen by
+ * hand. CONVERTED is written when the enquiry becomes a client and is not
+ * chosen by hand either, which is why neither is offered in the picker.
+ */
+export const LEAD_STATUSES = [
+  "NEW",
+  "CONTACTED",
+  "NO_RESPONSE",
+  "ACTIVE",
+  "ON_HOLD",
+  "NOT_INTERESTED",
+  "CONVERTED",
+  "CLOSED",
+] as const;
+
+/** The statuses somebody in the office sets themselves. */
+export const CHOOSABLE_LEAD_STATUSES = [
+  "CONTACTED",
+  "NO_RESPONSE",
+  "ACTIVE",
+  "ON_HOLD",
+  "NOT_INTERESTED",
+  "CLOSED",
+] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
-/** What the website called itself, mapped onto the office's own categories. */
+/**
+ * What the website called itself, mapped onto the office's own categories.
+ *
+ * A form posts whatever its own page was called, and the office thinks in ten
+ * words rather than a hundred. Anything that does not name itself is the
+ * website, which is where the API posts from.
+ */
 function sourceKindFrom(source: string | null): LeadSource {
   const value = (source ?? "").toLowerCase();
   if (value.includes("whatsapp")) return "WHATSAPP";
+  if (value.includes("instagram")) return "INSTAGRAM";
+  if (value.includes("facebook") || value.includes("messenger")) return "FACEBOOK";
+  if (value.includes("social")) return "SOCIAL_MEDIA";
+  if (value.includes("referral") || value.includes("referred")) return "REFERRAL";
   if (value.includes("agent")) return "AGENT";
-  if (value.includes("enquiry") || value.includes("enquiries")) return "ENQUIRY";
+  if (value.includes("phone") || value.includes("call")) return "PHONE";
+  if (value.includes("mail")) return "EMAIL";
   return "WEBSITE";
 }
 
@@ -177,6 +234,9 @@ export async function listLeads({
   query = "",
   status = "",
   source = "",
+  agent = "",
+  assignedTo = "",
+  followUps = "",
   sort = "received",
   dir = "desc",
   limit = 20,
@@ -185,6 +245,12 @@ export async function listLeads({
   query?: string;
   status?: string;
   source?: string;
+  /** The agent who introduced the enquiry. */
+  agent?: string;
+  /** Whose enquiry it is, from Our Team. */
+  assignedTo?: string;
+  /** "due": only the enquiries with a follow up that is pressing. */
+  followUps?: string;
   sort?: string;
   dir?: "asc" | "desc";
   limit?: number;
@@ -232,14 +298,51 @@ export async function listLeads({
   const from = manyOf(source, LEAD_SOURCES);
   if (from.length === 1) filters.push(eq(leads.sourceKind, from[0]));
   if (from.length > 1) filters.push(inArray(leads.sourceKind, from));
+
+  /* Whose enquiries these are, and who introduced them: two different people,
+     two different questions, so two filters. */
+  const byAgent = many(agent).filter(Boolean);
+  if (byAgent.length === 1) filters.push(eq(leads.agentId, byAgent[0]));
+  if (byAgent.length > 1) filters.push(inArray(leads.agentId, byAgent));
+
+  const byPerson = many(assignedTo).filter(Boolean);
+  if (byPerson.length === 1) filters.push(eq(leads.assignedToId, byPerson[0]));
+  if (byPerson.length > 1) filters.push(inArray(leads.assignedToId, byPerson));
+
+  /*
+   * The enquiries somebody is going back to.
+   *
+   * Pressing means the same here as it does in the bell: pending, and due
+   * before the end of tomorrow. The bell links straight to this list, so the
+   * two have to agree or the number in the circle will not match what opens.
+   */
+  if (followUps === "due") {
+    filters.push(
+      sql`exists (
+        select 1 from lead_follow_ups f
+        where f.lead_id = ${leads.id}
+          and f.status = 'PENDING'
+          and f.at < (date_trunc('day', now()) + interval '2 days')
+      )` as SQL,
+    );
+  }
+
   const where = and(...filters);
 
   const [rows, [counted]] = await Promise.all([
     db
-      .select({ lead: leads, project: projects, client: clients })
+      .select({
+        lead: leads,
+        project: projects,
+        client: clients,
+        introducer: agents,
+        member: teamMembers,
+      })
       .from(leads)
       .leftJoin(projects, eq(projects.id, leads.projectId))
       .leftJoin(clients, eq(clients.id, leads.clientId))
+      .leftJoin(agents, eq(agents.id, leads.agentId))
+      .leftJoin(teamMembers, eq(teamMembers.id, leads.assignedToId))
       .where(where)
       .orderBy(
         dir === "asc"
@@ -262,7 +365,7 @@ export async function leadCounts() {
     .select({
       total: sql<number>`count(*) filter (where status <> 'CONVERTED')::int`,
       fresh: sql<number>`count(*) filter (where status = 'NEW')::int`,
-      working: sql<number>`count(*) filter (where status in ('CONTACTED','QUALIFIED'))::int`,
+      working: sql<number>`count(*) filter (where status in ('CONTACTED','ACTIVE','ON_HOLD','NO_RESPONSE'))::int`,
       /** Kept for the reports, which still want to know how many became buyers. */
       converted: sql<number>`count(*) filter (where status = 'CONVERTED')::int`,
       /**
@@ -286,13 +389,11 @@ export async function newLeadCount() {
 }
 
 export const leadStatusTone = (status: string) =>
-  status === "CONVERTED"
+  status === "CONVERTED" || status === "ACTIVE"
     ? "good"
-    : status === "NEW"
+    : status === "NEW" || status === "ON_HOLD" || status === "NO_RESPONSE"
       ? "warn"
-      : status === "CLOSED"
-        ? "neutral"
-        : "neutral";
+      : "neutral";
 
 /**
  * The ids of every enquiry the current filters match, in the order they show.

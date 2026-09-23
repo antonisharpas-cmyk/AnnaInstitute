@@ -25,6 +25,7 @@ export default function LeadForm({
   labels,
   cancelHref,
   agents,
+  team,
 }: {
   action: (prev: LeadFormState, formData: FormData) => Promise<LeadFormState>;
   cancelHref: string;
@@ -47,13 +48,18 @@ export default function LeadForm({
     save: string;
     cancel: string;
     sources: { value: string; label: string }[];
+    /** Whose enquiry this is. */
+    assignedTo: string;
+    nobody: string;
   };
   /** Every agent who can be named, for the picker that appears on demand. */
   agents: { id: string; name: string }[];
+  /** The office, for the person the enquiry belongs to. */
+  team: { id: string; name: string }[];
 }) {
   const [state, formAction] = useActionState(action, null);
   const was = state?.values ?? {};
-  const [source, setSource] = useState(was.sourceKind ?? "ENQUIRY");
+  const [source, setSource] = useState(was.sourceKind ?? "WEBSITE");
 
   return (
     /*
@@ -162,6 +168,33 @@ export default function LeadForm({
             />
           </div>
         )}
+      </div>
+
+      {/*
+        Whose enquiry this is.
+        
+        Beside the source rather than at the bottom, because the two questions
+        are asked at the same moment: where did this come from, and who is
+        looking after it. An enquiry with nobody's name on it is the one nobody
+        follows up.
+      */}
+      <div className="sm:w-1/2">
+        <label className="label" htmlFor="assignedToId">
+          {labels.assignedTo}
+        </label>
+        <select
+          id="assignedToId"
+          name="assignedToId"
+          className="select"
+          defaultValue={was.assignedToId ?? ""}
+        >
+          <option value="">{labels.nobody}</option>
+          {team.map((one) => (
+            <option key={one.id} value={one.id}>
+              {one.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* The agent, only when there is one to name. */}

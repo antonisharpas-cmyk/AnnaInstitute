@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, lt, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, contracts, expenses, installments, payments, projects, units } from "@/db/schema";
 import { getTranslator } from "@/i18n";
@@ -15,6 +15,9 @@ import {
   rangeFrom,
   salesByMonth,
   salesByProject,
+  projectsInScope,
+  scopeChoices,
+  scopeFrom,
 } from "@/lib/reports";
 import {
   PANEL_NOTE,
@@ -105,7 +108,12 @@ const when = <T,>(needed: boolean, run: () => Promise<T>, fallback: T): Promise<
  * that is put away costs nothing, because the queries behind it are only run
  * when it is on show.
  */
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ project?: string; partner?: string }>;
+}) {
+  const params = await searchParams;
   const user = await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
   const now = new Date();
@@ -121,6 +129,24 @@ export default async function DashboardPage() {
 
   // The charts all read the same twelve months, so the page tells one story.
   const { range: year } = rangeFrom({ period: "12m" });
+
+  /*
+   * Whose money, and which building.
+   *
+   * The same narrowing the reports have, in the same words, because somebody
+   * who has just looked at one partnership on a report and then opens the
+   * dashboard should not be handed the whole book without noticing. Nothing
+   * chosen is everything, which is how the page has always opened.
+   */
+  const scope = scopeFrom(params);
+  const [only, choices] = await Promise.all([projectsInScope(scope), scopeChoices()]);
+  const mine = only === null ? [""] : only.length > 0 ? only : [""];
+  const inScope = (column: SQL | typeof units.projectId) =>
+    only === null ? undefined : (sql`${column} in ${mine}` as SQL);
+  const contractInScope =
+    only === null
+      ? undefined
+      : (sql`${contracts.unitId} in (select u.id from units u where u.project_id in ${mine})` as SQL);
 
   /**
    * What is late, and what is next.
@@ -179,7 +205,8 @@ export default async function DashboardPage() {
             onlySold: sql<number>`count(*) filter (where ${units.status} = 'SOLD')::int`,
             delivered: sql<number>`count(*) filter (where ${units.status} = 'DELIVERED')::int`,
           })
-          .from(units),
+          .from(units)
+          .where(inScope(units.projectId)),
       [],
     ),
     when(
@@ -187,8 +214,16 @@ export default async function DashboardPage() {
       () =>
         db
           .select({
-            scheduled: sql<string>`coalesce((select sum(i.total_amount) from installments i), 0)`,
-            collected: sql<string>`coalesce((select sum(p.amount) from payments p), 0)`,
+            scheduled: sql<string>`coalesce((
+              select sum(i.total_amount) from installments i
+              join contracts c on c.id = i.contract_id
+              ${only === null ? sql`` : sql`where c.unit_id in (select u.id from units u where u.project_id in ${mine})`}
+            ), 0)`,
+            collected: sql<string>`coalesce((
+              select sum(p.amount) from payments p
+              join contracts c on c.id = p.contract_id
+              ${only === null ? sql`` : sql`where c.unit_id in (select u.id from units u where u.project_id in ${mine})`}
+            ), 0)`,
           })
           .from(units)
           .limit(1),
@@ -203,7 +238,7 @@ export default async function DashboardPage() {
             count: sql<number>`count(*)::int`,
           })
           .from(payments)
-          .where(gte(payments.paidOn, monthStart)),
+          .where(and(gte(payments.paidOn, monthStart), contractInScope)),
       [],
     ),
     when(
@@ -212,7 +247,20 @@ export default async function DashboardPage() {
         db
           .select({ total: sql<number>`count(*)::int` })
           .from(installments)
-          .where(and(isNotNull(installments.dueDate), lt(installments.dueDate, now), unpaidHere)),
+          .where(
+            and(
+              isNotNull(installments.dueDate),
+              lt(installments.dueDate, now),
+              unpaidHere,
+              only === null
+                ? undefined
+                : sql`${installments.contractId} in (
+                    select c.id from contracts c where c.unit_id in (
+                      select u.id from units u where u.project_id in ${mine}
+                    )
+                  )`,
+            ),
+          ),
       [],
     ),
     when(
@@ -244,7 +292,14 @@ export default async function DashboardPage() {
       on.has("overdue"),
       () =>
         dueQuery()
-          .where(and(isNotNull(installments.dueDate), lt(installments.dueDate, now), unpaidHere))
+          .where(
+            and(
+              isNotNull(installments.dueDate),
+              lt(installments.dueDate, now),
+              unpaidHere,
+              inScope(units.projectId),
+            ),
+          )
           .orderBy(installments.dueDate)
           .limit(8),
       [],
@@ -253,7 +308,14 @@ export default async function DashboardPage() {
       on.has("upcoming"),
       () =>
         dueQuery()
-          .where(and(isNotNull(installments.dueDate), gte(installments.dueDate, now), unpaidHere))
+          .where(
+            and(
+              isNotNull(installments.dueDate),
+              gte(installments.dueDate, now),
+              unpaidHere,
+              inScope(units.projectId),
+            ),
+          )
           .orderBy(installments.dueDate)
           .limit(8),
       [],
@@ -267,13 +329,14 @@ export default async function DashboardPage() {
           .innerJoin(contracts, eq(contracts.id, payments.contractId))
           .leftJoin(units, eq(units.id, contracts.unitId))
           .leftJoin(clients, eq(clients.id, contracts.clientId))
+          .where(inScope(units.projectId))
           .orderBy(desc(payments.paidOn))
           .limit(8),
       [],
     ),
     when(on.has("activity"), () => recentActivity(10), []),
-    when(on.has("cash"), () => cashByMonth(year), []),
-    when(on.has("sales"), () => salesByMonth(year), []),
+    when(on.has("cash"), () => cashByMonth(year, only), []),
+    when(on.has("sales"), () => salesByMonth(year, only), []),
     when(on.has("funnel"), () => leadFunnel(year), {
       arrived: 0,
       answered: 0,
@@ -281,7 +344,7 @@ export default async function DashboardPage() {
       converted: 0,
       bought: 0,
     }),
-    when(on.has("projects"), () => salesByProject(), []),
+    when(on.has("projects"), () => salesByProject(only), []),
   ]);
 
   const unitStats = unitRows[0];
@@ -772,6 +835,59 @@ export default async function DashboardPage() {
           />
         }
       />
+
+      {/*
+        The deal the whole page is about.
+
+        One row, above the panels, because it changes every figure below it. A
+        dashboard narrowed to one partnership says so at the top rather than
+        leaving somebody to wonder why the numbers moved.
+      */}
+      <form action="/" method="get" className="card mb-4 flex flex-wrap items-end gap-3 p-3">
+        <div>
+          <label className="label" htmlFor="project">
+            {t("projects.title")}
+          </label>
+          <select
+            id="project"
+            name="project"
+            defaultValue={scope.project}
+            className="select !w-48 !py-1 !text-xs"
+          >
+            <option value="">{t("reports.everyBuilding")}</option>
+            {choices.buildings.map((one) => (
+              <option key={one.id} value={one.id}>
+                {one.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="partner">
+            {t("clients.partner")}
+          </label>
+          <select
+            id="partner"
+            name="partner"
+            defaultValue={scope.partner}
+            className="select !w-48 !py-1 !text-xs"
+          >
+            <option value="">{t("reports.everyPartner")}</option>
+            <option value="ours">{t("reports.oursAlone")}</option>
+            {choices.partners.map((one) => (
+              <option key={one.id} value={one.id}>
+                {one.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
+          {t("reports.apply")}
+        </button>
+        {scope.project || scope.partner ? (
+          <span className="text-xs text-brand-graphite/60">{t("reports.narrowed")}</span>
+        ) : null}
+      </form>
 
       {on.size === 0 ? (
         <Card>

@@ -11,7 +11,22 @@ import NoteList from "@/components/NoteList";
 import Appointments from "@/components/Appointments";
 import { appointmentsForLead } from "@/lib/appointments";
 import { whoCanGo } from "@/lib/team";
-import { addLeadNote, convertLead, deleteLead, removeLeadNote, setLeadStatus } from "../actions";
+import { followUpsForLead } from "@/lib/followUps";
+import { CHOOSABLE_LEAD_STATUSES } from "@/lib/leads";
+import DateField from "@/components/DateField";
+import TimeField from "@/components/TimeField";
+import ConfirmButton from "@/components/ConfirmButton";
+import {
+  addFollowUp,
+  addLeadNote,
+  assignLead,
+  convertLead,
+  deleteFollowUp,
+  deleteLead,
+  removeLeadNote,
+  setFollowUpStatus,
+  setLeadStatus,
+} from "../actions";
 
 const when = (value: Date, locale: string) =>
   new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB");
@@ -54,7 +69,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     first viewings. They follow the person, so when the enquiry becomes a client
     the history of what was shown to them is already there.
   */
-  const [meetings, team] = await Promise.all([appointmentsForLead(id), whoCanGo()]);
+  const [meetings, team, followUps] = await Promise.all([
+    appointmentsForLead(id),
+    whoCanGo(),
+    /* What happens next on this enquiry, which is the one thing a list of
+       notes never tells anybody. */
+    followUpsForLead(id),
+  ]);
 
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?";
 
@@ -191,6 +212,99 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           </Card>
 
           {/*
+            What happens next, above the record of what has happened.
+
+            The office reads this card first: the next meeting or call, the day,
+            and a line about what it is for. It is pending from the moment it is
+            written, it appears in the notifications the evening before, and it
+            stays there until somebody presses Done, which is the only way it
+            stops asking.
+          */}
+          <Card title={t("leads.followUps")}>
+            <form
+              action={addFollowUp.bind(null, id)}
+              className="mb-4 grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-[1fr_1fr_2fr_auto]"
+            >
+              <div>
+                <label className="label" htmlFor="followUpDay">
+                  {t("leads.followUpDay")}
+                </label>
+                <DateField id="followUpDay" name="day" required />
+              </div>
+              <div>
+                <label className="label" htmlFor="followUpTime">
+                  {t("appointments.time")}
+                </label>
+                <TimeField id="followUpTime" name="time" locale={locale} />
+              </div>
+              <div>
+                <label className="label" htmlFor="followUpNote">
+                  {t("leads.followUpNote")}
+                </label>
+                <input
+                  id="followUpNote"
+                  name="note"
+                  placeholder={t("leads.followUpNoteHint")}
+                  className="input"
+                />
+              </div>
+              <div className="flex items-end">
+                <SubmitButton>{t("common.save")}</SubmitButton>
+              </div>
+            </form>
+
+            {followUps.length === 0 ? (
+              <p className="text-sm text-brand-graphite/60">{t("leads.followUpNone")}</p>
+            ) : (
+              <ul className="divide-y divide-brand-line text-sm">
+                {followUps.map((one) => (
+                  <li
+                    key={one.id}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="font-semibold">{when(one.at, locale)}</span>
+                      {one.note ? (
+                        <span className="block text-xs text-brand-graphite/70">{one.note}</span>
+                      ) : null}
+                    </span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Pill tone={one.status === "DONE" ? "good" : "warn"}>
+                        {t(
+                          one.status === "DONE"
+                            ? "leads.followUpDone"
+                            : "leads.followUpPending",
+                        )}
+                      </Pill>
+                      <form
+                        action={setFollowUpStatus.bind(
+                          null,
+                          one.id,
+                          id,
+                          one.status === "DONE" ? "PENDING" : "DONE",
+                        )}
+                      >
+                        <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                          {t(
+                            one.status === "DONE"
+                              ? "leads.followUpReopen"
+                              : "leads.followUpMarkDone",
+                          )}
+                        </SubmitButton>
+                      </form>
+                      <ConfirmButton
+                        action={deleteFollowUp.bind(null, one.id, id)}
+                        label={t("common.delete")}
+                        confirm={t("remove.sure")}
+                      />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          {/*
             The record, not a box. Each note keeps the day it was written and
             who wrote it, newest first, ten at a time with arrows back through
             the older ones. Nothing here is ever typed over.
@@ -244,13 +358,41 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         </div>
 
         <div className="space-y-4">
+          {/* Whose enquiry this is. Changed here without opening the form. */}
+          <Card title={t("appointments.assignedTo")}>
+            <form action={assignLead.bind(null, id)} className="flex flex-wrap gap-2">
+              <select
+                name="assignedToId"
+                defaultValue={lead.assignedToId ?? ""}
+                className="select"
+              >
+                <option value="">{t("appointments.nobody")}</option>
+                {team.map((one) => (
+                  <option key={one.id} value={one.id}>
+                    {one.name}
+                  </option>
+                ))}
+              </select>
+              <SubmitButton className="btn btn-secondary">{t("common.save")}</SubmitButton>
+            </form>
+          </Card>
+
           <Card title={t("leads.moveTo")}>
             <form action={setLeadStatus.bind(null, id)} className="flex flex-wrap gap-2">
               <select name="status" defaultValue={lead.status} className="select">
-                <option value="NEW">{t("leads.status.NEW")}</option>
-                <option value="CONTACTED">{t("leads.status.CONTACTED")}</option>
-                <option value="QUALIFIED">{t("leads.status.QUALIFIED")}</option>
-                <option value="CLOSED">{t("leads.status.CLOSED")}</option>
+                {/*
+                  New is written by the CRM when the enquiry arrives, so it is
+                  only in the list while the enquiry still holds it: nobody
+                  moves a lead back to new.
+                */}
+                {lead.status === "NEW" ? (
+                  <option value="NEW">{t("leads.status.NEW")}</option>
+                ) : null}
+                {CHOOSABLE_LEAD_STATUSES.map((one) => (
+                  <option key={one} value={one}>
+                    {t(`leads.status.${one}` as MessageKey)}
+                  </option>
+                ))}
                 {/* Choosing this makes the client and leaves the enquiries list. */}
                 {lead.clientId ? null : (
                   <option value="CONVERTED">{t("leads.status.CONVERTED")}</option>

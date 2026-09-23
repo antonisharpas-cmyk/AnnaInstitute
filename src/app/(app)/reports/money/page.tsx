@@ -1,6 +1,6 @@
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount } from "@/lib/money";
-import { ageing, cashByMonth, monthLabel, moneyTotals, rangeFrom, upcoming } from "@/lib/reports";
+import { ageing, cashByMonth, monthLabel, moneyTotals, rangeFrom, upcoming, projectsInScope, scopeChoices, scopeFrom } from "@/lib/reports";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import { BarSeries, Breakdown, Figure, SERIES, shortMoney } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -11,17 +11,26 @@ const day = (value: Date) => new Date(value).toISOString().slice(0, 10);
 export default async function MoneyReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; from?: string; to?: string }>;
+  searchParams: Promise<{
+    period?: string;
+    from?: string;
+    to?: string;
+    project?: string;
+    partner?: string;
+  }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
   const { range, period } = rangeFrom(params);
+  /* Whose money, and which building. Nothing chosen is the whole book. */
+  const scope = scopeFrom(params);
+  const [only, choices] = await Promise.all([projectsInScope(scope), scopeChoices()]);
 
   const [cash, totals, late, next] = await Promise.all([
-    cashByMonth(range),
-    moneyTotals(),
-    ageing(),
-    upcoming(12),
+    cashByMonth(range, only),
+    moneyTotals(only),
+    ageing(only),
+    upcoming(12, only),
   ]);
 
   const money = (cents: number) => formatAmount(cents, locale);
@@ -43,6 +52,7 @@ export default async function MoneyReportPage({
         from={params.from}
         to={params.to}
         labels={periodLabels(t)}
+        scope={{ ...scope, ...choices }}
         exportHref={`/reports/export?report=ageing${query ? `&${query}` : ""}`}
       />
 

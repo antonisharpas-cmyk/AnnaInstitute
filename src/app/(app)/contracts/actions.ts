@@ -21,6 +21,7 @@ import { flash } from "@/lib/flash";
 import { removeDocument, storeChosenDocuments, storeDocuments } from "@/lib/uploads";
 import { fromCents, toCents } from "@/lib/money";
 import { looksGenerated, nextReceiptNumber, receiptNumberTaken } from "@/lib/receipts";
+import { letterForPayment, sendWaitingFor } from "@/lib/automaticEmails";
 import {
   addMonths,
   buildSchedule,
@@ -879,6 +880,15 @@ export async function recordPayment(contractId: string, formData: FormData) {
   await lockPaidInstallments(contractId);
   await followTheMoney(contractId, user);
 
+  /*
+   * The letter that follows this money.
+   *
+   * After the payment is safely on the record, never before: a mail server that
+   * is down must not cost the office a receipt. Whatever happens to the letter
+   * is written down in the automatic emails section, and the payment stands.
+   */
+  await letterForPayment(inserted[0].id);
+
   await recordAudit({
     action: "payment.record",
     entity: "contract",
@@ -1010,6 +1020,16 @@ export async function uploadContractDocuments(contractId: string, formData: Form
     attachTo: { contractId, unitId: contract?.unitId ?? null },
     clientId: contract?.clientId ?? null,
   });
+
+  /*
+   * The signing letter waits for the contract, so filing one releases it.
+   *
+   * This is the other half of what the office asked for: attach the contract,
+   * then mark it paid. Done in that order nothing waits at all. Done the other
+   * way round, the letter has been sitting here since the payment and goes now,
+   * with the contract on it.
+   */
+  await sendWaitingFor(contractId);
 
   revalidatePath(`/contracts/${contractId}`);
   await alsoTheBuyer(contractId);

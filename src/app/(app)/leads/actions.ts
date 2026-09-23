@@ -4,20 +4,56 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, contracts, documents, leadNotes, leads } from "@/db/schema";
+import {
+  clients,
+  contracts,
+  documents,
+  leadFollowUps,
+  leadNotes,
+  leads,
+} from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { offerUndo } from "@/lib/undo";
-import { listLeads } from "@/lib/leads";
+import { LEAD_SOURCES, LEAD_STATUSES, OLD_LEAD_SOURCES, listLeads } from "@/lib/leads";
 import { removeDocument } from "@/lib/uploads";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeys";
 
-const STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "CLOSED"] as const;
+/* One list of statuses and one list of sources for the whole CRM, kept where
+   the enquiries themselves are described rather than copied into each page. */
+const STATUSES = LEAD_STATUSES;
 type LeadStatus = (typeof STATUSES)[number];
 
-const SOURCES = ["WEBSITE", "ENQUIRY", "AGENT", "WHATSAPP", "OTHER"] as const;
+const SOURCES = [...LEAD_SOURCES, ...OLD_LEAD_SOURCES] as const;
 type LeadSource = (typeof SOURCES)[number];
+
+/**
+ * The same source, on the client's side of the fence.
+ *
+ * Both lists hold the same ways of reaching One Eleven, so this is nearly an
+ * identity: an Instagram enquiry becomes an Instagram client. The two that are
+ * spelled differently are named here, and anything a client has no word for
+ * falls back to Other rather than being quietly called an enquiry.
+ */
+function clientSourceFor(kind: string): typeof clients.$inferInsert.source {
+  if (kind === "AGENT") return "AGENT_REFERRAL";
+  const known = [
+    "WEBSITE",
+    "WHATSAPP",
+    "INSTAGRAM",
+    "FACEBOOK",
+    "SOCIAL_MEDIA",
+    "PHONE",
+    "EMAIL",
+    "REFERRAL",
+    "ENQUIRY",
+    "OTHER",
+  ] as const;
+  return (known as readonly string[]).includes(kind)
+    ? (kind as (typeof known)[number])
+    : "OTHER";
+}
 
 /**
  * A lead typed in by the office.
@@ -55,7 +91,7 @@ export async function createLead(
   const chosen = String(formData.get("sourceKind") ?? "ENQUIRY");
   const sourceKind = (SOURCES as readonly string[]).includes(chosen)
     ? (chosen as LeadSource)
-    : "ENQUIRY";
+    : "OTHER";
   const other = String(formData.get("sourceOther") ?? "").trim();
 
   /*
@@ -100,6 +136,8 @@ export async function createLead(
       phone,
       message: note,
       sourceKind,
+      /* Whose enquiry this is, from the moment it is written down. */
+      assignedToId: String(formData.get("assignedToId") ?? "") || null,
       source: sourceKind === "OTHER" ? other || "other" : sourceKind.toLowerCase(),
       projectName: String(formData.get("projectName") ?? "").trim() || null,
       // Only meaningful when the enquiry came from an agent, and ignored
@@ -292,16 +330,7 @@ async function makeClient(
         which threw away the one thing the office knew about where the buyer
         came from. A WhatsApp enquiry is now a WhatsApp client.
       */
-      source:
-        lead.sourceKind === "AGENT"
-          ? "AGENT_REFERRAL"
-          : lead.sourceKind === "WHATSAPP"
-            ? "WHATSAPP"
-            : lead.sourceKind === "WEBSITE"
-              ? "WEBSITE"
-              : lead.sourceKind === "OTHER"
-                ? "OTHER"
-                : "ENQUIRY",
+      source: clientSourceFor(lead.sourceKind),
       marketingOptIn: optIn,
       marketingOptInAt: optIn ? new Date() : null,
       marketingOptInSource: optIn ? (lead.consentText ?? "the enquiry") : null,
@@ -377,7 +406,7 @@ export async function undoConversion(clientId: string) {
   if (lead) {
     await db
       .update(leads)
-      .set({ clientId: null, status: "QUALIFIED", updatedAt: new Date() })
+      .set({ clientId: null, status: "ACTIVE", updatedAt: new Date() })
       .where(eq(leads.id, lead.id));
   }
 
@@ -608,4 +637,125 @@ export async function killApiKey(keyId: string) {
     userEmail: user.email,
   });
   revalidatePath("/leads/api");
+}
+
+/* ---------------------------------------------------------------------------
+   Follow ups: what happens next on this enquiry.
+
+   A note is the past, a follow up is the future. It carries a day, a short
+   line about what is to be done, and nothing else, because the office asked
+   for something they would actually fill in rather than a form. It is pending
+   until somebody says it is done, and it can be taken off the record when it
+   was written by mistake.
+   --------------------------------------------------------------------------- */
+
+export async function addFollowUp(leadId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+
+  const day = String(formData.get("day") ?? "").trim();
+  const time = String(formData.get("time") ?? "").trim() || "09:00";
+  const note = String(formData.get("note") ?? "").trim() || null;
+
+  if (!day) {
+    await flash("said.needADay", "bad");
+    revalidatePath(`/leads/${leadId}`);
+    return;
+  }
+
+  const at = new Date(`${day}T${time.length === 5 ? time : "09:00"}:00`);
+  if (Number.isNaN(at.getTime())) {
+    await flash("said.needADay", "bad");
+    revalidatePath(`/leads/${leadId}`);
+    return;
+  }
+
+  await db.insert(leadFollowUps).values({ leadId, at, note, createdById: user.id });
+  await db.update(leads).set({ updatedAt: new Date() }).where(eq(leads.id, leadId));
+
+  await recordAudit({
+    action: "lead.followUp.add",
+    entity: "lead",
+    entityId: leadId,
+    detail: `${at.toISOString().slice(0, 16)}${note ? `, ${note.slice(0, 80)}` : ""}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.saved");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+}
+
+/** Done, or back to pending when somebody pressed it too early. */
+export async function setFollowUpStatus(
+  followUpId: string,
+  leadId: string,
+  status: "PENDING" | "DONE",
+) {
+  const user = await requireUser(["ADMIN"]);
+
+  await db
+    .update(leadFollowUps)
+    .set({
+      status,
+      doneAt: status === "DONE" ? new Date() : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(leadFollowUps.id, followUpId));
+
+  await recordAudit({
+    action: "lead.followUp.status",
+    entity: "lead",
+    entityId: leadId,
+    detail: `${followUpId} ${status}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.saved");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+}
+
+export async function deleteFollowUp(followUpId: string, leadId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  await db.delete(leadFollowUps).where(eq(leadFollowUps.id, followUpId));
+
+  await recordAudit({
+    action: "lead.followUp.delete",
+    entity: "lead",
+    entityId: leadId,
+    detail: followUpId,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.deleted");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+}
+
+/** Whose enquiry this is. */
+export async function assignLead(leadId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const assignedToId = String(formData.get("assignedToId") ?? "") || null;
+
+  await db
+    .update(leads)
+    .set({ assignedToId, updatedAt: new Date() })
+    .where(eq(leads.id, leadId));
+
+  await recordAudit({
+    action: "lead.assigned",
+    entity: "lead",
+    entityId: leadId,
+    detail: assignedToId ?? "nobody",
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.saved");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
 }

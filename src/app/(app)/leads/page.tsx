@@ -3,7 +3,18 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
-import { latestNoteByLead, LEAD_ORDER, leadCounts, listLeads } from "@/lib/leads";
+import { asc } from "drizzle-orm";
+import { db } from "@/db";
+import { agents } from "@/db/schema";
+import { whoCanGo } from "@/lib/team";
+import {
+  latestNoteByLead,
+  LEAD_ORDER,
+  LEAD_SOURCES,
+  LEAD_STATUSES,
+  leadCounts,
+  listLeads,
+} from "@/lib/leads";
 import { readSort, sortHref } from "@/lib/sorting";
 import { anyFilter, many } from "@/lib/filters";
 import {
@@ -37,7 +48,7 @@ const PER_PAGE = 20;
  * carry: choosing it creates the client record and the enquiry leaves this list
  * for the clients list, which is the office's own rule.
  */
-const STATUSES = ["NEW", "CONTACTED", "QUALIFIED", "CONVERTED", "CLOSED"] as const;
+const STATUSES = LEAD_STATUSES;
 
 const when = (value: Date, locale: string) =>
   new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB", {
@@ -55,6 +66,9 @@ export default async function LeadsPage({
     q?: string;
     status?: string;
     source?: string;
+    agent?: string;
+    assignedTo?: string;
+    followUps?: string;
     sort?: string;
     dir?: string;
     page?: string;
@@ -83,6 +97,9 @@ export default async function LeadsPage({
   const query = (params.q ?? "").trim();
   const status = params.status ?? "";
   const source = params.source ?? "";
+  const agent = params.agent ?? "";
+  const assignedTo = params.assignedTo ?? "";
+  const followUps = params.followUps ?? "";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
   const sort = readSort(params as Record<string, string | undefined>, Object.keys(LEAD_ORDER), {
     key: "received",
@@ -91,11 +108,29 @@ export default async function LeadsPage({
   const filters = filterQuery(params as Record<string, string | undefined>);
   const filtering = filters !== "";
 
-  const [{ rows, total }, counts, views, hidden] = await Promise.all([
-    listLeads({ query, status, source, sort: sort.key, dir: sort.dir, limit: perPage, offset }),
+  const [{ rows, total }, counts, views, hidden, theAgents, team] = await Promise.all([
+    listLeads({
+      query,
+      status,
+      source,
+      agent,
+      assignedTo,
+      followUps,
+      sort: sort.key,
+      dir: sort.dir,
+      limit: perPage,
+      offset,
+    }),
     leadCounts(),
     viewsFor(user.id, "leads"),
     hiddenColumns(user.id, "leads"),
+    /* The two people an enquiry can be filtered by: the agent who introduced
+       it, and whoever in the office is looking after it. */
+    db
+      .select({ id: agents.id, name: agents.name })
+      .from(agents)
+      .orderBy(asc(agents.name)),
+    whoCanGo(),
   ]);
 
   const { on, hidden: away } = shownColumns("leads", hidden);
@@ -221,10 +256,24 @@ export default async function LeadsPage({
             label={t("leads.camefrom")}
             chosen={many(source)}
             anything={t("common.all")}
-            choices={(["WEBSITE", "ENQUIRY", "AGENT", "WHATSAPP", "OTHER"] as const).map((one) => ({
+            choices={LEAD_SOURCES.map((one) => ({
               value: one,
               label: t(`leads.source.${one}` as MessageKey),
             }))}
+          />
+          <Pick
+            name="agent"
+            label={t("contracts.agent")}
+            chosen={many(agent)}
+            anything={t("common.all")}
+            choices={theAgents.map((one) => ({ value: one.id, label: one.name }))}
+          />
+          <Pick
+            name="assignedTo"
+            label={t("appointments.assignedTo")}
+            chosen={many(assignedTo)}
+            anything={t("common.all")}
+            choices={team.map((one) => ({ value: one.id, label: one.name }))}
           />
         </SearchBox>
 
@@ -308,6 +357,7 @@ export default async function LeadsPage({
                         href={link("source")}
                       />
                     ) : null}
+                    {on("owner") ? <th>{t("appointments.assignedTo")}</th> : null}
                     {on("status") ? (
                       <SortTh
                         label={t("common.status")}
@@ -380,6 +430,21 @@ export default async function LeadsPage({
                           ) : null}
                           {r.lead.utmCampaign ? (
                             <div className="text-brand-graphite/60">{r.lead.utmCampaign}</div>
+                          ) : null}
+                        </td>
+                      ) : null}
+
+                      {on("owner") ? (
+                        <td className="text-xs">
+                          {r.member ? (
+                            <span className="font-semibold">{r.member.name}</span>
+                          ) : (
+                            <span className="text-brand-graphite/50">
+                              {t("appointments.nobody")}
+                            </span>
+                          )}
+                          {r.introducer ? (
+                            <div className="text-brand-graphite/60">{r.introducer.name}</div>
                           ) : null}
                         </td>
                       ) : null}

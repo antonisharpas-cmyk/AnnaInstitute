@@ -1,6 +1,6 @@
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount } from "@/lib/money";
-import { costsByCategory, costsByMonth, monthLabel, rangeFrom } from "@/lib/reports";
+import { costsByCategory, costsByMonth, monthLabel, rangeFrom, projectsInScope, scopeChoices, scopeFrom } from "@/lib/reports";
 import { expensesOwed } from "@/lib/expenses";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import { BarSeries, Breakdown, Figure, SERIES, shortMoney } from "@/components/charts";
@@ -10,15 +10,24 @@ import { periodLabels, periodQuery } from "../labels";
 export default async function CostsReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; from?: string; to?: string }>;
+  searchParams: Promise<{
+    period?: string;
+    from?: string;
+    to?: string;
+    project?: string;
+    partner?: string;
+  }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
   const { range, period } = rangeFrom(params);
+  /* Whose money, and which building. Nothing chosen is the whole book. */
+  const scope = scopeFrom(params);
+  const [only, choices] = await Promise.all([projectsInScope(scope), scopeChoices()]);
 
   const [monthly, categories, owed] = await Promise.all([
-    costsByMonth(range),
-    costsByCategory(range),
+    costsByMonth(range, only),
+    costsByCategory(range, only),
     expensesOwed(),
   ]);
 
@@ -41,6 +50,7 @@ export default async function CostsReportPage({
         from={params.from}
         to={params.to}
         labels={periodLabels(t)}
+        scope={{ ...scope, ...choices }}
         exportHref={`/reports/export?report=costs${query ? `&${query}` : ""}`}
       />
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getTranslator } from "@/i18n";
 import { formatAmount, formatPercent } from "@/lib/money";
-import { rangeFrom, salesByAgent } from "@/lib/reports";
+import { rangeFrom, salesByAgent, projectsInScope, scopeChoices, scopeFrom } from "@/lib/reports";
 import { BackLink, Card, Empty, PageHeader } from "@/components/ui";
 import { Breakdown, Figure, SERIES } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -10,13 +10,22 @@ import { periodLabels, periodQuery } from "../labels";
 export default async function AgentsReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; from?: string; to?: string }>;
+  searchParams: Promise<{
+    period?: string;
+    from?: string;
+    to?: string;
+    project?: string;
+    partner?: string;
+  }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
   const { range, period } = rangeFrom(params);
+  /* Whose money, and which building. Nothing chosen is the whole book. */
+  const scope = scopeFrom(params);
+  const [only, choices] = await Promise.all([projectsInScope(scope), scopeChoices()]);
 
-  const rows = await salesByAgent(range);
+  const rows = await salesByAgent(range, only);
   const money = (cents: number) => formatAmount(cents, locale);
   const query = periodQuery(params);
 
@@ -38,6 +47,7 @@ export default async function AgentsReportPage({
         from={params.from}
         to={params.to}
         labels={periodLabels(t)}
+        scope={{ ...scope, ...choices }}
         exportHref={`/reports/export?report=agents${query ? `&${query}` : ""}`}
       />
 

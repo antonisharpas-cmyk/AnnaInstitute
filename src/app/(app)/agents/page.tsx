@@ -47,6 +47,10 @@ export default async function AgentsPage({
       .select({
         agent: agents,
         sales: sql<number>`count(${commissions.id})::int`,
+        /* How many enquiries this agent has brought us, whatever came of them.
+           A subquery rather than a join, because joining a second table to a
+           grouped count would multiply the sales by the leads. */
+        leads: sql<number>`(select count(*) from leads l where l.agent_id = ${agents.id} and l.deleted_at is null)::int`,
         generated: sql<string>`coalesce(sum(${commissions.amount}), 0)`,
         paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.agent_id = ${agents.id}), 0)`,
       })
@@ -102,6 +106,7 @@ export default async function AgentsPage({
                   <th>{t("common.name")}</th>
                   <th>{t("agents.company")}</th>
                   <th className="ctr">{t("agents.rate")}</th>
+                  <th className="ctr">{t("leads.title")}</th>
                   <th className="ctr">{t("agents.sales")}</th>
                   <th className="ctr">{t("agents.generated")}</th>
                   <th className="ctr">{t("agents.paidOut")}</th>
@@ -133,6 +138,7 @@ export default async function AgentsPage({
                       <td className="ctr">
                         {formatPercent(Number(r.agent.commissionRate), locale)}
                       </td>
+                      <td className="ctr">{r.leads}</td>
                       <td className="ctr">{r.sales}</td>
                       <td className="ctr">{formatAmount(generated, locale)}</td>
                       <td className="ctr">{formatAmount(paid, locale)}</td>

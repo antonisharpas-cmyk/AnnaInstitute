@@ -3,21 +3,25 @@ import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { BackLink, Card, PageHeader } from "@/components/ui";
+import { whoCanGo } from "@/lib/team";
+import { LEAD_SOURCES } from "@/lib/leads";
 import LeadForm from "../LeadForm";
 import { createLead } from "../actions";
-
-const SOURCES = ["ENQUIRY", "AGENT", "WHATSAPP", "WEBSITE", "OTHER"] as const;
 
 export default async function NewLeadPage() {
   const { t } = await getTranslator();
 
   // Named on the enquiry when it came from one of them, so the commission has
   // an owner from the first day rather than from the day of the contract.
-  const theAgents = await db
-    .select({ id: agents.id, name: agents.name })
-    .from(agents)
-    .where(eq(agents.isActive, true))
-    .orderBy(asc(agents.name));
+  const [theAgents, team] = await Promise.all([
+    db
+      .select({ id: agents.id, name: agents.name })
+      .from(agents)
+      .where(eq(agents.isActive, true))
+      .orderBy(asc(agents.name)),
+    /* The office, for the person whose enquiry this is. */
+    whoCanGo(),
+  ]);
 
   return (
     <>
@@ -29,6 +33,7 @@ export default async function NewLeadPage() {
             action={createLead}
             cancelHref="/leads"
             agents={theAgents}
+            team={team}
             labels={{
               firstName: t("common.name"),
               lastName: t("common.surname"),
@@ -50,7 +55,9 @@ export default async function NewLeadPage() {
               consentHint: t("leads.consentNowHint"),
               save: t("common.save"),
               cancel: t("common.cancel"),
-              sources: SOURCES.map((value) => ({
+              assignedTo: t("appointments.assignedTo"),
+              nobody: t("appointments.nobody"),
+              sources: LEAD_SOURCES.map((value) => ({
                 value,
                 label: t(`leads.source.${value}` as MessageKey),
               })),

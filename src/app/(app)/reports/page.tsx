@@ -1,7 +1,17 @@
 import Link from "next/link";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount } from "@/lib/money";
-import { ageing, cashByMonth, headline, monthLabel, rangeFrom, salesByMonth } from "@/lib/reports";
+import {
+  ageing,
+  cashByMonth,
+  headline,
+  monthLabel,
+  projectsInScope,
+  rangeFrom,
+  salesByMonth,
+  scopeChoices,
+  scopeFrom,
+} from "@/lib/reports";
 import { Card, PageHeader } from "@/components/ui";
 import { BarSeries, Figure, SERIES, shortMoney } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -20,17 +30,26 @@ const REPORTS: { href: string; title: MessageKey; note: MessageKey }[] = [
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; from?: string; to?: string }>;
+  searchParams: Promise<{
+    period?: string;
+    from?: string;
+    to?: string;
+    project?: string;
+    partner?: string;
+  }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
   const { range, period } = rangeFrom(params);
+  /* Whose money, and which building. Nothing chosen is the whole book. */
+  const scope = scopeFrom(params);
+  const [only, choices] = await Promise.all([projectsInScope(scope), scopeChoices()]);
 
   const [figures, sales, cash, late] = await Promise.all([
-    headline(range),
-    salesByMonth(range),
-    cashByMonth(range),
-    ageing(),
+    headline(range, only),
+    salesByMonth(range, only),
+    cashByMonth(range, only),
+    ageing(only),
   ]);
 
   const money = (cents: number) => formatAmount(cents, locale);
@@ -46,6 +65,7 @@ export default async function ReportsPage({
         from={params.from}
         to={params.to}
         labels={periodLabels(t)}
+        scope={{ ...scope, ...choices }}
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

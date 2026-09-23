@@ -28,6 +28,111 @@ import { toCents } from "./money";
 
 export type Range = { from: Date; to: Date };
 
+/* ---------------------------------------------------------------------------
+   Whose money, and which building
+
+   One Eleven does not own every development outright. Some are held with a
+   partner company on an agreement particular to that company and that
+   building, so "what did we take last year" has no single answer until
+   somebody says which deal they mean. That is what a scope is: a development,
+   a partner, or both, narrowing every money figure on the page to the money
+   that belongs to that pairing.
+
+   It narrows rather than apportions. The office asked for the figures of the
+   deal, at their full value, not for a share worked out from a percentage that
+   the CRM cannot know is still the agreement.
+   --------------------------------------------------------------------------- */
+
+export type Scope = { project: string; partner: string };
+
+export function scopeFrom(params: { project?: string; partner?: string }): Scope {
+  return { project: params.project ?? "", partner: params.partner ?? "" };
+}
+
+export const scopeIsOn = (scope: Scope) => Boolean(scope.project || scope.partner);
+
+/**
+ * The developments a scope covers, or null for all of them.
+ *
+ * Null rather than a list of every id on purpose: "everything" is the ordinary
+ * case, and a query that adds no condition at all is both faster and easier to
+ * read than one that lists forty ids it is not excluding. A scope that matches
+ * nothing returns an empty list, which correctly shows zeroes rather than
+ * silently showing the whole book.
+ */
+export async function projectsInScope(scope: Scope): Promise<string[] | null> {
+  if (!scopeIsOn(scope)) return null;
+
+  const parts: SQL[] = [];
+  if (scope.project) parts.push(eq(projects.id, scope.project));
+  if (scope.partner) {
+    parts.push(
+      scope.partner === "ours"
+        ? (sql`not exists (select 1 from project_partners pp where pp.project_id = ${projects.id})` as SQL)
+        : (sql`exists (
+            select 1 from project_partners pp
+            where pp.project_id = ${projects.id} and pp.subowner_id = ${scope.partner}
+          )` as SQL),
+    );
+  }
+
+  const rows = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(...parts));
+  return rows.map((row) => row.id);
+}
+
+/** The developments themselves, for the pickers. */
+export async function scopeChoices() {
+  const [buildings, partners] = await Promise.all([
+    db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
+    db
+      .select({ id: subowners.id, name: subowners.name })
+      .from(subowners)
+      .orderBy(asc(subowners.name)),
+  ]);
+  return { buildings, partners };
+}
+
+/*
+ * The same narrowing, said once for each table the money lives in.
+ *
+ * Every one of them returns undefined when the scope is off, which is what
+ * and() wants for "no condition", so the caller writes the same line whether
+ * the office is looking at one building or at all of them.
+ */
+const onlyProjects = (ids: string[] | null): SQL | undefined =>
+  ids === null ? undefined : (sql`${units.projectId} in ${ids.length > 0 ? ids : [""]}` as SQL);
+
+const contractsIn = (ids: string[] | null): SQL | undefined =>
+  ids === null
+    ? undefined
+    : (sql`${contracts.unitId} in (
+        select u.id from units u where u.project_id in ${ids.length > 0 ? ids : [""]}
+      )` as SQL);
+
+const installmentsIn = (ids: string[] | null): SQL | undefined =>
+  ids === null
+    ? undefined
+    : (sql`${installments.contractId} in (
+        select c.id from contracts c join units u on u.id = c.unit_id
+        where u.project_id in ${ids.length > 0 ? ids : [""]}
+      )` as SQL);
+
+const paymentsIn = (ids: string[] | null): SQL | undefined =>
+  ids === null
+    ? undefined
+    : (sql`${payments.contractId} in (
+        select c.id from contracts c join units u on u.id = c.unit_id
+        where u.project_id in ${ids.length > 0 ? ids : [""]}
+      )` as SQL);
+
+const expensesIn = (ids: string[] | null): SQL | undefined =>
+  ids === null
+    ? undefined
+    : (sql`${expenses.projectId} in ${ids.length > 0 ? ids : [""]}` as SQL);
+
 /** A period, named the way the office asks for one. */
 export function rangeFrom(params: { period?: string; from?: string; to?: string }): {
   range: Range;
@@ -93,7 +198,7 @@ const monthKey = (value: Date | null) =>
    --------------------------------------------------------------------------- */
 
 /** Contracts signed month by month, with what they sold for. */
-export async function salesByMonth(range: Range) {
+export async function salesByMonth(range: Range, only: string[] | null = null) {
   const rows = await db
     .select({ contractDate: contracts.contractDate, netPrice: contracts.netPrice })
     .from(contracts)
@@ -102,6 +207,7 @@ export async function salesByMonth(range: Range) {
         isNotNull(contracts.contractDate),
         gte(contracts.contractDate, range.from),
         lte(contracts.contractDate, range.to),
+        contractsIn(only),
       ) as SQL,
     );
 
@@ -124,7 +230,7 @@ export async function salesByMonth(range: Range) {
 }
 
 /** Every development, how much of it is sold, and at what. */
-export async function salesByProject() {
+export async function salesByProject(only: string[] | null = null) {
   const rows = await db
     .select({
       project: projects,
@@ -143,6 +249,7 @@ export async function salesByProject() {
     })
     .from(projects)
     .leftJoin(units, eq(units.projectId, projects.id))
+    .where(only === null ? undefined : sql`${projects.id} in ${only.length > 0 ? only : [""]}`)
     .groupBy(projects.id)
     .orderBy(asc(projects.name));
 
@@ -165,7 +272,7 @@ export async function salesByProject() {
 }
 
 /** What each agent sold in the period, and what it earned them. */
-export async function salesByAgent(range: Range) {
+export async function salesByAgent(range: Range, only: string[] | null = null) {
   const rows = await db
     .select({
       agent: agents,
@@ -185,6 +292,7 @@ export async function salesByAgent(range: Range) {
         eq(contracts.agentId, agents.id),
         gte(contracts.contractDate, range.from),
         lte(contracts.contractDate, range.to),
+        contractsIn(only),
       ),
     )
     .groupBy(agents.id)
@@ -209,7 +317,7 @@ export async function salesByAgent(range: Range) {
  * Two lines that answer the question the office actually asks: are we collecting
  * what the contracts say we should.
  */
-export async function cashByMonth(range: Range) {
+export async function cashByMonth(range: Range, only: string[] | null = null) {
   const [dueRows, paidRows] = await Promise.all([
     db
       .select({ dueDate: installments.dueDate, total: installments.totalAmount })
@@ -219,12 +327,19 @@ export async function cashByMonth(range: Range) {
           isNotNull(installments.dueDate),
           gte(installments.dueDate, range.from),
           lte(installments.dueDate, range.to),
+          installmentsIn(only),
         ) as SQL,
       ),
     db
       .select({ paidOn: payments.paidOn, amount: payments.amount })
       .from(payments)
-      .where(and(gte(payments.paidOn, range.from), lte(payments.paidOn, range.to)) as SQL),
+      .where(
+        and(
+          gte(payments.paidOn, range.from),
+          lte(payments.paidOn, range.to),
+          paymentsIn(only),
+        ) as SQL,
+      ),
   ]);
 
   const months = monthsIn(range);
@@ -248,7 +363,7 @@ export async function cashByMonth(range: Range) {
 }
 
 /** Everything owed on a schedule, by how late it is. */
-export async function ageing() {
+export async function ageing(only: string[] | null = null) {
   const rows = await db
     .select({
       installment: installments,
@@ -265,7 +380,7 @@ export async function ageing() {
     .leftJoin(clients, eq(clients.id, contracts.clientId))
     .leftJoin(units, eq(units.id, contracts.unitId))
     .leftJoin(projects, eq(projects.id, units.projectId))
-    .where(isNotNull(installments.dueDate));
+    .where(and(isNotNull(installments.dueDate), onlyProjects(only)) as SQL);
 
   const now = Date.now();
   const buckets = [
@@ -333,7 +448,7 @@ export async function ageing() {
 }
 
 /** What is coming, month by month, on what has not been paid yet. */
-export async function upcoming(months = 12) {
+export async function upcoming(months = 12, only: string[] | null = null) {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth(), 1);
   const to = new Date(now.getFullYear(), now.getMonth() + months, 0, 23, 59, 59);
@@ -352,6 +467,7 @@ export async function upcoming(months = 12) {
         isNotNull(installments.dueDate),
         gte(installments.dueDate, from),
         lte(installments.dueDate, to),
+        installmentsIn(only),
       ) as SQL,
     );
 
@@ -369,14 +485,28 @@ export async function upcoming(months = 12) {
 }
 
 /** The whole book: contracted, scheduled, collected, outstanding, VAT. */
-export async function moneyTotals() {
+export async function moneyTotals(only: string[] | null = null) {
+  /*
+   * Narrowed to the developments in scope, or to all of them.
+   *
+   * Written as one condition repeated rather than a join, because each of
+   * these is a whole table summed on its own: a join would multiply the
+   * installments by the payments and quietly report a figure nobody owes.
+   */
+  const ids = only === null ? null : only.length > 0 ? only : [""];
+  const mine = ids === null ? sql`true` : sql`u.project_id in ${ids}`;
+  const scoped =
+    ids === null
+      ? sql`true`
+      : sql`exists (select 1 from units u where u.id = c.unit_id and ${mine})`;
+
   const [row] = await db
     .select({
-      contracted: sql<string>`coalesce((select sum(c.net_price) from contracts c), 0)`,
-      scheduledNet: sql<string>`coalesce((select sum(i.net_amount) from installments i), 0)`,
-      scheduledVat: sql<string>`coalesce((select sum(i.vat_amount) from installments i), 0)`,
-      scheduledTotal: sql<string>`coalesce((select sum(i.total_amount) from installments i), 0)`,
-      collected: sql<string>`coalesce((select sum(p.amount) from payments p), 0)`,
+      contracted: sql<string>`coalesce((select sum(c.net_price) from contracts c where ${scoped}), 0)`,
+      scheduledNet: sql<string>`coalesce((select sum(i.net_amount) from installments i join contracts c on c.id = i.contract_id where ${scoped}), 0)`,
+      scheduledVat: sql<string>`coalesce((select sum(i.vat_amount) from installments i join contracts c on c.id = i.contract_id where ${scoped}), 0)`,
+      scheduledTotal: sql<string>`coalesce((select sum(i.total_amount) from installments i join contracts c on c.id = i.contract_id where ${scoped}), 0)`,
+      collected: sql<string>`coalesce((select sum(p.amount) from payments p join contracts c on c.id = p.contract_id where ${scoped}), 0)`,
     })
     .from(contracts)
     .limit(1);
@@ -445,7 +575,7 @@ export async function leadFunnel(range: Range) {
     .select({
       arrived: sql<number>`count(*)::int`,
       answered: sql<number>`count(*) filter (where ${leads.status} <> 'NEW')::int`,
-      qualified: sql<number>`count(*) filter (where ${leads.status} in ('QUALIFIED','CONVERTED'))::int`,
+      qualified: sql<number>`count(*) filter (where ${leads.status} in ('ACTIVE','CONVERTED'))::int`,
       converted: sql<number>`count(*) filter (where ${leads.status} = 'CONVERTED')::int`,
       bought: sql<number>`count(*) filter (where exists (
         select 1 from contracts c where c.client_id = leads.client_id
@@ -512,7 +642,7 @@ export async function consentTotals() {
    What the company pays
    --------------------------------------------------------------------------- */
 
-export async function costsByMonth(range: Range) {
+export async function costsByMonth(range: Range, only: string[] | null = null) {
   const rows = await db
     .select({
       issueDate: expenses.issueDate,
@@ -520,7 +650,8 @@ export async function costsByMonth(range: Range) {
       total: expenses.totalAmount,
       paid: expenses.paidAmount,
     })
-    .from(expenses);
+    .from(expenses)
+    .where(expensesIn(only));
 
   const months = monthsIn(range);
   const billed = new Map(months.map((m) => [m, 0]));
@@ -540,7 +671,7 @@ export async function costsByMonth(range: Range) {
   }));
 }
 
-export async function costsByCategory(range: Range) {
+export async function costsByCategory(range: Range, only: string[] | null = null) {
   const rows = await db
     .select({
       category: expenses.category,
@@ -553,6 +684,7 @@ export async function costsByCategory(range: Range) {
       and(
         gte(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range.from),
         lte(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range.to),
+        expensesIn(only),
       ) as SQL,
     )
     .groupBy(expenses.category)
@@ -627,10 +759,10 @@ export async function partnerPortfolio() {
    The headline figures, for the front of the section
    --------------------------------------------------------------------------- */
 
-export async function headline(range: Range) {
+export async function headline(range: Range, only: string[] | null = null) {
   const [sales, money, funnel, [stock], [costs]] = await Promise.all([
-    salesByMonth(range),
-    moneyTotals(),
+    salesByMonth(range, only),
+    moneyTotals(only),
     leadFunnel(range),
     db
       .select({
@@ -639,12 +771,14 @@ export async function headline(range: Range) {
         available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
         availableValue: sql<string>`coalesce(sum(${units.netPrice}) filter (where ${units.status} = 'AVAILABLE'), 0)`,
       })
-      .from(units),
+      .from(units)
+      .where(onlyProjects(only)),
     db
       .select({
         owed: sql<string>`coalesce(sum(${expenses.totalAmount} - ${expenses.paidAmount}), 0)`,
       })
-      .from(expenses),
+      .from(expenses)
+      .where(expensesIn(only)),
   ]);
 
   return {
