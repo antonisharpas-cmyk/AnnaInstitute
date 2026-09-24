@@ -128,6 +128,81 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the appointment type and who it is assigned to",
     migration: "0024",
   },
+  {
+    probe: "select 'WHATSAPP'::contact_source",
+    what: "the WhatsApp and website client sources",
+    migration: "0025",
+  },
+  {
+    probe: "select assigned_to_id from leads limit 1",
+    what: "who a lead is assigned to",
+    migration: "0026",
+  },
+  {
+    probe: "select note, at from lead_follow_ups limit 1",
+    what: "the follow ups table",
+    migration: "0026",
+  },
+  {
+    probe: "select is_automatic, is_active from email_templates limit 1",
+    what: "the automatic email switches",
+    migration: "0028",
+  },
+  {
+    probe: "select template_key from automatic_emails limit 1",
+    what: "the automatic emails record",
+    migration: "0028",
+  },
+  {
+    probe: "select type_other from appointments limit 1",
+    what: "what an Other appointment is",
+    migration: "0029",
+  },
+  {
+    probe: "select closed_at, closed_reason from clients limit 1",
+    what: "closing a client",
+    migration: "0030",
+  },
+  {
+    probe: "select appointment_id, agent_id from automatic_emails limit 1",
+    what: "the appointment and agent letters",
+    migration: "0030",
+  },
+  {
+    probe: "select vat_number from clients limit 1",
+    what: "the VAT number on a client",
+    migration: "0033",
+  },
+  {
+    probe: "select number, snapshot from issued_documents limit 1",
+    what: "the issued invoices and receipts",
+    migration: "0033",
+  },
+  {
+    probe: "select reference from payments limit 1",
+    what: "the cheque or bank reference on a payment",
+    migration: "0033",
+  },
+  {
+    probe: "select reduced_vat_net, reduced_vat_approved_on from contracts limit 1",
+    what: "the reduced VAT approval on contracts",
+    migration: "0034",
+  },
+  {
+    probe: "select kind, invoiced_by_id from payments limit 1",
+    what: "credits carried between stages",
+    migration: "0034",
+  },
+  {
+    probe: "select purpose, credited_by_id from issued_documents limit 1",
+    what: "credit notes",
+    migration: "0034",
+  },
+  {
+    probe: "select purpose, amount from refunds limit 1",
+    what: "refunds and delay penalties",
+    migration: "0034",
+  },
 ];
 
 let answer: Missing[] | null = null;
