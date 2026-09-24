@@ -10,6 +10,7 @@ import { emailConfigured } from "@/lib/messaging";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
+import EmailSwitch from "@/components/EmailSwitch";
 import { saveAutomatic, switchAutomatic } from "./actions";
 
 /**
@@ -59,6 +60,9 @@ export default async function AutomaticEmailsPage() {
   return (
     <>
       <PageHeader title={t("emails.title")} subtitle={t("emails.subtitle")} />
+
+      {/* Every email from the CRM, on or off, in one place. */}
+      <EmailSwitch />
 
       {/* Nothing is sent until the mail account is set up, and saying so here
           saves somebody wondering why a switched on letter never arrived. */}

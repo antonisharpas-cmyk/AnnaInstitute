@@ -279,7 +279,7 @@ export async function letterForPayment(paymentId: string): Promise<void> {
 
   if (result.status === "SENT") await note("SENT", "Sent.");
   else if (result.status === "SIMULATED")
-    await note("SKIPPED", "Email is not set up yet, so nothing left the building.");
+    await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
   else await note("FAILED", result.error ?? "It did not go.");
 }
 
@@ -436,7 +436,7 @@ export async function letterForAppointment(
 
   if (result.status === "SENT") await note("SENT", "Sent.");
   else if (result.status === "SIMULATED")
-    await note("SKIPPED", "Email is not set up yet, so nothing left the building.");
+    await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
   else await note("FAILED", result.error ?? "It did not go.");
 }
 
@@ -594,6 +594,6 @@ export async function letterForCommission(contractId: string): Promise<void> {
 
   if (result.status === "SENT") await note("SENT", "Sent.");
   else if (result.status === "SIMULATED")
-    await note("SKIPPED", "Email is not set up yet, so nothing left the building.");
+    await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
   else await note("FAILED", result.error ?? "It did not go.");
 }

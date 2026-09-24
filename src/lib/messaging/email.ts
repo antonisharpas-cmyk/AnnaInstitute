@@ -1,5 +1,8 @@
 import "server-only";
 import nodemailer, { type Transporter } from "nodemailer";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { settings } from "@/db/schema";
 import type { SendResult } from "./types";
 
 /**
@@ -103,13 +106,38 @@ export type EmailAttachment = {
   contentType?: string;
 } & ({ path: string; content?: never } | { content: Buffer; path?: never });
 
+/**
+ * The office's master switch for email.
+ *
+ * Off means nothing at all leaves the CRM by email: no automatic letters, no
+ * receipts, no appointment confirmations or reminders, no daily summaries, no
+ * campaigns. Everything is still written and recorded, marked as held by the
+ * switch, so turning it back on loses nothing but the moment. Read from the
+ * settings table each time, so the switch takes effect at once.
+ */
+export async function emailSwitchedOff(): Promise<boolean> {
+  try {
+    const [row] = await db.select().from(settings).where(eq(settings.key, "mail.enabled")).limit(1);
+    return row?.value === "no";
+  } catch {
+    return false;
+  }
+}
+
+export const SWITCHED_OFF = "All emails are switched off in Settings, so nothing was sent.";
+
 export async function sendEmail(options: {
   to: string;
   subject: string;
   text: string;
   html: string;
   attachments?: EmailAttachment[];
+  /** Only the test email to the office itself goes past the master switch. */
+  pastTheSwitch?: boolean;
 }): Promise<SendResult> {
+  if (!options.pastTheSwitch && (await emailSwitchedOff())) {
+    return { status: "SIMULATED", error: SWITCHED_OFF };
+  }
   if (!emailConfigured()) {
     return {
       status: "SIMULATED",

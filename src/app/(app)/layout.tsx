@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { expenses, installments, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { ensureSchema } from "@/lib/health";
+import { readSetting } from "@/lib/settings";
+import Link from "next/link";
 import { readFlash } from "@/lib/flash";
 import { howManyNeedAnAnswer } from "@/lib/appointments";
 import { readUndo } from "@/lib/undo";
@@ -58,6 +60,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const unpaidHere = sql`coalesce((
       select sum(p.amount) from payments p where p.installment_id = installments.id
     ), 0) < ${installments.totalAmount}`;
+
+  const mailOff = (await readSetting("mail.enabled")) === "no";
 
   const [[late], [waiting], [bills], asking, followUps, said, undo] = await Promise.all([
     db
@@ -230,6 +234,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           collapse: t("shell.collapse"),
         }}
       >
+        {/* A reminder on every page while email is switched off, so nobody
+            wonders for a week why the letters stopped. */}
+        {mailOff ? (
+          <div className="no-print mb-4 rounded border border-[color:var(--color-negative)] bg-brand-surface px-3 py-2 text-sm">
+            {t("mailSwitch.banner")}{" "}
+            <Link href="/settings" className="font-semibold text-brand-teal-dark hover:underline" prefetch={false}>
+              {t("nav.settings")}
+            </Link>
+          </div>
+        ) : null}
         {children}
       </AppShell>
 

@@ -269,7 +269,7 @@ export async function sendDailySummary(options?: {
         result.status === "SENT"
           ? "Sent."
           : result.status === "SIMULATED"
-            ? "Email is not set up yet, so nothing left the building."
+            ? (result.error ?? "Email is not set up yet, so nothing left the building.")
             : (result.error ?? "It did not go."),
     });
   }

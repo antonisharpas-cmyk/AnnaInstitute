@@ -26,6 +26,8 @@ export const DEFAULTS = {
   "appointments.reminderOn": "yes",
   /** The hour of the morning the day before when reminders start going. */
   "appointments.reminderHour": "10",
+  /** The master switch for every email the CRM sends. */
+  "mail.enabled": "yes",
 
   /*
    * The company as its invoices and receipts name it. Prefilled from the

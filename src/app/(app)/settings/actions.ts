@@ -108,6 +108,9 @@ export async function sendTestEmail(formData: FormData) {
     subject: "One Eleven CRM: test email",
     text: "This is a test from the One Eleven CRM. If you are reading it, the automatic emails can go out.",
     html: "<p>This is a test from the One Eleven CRM. If you are reading it, the automatic emails can go out.</p>",
+    /* The test goes only to the office itself, so it is allowed even while
+       every other email is switched off: that is when it is most useful. */
+    pastTheSwitch: true,
   });
   await recordAudit({
     action: "settings.testEmail",
@@ -123,4 +126,19 @@ export async function sendTestEmail(formData: FormData) {
     result.status === "SENT" ? "good" : "bad",
   );
   revalidatePath("/settings");
+}
+
+/** The master switch: every email from the CRM, on or off. */
+export async function setAllEmails(on: boolean) {
+  const user = await requireUser(["ADMIN"]);
+  await writeSetting("mail.enabled", on ? "yes" : "no");
+  await recordAudit({
+    action: on ? "settings.emailsOn" : "settings.emailsOff",
+    entity: "settings",
+    detail: on ? "all emails switched on" : "all emails switched off",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(on ? "said.emailsOn" : "said.emailsOff", on ? "good" : "bad");
+  revalidatePath("/", "layout");
 }
