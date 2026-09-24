@@ -136,7 +136,7 @@ export const dictionaries = {
     "settings.previewHint":
       "Exactly what each person receives, as it stands at this moment. Read it before nine o'clock rather than after.",
     "settings.noEmailYet":
-      "Email is not set up on this server yet, so a summary is written and recorded but nothing leaves the building. Set SMTP_HOST and MAIL_FROM to turn it on.",
+      "Email is not set up on this server yet, so a summary is written and recorded but nothing leaves the building. Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD in .env.local and restart the CRM to turn it on.",
     "settings.byScheduler":
       "A scheduler can also call this. POST to /api/appointments/summary with an API key in the X-Api-Key header, made under Leads, API access.",
     "reports.title": "Reports",
@@ -582,7 +582,7 @@ export const dictionaries = {
     "emails.title": "Automatic emails",
     "emails.subtitle": "The letters the CRM sends to buyers by itself, when their money arrives.",
     "emails.notConfigured":
-      "The mail account is not set up yet, so these letters are written and recorded but nothing leaves the building.",
+      "The mail account is not set up yet, so these letters are written and recorded but nothing leaves the building. Settings, Email account, shows exactly what the CRM is reading and what is missing.",
     "emails.on": "On",
     "emails.off": "Off",
     "emails.switchOn": "Switch on",
@@ -741,6 +741,17 @@ export const dictionaries = {
     "common.delete": "Delete",
     "common.choose": "Choose",
     "settings.mail": "Email account",
+    "settings.mailCheck": "Check the email settings",
+    "settings.mailFolder": "The CRM is running from",
+    "settings.mailStarted": "It was started on",
+    "settings.mailSetting": "Setting",
+    "settings.mailLoaded": "Read by the CRM as",
+    "settings.mailMissing": "missing",
+    "settings.mailOptional": "not set, optional",
+    "settings.mailFile": "File in that folder",
+    "settings.mailLines": "Email lines in it (values never shown)",
+    "settings.mailChanged": "changed after the CRM started: restart it",
+    "settings.mailNoLines": "no email lines",
     "settings.mailSetUp": "Email is set up:",
     "settings.testTo": "Send a test email to",
     "settings.testToHint": "Leave empty to send it to yourself",
@@ -1587,7 +1598,7 @@ export const dictionaries = {
     "settings.previewHint":
       "Ακριβώς ό,τι λαμβάνει κάθε άτομο, όπως είναι αυτή τη στιγμή. Διαβάστε το πριν τις εννιά, όχι μετά.",
     "settings.noEmailYet":
-      "Το email δεν έχει ρυθμιστεί σε αυτόν τον διακομιστή, οπότε η σύνοψη γράφεται και καταγράφεται αλλά δεν φεύγει. Ορίστε SMTP_HOST και MAIL_FROM για να ενεργοποιηθεί.",
+      "Το email δεν έχει ρυθμιστεί σε αυτόν τον διακομιστή, οπότε η σύνοψη γράφεται και καταγράφεται αλλά δεν φεύγει. Ορίστε SMTP_HOST, SMTP_USER και SMTP_PASSWORD στο .env.local και επανεκκινήστε το CRM.",
     "settings.byScheduler":
       "Μπορεί να την καλέσει και ένας scheduler. POST στο /api/appointments/summary με API key στην κεφαλίδα X-Api-Key, από τα Leads, API access.",
     "reports.title": "Αναφορές",
@@ -2031,7 +2042,7 @@ export const dictionaries = {
     "emails.title": "Αυτόματα email",
     "emails.subtitle": "Τα γράμματα που στέλνει μόνο του το CRM στους αγοραστές, όταν φτάνουν τα χρήματα.",
     "emails.notConfigured":
-      "Ο λογαριασμός email δεν έχει ρυθμιστεί ακόμη, οπότε τα γράμματα γράφονται και καταγράφονται αλλά δεν φεύγει τίποτα.",
+      "Ο λογαριασμός email δεν έχει ρυθμιστεί ακόμη, οπότε τα γράμματα γράφονται και καταγράφονται αλλά δεν φεύγει τίποτα. Στις Ρυθμίσεις, Λογαριασμός email, φαίνεται τι διαβάζει το CRM και τι λείπει.",
     "emails.on": "Ενεργό",
     "emails.off": "Ανενεργό",
     "emails.switchOn": "Ενεργοποίηση",
@@ -2187,6 +2198,17 @@ export const dictionaries = {
     "common.delete": "Διαγραφή",
     "common.choose": "Επιλογή",
     "settings.mail": "Λογαριασμός email",
+    "settings.mailCheck": "Έλεγχος ρυθμίσεων email",
+    "settings.mailFolder": "Το CRM τρέχει από τον φάκελο",
+    "settings.mailStarted": "Ξεκίνησε στις",
+    "settings.mailSetting": "Ρύθμιση",
+    "settings.mailLoaded": "Διαβάστηκε ως",
+    "settings.mailMissing": "λείπει",
+    "settings.mailOptional": "δεν έχει οριστεί, προαιρετικό",
+    "settings.mailFile": "Αρχείο στον φάκελο",
+    "settings.mailLines": "Γραμμές email (οι τιμές δεν εμφανίζονται ποτέ)",
+    "settings.mailChanged": "άλλαξε μετά την εκκίνηση: επανεκκινήστε",
+    "settings.mailNoLines": "καμία γραμμή email",
     "settings.mailSetUp": "Το email είναι ρυθμισμένο:",
     "settings.testTo": "Αποστολή δοκιμαστικού email σε",
     "settings.testToHint": "Αφήστε κενό για να σταλεί σε εσάς",

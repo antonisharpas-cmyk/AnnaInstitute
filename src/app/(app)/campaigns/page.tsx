@@ -39,7 +39,7 @@ export default async function CampaignsPage() {
     everyone.filter((person) => person.group === name);
 
   const readiness = [
-    { label: t("campaigns.email"), ready: emailConfigured(), note: "SMTP_HOST and MAIL_FROM" },
+    { label: t("campaigns.email"), ready: emailConfigured(), note: "SMTP_HOST, SMTP_USER and SMTP_PASSWORD" },
     {
       label: t("campaigns.whatsapp"),
       ready: channelConfigured("WHATSAPP"),

@@ -4,15 +4,50 @@ import type { SendResult } from "./types";
 
 /**
  * Email goes out over SMTP, which works with Google Workspace, Microsoft 365 or
- * any provider. Nothing is sent until SMTP_HOST and MAIL_FROM are set, so the
+ * any provider. Nothing is sent until SMTP_HOST is set, so the
  * campaign module is safe to use and test before the mail account exists.
  *
  * For mail to arrive as info@oneeleven.com.cy rather than in a spam folder, the
  * SPF and DKIM records for that domain have to exist. Until they do, send from a
  * domain we control and set MAIL_REPLY_TO to their address.
  */
+/*
+ * The settings, read forgivingly.
+ *
+ * Setups arrive with slightly different names depending on which guide was
+ * followed, SMTP_PASS for SMTP_PASSWORD, SMTP_FROM or EMAIL_FROM for MAIL_FROM,
+ * and with stray spaces or quotes around the value. All of those are accepted.
+ * MAIL_FROM may be left out entirely: the mail then goes from the account that
+ * signs in, which with Google Workspace is what it has to be anyway.
+ */
+export const MAIL_KEYS = {
+  host: ["SMTP_HOST", "MAIL_HOST", "EMAIL_HOST", "SMTP_SERVER"],
+  port: ["SMTP_PORT", "MAIL_PORT", "EMAIL_PORT"],
+  secure: ["SMTP_SECURE", "MAIL_SECURE", "EMAIL_SECURE"],
+  user: ["SMTP_USER", "SMTP_USERNAME", "MAIL_USER", "MAIL_USERNAME", "EMAIL_USER"],
+  password: ["SMTP_PASSWORD", "SMTP_PASS", "MAIL_PASSWORD", "MAIL_PASS", "EMAIL_PASSWORD", "EMAIL_PASS"],
+  from: ["MAIL_FROM", "SMTP_FROM", "EMAIL_FROM", "MAIL_SENDER"],
+  replyTo: ["MAIL_REPLY_TO", "SMTP_REPLY_TO", "EMAIL_REPLY_TO"],
+} as const;
+
+function clean(value: string | undefined): string {
+  return (value ?? "").trim().replace(/^["']|["']$/g, "").trim();
+}
+
+export function mailSetting(which: keyof typeof MAIL_KEYS): string {
+  for (const key of MAIL_KEYS[which]) {
+    const value = clean(process.env[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function mailFrom(): string {
+  return mailSetting("from") || mailSetting("user");
+}
+
 export function emailConfigured(): boolean {
-  return Boolean(process.env.SMTP_HOST && process.env.MAIL_FROM);
+  return Boolean(mailSetting("host") && mailFrom());
 }
 
 let transport: Transporter | null = null;
@@ -24,36 +59,32 @@ let transport: Transporter | null = null;
  * which people copy as they see it, so the spaces are taken out.
  */
 function smtpPort(): number {
-  return Number(process.env.SMTP_PORT ?? 587);
+  return Number(mailSetting("port") || 587);
 }
 function smtpSecure(): boolean {
-  return String(process.env.SMTP_SECURE ?? "") === "true" || smtpPort() === 465;
+  return mailSetting("secure") === "true" || smtpPort() === 465;
 }
 
 /** What the mail setup is, without the password, for the Settings page. */
 export function emailSetup(): { host: string; port: number; secure: boolean; user: string; from: string } | null {
   if (!emailConfigured()) return null;
   return {
-    host: process.env.SMTP_HOST ?? "",
+    host: mailSetting("host"),
     port: smtpPort(),
     secure: smtpSecure(),
-    user: process.env.SMTP_USER ?? "",
-    from: process.env.MAIL_FROM ?? "",
+    user: mailSetting("user"),
+    from: mailFrom(),
   };
 }
 
 function getTransport() {
   if (transport) return transport;
+  const user = mailSetting("user");
   transport = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+    host: mailSetting("host"),
     port: smtpPort(),
     secure: smtpSecure(),
-    auth: process.env.SMTP_USER
-      ? {
-          user: process.env.SMTP_USER,
-          pass: (process.env.SMTP_PASSWORD ?? "").replace(/\s+/g, ""),
-        }
-      : undefined,
+    auth: user ? { user, pass: mailSetting("password").replace(/\s+/g, "") } : undefined,
     /* A server that never answers is reported in seconds, not left hanging. */
     connectionTimeout: 15000,
     greetingTimeout: 15000,
@@ -88,8 +119,8 @@ export async function sendEmail(options: {
 
   try {
     const info = await getTransport().sendMail({
-      from: process.env.MAIL_FROM,
-      replyTo: process.env.MAIL_REPLY_TO || undefined,
+      from: mailFrom(),
+      replyTo: mailSetting("replyTo") || undefined,
       to: options.to,
       subject: options.subject,
       text: options.text,

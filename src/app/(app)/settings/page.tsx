@@ -4,6 +4,7 @@ import { readSettings } from "@/lib/settings";
 import { buildSummaries, summaryText } from "@/lib/appointmentSummary";
 import { emailConfigured } from "@/lib/messaging";
 import { emailSetup } from "@/lib/messaging/email";
+import { diagnoseMail } from "@/lib/mailDiagnosis";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import { saveAppointmentSettings, saveCompanySettings, sendSummaryNow, sendTestEmail } from "./actions";
@@ -47,6 +48,7 @@ export default async function SettingsPage() {
     "numbers.nextCreditNote",
   ]);
   const mail = emailSetup();
+  const diagnosis = diagnoseMail();
   const companyFields: { key: keyof typeof company; name: string; label: string; wide?: boolean }[] = [
     { key: "company.name", name: "name", label: t("settings.company.name"), wide: true },
     { key: "company.registration", name: "registration", label: t("settings.company.registration") },
@@ -190,6 +192,71 @@ export default async function SettingsPage() {
                   {t("settings.noEmailYet")}
                 </p>
               )}
+
+              {/* Why it is or is not set up: names only, never a value. */}
+              {diagnosis.hints.length > 0 ? (
+                <ul className="mb-3 max-w-prose list-disc space-y-1 rounded border border-[color:var(--color-warning)] bg-brand-surface py-2 pl-7 pr-3 text-xs">
+                  {diagnosis.hints.map((hint) => (
+                    <li key={hint}>{hint}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <details className="mb-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-brand-teal-dark">{t("settings.mailCheck")}</summary>
+                <div className="mt-2 space-y-2">
+                  <p className="text-brand-graphite/70">
+                    {t("settings.mailFolder")} <span className="font-mono">{diagnosis.folder}</span>.{" "}
+                    {t("settings.mailStarted")} {diagnosis.startedAt.toLocaleString("en-GB")}.
+                  </p>
+                  <table className="data">
+                    <thead>
+                      <tr>
+                        <th>{t("settings.mailSetting")}</th>
+                        <th>{t("settings.mailLoaded")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diagnosis.settings.map((one) => (
+                        <tr key={one.setting}>
+                          <td className="font-mono">{one.setting}</td>
+                          <td>
+                            {one.foundAs ? (
+                              <span className="text-[color:var(--color-positive,#2f855a)]">{one.foundAs} ✓</span>
+                            ) : (
+                              <span className={one.required ? "text-[color:var(--color-negative)]" : "text-brand-graphite/50"}>
+                                {one.required ? t("settings.mailMissing") : t("settings.mailOptional")}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <table className="data">
+                    <thead>
+                      <tr>
+                        <th>{t("settings.mailFile")}</th>
+                        <th>{t("settings.mailLines")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diagnosis.files.filter((one) => one.exists).map((one) => (
+                        <tr key={one.name}>
+                          <td className="font-mono">
+                            {one.name}
+                            {one.changedAfterStart ? <div className="text-[color:var(--color-negative)]">{t("settings.mailChanged")}</div> : null}
+                          </td>
+                          <td className="font-mono">
+                            {one.keys.length === 0
+                              ? t("settings.mailNoLines")
+                              : one.keys.map((key) => `${key.key}${key.hasValue ? " ✓" : " (empty)"}`).join(", ")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
               <form action={sendTestEmail} className="flex flex-wrap items-end gap-2">
                 <div className="min-w-64 flex-1">
                   <label className="label" htmlFor="testTo">
