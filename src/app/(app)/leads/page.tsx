@@ -26,7 +26,7 @@ import {
   shownColumns,
   viewsFor,
 } from "@/lib/lists";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader, Pill } from "@/components/ui";
 import { NoMatch, NothingYet } from "@/components/Nothing";
 import { IconLeads } from "@/components/icons";
 import SearchBox from "@/components/SearchBox";
@@ -388,20 +388,28 @@ export default async function LeadsPage({
                   {rows.map((r) => (
                     <tr key={r.lead.id} data-id={r.lead.id}>
                       <td className="pick">
-                        <input
-                          type="checkbox"
-                          name="ids"
-                          value={r.lead.id}
-                          aria-label={r.lead.email ?? r.lead.id}
-                        />
+                        {/* A client now: nothing here changes it, so it cannot be picked. */}
+                        {r.lead.status === "CONVERTED" ? null : (
+                          <input
+                            type="checkbox"
+                            name="ids"
+                            value={r.lead.id}
+                            aria-label={r.lead.email ?? r.lead.id}
+                          />
+                        )}
                       </td>
 
                       {on("name") ? (
                         <td>
                           <a
-                            /* The name opens the record, as a plain link so it never misses. */
+                            /* The name opens the record, as a plain link so it never misses.
+                               One that became a client opens the client, where it is kept. */
                             data-open
-                            href={`/leads/${r.lead.id}`}
+                            href={
+                              r.lead.status === "CONVERTED" && r.client
+                                ? `/clients/${r.client.id}`
+                                : `/leads/${r.lead.id}`
+                            }
                             className="font-semibold hover:underline"
                           >
                             {[r.lead.firstName, r.lead.lastName].filter(Boolean).join(" ") || "?"}
@@ -451,12 +459,16 @@ export default async function LeadsPage({
 
                       {on("status") ? (
                         <td>
-                          <InlineSelect
-                            label={t("common.status")}
-                            value={r.lead.status}
-                            options={statusOptions}
-                            save={setLeadStatusInline.bind(null, r.lead.id)}
-                          />
+                          {r.lead.status === "CONVERTED" ? (
+                            <Pill tone="good">{t("leads.status.CONVERTED")}</Pill>
+                          ) : (
+                            <InlineSelect
+                              label={t("common.status")}
+                              value={r.lead.status}
+                              options={statusOptions}
+                              save={setLeadStatusInline.bind(null, r.lead.id)}
+                            />
+                          )}
                           {r.client ? (
                             <div className="mt-0.5">
                               <Link

@@ -19,6 +19,7 @@ import {
   IconSun,
   IconUp,
   SECTION_ICONS,
+  IconChevron,
 } from "@/components/icons";
 
 /*
@@ -27,7 +28,15 @@ import {
   extra renders of other pages the moment the list appears, and a browser busy
   with those occasionally drops the navigation somebody actually asked for.
 */
-export type NavItem = { href: string; label: string; group: string; count?: number };
+export type NavChild = { href: string; label: string; count?: number };
+export type NavItem = {
+  href: string;
+  label: string;
+  group: string;
+  count?: number;
+  /** A section that opens into parts, like Invoices into Clients and Company. */
+  children?: NavChild[];
+};
 export type Alert = { label: string; href: string; count: number; tone: "bad" | "warn" };
 
 export type ShellLabels = {
@@ -235,6 +244,13 @@ export default function AppShell({
   }, [pathname]);
 
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  /* Among the parts of one section, the longest address that matches wins, so
+     /invoices/clients lights Clients and not Company as well. */
+  const activeChild = (children: NavChild[]) =>
+    children
+      .filter((child) => active(child.href))
+      .sort((a, b) => b.href.length - a.href.length)[0]?.href ?? null;
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
   const groups = [...new Set(items.map((item) => item.group))];
   const pressing = alerts.reduce((total, alert) => total + alert.count, 0);
   const initials = user.name
@@ -256,6 +272,45 @@ export default function AppShell({
             .filter((item) => item.group === group)
             .map((item) => {
               const Icon = SECTION_ICONS[item.href] ?? IconSearch;
+              if (item.children && item.children.length > 0 && !narrow) {
+                const lit = activeChild(item.children);
+                const open = opened[item.href] ?? lit !== null;
+                return (
+                  <div key={item.href}>
+                    <button
+                      type="button"
+                      className={`navlink w-full ${lit ? "navlink-active" : ""}`}
+                      aria-expanded={open}
+                      onClick={() => setOpened((was) => ({ ...was, [item.href]: !open }))}
+                    >
+                      <Icon size={17} />
+                      <span className="truncate">{item.label}</span>
+                      {item.count && !open ? <span className="navcount">{item.count}</span> : null}
+                      <IconChevron
+                        size={14}
+                        className={`ml-auto shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+                      />
+                    </button>
+                    {open ? (
+                      <div className="ml-7 mt-0.5 flex flex-col gap-0.5 border-l border-brand-line pl-2">
+                        {item.children.map((child) => (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={`navlink !py-1.5 text-[13px] ${
+                              lit === child.href ? "navlink-active" : ""
+                            }`}
+                            prefetch={false}
+                          >
+                            <span className="truncate">{child.label}</span>
+                            {child.count ? <span className="navcount">{child.count}</span> : null}
+                          </Link>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
               return (
                 <Link
                   key={item.href}
@@ -537,7 +592,14 @@ export default function AppShell({
       <CommandPalette
         open={palette}
         onClose={() => setPalette(false)}
-        sections={items.map((item) => ({ href: item.href, label: item.label }))}
+        sections={items.flatMap((item) =>
+          item.children
+            ? item.children.map((child) => ({
+                href: child.href,
+                label: `${item.label}: ${child.label}`,
+              }))
+            : [{ href: item.href, label: item.label }],
+        )}
         creates={creates}
         labels={
           {

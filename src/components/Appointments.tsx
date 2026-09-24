@@ -182,7 +182,24 @@ export default function Appointments({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 {said(row)}
                 <span className="flex flex-wrap items-center gap-1">
-                  <Disclosure showLabel={labels.move} hideLabel={labels.cancel} tone="secondary">
+                  {/* Pending until somebody says otherwise, and they can say so here. */}
+                  <Pill tone="neutral">{labels.statusPlanned}</Pill>
+                  <form action={answerAppointment.bind(null, row.id, "DONE")}>
+                    <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">
+                      {labels.statusDone}
+                    </SubmitButton>
+                  </form>
+                  <form action={answerAppointment.bind(null, row.id, "MISSED")}>
+                    <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                      {labels.statusMissed}
+                    </SubmitButton>
+                  </form>
+                  <Disclosure
+                    key={`${row.id}-${new Date(row.at).getTime()}-${row.place}-${row.type}-${row.assignedToId ?? ""}`}
+                    showLabel={labels.move}
+                    hideLabel={labels.cancel}
+                    tone="secondary"
+                  >
                     <Form
                       action={updateAppointment.bind(null, row.id)}
                       labels={labels}
@@ -218,6 +235,23 @@ export default function Appointments({
                   <Pill tone={row.status === "DONE" ? "good" : "warn"}>
                     {row.status === "DONE" ? labels.statusDone : labels.statusMissed}
                   </Pill>
+                  {/* Answered wrongly, or not over after all: it can be put right. */}
+                  <form
+                    action={answerAppointment.bind(
+                      null,
+                      row.id,
+                      row.status === "DONE" ? "MISSED" : "DONE",
+                    )}
+                  >
+                    <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                      {row.status === "DONE" ? labels.statusMissed : labels.statusDone}
+                    </SubmitButton>
+                  </form>
+                  <form action={answerAppointment.bind(null, row.id, "PLANNED")}>
+                    <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                      {labels.statusPlanned}
+                    </SubmitButton>
+                  </form>
                   <ConfirmButton
                     action={deleteAppointment.bind(null, row.id)}
                     label={labels.remove}

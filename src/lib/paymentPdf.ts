@@ -1,38 +1,101 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { eq } from "drizzle-orm";
-import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import { db } from "@/db";
-import { installments, payments } from "@/db/schema";
-import { buyerReceipt } from "@/lib/receipts";
-import { formatAmount, toCents } from "@/lib/money";
+import { amountInEnglish, amountInGreek } from "@/lib/words";
 
 /**
- * The receipt the CRM draws up for a payment, as a PDF.
+ * The invoice and the receipt the CRM issues for a buyer's payment, as PDFs.
  *
- * Every payment letter carries one, so a buyer always has a paper for their
- * money whether or not somebody in the office remembered to scan one. It says
- * what a receipt has to say and nothing it cannot stand behind: the number, the
- * day, who paid, for which apartment, for which stage, what the stage came to
- * before VAT, the VAT on it, the total, what was received, and where that
- * leaves the contract.
+ * They follow the office's own printed books, the blue invoice and the yellow
+ * receipt, with every label in Greek and English as the books have them, and
+ * carry what a Cyprus invoice has to: the company's name, address, registration
+ * and VAT numbers, a running number, the date, the buyer and their address,
+ * what was supplied, the amount before VAT, the VAT rate and the VAT, and the
+ * total. The receipt says what was received, in figures and in words, how it
+ * was paid, which invoice it settles and what is left on the contract.
  *
- * The typeface carries Greek as well as Latin, because half the office's
- * buyers have names in Greek and a receipt with empty boxes where the name
- * should be is worse than none. The colours are the brand's own.
+ * Both are drawn from a snapshot taken on the day of issue, so the paper reads
+ * the same in ten years as it did the day it was handed over.
  */
 
-const TEAL = rgb(0x4d / 255, 0xa1 / 255, 0xb9 / 255);
-const GRAPHITE = rgb(0x4d / 255, 0x4d / 255, 0x4f / 255);
-const QUIET = rgb(0x8a / 255, 0x8a / 255, 0x8c / 255);
-const LINE = rgb(0xdd / 255, 0xe3 / 255, 0xe6 / 255);
+export type IssuedSnapshot = {
+  company: {
+    name: string;
+    registration: string;
+    vat: string;
+    tic: string;
+    address: string;
+    phone: string;
+    fax: string;
+    email: string;
+    website: string;
+    bankName: string;
+    iban: string;
+    swift: string;
+  };
+  client: {
+    name: string;
+    address: string;
+    country: string;
+    idNumber: string;
+    vatNumber: string;
+    email: string;
+    phone: string;
+  };
+  contractReference: string;
+  property: string;
+  stage: string;
+  description: string;
+  paidOn: string;
+  issuedOn: string;
+  method: string;
+  reference: string;
+  netCents: number;
+  vatCents: number;
+  totalCents: number;
+  rate: number;
+  contractTotalCents: number;
+  receivedToDateCents: number;
+  balanceCents: number;
+  invoiceNumber: string;
+  receiptNumber: string;
+  recordedBy: string;
+  /** The VAT in its parts when a stage is partly at the reduced rate. */
+  parts?: { rate: number; netCents: number; vatCents: number }[];
+  /** A credit from the reduced VAT that settles part of this invoice. */
+  creditAppliedCents?: number;
+  /** What was paid in money for it, when a credit covered the rest. */
+  payableCents?: number;
+  /** On a replacement invoice: the invoice and credit note it replaces. */
+  replacesNumber?: string;
+  replacedByCreditNote?: string;
+  /** On a credit note. */
+  creditNoteNumber?: string;
+  relatesToInvoice?: string;
+  relatesToInvoiceDate?: string;
+  purpose?: string;
+  reason?: string;
+};
 
-/** Files that ship with the app, found the same way in development and on the server. */
+const TEAL = rgb(0x4d / 255, 0xa1 / 255, 0xb9 / 255);
+const TEAL_DARK = rgb(0x3d / 255, 0x83 / 255, 0x97 / 255);
+const TEAL_SOFT = rgb(0xe8 / 255, 0xf2 / 255, 0xf6 / 255);
+const GRAPHITE = rgb(0x4d / 255, 0x4d / 255, 0x4f / 255);
+const QUIET = rgb(0x86 / 255, 0x88 / 255, 0x8b / 255);
+const LINE = rgb(0xd9 / 255, 0xe1 / 255, 0xe5 / 255);
+const WHITE = rgb(1, 1, 1);
+
 const shipped = (...parts: string[]) => path.join(process.cwd(), ...parts);
 
-async function fonts(pdf: PDFDocument): Promise<{ plain: PDFFont; bold: PDFFont }> {
+type Fonts = { plain: PDFFont; bold: PDFFont };
+
+async function start(title: string): Promise<{ pdf: PDFDocument; page: PDFPage; f: Fonts }> {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(title);
+  pdf.setAuthor("One Eleven Investment & Developing Ltd");
+  pdf.setCreator("One Eleven CRM");
   pdf.registerFontkit(fontkit);
   const [plainBytes, boldBytes] = await Promise.all([
     readFile(shipped("assets", "fonts", "DejaVuSans.ttf")),
@@ -42,203 +105,529 @@ async function fonts(pdf: PDFDocument): Promise<{ plain: PDFFont; bold: PDFFont 
     pdf.embedFont(plainBytes, { subset: true }),
     pdf.embedFont(boldBytes, { subset: true }),
   ]);
-  return { plain, bold };
+  const page = pdf.addPage([595.28, 841.89]); // A4
+  return { pdf, page, f: { plain, bold } };
 }
 
-export type ReceiptPdf = { filename: string; content: Buffer };
+/** Money the way an invoice prints it: always two decimals. */
+export function eur(cents: number): string {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.round(cents) / 100);
+}
 
-/**
- * Draw up the receipt for one payment.
- *
- * Returns null only when the payment does not exist. Anything else that is
- * missing, a stage, a VAT figure, an address, is simply left off the page
- * rather than invented.
- */
-export async function receiptPdf(paymentId: string): Promise<ReceiptPdf | null> {
-  const receipt = await buyerReceipt(paymentId);
-  if (!receipt) return null;
+export function longDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
-  /* The stage's own figures, when the payment was against one. */
-  const [line] = await db
-    .select({
-      label: installments.label,
-      net: installments.netAmount,
-      vat: installments.vatAmount,
-      total: installments.totalAmount,
-      rate: installments.vatRateApplied,
-    })
-    .from(payments)
-    .innerJoin(installments, eq(installments.id, payments.installmentId))
-    .where(eq(payments.id, paymentId))
-    .limit(1);
+const L = 48;
+const R = 595.28 - 48;
 
-  const pdf = await PDFDocument.create();
-  pdf.setTitle(`Receipt ${receipt.number}`);
-  pdf.setAuthor("One Eleven");
-  pdf.setCreator("One Eleven CRM");
+function text(
+  page: PDFPage,
+  font: PDFFont,
+  value: string,
+  x: number,
+  y: number,
+  size: number,
+  color: RGB = GRAPHITE,
+) {
+  page.drawText(value || " ", { x, y, size, font, color });
+}
 
-  const { plain, bold } = await fonts(pdf);
-  const page = pdf.addPage([595.28, 841.89]); // A4
-  const { width, height } = page.getSize();
-  const left = 56;
-  const right = width - 56;
-  let y = height - 56;
+function right(page: PDFPage, font: PDFFont, value: string, xRight: number, y: number, size: number, color: RGB = GRAPHITE) {
+  text(page, font, value, xRight - font.widthOfTextAtSize(value || " ", size), y, size, color);
+}
 
-  const money = (cents: number) => formatAmount(cents, "en");
-  const day = (value: Date) =>
-    new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+/** Cut a line to fit a width, word by word, into as many lines as it needs. */
+function wrap(font: PDFFont, value: string, size: number, width: number): string[] {
+  const words = (value || "").split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const tryLine = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(tryLine, size) <= width) line = tryLine;
+    else {
+      if (line) lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
 
-  /* The letterhead: the logo on the left, the document's own name on the right. */
+/** The letterhead both papers share: logo and company on the left, the paper's name on the right. */
+async function letterhead(
+  pdf: PDFDocument,
+  page: PDFPage,
+  f: Fonts,
+  s: IssuedSnapshot,
+  titleEl: string,
+  titleEn: string,
+  number: string,
+  date: string,
+): Promise<number> {
+  let y = 841.89 - 48;
+
+  /* A thin brand band across the very top. */
+  page.drawRectangle({ x: 0, y: 841.89 - 8, width: 595.28, height: 8, color: TEAL });
+
   try {
     const logo = await pdf.embedPng(await readFile(shipped("public", "brand", "oneeleven-logo.png")));
-    const scale = 64 / logo.height;
-    page.drawImage(logo, {
-      x: left,
-      y: y - 64,
-      width: logo.width * scale,
-      height: logo.height * scale,
-    });
+    const h = 50;
+    page.drawImage(logo, { x: L, y: y - h, width: (logo.width / logo.height) * h, height: h });
   } catch {
-    page.drawText("One Eleven", { x: left, y: y - 28, size: 22, font: bold, color: TEAL });
+    text(page, f.bold, "One Eleven", L, y - 30, 22, TEAL);
   }
 
-  const title = "RECEIPT";
-  page.drawText(title, {
-    x: right - bold.widthOfTextAtSize(title, 20),
-    y: y - 22,
-    size: 20,
-    font: bold,
-    color: GRAPHITE,
-  });
-  const numbered = `No. ${receipt.number}`;
-  page.drawText(numbered, {
-    x: right - plain.widthOfTextAtSize(numbered, 10),
-    y: y - 40,
-    size: 10,
-    font: plain,
-    color: GRAPHITE,
-  });
-  const dated = day(receipt.paidOn);
-  page.drawText(dated, {
-    x: right - plain.widthOfTextAtSize(dated, 10),
-    y: y - 54,
-    size: 10,
-    font: plain,
-    color: QUIET,
-  });
+  /* The paper's own name, number and date, in a box on the right. */
+  const boxW = 230;
+  const boxX = R - boxW;
+  page.drawRectangle({ x: boxX, y: y - 78, width: boxW, height: 78, color: TEAL_SOFT });
+  page.drawRectangle({ x: boxX, y: y - 30, width: boxW, height: 30, color: TEAL_DARK });
+  /* The name shrinks to fit the band: "ΑΠΟΔΕΙΞΗ ΕΙΣΠΡΑΞΗΣ / RECEIPT" is long. */
+  const title = `${titleEl} / ${titleEn}`;
+  const titleSize = Math.min(12, (boxW - 20) / f.bold.widthOfTextAtSize(title, 1));
+  right(page, f.bold, title, R - 10, y - 19, titleSize, WHITE);
+  text(page, f.plain, "Αριθμός / No.", boxX + 10, y - 48, 8.5, QUIET);
+  right(page, f.bold, number, R - 10, y - 49, 13, TEAL_DARK);
+  text(page, f.plain, "Ημερομηνία / Date", boxX + 10, y - 67, 8.5, QUIET);
+  right(page, f.bold, date, R - 10, y - 67, 10);
 
+  /* The company, as the law asks it to be named, below the logo and the box. */
   y -= 96;
-  rule(page, left, right, y);
-  y -= 26;
-
-  /* Who paid, and for what. */
-  const name = receipt.client
-    ? `${receipt.client.firstName ?? ""} ${receipt.client.lastName ?? ""}`.trim()
-    : "";
-  y = pair(page, { plain, bold }, left, y, "Received from", name);
-  if (receipt.client?.address) y = pair(page, { plain, bold }, left, y, "Address", receipt.client.address);
-  const property = [receipt.project?.name, receipt.unit?.code].filter(Boolean).join(", ");
-  if (property) y = pair(page, { plain, bold }, left, y, "Property", property);
-  if (receipt.contract?.reference)
-    y = pair(page, { plain, bold }, left, y, "Contract", receipt.contract.reference);
-  if (receipt.stage) y = pair(page, { plain, bold }, left, y, "Stage", receipt.stage);
-  if (receipt.methodInWords) {
-    const method = receipt.methodInWords.charAt(0).toUpperCase() + receipt.methodInWords.slice(1);
-    y = pair(page, { plain, bold }, left, y, "Paid by", method);
+  text(page, f.bold, s.company.name, L, y, 10.5);
+  y -= 13;
+  for (const line of wrap(f.plain, s.company.address, 8.5, 420)) {
+    text(page, f.plain, line, L, y, 8.5, QUIET);
+    y -= 11;
+  }
+  const contact = [
+    s.company.phone ? `Tel. ${s.company.phone}` : "",
+    s.company.fax ? `Fax ${s.company.fax}` : "",
+  ]
+    .filter(Boolean)
+    .join("   ");
+  if (contact) {
+    text(page, f.plain, contact, L, y, 8.5, QUIET);
+    y -= 11;
+  }
+  const web = [s.company.email, s.company.website].filter(Boolean).join("   ");
+  if (web) {
+    text(page, f.plain, web, L, y, 8.5, QUIET);
+    y -= 11;
+  }
+  const ids = [
+    s.company.registration ? `Αρ. Εγγραφής / Reg. No: ${s.company.registration}` : "",
+    s.company.vat ? `Α.Φ.Π.Α. / VAT No: ${s.company.vat}` : "",
+  ].filter(Boolean);
+  if (ids.length) {
+    text(page, f.bold, ids.join("    "), L, y, 8.5);
+    y -= 11;
+  }
+  if (s.company.tic) {
+    text(page, f.plain, `Α.Φ.Τ. / TIC: ${s.company.tic}`, L, y, 8.5, QUIET);
+    y -= 11;
   }
 
-  y -= 10;
-  rule(page, left, right, y);
-  y -= 24;
-
-  /* The stage in figures, when there is a stage to show. */
-  if (line) {
-    const rate = Number(line.rate);
-    y = figure(page, { plain, bold }, left, right, y, "Stage before VAT", money(toCents(line.net)));
-    y = figure(
-      page,
-      { plain, bold },
-      left,
-      right,
-      y,
-      `VAT at ${Number.isInteger(rate) ? rate : rate.toFixed(2)}%`,
-      money(toCents(line.vat)),
-    );
-    y = figure(page, { plain, bold }, left, right, y, "Stage total", money(toCents(line.total)));
-    y -= 6;
-  }
-
-  /* What was received, said the loudest, because it is the point of the paper. */
-  page.drawRectangle({
-    x: left,
-    y: y - 34,
-    width: right - left,
-    height: 40,
-    color: rgb(0xe8 / 255, 0xf2 / 255, 0xf6 / 255),
-  });
-  page.drawText("Amount received", { x: left + 12, y: y - 20, size: 12, font: bold, color: GRAPHITE });
-  const received = money(receipt.amountCents);
-  page.drawText(received, {
-    x: right - 12 - bold.widthOfTextAtSize(received, 14),
-    y: y - 21,
-    size: 14,
-    font: bold,
-    color: TEAL,
-  });
-  y -= 64;
-
-  /* Where that leaves the contract. */
-  if (receipt.owedCents > 0) {
-    y = figure(page, { plain, bold }, left, right, y, "Contract total", money(receipt.owedCents));
-    y = figure(page, { plain, bold }, left, right, y, "Received to date", money(receipt.paidCents));
-    y = figure(page, { plain, bold }, left, right, y, "Balance", money(receipt.outstandingCents), true);
-  }
-
-  /* The foot of the page: who issued it, and that it was the CRM. */
-  const foot = `Issued by One Eleven on ${day(new Date())}. Thank you.`;
-  page.drawText(foot, { x: left, y: 56, size: 9, font: plain, color: QUIET });
-
-  const bytes = await pdf.save();
-  return { filename: `Receipt ${receipt.number}.pdf`, content: Buffer.from(bytes) };
+  y -= 8;
+  page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: LINE });
+  return y - 18;
 }
 
-function rule(page: PDFPage, from: number, to: number, y: number) {
-  page.drawLine({ start: { x: from, y }, end: { x: to, y }, thickness: 0.8, color: LINE });
+/** The foot both papers share. */
+function foot(page: PDFPage, f: Fonts, s: IssuedSnapshot, words: string) {
+  const y = 44;
+  page.drawLine({ start: { x: L, y: y + 16 }, end: { x: R, y: y + 16 }, thickness: 0.8, color: LINE });
+  const line = [s.company.name, s.company.registration, s.company.vat ? `VAT ${s.company.vat}` : ""]
+    .filter(Boolean)
+    .join("  .  ");
+  text(page, f.plain, line, L, y, 7.5, QUIET);
+  right(page, f.plain, words, R, y, 7.5, QUIET);
+  page.drawRectangle({ x: 0, y: 0, width: 595.28, height: 6, color: TEAL });
 }
 
-/** A label above, its answer beside it: the "who and what" block. */
-function pair(
+/** A labelled box of lines, used for "Bill to" and "Details". */
+function panel(
   page: PDFPage,
-  f: { plain: PDFFont; bold: PDFFont },
-  left: number,
+  f: Fonts,
+  x: number,
   y: number,
-  label: string,
-  value: string,
+  w: number,
+  heading: string,
+  rows: { label?: string; value: string; strong?: boolean }[],
+  labelWidth = 92,
 ): number {
-  page.drawText(label, { x: left, y, size: 9, font: f.plain, color: QUIET });
-  page.drawText(value || " ", { x: left + 120, y, size: 11, font: f.bold, color: GRAPHITE });
-  return y - 20;
+  text(page, f.bold, heading.toUpperCase(), x, y, 8, TEAL_DARK);
+  let yy = y - 16;
+  for (const row of rows) {
+    if (!row.value) continue;
+    if (row.label) {
+      text(page, f.plain, row.label, x, yy, 8, QUIET);
+      const lines = wrap(row.strong ? f.bold : f.plain, row.value, 9.5, w - labelWidth);
+      for (const [i, line] of lines.entries()) {
+        text(page, row.strong ? f.bold : f.plain, line, x + labelWidth, yy - i * 12, 9.5);
+      }
+      yy -= 12 * lines.length + 4;
+    } else {
+      const lines = wrap(row.strong ? f.bold : f.plain, row.value, row.strong ? 11 : 9.5, w);
+      for (const line of lines) {
+        text(page, row.strong ? f.bold : f.plain, line, x, yy, row.strong ? 11 : 9.5);
+        yy -= row.strong ? 15 : 12;
+      }
+      yy -= 2;
+    }
+  }
+  return yy;
 }
 
-/** A line of figures, the label on the left and the amount on the right. */
-function figure(
-  page: PDFPage,
-  f: { plain: PDFFont; bold: PDFFont },
-  left: number,
-  right: number,
-  y: number,
-  label: string,
-  value: string,
-  strong = false,
-): number {
-  const font = strong ? f.bold : f.plain;
-  page.drawText(label, { x: left, y, size: 11, font, color: GRAPHITE });
-  page.drawText(value, {
-    x: right - font.widthOfTextAtSize(value, 11),
-    y,
-    size: 11,
-    font,
-    color: GRAPHITE,
-  });
-  return y - 20;
+/* ---------------------------------------------------------------------------
+   The invoice
+   --------------------------------------------------------------------------- */
+
+export async function invoicePdf(s: IssuedSnapshot): Promise<Buffer> {
+  return billPdf(s, "invoice");
+}
+
+/**
+ * A credit note: the same page as the invoice, saying what is credited and why.
+ *
+ * For the reduced VAT it reverses one invoice in full, naming it; a new invoice
+ * at the new VAT is issued beside it. For a refund or a delay penalty it is
+ * for the agreed amount, including VAT at the rate the buyer paid.
+ */
+export async function creditNotePdf(s: IssuedSnapshot): Promise<Buffer> {
+  return billPdf(s, "credit");
+}
+
+const pc = (rate: number) => `${Number.isInteger(rate) ? rate : rate.toFixed(2)}%`;
+
+async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<Buffer> {
+  const credit = mode === "credit";
+  const number = credit ? (s.creditNoteNumber ?? "") : s.invoiceNumber;
+  const { pdf, page, f } = await start(`${credit ? "Credit note" : "Invoice"} ${number}`);
+  let y = await letterhead(
+    pdf,
+    page,
+    f,
+    s,
+    credit ? "ΠΙΣΤΩΤΙΚΟ ΣΗΜΕΙΩΜΑ" : "ΤΙΜΟΛΟΓΙΟ",
+    credit ? "CREDIT NOTE" : "INVOICE",
+    number,
+    longDay(s.issuedOn),
+  );
+  const sign = credit ? "−" : "";
+  const money = (cents: number) => `${sign}${eur(cents)}`;
+
+  /* Who it is to, and what it is about. */
+  const half = (R - L - 24) / 2;
+  const leftEnd = panel(page, f, L, y, half, "Προς / Bill to", [
+    { value: s.client.name, strong: true },
+    { value: s.client.address },
+    { value: s.client.country },
+    { label: "Α.Δ.Τ. / ID No", value: s.client.idNumber },
+    { label: "Α.Φ.Π.Α. / VAT No", value: s.client.vatNumber },
+    { label: "Email", value: s.client.email },
+  ]);
+  const details = credit
+    ? [
+        { label: "Ακίνητο / Property", value: s.property, strong: true },
+        { label: "Συμβόλαιο / Contract", value: s.contractReference },
+        {
+          label: "Αφορά τιμολόγιο / Invoice",
+          value: s.relatesToInvoice
+            ? `No. ${s.relatesToInvoice}${s.relatesToInvoiceDate ? ` of ${longDay(s.relatesToInvoiceDate)}` : ""}`
+            : "",
+        },
+        { label: "Λόγος / Reason", value: s.reason ?? "" },
+      ]
+    : [
+        { label: "Ακίνητο / Property", value: s.property, strong: true },
+        { label: "Συμβόλαιο / Contract", value: s.contractReference },
+        { label: "Ημ. παράδοσης / Supply date", value: longDay(s.paidOn) },
+        { label: "Απόδειξη / Receipt", value: s.receiptNumber ? `No. ${s.receiptNumber}` : "" },
+        {
+          label: "Αντικαθιστά / Replaces",
+          value: s.replacesNumber
+            ? `Invoice ${s.replacesNumber}${s.replacedByCreditNote ? `, credit note ${s.replacedByCreditNote}` : ""}`
+            : "",
+        },
+      ];
+  const rightEnd = panel(page, f, L + half + 24, y, half, "Στοιχεία / Details", details, 122);
+  y = Math.min(leftEnd, rightEnd) - 10;
+
+  /* The line. One stage of the contract, as the books would write it. */
+  const parts = s.parts && s.parts.length > 0 ? s.parts : [{ rate: s.rate, netCents: s.netCents, vatCents: s.vatCents }];
+  const cols = { desc: L + 10, qty: 300, price: 385, vat: 440, amount: R - 10 };
+  page.drawRectangle({ x: L, y: y - 8, width: R - L, height: 24, color: TEAL_DARK });
+  text(page, f.bold, "Περιγραφή / Description", cols.desc, y, 8, WHITE);
+  right(page, f.bold, "Ποσ. / Qty", cols.qty, y, 8, WHITE);
+  right(page, f.bold, "Τιμή / Price", cols.price, y, 8, WHITE);
+  right(page, f.bold, "Φ.Π.Α.", cols.vat, y, 8, WHITE);
+  right(page, f.bold, "Ποσό / Amount", cols.amount, y, 8, WHITE);
+  y -= 30;
+
+  const descLines = wrap(f.plain, s.description, 9, 190);
+  for (const [i, line] of descLines.entries()) text(page, i === 0 ? f.bold : f.plain, line, cols.desc, y - i * 13, 9);
+  right(page, f.plain, "1", cols.qty, y, 9);
+  right(page, f.plain, money(s.netCents), cols.price, y, 9);
+  right(page, f.plain, parts.map((part) => pc(part.rate)).join(", "), cols.vat, y, 9);
+  right(page, f.plain, money(s.netCents), cols.amount, y, 9);
+  y -= 13 * descLines.length + 10;
+  page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: LINE });
+
+  /* The totals, on the right, the way the book adds them up. */
+  y -= 22;
+  const tx = R - 280;
+  const total = (label: string, value: string, strong = false) => {
+    text(page, strong ? f.bold : f.plain, label, tx, y, 9.5);
+    right(page, strong ? f.bold : f.plain, value, R - 10, y, 9.5);
+    y -= 18;
+  };
+  total("Ποσό / Amount before VAT", money(s.netCents));
+  if (parts.length > 1) {
+    /* Part at the reduced rate and part at the standard rate, each said. */
+    for (const part of parts) total(`Φ.Π.Α. / VAT ${pc(part.rate)} on ${eur(part.netCents)}`, money(part.vatCents));
+  } else {
+    total(`Φ.Π.Α. / VAT ${pc(parts[0].rate)}`, money(s.vatCents));
+  }
+  page.drawRectangle({ x: tx - 10, y: y - 10, width: R - tx + 10, height: 28, color: TEAL_SOFT });
+  text(page, f.bold, credit ? "Ολικό πίστωσης / Total credited" : "Ολικό / Total", tx, y, credit ? 9.5 : 10.5, TEAL_DARK);
+  right(page, f.bold, money(s.totalCents), R - 10, y, 12, TEAL_DARK);
+  y -= 30;
+
+  /* A credit from the reduced VAT that settled part of it. */
+  if (!credit && s.creditAppliedCents) {
+    total("Πίστωση / Less credit (reduced VAT)", `−${eur(s.creditAppliedCents)}`);
+    total("Πληρώθηκε / Paid", eur(s.payableCents ?? 0), true);
+    y -= 4;
+  }
+
+  if (!credit) {
+    /* Settled on the day, since it is issued with the money in hand. */
+    const settled =
+      s.payableCents === 0 && s.creditAppliedCents
+        ? `ΕΞΟΦΛΗΘΗΚΕ ΜΕ ΠΙΣΤΩΣΗ / SETTLED BY CREDIT ${longDay(s.issuedOn)}`
+        : `ΕΞΟΦΛΗΘΗΚΕ / PAID ${longDay(s.paidOn)}${s.receiptNumber ? `, receipt ${s.receiptNumber}` : ""}`;
+    const w = f.bold.widthOfTextAtSize(settled, 8.5) + 16;
+    page.drawRectangle({ x: L, y: y - 6, width: w, height: 24, borderColor: TEAL, borderWidth: 1 });
+    text(page, f.bold, settled, L + 8, y + 2, 8.5, TEAL_DARK);
+    y -= 34;
+  }
+
+  text(page, f.plain, amountInEnglish(s.totalCents), L, y, 8.5, QUIET);
+  y -= 11;
+  text(page, f.plain, amountInGreek(s.totalCents), L, y, 8.5, QUIET);
+  y -= 22;
+
+  /* Where to pay the next stage, when the bank details are set. */
+  if (!credit && s.company.iban) {
+    text(page, f.bold, "ΤΡΑΠΕΖΙΚΑ ΣΤΟΙΧΕΙΑ / BANK DETAILS", L, y, 8, TEAL_DARK);
+    y -= 14;
+    for (const [label, value] of [
+      ["Bank", s.company.bankName],
+      ["IBAN", s.company.iban],
+      ["SWIFT / BIC", s.company.swift],
+      ["Beneficiary", s.company.name],
+    ]) {
+      if (!value) continue;
+      text(page, f.plain, label, L, y, 8.5, QUIET);
+      text(page, f.plain, value, L + 80, y, 8.5);
+      y -= 12;
+    }
+  }
+
+  foot(page, f, s, `${credit ? "Credit note" : "Invoice"} ${number}`);
+  return Buffer.from(await pdf.save());
+}
+
+/**
+ * The same invoice with CANCELLED stamped across it.
+ *
+ * The original stays as it was issued; this is a copy with the stamp, the
+ * credit note that cancelled it and the invoice that replaced it, which is
+ * what the buyer is given so their own file matches ours.
+ */
+export async function stampCancelled(original: Buffer, lines: string[]): Promise<Buffer> {
+  const pdf = await PDFDocument.load(original);
+  pdf.registerFontkit(fontkit);
+  const bold = await pdf.embedFont(await readFile(shipped("assets", "fonts", "DejaVuSans-Bold.ttf")), { subset: true });
+  const plain = await pdf.embedFont(await readFile(shipped("assets", "fonts", "DejaVuSans.ttf")), { subset: true });
+  const RED = rgb(0xc0 / 255, 0x2b / 255, 0x2b / 255);
+  for (const page of pdf.getPages()) {
+    const { width, height } = page.getSize();
+    const title = "ΑΚΥΡΩΘΗΚΕ / CANCELLED";
+    const size = 30;
+    const w = bold.widthOfTextAtSize(title, size);
+    const boxW = Math.max(w, ...lines.map((line) => plain.widthOfTextAtSize(line, 12))) + 48;
+    const boxH = 60 + lines.length * 18;
+    const x = (width - boxW) / 2;
+    /* In the open space below the totals, so the line it cancels stays readable. */
+    const y = height * 0.3;
+    /* Straight across the middle, like a rubber stamp on the printed page:
+       a white panel so it reads over anything, a double red frame, the word. */
+    page.drawRectangle({ x, y, width: boxW, height: boxH, color: rgb(1, 1, 1), opacity: 0.85 });
+    page.drawRectangle({ x, y, width: boxW, height: boxH, borderColor: RED, borderWidth: 3 });
+    page.drawRectangle({ x: x + 6, y: y + 6, width: boxW - 12, height: boxH - 12, borderColor: RED, borderWidth: 1 });
+    page.drawText(title, { x: x + (boxW - w) / 2, y: y + boxH - 44, size, font: bold, color: RED });
+    lines.forEach((line, i) => {
+      const lw = plain.widthOfTextAtSize(line, 12);
+      page.drawText(line, { x: x + (boxW - lw) / 2, y: y + boxH - 66 - i * 18, size: 12, font: plain, color: RED });
+    });
+  }
+  return Buffer.from(await pdf.save());
+}
+
+/**
+ * The paper a buyer signs when money is paid back to them.
+ *
+ * What was paid, why, against which property and contract, that the price in
+ * the Contract of Sale is unchanged, and, for a goodwill refund with the
+ * reservation cancelled, that the reservation is cancelled. With a place for
+ * both signatures.
+ */
+export async function acknowledgementPdf(
+  s: IssuedSnapshot,
+  refund: { purpose: "REFUND" | "PENALTY"; amountCents: number; paidOn: string; method: string; reference: string; cancelled: boolean; note: string },
+): Promise<Buffer> {
+  const { pdf, page, f } = await start("Refund acknowledgement");
+  let y = await letterhead(
+    pdf,
+    page,
+    f,
+    s,
+    "ΒΕΒΑΙΩΣΗ ΠΑΡΑΛΑΒΗΣ",
+    "ACKNOWLEDGEMENT",
+    s.creditNoteNumber ? `CN ${s.creditNoteNumber}` : "",
+    longDay(refund.paidOn),
+  );
+  const para = (value: string, size = 10, font = f.plain) => {
+    for (const line of wrap(font, value, size, R - L)) {
+      text(page, font, line, L, y, size);
+      y -= size + 5;
+    }
+    y -= 8;
+  };
+  const amount = eur(refund.amountCents);
+  const how = refund.method ? ` by ${({ CASH: "cash", CHEQUE: "cheque", BANK: "bank transfer", CARD: "card" } as Record<string, string>)[refund.method] ?? refund.method.toLowerCase()}${refund.reference ? ` (${refund.reference})` : ""}` : "";
+
+  para(`I, ${s.client.name}${s.client.idNumber ? `, ID ${s.client.idNumber}` : ""}, confirm that I have received from ${s.company.name} the sum of ${amount} (${amountInEnglish(refund.amountCents).toLowerCase()})${how} on ${longDay(refund.paidOn)}.`, 10.5, f.bold);
+  if (refund.purpose === "PENALTY") {
+    para(`The amount is paid to me as the agreed compensation for the delay in the completion of the property ${s.property}, under contract ${s.contractReference}. It is covered by credit note ${s.creditNoteNumber}. The price in the Contract of Sale and its terms are unchanged.`);
+    para(`Δηλώνω ότι παρέλαβα το ποσό των ${amount} από την ${s.company.name} ως συμφωνημένη αποζημίωση για την καθυστέρηση στην ολοκλήρωση του ακινήτου ${s.property}, σύμφωνα με το συμβόλαιο ${s.contractReference}, με πιστωτικό σημείωμα ${s.creditNoteNumber}. Η τιμή και οι όροι του Συμβολαίου Πώλησης παραμένουν αμετάβλητοι.`);
+  } else {
+    para(`The amount is paid to me as a refund agreed as a matter of goodwill, for the property ${s.property} under contract ${s.contractReference}. It is covered by credit note ${s.creditNoteNumber}.${refund.cancelled ? " I confirm that my reservation of this property is cancelled." : ""}`);
+    para(`Δηλώνω ότι παρέλαβα το ποσό των ${amount} από την ${s.company.name} ως επιστροφή που συμφωνήθηκε για λόγους καλής θέλησης, για το ακίνητο ${s.property}, σύμφωνα με το συμβόλαιο ${s.contractReference}, με πιστωτικό σημείωμα ${s.creditNoteNumber}.${refund.cancelled ? " Επιβεβαιώνω ότι η κράτηση του ακινήτου ακυρώνεται." : ""}`);
+  }
+  if (refund.note) para(refund.note, 9.5);
+
+  /* The two signatures. */
+  y -= 40;
+  const sig = (x: number, el: string, en: string, name: string) => {
+    page.drawLine({ start: { x, y }, end: { x: x + 210, y }, thickness: 0.8, color: GRAPHITE });
+    text(page, f.plain, `${el} / ${en}`, x, y - 13, 8, QUIET);
+    text(page, f.bold, name, x, y - 26, 9);
+    text(page, f.plain, "Ημερομηνία / Date: ____________", x, y - 44, 8.5, QUIET);
+  };
+  sig(L, "Ο πελάτης", "The client", s.client.name);
+  sig(R - 210, "Για την εταιρεία", "For the company", s.company.name);
+
+  foot(page, f, s, "Refund acknowledgement");
+  return Buffer.from(await pdf.save());
+}
+
+/* ---------------------------------------------------------------------------
+   The receipt
+   --------------------------------------------------------------------------- */
+
+const METHOD_WORDS: Record<string, [string, string]> = {
+  CASH: ["Μετρητά", "Cash"],
+  CHEQUE: ["Επιταγή", "Cheque"],
+  BANK: ["Τραπεζικό έμβασμα", "Bank transfer"],
+  CARD: ["Κάρτα", "Card"],
+  OTHER: ["Άλλο", "Other"],
+};
+
+export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
+  const { pdf, page, f } = await start(`Receipt ${s.receiptNumber}`);
+  let y = await letterhead(pdf, page, f, s, "ΑΠΟΔΕΙΞΗ ΕΙΣΠΡΑΞΗΣ", "RECEIPT", s.receiptNumber, longDay(s.paidOn));
+
+  const row = (labelEl: string, labelEn: string, value: string, strong = false) => {
+    text(page, f.plain, labelEl, L, y, 8, QUIET);
+    text(page, f.plain, labelEn, L, y - 10, 8, QUIET);
+    const lines = wrap(strong ? f.bold : f.plain, value, 10.5, R - L - 140);
+    for (const [i, line] of lines.entries()) text(page, strong ? f.bold : f.plain, line, L + 140, y - 3 - i * 14, 10.5);
+    const used = Math.max(24, lines.length * 14 + 6);
+    page.drawLine({ start: { x: L + 140, y: y - used + 4 }, end: { x: R, y: y - used + 4 }, thickness: 0.5, color: LINE });
+    y -= used + 10;
+  };
+
+  row("Ελήφθη από", "Received from", s.client.name, true);
+  if (s.client.address) row("Διεύθυνση", "Address", [s.client.address, s.client.country].filter(Boolean).join(", "));
+
+  /* The sum, in words and in figures, as the book asks. */
+  text(page, f.plain, "Το ποσόν των Ευρώ", L, y, 8, QUIET);
+  text(page, f.plain, "The sum of Euro", L, y - 10, 8, QUIET);
+  const words = [...wrap(f.bold, amountInEnglish(s.totalCents), 10, 250), ...wrap(f.plain, amountInGreek(s.totalCents), 9.5, 250)];
+  for (const [i, line] of words.entries()) text(page, i === 0 ? f.bold : f.plain, line, L + 140, y - 3 - i * 13, i === 0 ? 10 : 9.5);
+  const boxW = 130;
+  page.drawRectangle({ x: R - boxW, y: y - 26, width: boxW, height: 34, color: TEAL_SOFT, borderColor: TEAL, borderWidth: 1 });
+  right(page, f.bold, eur(s.totalCents), R - 10, y - 14, 15, TEAL_DARK);
+  y -= Math.max(40, words.length * 13 + 12) + 8;
+
+  row("Διά", "For", s.description);
+  row("Τιμολόγιο", "Invoice", s.invoiceNumber ? `No. ${s.invoiceNumber}` : "");
+
+  /* How it was paid: the book's three boxes, with the one that applies ticked. */
+  text(page, f.plain, "Τρόπος πληρωμής", L, y, 8, QUIET);
+  text(page, f.plain, "Paid by", L, y - 10, 8, QUIET);
+  let bx = L + 140;
+  const widths: Record<string, number> = { CASH: 72, CHEQUE: 80, BANK: 118, CARD: 60 };
+  for (const key of ["CASH", "CHEQUE", "BANK", "CARD"]) {
+    const [el, en] = METHOD_WORDS[key];
+    const on = s.method === key;
+    page.drawRectangle({ x: bx, y: y - 7, width: 10, height: 10, borderColor: on ? TEAL_DARK : QUIET, borderWidth: 1, color: on ? TEAL_DARK : undefined });
+    if (on) {
+      page.drawLine({ start: { x: bx + 2, y: y - 2 }, end: { x: bx + 4.5, y: y - 5 }, thickness: 1.4, color: WHITE });
+      page.drawLine({ start: { x: bx + 4.5, y: y - 5 }, end: { x: bx + 8.5, y: y + 1.5 }, thickness: 1.4, color: WHITE });
+    }
+    text(page, on ? f.bold : f.plain, en, bx + 14, y - 5, 8.5);
+    text(page, f.plain, el, bx + 14, y - 15, 7.5, QUIET);
+    bx += widths[key];
+  }
+  y -= 30;
+  if (s.reference) row(s.method === "CHEQUE" ? "Επιταγή αρ." : "Αναφορά", s.method === "CHEQUE" ? "Cheque No." : "Reference", s.reference);
+
+  if (s.vatCents > 0) {
+    text(page, f.plain, `Includes VAT of ${eur(s.vatCents)} at ${Number.isInteger(s.rate) ? s.rate : s.rate.toFixed(2)}%. Περιλαμβάνει Φ.Π.Α. ${eur(s.vatCents)}.`, L + 140, y, 8, QUIET);
+    y -= 22;
+  }
+
+  /* Where the contract stands after this money. */
+  if (s.contractTotalCents > 0) {
+    page.drawRectangle({ x: L, y: y - 58, width: R - L, height: 70, color: TEAL_SOFT });
+    const cell = (x: number, el: string, en: string, value: string, strong = false) => {
+      text(page, f.plain, `${el} / ${en}`, x, y - 8, 8, QUIET);
+      text(page, strong ? f.bold : f.bold, value, x, y - 30, strong ? 14 : 12, strong ? TEAL_DARK : GRAPHITE);
+    };
+    const w3 = (R - L - 24) / 3;
+    cell(L + 12, "Αξία συμβολαίου", "Contract total", eur(s.contractTotalCents));
+    cell(L + 12 + w3, "Εισπράχθηκαν", "Received to date", eur(s.receivedToDateCents));
+    cell(L + 12 + 2 * w3, "Υπόλοιπο", "Balance", eur(s.balanceCents), true);
+    y -= 90;
+  }
+
+  /* The person who took the money, and a place for a signature. */
+  y -= 20;
+  page.drawLine({ start: { x: R - 200, y }, end: { x: R, y }, thickness: 0.8, color: GRAPHITE });
+  right(page, f.plain, "Ο εισπράκτορας / The recipient", R, y - 12, 8, QUIET);
+  if (s.recordedBy) right(page, f.bold, s.recordedBy, R, y - 24, 9);
+  text(page, f.plain, "Ημερομηνία / Date", L, y - 12, 8, QUIET);
+  text(page, f.bold, longDay(s.paidOn), L, y - 24, 9);
+
+  foot(page, f, s, `Receipt ${s.receiptNumber}`);
+  return Buffer.from(await pdf.save());
 }

@@ -17,15 +17,46 @@ export function emailConfigured(): boolean {
 
 let transport: Transporter | null = null;
 
+/*
+ * Port 465 always means a secure connection from the first byte, whatever
+ * SMTP_SECURE says, because that is the commonest way a Google Workspace setup
+ * silently fails. And Google shows an app password in four groups with spaces,
+ * which people copy as they see it, so the spaces are taken out.
+ */
+function smtpPort(): number {
+  return Number(process.env.SMTP_PORT ?? 587);
+}
+function smtpSecure(): boolean {
+  return String(process.env.SMTP_SECURE ?? "") === "true" || smtpPort() === 465;
+}
+
+/** What the mail setup is, without the password, for the Settings page. */
+export function emailSetup(): { host: string; port: number; secure: boolean; user: string; from: string } | null {
+  if (!emailConfigured()) return null;
+  return {
+    host: process.env.SMTP_HOST ?? "",
+    port: smtpPort(),
+    secure: smtpSecure(),
+    user: process.env.SMTP_USER ?? "",
+    from: process.env.MAIL_FROM ?? "",
+  };
+}
+
 function getTransport() {
   if (transport) return transport;
   transport = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: String(process.env.SMTP_SECURE ?? "") === "true",
+    port: smtpPort(),
+    secure: smtpSecure(),
     auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD ?? "" }
+      ? {
+          user: process.env.SMTP_USER,
+          pass: (process.env.SMTP_PASSWORD ?? "").replace(/\s+/g, ""),
+        }
       : undefined,
+    /* A server that never answers is reported in seconds, not left hanging. */
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
   });
   return transport;
 }

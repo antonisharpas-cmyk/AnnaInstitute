@@ -9,6 +9,8 @@ export function formLabels(t: (key: MessageKey) => string): Record<string, strin
     agent: t("contracts.agent"),
     noAgent: t("contracts.noAgent"),
     choose: t("common.choose"),
+    searchClient: t("common.searchByName"),
+    noMatch: t("common.noMatch"),
     contractDate: t("contracts.contractDate"),
     netPrice: t("contracts.netPrice"),
     vatRate: t("contracts.vatRate"),

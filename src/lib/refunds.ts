@@ -1,0 +1,149 @@
+import "server-only";
+import { desc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { contracts, issuedDocuments, refunds, units } from "@/db/schema";
+import { fromCents, toCents } from "@/lib/money";
+import { modelOf, splitGross, vatForNet } from "@/lib/vatModel";
+import { issueCreditNote, keepPdf } from "@/lib/issued";
+import { acknowledgementPdf, longDay, type IssuedSnapshot } from "@/lib/paymentPdf";
+import { revertCommission } from "@/lib/commissions";
+import { followTheApartments } from "@/lib/statuses";
+import { recordAudit } from "@/lib/audit";
+
+/**
+ * Money paid back to a buyer, by agreement.
+ *
+ * Two cases the office named. A goodwill refund, sometimes with the
+ * reservation cancelled. And the penalty for late delivery, say €1,000 a month
+ * for three months. Either way the Contract of Sale is not touched: its price
+ * and stages stay as signed. A credit note is issued for the agreed amount,
+ * which includes VAT at the rate the buyer paid, and an acknowledgement is
+ * drawn up for the buyer to sign, saying what they received and why.
+ */
+export type RefundInput = {
+  contractId: string;
+  purpose: "REFUND" | "PENALTY";
+  amountCents: number;
+  paidOn: Date;
+  method: string | null;
+  reference: string | null;
+  note: string | null;
+  cancelContract: boolean;
+  who: { id: string; name: string; email: string };
+};
+
+export async function recordRefund(input: RefundInput) {
+  const [contract] = await db.select().from(contracts).where(eq(contracts.id, input.contractId)).limit(1);
+  if (!contract) throw new Error("The contract is not there.");
+  const day = longDay(input.paidOn.toISOString());
+  const who = { id: input.who.id, name: input.who.name };
+
+  /* The VAT inside the agreed amount, at the rate the buyer paid. */
+  const model = modelOf(contract);
+  const whole = { netCents: model.totalNetCents, vatCents: vatForNet(model.totalNetCents, model).vatCents };
+  const split = splitGross(input.amountCents, whole, model);
+
+  const cancelled = input.purpose === "REFUND" && input.cancelContract;
+  const reason =
+    input.purpose === "PENALTY"
+      ? `Compensation for the delay in completion, paid ${day}`
+      : `Goodwill refund paid ${day}${cancelled ? ", reservation cancelled" : ""}`;
+
+  const note = await issueCreditNote({
+    contractId: contract.id,
+    purpose: input.purpose,
+    reason,
+    when: input.paidOn,
+    netCents: split.netCents,
+    vatCents: split.vatCents,
+    parts: split.parts,
+    description: `${input.purpose === "PENALTY" ? "Delay penalty" : "Goodwill refund"}${
+      contract.reference ? `, contract ${contract.reference}` : ""
+    }${input.note ? `. ${input.note}` : ""}`,
+    who,
+  });
+
+  /* The paper the buyer signs. */
+  const snapshot = JSON.parse(note.snapshot) as IssuedSnapshot;
+  const ack = await acknowledgementPdf(snapshot, {
+    purpose: input.purpose,
+    amountCents: input.amountCents,
+    paidOn: input.paidOn.toISOString(),
+    method: input.method ?? "",
+    reference: input.reference ?? "",
+    cancelled,
+    note: input.note ?? "",
+  });
+  const ackId = await keepPdf(
+    ack,
+    `Refund acknowledgement ${note.number}.pdf`,
+    `Refund acknowledgement, credit note ${note.number}`,
+    "REFUND_ACK",
+    contract.id,
+    who.id,
+  );
+
+  const [refund] = await db
+    .insert(refunds)
+    .values({
+      contractId: contract.id,
+      clientId: contract.clientId,
+      purpose: input.purpose,
+      amount: fromCents(input.amountCents),
+      paidOn: input.paidOn,
+      method: input.method,
+      reference: input.reference,
+      note: input.note,
+      cancelledContract: cancelled,
+      creditNoteId: note.id,
+      acknowledgementDocumentId: ackId,
+      recordedById: who.id,
+    })
+    .returning();
+
+  if (cancelled) await cancelSale(contract.id, input.who);
+
+  await recordAudit({
+    action: `refund.${input.purpose.toLowerCase()}`,
+    entity: "contract",
+    entityId: contract.id,
+    detail: `${fromCents(input.amountCents)}, credit note ${note.number}${cancelled ? ", reservation cancelled" : ""}`,
+    userId: input.who.id,
+    userEmail: input.who.email,
+  });
+
+  return { refund, note };
+}
+
+/**
+ * The reservation cancelled with a refund: the contract is marked cancelled,
+ * the apartment goes back on the market and the agent's commission is taken
+ * back. Payments, papers and the contract itself all stay on the record.
+ */
+async function cancelSale(contractId: string, who: { id: string; name: string; email: string }) {
+  const [contract] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
+  if (!contract || contract.status === "CANCELLED") return;
+  await db.update(contracts).set({ status: "CANCELLED", updatedAt: new Date() }).where(eq(contracts.id, contractId));
+  await revertCommission(contractId);
+  if (contract.unitId) {
+    const [unit] = await db.select().from(units).where(eq(units.id, contract.unitId)).limit(1);
+    if (unit) {
+      await db
+        .update(units)
+        .set({ clientId: null, status: "AVAILABLE", statusByHandAt: null, statusByHandById: null, updatedAt: new Date() })
+        .where(eq(units.id, unit.id));
+      await followTheApartments(unit.projectId, { id: who.id, email: who.email });
+    }
+  }
+}
+
+/** The refunds on one contract, newest first, with their credit notes. */
+export async function refundsFor(contractId: string) {
+  const rows = await db
+    .select({ refund: refunds, note: issuedDocuments })
+    .from(refunds)
+    .leftJoin(issuedDocuments, eq(issuedDocuments.id, refunds.creditNoteId))
+    .where(eq(refunds.contractId, contractId))
+    .orderBy(desc(refunds.paidOn));
+  return rows.map((row) => ({ ...row, amountCents: toCents(row.refund.amount) }));
+}

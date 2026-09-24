@@ -143,10 +143,13 @@ export default async function DashboardPage({
   const mine = only === null ? [""] : only.length > 0 ? only : [""];
   const inScope = (column: SQL | typeof units.projectId) =>
     only === null ? undefined : (sql`${column} in ${mine}` as SQL);
-  const contractInScope =
+  /* Money in scope, read from the payment itself so the query needs no join. */
+  const paymentInScope =
     only === null
       ? undefined
-      : (sql`${contracts.unitId} in (select u.id from units u where u.project_id in ${mine})` as SQL);
+      : (sql`${payments.contractId} in (
+          select c.id from contracts c join units u on u.id = c.unit_id where u.project_id in ${mine}
+        )` as SQL);
 
   /**
    * What is late, and what is next.
@@ -238,7 +241,7 @@ export default async function DashboardPage({
             count: sql<number>`count(*)::int`,
           })
           .from(payments)
-          .where(and(gte(payments.paidOn, monthStart), contractInScope)),
+          .where(and(gte(payments.paidOn, monthStart), paymentInScope)),
       [],
     ),
     when(
@@ -329,7 +332,7 @@ export default async function DashboardPage({
           .innerJoin(contracts, eq(contracts.id, payments.contractId))
           .leftJoin(units, eq(units.id, contracts.unitId))
           .leftJoin(clients, eq(clients.id, contracts.clientId))
-          .where(inScope(units.projectId))
+          .where(and(inScope(units.projectId), eq(payments.kind, "PAYMENT")))
           .orderBy(desc(payments.paidOn))
           .limit(8),
       [],

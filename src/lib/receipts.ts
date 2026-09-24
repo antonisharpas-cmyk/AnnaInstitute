@@ -19,8 +19,10 @@ import {
   commissions,
   contracts,
   installments,
+  issuedDocuments,
   payments,
   projects,
+  settings,
   units,
 } from "@/db/schema";
 import { formatAmount, toCents } from "./money";
@@ -42,40 +44,83 @@ export function receiptNumber(kind: "B" | "A", id: string, when: Date): string {
 /**
  * The number the CRM gives a receipt of its own accord.
  *
- * A running count per year, B2026-0001 onwards, so the receipts the office
- * hands out come in an order anybody can follow and an auditor can count. It is
- * offered rather than imposed: the box on the payment form arrives filled in
- * with the next one and can be typed straight over, which is what the office
- * needs on the day a receipt is written out of its own book.
+ * The office's own running series, carried on from the printed receipt book:
+ * 0014, 0015 and so on, one count for the whole company and never reset, the
+ * way the book was. It is offered rather than imposed: the box on the payment
+ * form arrives filled in with the next one and can be typed over on the day a
+ * receipt is written out of the book by hand.
  *
- * The count is taken from the numbers already used rather than from a counter
- * kept somewhere, so it cannot drift away from the record it is describing, and
- * a number typed by hand that happens to look like ours is simply counted with
- * the rest.
+ * The count is the higher of two things: where Settings says the series
+ * carries on from, and one more than the highest plain number already used. So
+ * a receipt written by hand as 0020 moves the series on to 0021 by itself.
  */
-const GENERATED = /^B(\d{4})-(\d{4,})$/;
+const GENERATED = /^(\d{1,8})$/;
 
-/** Whether this number is one the CRM offered rather than one somebody typed. */
+/** Whether this number is one of the series rather than something typed freely. */
 export function looksGenerated(value: string): boolean {
-  return GENERATED.test(value.trim().toUpperCase());
+  return GENERATED.test(value.trim());
 }
 
-export async function nextReceiptNumber(when: Date = new Date()): Promise<string> {
-  const year = new Date(when).getFullYear();
+/** Four figures, the way the books print them: 14 becomes 0014. */
+export function inSeries(n: number): string {
+  return String(n).padStart(4, "0");
+}
 
+/** Where Settings says a series carries on from, read without the settings module. */
+async function seriesStart(
+  key: "numbers.nextReceipt" | "numbers.nextInvoice" | "numbers.nextCreditNote",
+  fallback: number,
+) {
+  const [row] = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
+  const n = Number(row?.value ?? fallback);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
+}
+
+export async function nextReceiptNumber(_when: Date = new Date()): Promise<string> {
+  void _when;
   const used = await db
     .select({ number: payments.receiptNumber })
     .from(payments)
-    .where(sql`${payments.receiptNumber} ilike ${`B${year}-%`}`);
+    .where(sql`${payments.receiptNumber} ~ '^[0-9]{1,8}$'`);
+
+  /* Receipts already issued count too, so a number stays used even after the
+     payment it was for was taken off again. */
+  const issued = await db
+    .select({ number: issuedDocuments.number })
+    .from(issuedDocuments)
+    .where(and(eq(issuedDocuments.kind, "RECEIPT"), sql`${issuedDocuments.number} ~ '^[0-9]{1,8}$'`));
 
   let highest = 0;
-  for (const row of used) {
-    const match = GENERATED.exec((row.number ?? "").trim().toUpperCase());
-    if (!match || Number(match[1]) !== year) continue;
-    highest = Math.max(highest, Number(match[2]));
-  }
+  for (const row of [...used, ...issued]) highest = Math.max(highest, Number(row.number ?? 0));
 
-  return `B${year}-${String(highest + 1).padStart(4, "0")}`;
+  const start = await seriesStart("numbers.nextReceipt", 14);
+  return inSeries(Math.max(start, highest + 1));
+}
+
+/** The next invoice number, in the invoice book's own series. */
+export async function nextInvoiceNumber(): Promise<string> {
+  const used = await db
+    .select({ number: issuedDocuments.number })
+    .from(issuedDocuments)
+    .where(and(eq(issuedDocuments.kind, "INVOICE"), sql`${issuedDocuments.number} ~ '^[0-9]{1,8}$'`));
+
+  let highest = 0;
+  for (const row of used) highest = Math.max(highest, Number(row.number));
+
+  const start = await seriesStart("numbers.nextInvoice", 16);
+  return inSeries(Math.max(start, highest + 1));
+}
+
+/** The next credit note number, in its own series from 0001. */
+export async function nextCreditNoteNumber(): Promise<string> {
+  const used = await db
+    .select({ number: issuedDocuments.number })
+    .from(issuedDocuments)
+    .where(and(eq(issuedDocuments.kind, "CREDIT_NOTE"), sql`${issuedDocuments.number} ~ '^[0-9]{1,8}$'`));
+  let highest = 0;
+  for (const row of used) highest = Math.max(highest, Number(row.number));
+  const start = await seriesStart("numbers.nextCreditNote", 1);
+  return inSeries(Math.max(start, highest + 1));
 }
 
 /** Is this number already on another receipt? */
@@ -87,7 +132,13 @@ export async function receiptNumberTaken(value: string): Promise<boolean> {
     .from(payments)
     .where(sql`upper(${payments.receiptNumber}) = ${wanted.toUpperCase()}`)
     .limit(1);
-  return Boolean(row);
+  if (row) return true;
+  const [issued] = await db
+    .select({ id: issuedDocuments.id })
+    .from(issuedDocuments)
+    .where(and(eq(issuedDocuments.kind, "RECEIPT"), sql`upper(${issuedDocuments.number}) = ${wanted.toUpperCase()}`))
+    .limit(1);
+  return Boolean(issued);
 }
 
 export type BuyerReceipt = Awaited<ReturnType<typeof buyerReceipt>>;

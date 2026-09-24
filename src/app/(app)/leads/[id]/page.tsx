@@ -28,7 +28,13 @@ import {
 } from "../actions";
 
 const when = (value: Date, locale: string) =>
-  new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB");
+  new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -73,6 +79,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?";
 
+  /*
+   * Once a client, the enquiry is the record of how they arrived and nothing
+   * more. It reads exactly as it did, and every change is made on the client,
+   * so there is one place to keep up to date rather than two.
+   */
+  const locked = lead.status === "CONVERTED";
+
   return (
     <>
       <BackLink href="/leads" label={t("leads.backToLeads")} />
@@ -85,6 +98,17 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           </Pill>
         }
       />
+
+      {locked ? (
+        <div className="card mb-4 flex flex-wrap items-center justify-between gap-3 border-[color:var(--color-success,#2f855a)] p-3 text-sm">
+          <span>{t("leads.lockedClient")}</span>
+          {client ? (
+            <Link href={`/clients/${client.id}`} className="btn btn-primary !px-3 !py-1 !text-xs" prefetch={false}>
+              {t("leads.openClient")}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -185,6 +209,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             stops asking.
           */}
           <Card title={t("leads.followUps")}>
+            {locked ? null : (
             <form
               action={addFollowUp.bind(null, id)}
               className="mb-4 grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-[1fr_1fr_2fr_auto]"
@@ -216,6 +241,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 <SubmitButton>{t("common.save")}</SubmitButton>
               </div>
             </form>
+            )}
 
             {followUps.length === 0 ? (
               <p className="text-sm text-brand-graphite/60">{t("leads.followUpNone")}</p>
@@ -240,6 +266,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                             : "leads.followUpPending",
                         )}
                       </Pill>
+                      {locked ? null : (
+                      <>
                       <form
                         action={setFollowUpStatus.bind(
                           null,
@@ -261,6 +289,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                         label={t("common.delete")}
                         confirm={t("remove.sure")}
                       />
+                      </>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -281,6 +311,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </span>
             }
           >
+            {locked ? null : (
             <form action={addLeadNote.bind(null, id)} className="mb-4 space-y-2">
               <textarea
                 name="body"
@@ -291,6 +322,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               />
               <SubmitButton>{t("leads.noteAdd")}</SubmitButton>
             </form>
+            )}
 
             <NoteList
               notes={notes.map((note) => ({
@@ -355,6 +387,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         </div>
 
         <div className="space-y-4">
+          {locked ? null : (
+          <>
           {/* Whose enquiry this is. Changed here without opening the form. */}
           <Card title={t("appointments.assignedTo")}>
             <form action={assignLead.bind(null, id)} className="flex flex-wrap gap-2">
@@ -400,6 +434,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </button>
             </form>
           </Card>
+
+          </>
+          )}
 
           <Card title={t("leads.convert")}>
             {client ? (
@@ -451,6 +488,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             )}
           </Card>
 
+          {locked ? null : (
           <Card>
             <form action={deleteLead.bind(null, id)}>
               <button type="submit" className="btn btn-secondary !text-xs">
@@ -458,6 +496,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </button>
             </form>
           </Card>
+          )}
         </div>
       </div>
     </>

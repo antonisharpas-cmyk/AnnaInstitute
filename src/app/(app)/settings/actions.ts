@@ -6,6 +6,7 @@ import { flash } from "@/lib/flash";
 import { recordAudit } from "@/lib/audit";
 import { writeSetting } from "@/lib/settings";
 import { sendDailySummary } from "@/lib/appointmentSummary";
+import { sendEmail } from "@/lib/messaging/email";
 
 /**
  * The few things the office sets once.
@@ -50,5 +51,76 @@ export async function sendSummaryNow() {
   const user = await requireUser(["ADMIN"]);
   await sendDailySummary({ byHand: true, who: { id: user.id, email: user.email } });
   await flash("said.summarySent");
+  revalidatePath("/settings");
+}
+
+/** The company as its invoices and receipts name it, and where the numbers carry on from. */
+const COMPANY_FIELDS = [
+  "name",
+  "registration",
+  "vat",
+  "tic",
+  "address",
+  "phone",
+  "fax",
+  "email",
+  "website",
+  "bankName",
+  "iban",
+  "swift",
+] as const;
+
+export async function saveCompanySettings(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  for (const field of COMPANY_FIELDS) {
+    await writeSetting(`company.${field}`, String(formData.get(field) ?? "").trim());
+  }
+  for (const [field, key] of [
+    ["nextInvoice", "numbers.nextInvoice"],
+    ["nextReceipt", "numbers.nextReceipt"],
+    ["nextCreditNote", "numbers.nextCreditNote"],
+  ] as const) {
+    const n = Math.trunc(Number(String(formData.get(field) ?? "").replace(/\D/g, "")));
+    if (Number.isFinite(n) && n > 0) await writeSetting(key, String(n));
+  }
+  await recordAudit({
+    action: "settings.company",
+    entity: "settings",
+    detail: "company details and numbering",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
+  revalidatePath("/settings");
+}
+
+/**
+ * Send one plain email to prove the mail account works.
+ *
+ * It says exactly what the mail server answered, because when email does not
+ * arrive the only useful thing is the server's own words.
+ */
+export async function sendTestEmail(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const to = String(formData.get("to") ?? "").trim() || user.email;
+  const result = await sendEmail({
+    to,
+    subject: "One Eleven CRM: test email",
+    text: "This is a test from the One Eleven CRM. If you are reading it, the automatic emails can go out.",
+    html: "<p>This is a test from the One Eleven CRM. If you are reading it, the automatic emails can go out.</p>",
+  });
+  await recordAudit({
+    action: "settings.testEmail",
+    entity: "settings",
+    detail: `${to}: ${result.status}${result.error ? `, ${result.error}` : ""}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(
+    result.status === "SENT"
+      ? `said.testEmailSent|${to}`
+      : `said.testEmailFailed|${String(result.error ?? "no answer").slice(0, 200)}`,
+    result.status === "SENT" ? "good" : "bad",
+  );
   revalidatePath("/settings");
 }

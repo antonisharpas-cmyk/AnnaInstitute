@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ComponentPropsWithoutRef } from "react";
+import { useEffect, useRef, useState, type ComponentPropsWithoutRef } from "react";
 
 /**
  * A time, typed or picked, in the office's own shorthand.
@@ -9,21 +9,12 @@ import { useId, useState, type ComponentPropsWithoutRef } from "react";
  * narrow, and on Windows it reads as three tiny spinners. Nobody in an office
  * types 16:00 into three boxes: they say four, or four thirty, or 4pm.
  *
- * So this is a plain text box with a list of the working day beside it, every
- * quarter of an hour from seven in the morning to nine at night. Whatever is
+ * So this is a plain text box with a picker that opens beside it: the hours of
+ * the working day, seven in the morning to nine at night, then the quarter. Whatever is
  * typed is understood and tidied on the way out: 9 becomes 09:00, 930 becomes
  * 09:30, 4pm becomes 16:00, 4.30 pm becomes 16:30. The value handed to the
  * server is always HH:MM, which is the only thing the server knows about.
  */
-const EVERY_QUARTER = (() => {
-  const times: string[] = [];
-  for (let hour = 7; hour <= 21; hour++) {
-    for (const minute of [0, 15, 30, 45]) {
-      times.push(`${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
-    }
-  }
-  return times;
-})();
 
 /** What somebody meant by what they typed. */
 export function understand(raw: string): string {
@@ -66,6 +57,11 @@ function nicely(value: string, locale: string): string {
   return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
+/** The hours of a working day, and the quarters within each. */
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 07 to 21
+const QUARTERS = [0, 15, 30, 45];
+const two = (n: number) => String(n).padStart(2, "0");
+
 export default function TimeField({
   defaultValue,
   locale = "en",
@@ -75,38 +71,166 @@ export default function TimeField({
   defaultValue?: string;
   locale?: string;
 }) {
-  const listId = useId();
   const [value, setValue] = useState(defaultValue ?? "");
   const [typed, setTyped] = useState(nicely(defaultValue ?? "", locale));
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  /* Click anywhere else, or press Escape, and the picker folds away. */
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: MouseEvent) => {
+      if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  const [hour, minute] = value ? value.split(":").map(Number) : [NaN, NaN];
+
+  const choose = (h: number, m: number, close: boolean) => {
+    const next = `${two(h)}:${two(m)}`;
+    setValue(next);
+    setTyped(nicely(next, locale));
+    if (close) setOpen(false);
+  };
+
+  const hourLabel = (h: number) =>
+    locale === "el" ? two(h) : `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "am" : "pm"}`;
 
   return (
-    <div className="relative">
-      {/* What the server is given: always HH:MM, whatever was typed. */}
+    <div ref={box} className="relative">
+      {/* What the server is given: always HH:MM, whatever was typed or picked. */}
       <input type="hidden" name={rest.name} value={value} />
-      <input
-        {...rest}
-        name={undefined}
-        list={listId}
-        inputMode="numeric"
-        autoComplete="off"
-        placeholder="16:00"
-        value={typed}
-        onChange={(event) => {
-          setTyped(event.target.value);
-          setValue(understand(event.target.value));
-        }}
-        onBlur={() => {
-          const understood = understand(typed);
-          setValue(understood);
-          setTyped(understood ? nicely(understood, locale) : "");
-        }}
-        className={`input ${className}`}
-      />
-      <datalist id={listId}>
-        {EVERY_QUARTER.map((one) => (
-          <option key={one} value={nicely(one, locale)} />
-        ))}
-      </datalist>
+      <div className="relative">
+        <input
+          {...rest}
+          name={undefined}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="16:00"
+          value={typed}
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            setTyped(event.target.value);
+            setValue(understand(event.target.value));
+          }}
+          onBlur={(event) => {
+            const understood = understand(typed);
+            setValue(understood);
+            setTyped(understood ? nicely(understood, locale) : "");
+            /* Moving on to the next box folds the picker away, so it never
+               sits over the button somebody is reaching for. */
+            if (!box.current?.contains(event.relatedTarget as Node | null)) setOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              setOpen(false);
+            }
+          }}
+          className={`input pr-9 ${className}`}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Pick a time"
+          onClick={() => setOpen((was) => !was)}
+          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-brand-graphite/55 hover:text-brand-teal-dark"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.5" />
+            <path d="M12 7.5V12l3 2" />
+          </svg>
+        </button>
+      </div>
+
+      {/*
+        The picker: the hour first, then the quarter. Picking an hour keeps the
+        minutes already chosen, or sets it on the hour; picking the quarter
+        finishes it and folds the panel away.
+      */}
+      {open ? (
+        <div
+          role="dialog"
+          className="absolute left-0 z-40 mt-1 w-72 rounded-lg border border-brand-line bg-brand-paper p-3 shadow-lg"
+        >
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-graphite/55">
+            {locale === "el" ? "Ώρα" : "Hour"}
+          </p>
+          <div className="grid grid-cols-5 gap-1">
+            {HOURS.map((h) => (
+              <button
+                key={h}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(h, Number.isFinite(minute) ? minute : 0, false)}
+                className={`rounded px-1 py-1.5 text-xs font-medium transition-colors ${
+                  h === hour
+                    ? "bg-brand-teal text-white"
+                    : "bg-brand-surface text-brand-graphite hover:bg-brand-teal/15"
+                }`}
+              >
+                {hourLabel(h)}
+              </button>
+            ))}
+          </div>
+          <p className="mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-wide text-brand-graphite/55">
+            {locale === "el" ? "Λεπτά" : "Minutes"}
+          </p>
+          <div className="grid grid-cols-4 gap-1">
+            {QUARTERS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                disabled={!Number.isFinite(hour)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(hour, m, true)}
+                className={`rounded py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                  m === minute && Number.isFinite(hour)
+                    ? "bg-brand-teal text-white"
+                    : "bg-brand-surface text-brand-graphite hover:bg-brand-teal/15"
+                }`}
+              >
+                :{two(m)}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-brand-line pt-2 text-xs">
+            <span className="font-semibold text-brand-teal-dark">
+              {value ? nicely(value, locale) : locale === "el" ? "Καμία ώρα" : "No time yet"}
+            </span>
+            <span className="flex gap-3">
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setValue("");
+                  setTyped("");
+                }}
+                className="text-brand-graphite/60 hover:underline"
+              >
+                {locale === "el" ? "Καθαρισμός" : "Clear"}
+              </button>
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setOpen(false)}
+                className="font-semibold text-brand-teal-dark hover:underline"
+              >
+                {locale === "el" ? "Εντάξει" : "OK"}
+              </button>
+            </span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

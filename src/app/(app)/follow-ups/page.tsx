@@ -7,7 +7,12 @@ import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmButton from "@/components/ConfirmButton";
 import { Figure } from "@/components/charts";
-import { deleteFollowUp, setFollowUpStatus } from "../leads/actions";
+import Disclosure from "@/components/Disclosure";
+import DateField from "@/components/DateField";
+import TimeField from "@/components/TimeField";
+import SearchSelect from "@/components/SearchSelect";
+import { whoCanBeMet } from "@/lib/appointments";
+import { addFollowUpFromList, deleteFollowUp, setFollowUpStatus } from "../leads/actions";
 
 /**
  * Every follow up, in one list.
@@ -36,10 +41,11 @@ export default async function FollowUpsPage({
   const status = params.status ?? (when === "all" ? "PENDING" : "");
   const assignedTo = params.assignedTo ?? "";
 
-  const [rows, counts, team] = await Promise.all([
+  const [rows, counts, team, people] = await Promise.all([
     listFollowUps({ when, status, assignedTo }),
     followUpCounts(),
     whoCanGo(),
+    whoCanBeMet(),
   ]);
 
   const dayOf = (value: Date) =>
@@ -138,6 +144,65 @@ export default async function FollowUpsPage({
         </form>
       </div>
       {/* eslint-enable @next/next/no-html-link-for-pages */}
+
+      {/*
+        A new follow up, written from here for any open enquiry. It is the same
+        record as one written on the enquiry, so it shows on its card at once.
+      */}
+      <div className="mb-4">
+        <Disclosure showLabel={t("followUps.add")} hideLabel={t("common.cancel")}>
+          <form
+            key={rows.length}
+            action={addFollowUpFromList}
+            className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 md:grid-cols-[2fr_1fr_1fr_2fr_auto]"
+          >
+            <div>
+              <label className="label" htmlFor="followUpLead">
+                {t("followUps.forWhom")}
+              </label>
+              <SearchSelect
+                id="followUpLead"
+                name="leadId"
+                required
+                choose={t("common.choose")}
+                searchPlaceholder={t("common.searchByName")}
+                noMatch={t("common.noMatch")}
+                options={people.leads.map((one) => ({
+                  value: one.id,
+                  label: [one.firstName, one.lastName].filter(Boolean).join(" ") || "?",
+                  hint: one.phone ?? one.email ?? undefined,
+                }))}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="followUpDay">
+                {t("leads.followUpDay")}
+              </label>
+              <DateField id="followUpDay" name="day" required />
+            </div>
+            <div>
+              <label className="label" htmlFor="followUpTime">
+                {t("appointments.time")}
+              </label>
+              <TimeField id="followUpTime" name="time" locale={locale} />
+            </div>
+            <div>
+              <label className="label" htmlFor="followUpNote">
+                {t("leads.followUpNote")}
+              </label>
+              <input
+                id="followUpNote"
+                name="note"
+                placeholder={t("leads.followUpNoteHint")}
+                className="input"
+              />
+            </div>
+            <div className="flex items-end">
+              <SubmitButton>{t("common.save")}</SubmitButton>
+            </div>
+          </form>
+        </Disclosure>
+      </div>
 
       <Card>
         {rows.length === 0 ? (

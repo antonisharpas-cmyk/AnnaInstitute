@@ -20,7 +20,7 @@ import { formatAmount, toCents } from "@/lib/money";
 import { sendAndRecord } from "@/lib/messaging";
 import { resolveStored } from "@/lib/storage";
 import { templateByKey, type AutomaticKey } from "@/lib/templates";
-import { receiptPdf } from "@/lib/paymentPdf";
+import { issuedAttachments, issueForPayment } from "@/lib/issued";
 import type { EmailAttachment } from "@/lib/messaging/email";
 
 /**
@@ -221,20 +221,21 @@ export async function letterForPayment(paymentId: string): Promise<void> {
   }
 
   /*
-   * The receipt the CRM draws up, first, and then whatever the office filed.
+   * The invoice and the receipt the CRM issued, first, then whatever the
+   * office filed against the payment.
    *
-   * The drawn up one is always there, so a buyer has a paper for their money
-   * even when nothing was scanned. If making it fails for any reason the letter
-   * still goes with the rest, because a missing PDF is no reason to leave a
-   * buyer without the letter.
+   * They are always there, so a buyer has the papers for their money even when
+   * nothing was scanned. If issuing fails for any reason the letter still goes
+   * with the rest, because a missing PDF is no reason to leave a buyer without
+   * the letter.
    */
   try {
-    const drawn = await receiptPdf(paymentId);
-    if (drawn) {
-      papers.push({ filename: drawn.filename, content: drawn.content, contentType: "application/pdf" });
+    await issueForPayment(paymentId);
+    for (const one of await issuedAttachments(paymentId)) {
+      papers.push({ filename: one.filename, content: one.content, contentType: one.contentType });
     }
   } catch {
-    /* Carry on without it. */
+    /* Carry on without them. */
   }
   papers.push(...(await filedWith(paymentId)));
 

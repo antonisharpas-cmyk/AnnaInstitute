@@ -242,7 +242,7 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
               </tr>
             </thead>
             <tbody>
-              {paid.map((one) => (
+              {paid.filter((one) => one.kind !== "CREDIT").map((one) => (
                 <tr key={one.id}>
                   <td>{day(one.paidOn, locale)}</td>
                   <td>{rows.find((r) => r.contract.id === one.contractId)?.contract.reference}</td>

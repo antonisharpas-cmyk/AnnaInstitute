@@ -276,7 +276,14 @@ export async function listLeads({
    * said, its notes included, is on the client profile, and the enquiry itself
    * is still at its own address for anybody who wants the original.
    */
-  const filters: SQL[] = [isNull(leads.deletedAt) as SQL, ne(leads.status, "CONVERTED") as SQL];
+  /*
+   * Except in Handled. The office asked for the ones that became clients to
+   * be there too, as the end of the road an enquiry was handled down, read
+   * only, with the client record one click away for anything that changes.
+   */
+  const handledView = many(status).includes("HANDLED");
+  const filters: SQL[] = [isNull(leads.deletedAt) as SQL];
+  if (!handledView) filters.push(ne(leads.status, "CONVERTED") as SQL);
   if (query) {
     filters.push(
       or(
@@ -379,10 +386,10 @@ export async function leadCounts() {
       /** Kept for the reports, which still want to know how many became buyers. */
       converted: sql<number>`count(*) filter (where status = 'CONVERTED')::int`,
       /**
-       * Picked up but not yet a client: the other half of the board. A client
-       * is not "handled", it is a client, and it is counted on that list.
+       * Everything picked up, the ones that became clients included, which
+       * the Handled view shows read only.
        */
-      handled: sql<number>`count(*) filter (where status not in ('NEW','CONVERTED'))::int`,
+      handled: sql<number>`count(*) filter (where status <> 'NEW')::int`,
     })
     .from(leads)
     .where(isNull(leads.deletedAt));

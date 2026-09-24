@@ -218,6 +218,27 @@
       "when": 1790266547383,
       "tag": "0031_cancelled_contracts_free_the_unit",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790366547383,
+      "tag": "0032_free_units_of_deleted_clients",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790466547383,
+      "tag": "0033_issued_invoices_and_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790566547383,
+      "tag": "0034_credit_notes_and_reduced_vat",
+      "breakpoints": true
     }
   ]
 }

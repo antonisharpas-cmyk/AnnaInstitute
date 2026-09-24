@@ -91,6 +91,18 @@ export default function ClientForm({
           />
         </div>
         <div>
+          <label className="label" htmlFor="vatNumber">
+            {t("clients.vatNumber")}
+          </label>
+          <input
+            id="vatNumber"
+            name="vatNumber"
+            defaultValue={client?.vatNumber ?? ""}
+            placeholder={t("clients.vatNumberHint")}
+            className="input"
+          />
+        </div>
+        <div>
           <label className="label" htmlFor="country">
             {t("clients.country")}
           </label>

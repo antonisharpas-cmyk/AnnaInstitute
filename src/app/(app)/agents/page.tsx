@@ -46,12 +46,12 @@ export default async function AgentsPage({
     db
       .select({
         agent: agents,
-        sales: sql<number>`count(${commissions.id})::int`,
+        sales: sql<number>`count(${commissions.id}) filter (where ${commissions.status} <> 'CANCELLED')::int`,
         /* How many enquiries this agent has brought us, whatever came of them.
            A subquery rather than a join, because joining a second table to a
            grouped count would multiply the sales by the leads. */
         leads: sql<number>`(select count(*) from leads l where l.agent_id = ${agents.id} and l.deleted_at is null)::int`,
-        generated: sql<string>`coalesce(sum(${commissions.amount}), 0)`,
+        generated: sql<string>`coalesce(sum(${commissions.amount}) filter (where ${commissions.status} <> 'CANCELLED'), 0)`,
         paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.agent_id = ${agents.id}), 0)`,
       })
       .from(agents)

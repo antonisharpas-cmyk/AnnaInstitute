@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, inArray, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { manyOf } from "@/lib/filters";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { fromCents, toCents } from "./money";
 import { buildSchedule, type InstallmentPlanItem, type VatSetup } from "./vat";
+import { isSplit, modelOf, vatForNet } from "./vatModel";
 import { recordAudit } from "./audit";
 
 export type ContractDetail = Awaited<ReturnType<typeof getContract>>;
@@ -137,6 +138,19 @@ export async function recalculateSchedule(
   });
 
   const built = buildSchedule(detail.vatSetup, plan);
+
+  /* After a reduced VAT approval the open stages carry the two rates, in the
+     same split as the rest of the contract, rather than one rate. */
+  const model = modelOf(detail.contract);
+  if (isSplit(model)) {
+    for (const line of built) {
+      if (line.locked) continue;
+      const { vatCents } = vatForNet(line.netCents, model);
+      line.vatCents = vatCents;
+      line.totalCents = line.netCents + vatCents;
+      line.rateApplied = line.netCents > 0 ? Math.round((vatCents / line.netCents) * 100 * 1000) / 1000 : model.rate;
+    }
+  }
   const openSeqs: number[] = [];
 
   for (const line of built) {
@@ -309,7 +323,11 @@ export async function unitsWithoutContract(keepUnitId?: string) {
     })
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
-    .leftJoin(clients, eq(clients.id, units.clientId))
+    /* A client in the bin, or one who walked away, holds nothing. */
+    .leftJoin(
+      clients,
+      and(eq(clients.id, units.clientId), isNull(clients.deletedAt), isNull(clients.closedAt)),
+    )
     /* A cancelled contract no longer holds its apartment. */
     .leftJoin(contracts, and(eq(contracts.unitId, units.id), ne(contracts.status, "CANCELLED")))
     .orderBy(asc(projects.name), asc(units.code));

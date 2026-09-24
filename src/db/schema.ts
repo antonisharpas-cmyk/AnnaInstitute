@@ -115,6 +115,11 @@ export const documentCategoryEnum = pgEnum("document_category", [
    */
   "AGENT_INVOICE",
   "AGENT_RECEIPT",
+  /** The invoice the CRM issues to a buyer for a payment. */
+  "INVOICE",
+  /** A credit note the CRM issues, and the refund acknowledgement a buyer signs. */
+  "CREDIT_NOTE",
+  "REFUND_ACK",
   "OTHER",
 ]);
 export const changeRequestStatusEnum = pgEnum("change_request_status", [
@@ -230,6 +235,8 @@ export const clients = pgTable("clients", {
   phone: text("phone"),
   idType: idTypeEnum("id_type"),
   idNumber: text("id_number"),
+  /** A company buying: its VAT number, printed on the invoices it receives. */
+  vatNumber: text("vat_number"),
   address: text("address"),
   country: text("country"),
   source: contactSourceEnum("source").default("BUYER").notNull(),
@@ -428,8 +435,22 @@ export const contracts = pgTable("contracts", {
   /** A sale, or land given in exchange for apartments. */
   kind: contractKindEnum("kind").default("SALE").notNull(),
   netPrice: money("net_price").notNull(),
-  /** One rate for the whole price. Editable, because the law changes. */
-  vatRate: rate("vat_rate").default("5").notNull(),
+  /**
+   * The rate the whole price is at. Every sale starts at the standard 19% and
+   * stays there until the buyer's reduced rate is approved; after approval it
+   * is the blended rate of the two parts below, kept for anything that needs
+   * one figure.
+   */
+  vatRate: rate("vat_rate").default("19").notNull(),
+  /**
+   * The reduced rate, once approved. The part of the price before VAT that
+   * qualifies is at reducedVatRate and the rest at standardVatRate. Empty
+   * until the approval, and the whole price is then at vatRate.
+   */
+  reducedVatNet: money("reduced_vat_net"),
+  reducedVatRate: rate("reduced_vat_rate"),
+  standardVatRate: rate("standard_vat_rate"),
+  reducedVatApprovedOn: timestamp("reduced_vat_approved_on", { withTimezone: true }),
   /**
    * Cash changing hands alongside the apartments.
    *
@@ -547,10 +568,96 @@ export const payments = pgTable("payments", {
   paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
   method: text("method"),
   receiptNumber: text("receipt_number"),
+  /** The cheque number or the bank's reference, printed on the receipt. */
+  reference: text("reference"),
+  /**
+   * PAYMENT is money that arrived. CREDIT is a credit moved from one stage to
+   * another, in pairs that add up to nothing: taken off a stage the buyer
+   * overpaid and put on the next one, so every total of money received stays
+   * the real cash while each stage shows what covers it.
+   */
+  kind: text("kind").default("PAYMENT").notNull(),
+  /** On a credit put on a stage: the invoice that has billed it, once one has. */
+  invoicedById: text("invoiced_by_id"),
   notes: text("notes"),
   recordedById: text("recorded_by_id").references(() => users.id, {
     onDelete: "set null",
   }),
+  createdAt: created(),
+});
+
+/**
+ * The invoices and receipts the CRM issues to buyers.
+ *
+ * One row per paper, numbered in the office's own running series, with every
+ * figure and name as it stood on the day it was issued, because an invoice is
+ * never rewritten afterwards. The PDF is kept as a document. A payment taken
+ * off again does not take its papers with it: they are marked void and keep
+ * their numbers, so the series never has a gap an auditor has to ask about.
+ */
+export const issuedDocuments = pgTable(
+  "issued_documents",
+  {
+    id: id(),
+    /** INVOICE or RECEIPT. */
+    kind: text("kind").notNull(),
+    number: text("number").notNull(),
+    issuedOn: timestamp("issued_on", { withTimezone: true }).notNull(),
+    paymentId: text("payment_id").references(() => payments.id, { onDelete: "set null" }),
+    contractId: text("contract_id").references(() => contracts.id, { onDelete: "set null" }),
+    clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+    /** On a receipt, the invoice it settles. */
+    invoiceId: text("invoice_id"),
+    netAmount: money("net_amount").notNull(),
+    vatAmount: money("vat_amount").notNull(),
+    vatRate: rate("vat_rate").notNull(),
+    totalAmount: money("total_amount").notNull(),
+    /** Everything printed on it, as it was, so it can be read back exactly. */
+    snapshot: text("snapshot").notNull(),
+    documentId: text("document_id").references(() => documents.id, { onDelete: "set null" }),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidReason: text("void_reason"),
+    /** On a credit note: VAT_CHANGE, REFUND or PENALTY. */
+    purpose: text("purpose"),
+    reason: text("reason"),
+    /** On an invoice that was credited: the credit note, and the invoice that replaced it. */
+    creditedById: text("credited_by_id"),
+    replacedById: text("replaced_by_id"),
+    /** The same invoice with CANCELLED stamped across it, kept beside the original. */
+    stampedDocumentId: text("stamped_document_id"),
+    createdAt: created(),
+  },
+  (t) => ({
+    numberOnce: unique("issued_documents_kind_number").on(t.kind, t.number),
+  }),
+);
+
+/**
+ * Money paid back to a buyer: a goodwill refund or a penalty for late delivery.
+ *
+ * Never a change to the contract: its price and its stages stay exactly as
+ * signed. Each one carries its credit note, the acknowledgement the buyer
+ * signs, and, once it comes back, the signed copy.
+ */
+export const refunds = pgTable("refunds", {
+  id: id(),
+  contractId: text("contract_id")
+    .notNull()
+    .references(() => contracts.id, { onDelete: "cascade" }),
+  clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+  /** REFUND or PENALTY. */
+  purpose: text("purpose").notNull(),
+  amount: money("amount").notNull(),
+  paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
+  method: text("method"),
+  reference: text("reference"),
+  note: text("note"),
+  /** Whether the reservation was cancelled with it. */
+  cancelledContract: boolean("cancelled_contract").default(false).notNull(),
+  creditNoteId: text("credit_note_id"),
+  acknowledgementDocumentId: text("acknowledgement_document_id"),
+  signedDocumentId: text("signed_document_id"),
+  recordedById: text("recorded_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: created(),
 });
 

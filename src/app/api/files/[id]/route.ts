@@ -30,7 +30,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       headers: {
         "Content-Type": doc.mimeType ?? "application/octet-stream",
         "Content-Length": String(sizeBytes),
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${encodeURIComponent(name)}"`,
+        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${name.replace(/[^\x20-\x7E]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`,
         "Cache-Control": "private, max-age=0, must-revalidate",
       },
     });

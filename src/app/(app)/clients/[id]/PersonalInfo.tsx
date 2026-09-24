@@ -12,6 +12,7 @@ export type ClientRecord = {
   phone: string | null;
   idType: "ID_CARD" | "PASSPORT" | "YELLOW_SLIP" | null;
   idNumber: string | null;
+  vatNumber?: string | null;
   country: string | null;
   address: string | null;
   source: string;
@@ -88,6 +89,7 @@ export default function PersonalInfo({
     phone: string;
     idType: string;
     idNumber: string;
+    vatNumber: string;
     country: string;
     address: string;
     source: string;
@@ -124,6 +126,7 @@ export default function PersonalInfo({
           <Row label={labels.phone} value={client.phone ?? ""} />
           <Row label={labels.idType} value={client.idType ? ID_LABELS[client.idType] : ""} />
           <Row label={labels.idNumber} value={client.idNumber ?? ""} />
+          {client.vatNumber ? <Row label={labels.vatNumber} value={client.vatNumber} /> : null}
           <Row label={labels.country} value={client.country ?? ""} />
           <Row label={labels.address} value={client.address ?? ""} />
           <Row label={labels.source} value={humanLabel(client.source)} />
@@ -167,6 +170,7 @@ export default function PersonalInfo({
         </div>
 
         <Field label={labels.idNumber} name="idNumber" defaultValue={client.idNumber ?? ""} />
+        <Field label={labels.vatNumber} name="vatNumber" defaultValue={client.vatNumber ?? ""} />
         <Field label={labels.country} name="country" defaultValue={client.country ?? ""} />
         <Field label={labels.address} name="address" defaultValue={client.address ?? ""} />
 

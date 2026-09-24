@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
+import { readFile } from "node:fs/promises";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { documents } from "@/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { canReadDocument } from "@/lib/documents";
-import { receiptPdf } from "@/lib/paymentPdf";
+import { issueForPayment } from "@/lib/issued";
+import { resolveStored } from "@/lib/storage";
 
 /**
- * The receipt the CRM draws up for a payment, as a PDF.
+ * The receipt, or with ?kind=invoice the invoice, issued for a payment.
  *
- * The same document that goes with the automatic letter, so the office can
- * open exactly what the buyer received, print it, or send it on by hand.
+ * The very file that was kept on the day and went with the buyer's letter. A
+ * payment recorded before the CRM issued papers gets them issued now, once.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ paymentId: string }> }) {
   const user = await getSessionUser();
@@ -15,16 +20,31 @@ export async function GET(request: Request, { params }: { params: Promise<{ paym
   if (!(await canReadDocument(user))) return new NextResponse("Not allowed", { status: 403 });
 
   const { paymentId } = await params;
-  const drawn = await receiptPdf(paymentId);
-  if (!drawn) return new NextResponse("Not found", { status: 404 });
+  const url = new URL(request.url);
+  const wantInvoice = url.searchParams.get("kind") === "invoice";
 
-  const download = new URL(request.url).searchParams.get("download") === "1";
-  return new NextResponse(new Uint8Array(drawn.content), {
+  const pair = await issueForPayment(paymentId, { id: user.id, name: user.name });
+  const paper = wantInvoice ? pair.invoice : pair.receipt;
+  if (!paper?.documentId) return new NextResponse("Not found", { status: 404 });
+
+  const [doc] = await db.select().from(documents).where(eq(documents.id, paper.documentId)).limit(1);
+  if (!doc) return new NextResponse("Not found", { status: 404 });
+
+  let content: Buffer;
+  try {
+    content = await readFile(resolveStored(doc.filePath));
+  } catch {
+    return new NextResponse("The file is missing from storage", { status: 410 });
+  }
+
+  const filename = `${paper.kind === "INVOICE" ? "Invoice" : "Receipt"} ${paper.number}.pdf`;
+  const download = url.searchParams.get("download") === "1";
+  return new NextResponse(new Uint8Array(content), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Length": String(drawn.content.length),
+      "Content-Length": String(content.length),
       /* A plain name for every browser, and the exact one for those that read it. */
-      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${drawn.filename.replace(/[^\x20-\x7E]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(drawn.filename)}`,
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename.replace(/[^\x20-\x7E]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
       "Cache-Control": "private, max-age=0, must-revalidate",
     },
   });

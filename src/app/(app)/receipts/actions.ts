@@ -10,7 +10,7 @@ import { flash } from "@/lib/flash";
 import { getLocale } from "@/i18n";
 import { emailConfigured, sendAndRecord } from "@/lib/messaging";
 import { agentReceipt, agentReceiptEmail, buyerReceipt, buyerReceiptEmail } from "@/lib/receipts";
-import { receiptPdf } from "@/lib/paymentPdf";
+import { issuedAttachments, issueForPayment } from "@/lib/issued";
 
 /**
  * Send a receipt, and only when somebody presses the button.
@@ -48,9 +48,10 @@ export async function sendBuyerReceipt(paymentId: string) {
 
   const { subject, body } = buyerReceiptEmail(receipt, locale);
 
-  /* The same PDF the automatic letter carries, so sending it again by hand
-     gives the buyer exactly the paper they would have had. */
-  const drawn = await receiptPdf(paymentId).catch(() => null);
+  /* The same invoice and receipt the automatic letter carries, issued now if
+     this payment was recorded before the CRM issued them. */
+  await issueForPayment(paymentId, { id: user.id, name: user.name }).catch(() => null);
+  const drawn = await issuedAttachments(paymentId).catch(() => []);
 
   const result = await sendAndRecord({
     channel: "EMAIL",
@@ -63,8 +64,8 @@ export async function sendBuyerReceipt(paymentId: string) {
     body,
     // A receipt is not marketing, so it carries no unsubscribe footer.
     withOptOut: false,
-    attachments: drawn
-      ? [{ filename: drawn.filename, content: drawn.content, contentType: "application/pdf" }]
+    attachments: drawn.length
+      ? drawn.map((one) => ({ filename: one.filename, content: one.content, contentType: one.contentType }))
       : undefined,
   });
 
@@ -88,8 +89,12 @@ export async function sendBuyerReceipt(paymentId: string) {
       .where(eq(payments.id, paymentId));
   }
 
+  /* When it fails, the office is told what the mail server said, not only
+     that it failed, because "it did not go" gives nobody anything to fix. */
   await flash(
-    result.status === "SENT" ? "said.receiptSent" : "said.receiptFailed",
+    result.status === "SENT"
+      ? "said.receiptSent"
+      : `said.receiptFailed${"error" in result && result.error ? `|${String(result.error).slice(0, 160)}` : ""}`,
     result.status === "SENT" ? "good" : "bad",
   );
 

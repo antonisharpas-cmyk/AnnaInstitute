@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gte, ilike, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { appointments, clients, leads, teamMembers } from "@/db/schema";
 
@@ -177,15 +177,27 @@ export async function appointmentsForLead(leadId: string) {
 export async function whoCanBeMet() {
   const [people, enquiries] = await Promise.all([
     db
-      .select({ id: clients.id, firstName: clients.firstName, lastName: clients.lastName })
+      .select({
+        id: clients.id,
+        firstName: clients.firstName,
+        lastName: clients.lastName,
+        phone: clients.phone,
+        email: clients.email,
+      })
       .from(clients)
       /* Not the ones who walked away: bring them back first, then meet them. */
       .where(and(isNull(clients.deletedAt), isNull(clients.closedAt)))
       .orderBy(asc(clients.lastName), asc(clients.firstName)),
     db
-      .select({ id: leads.id, firstName: leads.firstName, lastName: leads.lastName })
+      .select({
+        id: leads.id,
+        firstName: leads.firstName,
+        lastName: leads.lastName,
+        phone: leads.phone,
+        email: leads.email,
+      })
       .from(leads)
-      .where(and(isNull(leads.deletedAt), isNull(leads.clientId)))
+      .where(and(isNull(leads.deletedAt), isNull(leads.clientId), ne(leads.status, "CONVERTED")))
       .orderBy(asc(leads.createdAt)),
   ]);
 

@@ -26,6 +26,33 @@ export const DEFAULTS = {
   "appointments.reminderOn": "yes",
   /** The hour of the morning the day before when reminders start going. */
   "appointments.reminderHour": "10",
+
+  /*
+   * The company as its invoices and receipts name it. Prefilled from the
+   * office's own printed books; the ones left empty are asked for in Settings.
+   */
+  "company.name": "ONE ELEVEN INVESTMENT & DEVELOPING LTD",
+  "company.registration": "HE 476522",
+  "company.vat": "CY60112799G",
+  "company.tic": "60112799G",
+  "company.address": "4 Konstantinou Palaiologou & Zalongou, Rea Court, Shop 4, 6036 Larnaca, Cyprus",
+  "company.phone": "+357 99658784, 70003396",
+  "company.fax": "+357 24817905",
+  "company.email": "info@oneeleven-ent.cy",
+  "company.website": "",
+  "company.bankName": "",
+  "company.iban": "",
+  "company.swift": "",
+
+  /*
+   * Where the running numbers carry on from. The printed books stopped at
+   * invoice 0015 and receipt 0013, so the CRM starts at the next of each and
+   * never goes below the highest it has already used.
+   */
+  "numbers.nextInvoice": "16",
+  "numbers.nextReceipt": "14",
+  /** Credit notes have their own series, new with the CRM. */
+  "numbers.nextCreditNote": "1",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

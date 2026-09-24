@@ -88,32 +88,44 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     readUndo(),
   ]);
 
+  /* The order the office asked for: what is done every day first, then the
+     work itself, the people, the reach, the money and the figures. */
   const items: NavItem[] = [
-    { href: "/", label: t("nav.dashboard"), group: "everyDay" },
-    { href: "/leads", label: t("nav.leads"), group: "everyDay", count: waiting?.total ?? 0 },
-    { href: "/clients", label: t("nav.clients"), group: "everyDay" },
-    {
-      href: "/appointments",
-      label: t("nav.appointments"),
-      group: "everyDay",
-      count: asking ?? 0,
-    },
+    { href: "/", label: t("nav.dashboard"), group: "main" },
+    { href: "/leads", label: t("nav.leads"), group: "main", count: waiting?.total ?? 0 },
     {
       href: "/follow-ups",
       label: t("nav.followUps"),
-      group: "everyDay",
+      group: "main",
       count: followUps ?? 0,
     },
-    { href: "/projects", label: t("nav.projects"), group: "everyDay" },
-    { href: "/contracts", label: t("nav.contracts"), group: "everyDay" },
-    { href: "/team", label: t("nav.team"), group: "people" },
-    { href: "/agents", label: t("nav.agents"), group: "people" },
-    { href: "/subowners", label: t("nav.subowners"), group: "people" },
-    { href: "/campaigns", label: t("nav.campaigns"), group: "people" },
-    { href: "/emails", label: t("nav.emails"), group: "people" },
-    { href: "/commissions", label: t("nav.commissions"), group: "money" },
-    { href: "/invoices", label: t("nav.invoices"), group: "money", count: bills?.total ?? 0 },
-    { href: "/reports", label: t("nav.reports"), group: "insight" },
+    { href: "/clients", label: t("nav.clients"), group: "main" },
+    {
+      href: "/appointments",
+      label: t("nav.appointments"),
+      group: "main",
+      count: asking ?? 0,
+    },
+    { href: "/projects", label: t("nav.projects"), group: "work" },
+    { href: "/contracts", label: t("nav.contracts"), group: "work" },
+    { href: "/team", label: t("nav.team"), group: "network" },
+    { href: "/agents", label: t("nav.agents"), group: "network" },
+    { href: "/subowners", label: t("nav.subowners"), group: "network" },
+    { href: "/campaigns", label: t("nav.campaigns"), group: "marketing" },
+    { href: "/emails", label: t("nav.emails"), group: "marketing" },
+    { href: "/commissions", label: t("nav.commissions"), group: "finance" },
+    {
+      href: "/invoices",
+      label: t("nav.invoices"),
+      group: "finance",
+      count: bills?.total ?? 0,
+      /* Two kinds of paper: what we issue to buyers, and what the company is billed. */
+      children: [
+        { href: "/invoices/clients", label: t("nav.invoicesClients") },
+        { href: "/invoices", label: t("nav.invoicesCompany"), count: bills?.total ?? 0 },
+      ],
+    },
+    { href: "/reports", label: t("nav.reports"), group: "insights" },
   ];
 
   const creates = [
@@ -181,10 +193,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           goTo: t("shell.goTo"),
           create: t("shell.create"),
           groups: {
-            everyDay: t("shell.groupEveryDay"),
-            people: t("shell.groupPeople"),
-            money: t("shell.groupMoney"),
-            insight: t("shell.groupInsight"),
+            main: t("shell.groupMain"),
+            work: t("shell.groupWork"),
+            network: t("shell.groupNetwork"),
+            marketing: t("shell.groupMarketing"),
+            finance: t("shell.groupFinance"),
+            insights: t("shell.groupInsights"),
             clients: t("nav.clients"),
             projects: t("nav.projects"),
             units: t("units.title"),
@@ -231,7 +245,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       {said ? (
         <Toaster
-          message={t(said.message as MessageKey)}
+          message={
+            /* "key|detail": the sentence, then what the server actually said. */
+            said.message.includes("|")
+              ? `${t(said.message.split("|")[0] as MessageKey)}: ${said.message.split("|").slice(1).join("|")}`
+              : t(said.message as MessageKey)
+          }
           tone={said.tone}
           undo={undo ? { label: t("said.undo"), action: undoLast } : undefined}
         />

@@ -215,7 +215,13 @@ export default function LeadForm({
           <label className="label" htmlFor="agentId">
             {labels.agent}
           </label>
-          <select id="agentId" name="agentId" className="select" defaultValue="">
+          <select
+            id="agentId"
+            name="agentId"
+            className="select"
+            defaultValue={was.agentId ?? ""}
+            required
+          >
             <option value="">{labels.chooseAgent}</option>
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>

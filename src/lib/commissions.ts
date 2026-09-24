@@ -147,7 +147,8 @@ export async function commissionTotals(agentId: string) {
   const [generated] = await db
     .select({ total: sql<string>`coalesce(sum(${commissions.amount}), 0)` })
     .from(commissions)
-    .where(eq(commissions.agentId, agentId));
+    /* A commission taken back is not generated. */
+    .where(and(eq(commissions.agentId, agentId), sql`${commissions.status} <> 'CANCELLED'`));
 
   const [paid] = await db
     .select({ total: sql<string>`coalesce(sum(${commissionPayments.amount}), 0)` })
@@ -245,20 +246,63 @@ export async function openingIsPaid(contractId: string): Promise<boolean> {
   return paidCents >= wantedCents;
 }
 
+/**
+ * Take back the commission on a sale that fell through.
+ *
+ * The office's rule: a client who walks away, or whose contract is cancelled,
+ * takes the agent's commission with them. A line nothing has touched yet, no
+ * money paid to the agent and no paper filed, is simply removed, so the agent's
+ * Commission generated figure goes back down. A line the office has already
+ * paid on, or filed papers against, is kept on the record marked Cancelled,
+ * because that money really moved and settling it is a conversation with the
+ * agent, not something to vanish. Extras granted by hand are left alone.
+ */
+export async function revertCommission(contractId: string): Promise<{ removed: number; cancelled: number }> {
+  const lines = await db
+    .select({ id: commissions.id, status: commissions.status })
+    .from(commissions)
+    .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "RATE")));
+  if (lines.length === 0) return { removed: 0, cancelled: 0 };
+
+  const ids = lines.map((one) => one.id);
+  const [paidOn, papersOn] = await Promise.all([
+    db
+      .select({ id: commissionPayments.commissionId })
+      .from(commissionPayments)
+      .where(inArray(commissionPayments.commissionId, ids)),
+    db
+      .select({ id: documents.commissionId })
+      .from(documents)
+      .where(inArray(documents.commissionId, ids)),
+  ]);
+  const touched = new Set([...paidOn, ...papersOn].map((row) => row.id).filter(Boolean) as string[]);
+
+  const untouched = ids.filter((id) => !touched.has(id));
+  const kept = ids.filter((id) => touched.has(id));
+  if (untouched.length > 0) await db.delete(commissions).where(inArray(commissions.id, untouched));
+  if (kept.length > 0) {
+    await db
+      .update(commissions)
+      .set({ status: "CANCELLED", updatedAt: new Date() })
+      .where(inArray(commissions.id, kept));
+  }
+  return { removed: untouched.length, cancelled: kept.length };
+}
+
 export async function recalculateCommission(contractId: string) {
   const rows = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
   const contract = rows[0];
   if (!contract) return;
 
   /*
-   * A cancelled contract is left exactly as it stands.
-   *
-   * No new commission is generated on a sale that fell through, and one that
-   * was already generated is not quietly taken away either: whether the agent
-   * keeps it is a conversation between the office and the agent, and the line
-   * stays on their record until somebody removes it by hand.
+   * A cancelled contract earns nothing, and what it had earned is taken back,
+   * which is what the office asked for. See revertCommission for what happens
+   * to a line that was already paid on.
    */
-  if (contract.status === "CANCELLED") return;
+  if (contract.status === "CANCELLED") {
+    await revertCommission(contractId);
+    return;
+  }
 
   /*
    * A land exchange is not a sale, so it carries no commission of its own.

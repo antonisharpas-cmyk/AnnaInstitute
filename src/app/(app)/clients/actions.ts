@@ -9,6 +9,7 @@ import { clients, contractUnits, contracts, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { followTheApartments, markUnitByHand } from "@/lib/statuses";
+import { revertCommission } from "@/lib/commissions";
 import { removeDocument, storeChosenDocuments } from "@/lib/uploads";
 import { flash } from "@/lib/flash";
 import { offerUndo } from "@/lib/undo";
@@ -21,6 +22,7 @@ const clientSchema = z.object({
   phone: z.string().optional(),
   idType: z.enum(["ID_CARD", "PASSPORT", "YELLOW_SLIP"]).optional(),
   idNumber: z.string().optional(),
+  vatNumber: z.string().optional(),
   address: z.string().optional(),
   country: z.string().optional(),
   source: z.enum([
@@ -43,6 +45,7 @@ function readClient(formData: FormData) {
     phone: formData.get("phone") || undefined,
     idType: formData.get("idType") || undefined,
     idNumber: formData.get("idNumber") || undefined,
+    vatNumber: formData.get("vatNumber") || undefined,
     address: formData.get("address") || undefined,
     country: formData.get("country") || undefined,
     source: formData.get("source") || "BUYER",
@@ -95,6 +98,7 @@ export async function updateClient(
       ...parsed,
       email: parsed.email || null,
       idType: parsed.idType ?? null,
+      vatNumber: parsed.vatNumber ?? null,
       updatedAt: new Date(),
     })
     .where(eq(clients.id, clientId));
@@ -558,6 +562,9 @@ export async function closeClient(clientId: string, formData: FormData) {
         ),
       );
   }
+
+  /* 1b. And the agent's commission on those sales is taken back. */
+  for (const one of open) await revertCommission(one.id);
 
   /* 2. The apartments go back on the market: the ones assigned to them, and
         the ones on the contracts that were just cancelled. */

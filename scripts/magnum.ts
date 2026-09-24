@@ -900,6 +900,9 @@ async function main() {
   console.log("  Clearing the practice data:");
 
   const clearing: [string, string][] = [
+    ["refunds", "refunds and penalties"],
+    ["issued_documents", "issued invoices and receipts"],
+    ["automatic_emails", "automatic email records"],
     ["documents", "files"],
     ["commission_payments", "commission payments"],
     ["commissions", "commission lines"],

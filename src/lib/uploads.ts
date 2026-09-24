@@ -20,6 +20,9 @@ export type DocumentCategory =
   | "TECHNICAL_SPEC"
   | "AGENT_INVOICE"
   | "AGENT_RECEIPT"
+  | "INVOICE"
+  | "CREDIT_NOTE"
+  | "REFUND_ACK"
   | "OTHER";
 
 export type AttachTo = {

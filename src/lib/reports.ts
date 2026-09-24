@@ -297,7 +297,7 @@ export async function salesByAgent(
       sales: sql<number>`count(${contracts.id})::int`,
       value: sql<string>`coalesce(sum(${contracts.netPrice}), 0)`,
       generated: sql<string>`coalesce((
-        select sum(cm.amount) from commissions cm where cm.agent_id = agents.id
+        select sum(cm.amount) from commissions cm where cm.agent_id = agents.id and cm.status <> 'CANCELLED'
       ), 0)`,
       paid: sql<string>`coalesce((
         select sum(cp.amount) from commission_payments cp where cp.agent_id = agents.id

@@ -11,6 +11,7 @@ import TimeField from "@/components/TimeField";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmButton from "@/components/ConfirmButton";
 import KindField from "@/components/KindField";
+import SearchSelect from "@/components/SearchSelect";
 import SearchBox from "@/components/SearchBox";
 import Pick from "@/components/Pick";
 import {
@@ -191,14 +192,19 @@ export default async function AppointmentsPage({
                   it is for, and it has its own section. Appointments already
                   made with an enquiry stay on the list as they are.
                 */}
-                <select id="with" name="with" required className="select" defaultValue="">
-                  <option value="">{t("common.choose")}</option>
-                  {people.clients.map((one) => (
-                    <option key={one.id} value={`client:${one.id}`}>
-                      {one.firstName} {one.lastName}
-                    </option>
-                  ))}
-                </select>
+                <SearchSelect
+                  id="with"
+                  name="with"
+                  required
+                  choose={t("common.choose")}
+                  searchPlaceholder={t("common.searchByName")}
+                  noMatch={t("common.noMatch")}
+                  options={people.clients.map((one) => ({
+                    value: `client:${one.id}`,
+                    label: `${one.firstName ?? ""} ${one.lastName ?? ""}`.trim(),
+                    hint: one.phone ?? one.email ?? undefined,
+                  }))}
+                />
               </div>
               <KindField
                 id="type"

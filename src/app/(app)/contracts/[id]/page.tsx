@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import CreditsSection from "./CreditsSection";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { changeRequests } from "@/db/schema";
@@ -50,6 +51,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
    */
   const howPaid = (value: string | null) => {
     if (!value) return "";
+    if (value === "CREDIT") return t("contracts.method.CREDIT");
     const known = ["CASH", "BANK", "CHEQUE", "CARD", "OTHER"];
     return known.includes(value) ? t(`contracts.method.${value}` as MessageKey) : value;
   };
@@ -570,6 +572,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                   OTHER: t("contracts.method.OTHER"),
                 },
                 chooseMethod: t("contracts.chooseMethod"),
+                reference: t("contracts.paymentReference"),
+                referenceHint: t("contracts.paymentReferenceHint"),
                 files: t("contracts.paymentFiles"),
                 filesNote: t("contracts.paymentFilesNote"),
                 fileTitle: t("contracts.paymentFileTitle"),
@@ -614,11 +618,17 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                         ))}
                       </td>
                       <td className="ctr">
-                        <form action={deletePayment.bind(null, p.id, id)}>
-                          <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
-                            {t("common.delete")}
-                          </button>
-                        </form>
+                        {/* A credit moved by the reduced VAT is not money, and
+                            comes in pairs: it is not deleted on its own. */}
+                        {p.kind === "CREDIT" ? (
+                          <span className="text-xs text-brand-graphite/60">{p.notes ?? ""}</span>
+                        ) : (
+                          <form action={deletePayment.bind(null, p.id, id)}>
+                            <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                              {t("common.delete")}
+                            </button>
+                          </form>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -629,6 +639,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             <Empty message={t("common.none")} />
           )}
         </Card>
+
+        {/* 3b. The VAT approval, credit notes and money paid back. */}
+        <CreditsSection contractId={id} />
 
         {/* 4. What the buyer asked to change, with the drawings attached. */}
         <Card title={t("contracts.changeRequests")}>

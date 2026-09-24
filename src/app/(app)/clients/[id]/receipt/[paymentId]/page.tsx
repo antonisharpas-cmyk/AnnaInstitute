@@ -48,6 +48,14 @@ export default async function BuyerReceiptPage({
           >
             {t("receipts.pdf")}
           </a>
+          <a
+            href={`/api/receipts/${paymentId}?kind=invoice`}
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-secondary !px-3 !py-1 !text-xs"
+          >
+            {t("receipts.invoicePdf")}
+          </a>
         </div>
       </div>
 

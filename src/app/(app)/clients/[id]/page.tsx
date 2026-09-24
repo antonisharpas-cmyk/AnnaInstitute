@@ -344,6 +344,7 @@ export default async function ClientPage({
             phone: t("common.phone"),
             idType: t("clients.idType"),
             idNumber: t("clients.idNumber"),
+            vatNumber: t("clients.vatNumber"),
             country: t("clients.country"),
             address: t("clients.address"),
             source: t("clients.source"),
@@ -378,7 +379,7 @@ export default async function ClientPage({
             itDidNot: t("appointments.itDidNot"),
             statusDone: t("appointments.done"),
             statusMissed: t("appointments.missed"),
-            statusPlanned: t("appointments.planned"),
+            statusPlanned: t("appointments.pending"),
             move: t("appointments.move"),
             remove: t("common.delete"),
             sure: t("remove.sure"),
@@ -715,7 +716,11 @@ export default async function ClientPage({
 
                 const lines = scheduleRows.filter((l) => l.contractId === row.contract.id);
                 const mine = {
-                  payments: paymentRows.filter((pay) => pay.contractId === row.contract.id),
+                  /* Money that arrived; a credit moved by the reduced VAT is
+                     counted in each stage above but is not a payment here. */
+                  payments: paymentRows.filter(
+                    (pay) => pay.contractId === row.contract.id && pay.kind !== "CREDIT",
+                  ),
                   requests: requestRows.filter((ask) => ask.contractId === row.contract.id),
                 };
                 const scheduled = lines.reduce((a, l) => a + toCents(l.totalAmount), 0);
@@ -1038,6 +1043,8 @@ export default async function ClientPage({
                               OTHER: t("contracts.method.OTHER"),
                             },
                             chooseMethod: t("contracts.chooseMethod"),
+                            reference: t("contracts.paymentReference"),
+                            referenceHint: t("contracts.paymentReferenceHint"),
                             files: t("contracts.paymentFiles"),
                             filesNote: t("contracts.paymentFilesNote"),
                             fileTitle: t("contracts.paymentFileTitle"),

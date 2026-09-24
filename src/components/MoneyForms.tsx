@@ -58,6 +58,8 @@ export function PaymentForm({
     method: string;
     methods: Record<string, string>;
     chooseMethod: string;
+    reference?: string;
+    referenceHint?: string;
     files: string;
     filesNote: string;
     fileTitle: string;
@@ -156,6 +158,11 @@ export function PaymentForm({
             </option>
           ))}
         </select>
+      </div>
+      {/* The cheque number or the bank's reference: it is printed on the receipt. */}
+      <div>
+        <label className="label">{labels.reference ?? "Cheque no. or bank reference"}</label>
+        <input name="reference" placeholder={labels.referenceHint ?? ""} className="input" />
       </div>
       <div className="sm:col-span-2">
         <label className="label">{labels.files}</label>

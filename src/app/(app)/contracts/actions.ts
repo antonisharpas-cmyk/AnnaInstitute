@@ -22,6 +22,7 @@ import { removeDocument, storeChosenDocuments, storeDocuments } from "@/lib/uplo
 import { fromCents, toCents } from "@/lib/money";
 import { looksGenerated, nextReceiptNumber, receiptNumberTaken } from "@/lib/receipts";
 import { letterForCommission, letterForPayment, sendWaitingFor } from "@/lib/automaticEmails";
+import { issueForPayment, voidForPayment } from "@/lib/issued";
 import {
   addMonths,
   buildSchedule,
@@ -861,6 +862,7 @@ export async function recordPayment(contractId: string, formData: FormData) {
       paidOn: when,
       method: String(formData.get("method") ?? "") || null,
       receiptNumber: receipt,
+      reference: String(formData.get("reference") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "") || null,
       recordedById: user.id,
     })
@@ -884,6 +886,17 @@ export async function recordPayment(contractId: string, formData: FormData) {
 
   await lockPaidInstallments(contractId);
   await followTheMoney(contractId, user);
+
+  /*
+   * The invoice and the receipt, issued with the money and kept on file.
+   * Numbered in the office's own series; see lib/issued. A failure here never
+   * costs the office the payment, which is already safely recorded.
+   */
+  try {
+    await issueForPayment(inserted[0].id, { id: user.id, name: user.name });
+  } catch (error) {
+    console.error("[issued] could not issue the papers for a payment", error);
+  }
 
   /*
    * The letter that follows this money.
@@ -938,6 +951,8 @@ async function nothingLeftToCollect(contractId: string): Promise<boolean> {
 
 export async function deletePayment(paymentId: string, contractId: string) {
   const user = await requireUser(["ADMIN"]);
+  const [which] = await db.select({ kind: payments.kind }).from(payments).where(eq(payments.id, paymentId)).limit(1);
+  if (which?.kind === "CREDIT") return;
 
   // The row would go on its own through the foreign key, but the files behind it
   // would stay on disk, so they are removed properly first.
@@ -946,6 +961,9 @@ export async function deletePayment(paymentId: string, contractId: string) {
     .from(documents)
     .where(eq(documents.paymentId, paymentId));
   for (const doc of filed) await removeDocument(doc.id, user);
+
+  /* Its invoice and receipt stay on file, marked void, so no number goes missing. */
+  await voidForPayment(paymentId, "The payment was taken off the contract.");
 
   await db.delete(payments).where(eq(payments.id, paymentId));
   await lockPaidInstallments(contractId);

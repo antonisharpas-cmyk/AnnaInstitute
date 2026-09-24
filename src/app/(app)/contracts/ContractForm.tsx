@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import DateField from "@/components/DateField";
+import SearchSelect from "@/components/SearchSelect";
 import ScheduleBuilder, { type Row } from "./ScheduleBuilder";
 import UnitPicker from "./UnitPicker";
 import type { ContractFormState } from "./actions";
@@ -78,7 +79,7 @@ export default function ContractForm({
 }) {
   const [state, formAction] = useActionState(action, undefined);
   const [netPrice, setNetPrice] = useState(whole(contract?.netPrice));
-  const [vatRate, setVatRate] = useState(contract ? String(Number(contract.vatRate)) : "5");
+  const [vatRate, setVatRate] = useState(contract ? String(Number(contract.vatRate)) : "19");
   /**
    * A sale, or land exchanged for apartments.
    *
@@ -109,7 +110,7 @@ export default function ContractForm({
   const chooseKind = (value: "SALE" | "LAND_EXCHANGE") => {
     setKind(value);
     if (value === "LAND_EXCHANGE") setVatRate("0");
-    else setVatRate(contract ? String(Number(contract.vatRate)) : "5");
+    else setVatRate(contract ? String(Number(contract.vatRate)) : "19");
   };
 
   return (
@@ -145,20 +146,16 @@ export default function ContractForm({
             {/* The other side of a land exchange is not a buyer. */}
             {kind === "LAND_EXCHANGE" ? labels.landowner : labels.client}
           </label>
-          <select
+          <SearchSelect
             id="clientId"
             name="clientId"
             required
             defaultValue={contract?.clientId ?? defaults?.clientId ?? ""}
-            className="select"
-          >
-            <option value="">{labels.choose}</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+            choose={labels.choose}
+            searchPlaceholder={labels.searchClient}
+            noMatch={labels.noMatch}
+            options={clients.map((c) => ({ value: c.id, label: c.label }))}
+          />
         </div>
 
         {kind === "SALE" ? (

@@ -214,7 +214,41 @@ export const IconLayout = (p: Props) => (
 );
 
 /** The icon each section of the CRM wears, keyed by its address. */
+export const IconCalendar = (p: Props) => (
+  <Svg {...p}>
+    <path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2" />
+  </Svg>
+);
+
+export const IconFollowUp = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16M12 9v4l2.5 2M9 2h6" />
+  </Svg>
+);
+
+export const IconTeam = (p: Props) => (
+  <Svg {...p}>
+    <path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M3 20v-1a5 5 0 0 1 10 0v1M16 11a2.5 2.5 0 1 0 0-5M17 14.5a4.5 4.5 0 0 1 4 4.5v1" />
+  </Svg>
+);
+
+export const IconAutoEmail = (p: Props) => (
+  <Svg {...p}>
+    <path d="M3 6h14v10H3zM3 7l7 5 7-5M19 13v4l2.5 1.5M19 21a4 4 0 1 0 0-8" />
+  </Svg>
+);
+
+export const IconChevron = (p: Props) => (
+  <Svg {...p}>
+    <path d="M9 6l6 6-6 6" />
+  </Svg>
+);
+
 export const SECTION_ICONS: Record<string, (p: Props) => React.ReactElement> = {
+  "/appointments": IconCalendar,
+  "/follow-ups": IconFollowUp,
+  "/team": IconTeam,
+  "/emails": IconAutoEmail,
   "/": IconDashboard,
   "/leads": IconLeads,
   "/projects": IconProjects,

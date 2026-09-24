@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   clients,
@@ -71,6 +71,30 @@ function clientSourceFor(kind: string): typeof clients.$inferInsert.source {
  * told what was missing and handed a blank page to type again, which is worse
  * than the error page it replaced.
  */
+
+/**
+ * An enquiry that became a client is read only.
+ *
+ * Everything that changes about the person is changed on the client record,
+ * which is where the office now looks after them. The pages hide the controls;
+ * this is the same rule at the door, for a stale tab or a clever request.
+ */
+async function isClientNow(leadId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ status: leads.status })
+    .from(leads)
+    .where(eq(leads.id, leadId))
+    .limit(1);
+  return row?.status === "CONVERTED";
+}
+
+async function refuseForClient(leadId: string): Promise<boolean> {
+  if (!(await isClientNow(leadId))) return false;
+  await flash("said.leadIsClient", "bad");
+  revalidatePath(`/leads/${leadId}`);
+  return true;
+}
+
 export type LeadFormState = {
   error: string;
   values: Record<string, string>;
@@ -103,15 +127,28 @@ export async function createLead(
    * which reads as the CRM being broken rather than as a field being empty. It
    * is answered on the form now, with what the office typed still in it.
    */
-  if (!email && !phone) {
+  const typedBack = () => {
     const typed: Record<string, string> = {};
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string") typed[key] = value;
     }
+    return typed;
+  };
+  if (!email && !phone) {
     return {
       error:
         "Give the enquiry an email address or a telephone number, or there is no way to reply.",
-      values: typed,
+      values: typedBack(),
+      attempt: (previous?.attempt ?? 0) + 1,
+    };
+  }
+
+  /* An enquiry that came from an agent names the agent, or the commission
+     has nobody to go to later. */
+  if (sourceKind === "AGENT" && !String(formData.get("agentId") ?? "").trim()) {
+    return {
+      error: "The enquiry came from an agent, so choose which agent before saving it.",
+      values: typedBack(),
       attempt: (previous?.attempt ?? 0) + 1,
     };
   }
@@ -166,6 +203,7 @@ export async function createLead(
 
 export async function setLeadStatus(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
+  if (await refuseForClient(leadId)) return;
   const status = String(formData.get("status") ?? "");
   if (!STATUSES.includes(status as LeadStatus)) return;
 
@@ -224,6 +262,7 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
  */
 export async function addLeadNote(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
+  if (await refuseForClient(leadId)) return;
   const body = String(formData.get("body") ?? "").trim();
 
   if (!body) {
@@ -258,6 +297,7 @@ export async function addLeadNote(leadId: string, formData: FormData) {
  */
 export async function removeLeadNote(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
+  if (await refuseForClient(leadId)) return;
   const noteId = String(formData.get("noteId") ?? "").trim();
   if (!noteId) return;
 
@@ -446,6 +486,7 @@ export async function undoConversion(clientId: string) {
  */
 export async function deleteLead(leadId: string) {
   const user = await requireUser(["ADMIN"]);
+  if (await refuseForClient(leadId)) return;
 
   await db
     .update(leads)
@@ -478,6 +519,7 @@ export async function setLeadStatusInline(
 ): Promise<{ error?: string }> {
   const user = await requireUser(["ADMIN"]);
   if (!STATUSES.includes(status as LeadStatus)) return { error: "Unknown status" };
+  if (await isClientNow(leadId)) return { error: "This enquiry is a client now, so it is changed on the client." };
 
   const [before] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
   if (!before) return { error: "That enquiry is gone" };
@@ -554,7 +596,20 @@ async function chosenLeadIds(formData: FormData): Promise<string[]> {
 export async function bulkLeadStatus(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const status = String(formData.get("newStatus") ?? "");
-  const ids = await chosenLeadIds(formData);
+  /* The ones that became clients are left as they are. */
+  const picked = await chosenLeadIds(formData);
+  const clientsNow =
+    picked.length > 0
+      ? new Set(
+          (
+            await db
+              .select({ id: leads.id })
+              .from(leads)
+              .where(and(inArray(leads.id, picked), eq(leads.status, "CONVERTED")))
+          ).map((row) => row.id),
+        )
+      : new Set<string>();
+  const ids = picked.filter((id) => !clientsNow.has(id));
 
   if (!STATUSES.includes(status as LeadStatus) || ids.length === 0) {
     await flash("said.nothingChosen", "bad");
@@ -594,7 +649,20 @@ export async function bulkLeadStatus(formData: FormData) {
 
 export async function bulkLeadBin(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
-  const ids = await chosenLeadIds(formData);
+  /* The ones that became clients are left as they are. */
+  const picked = await chosenLeadIds(formData);
+  const clientsNow =
+    picked.length > 0
+      ? new Set(
+          (
+            await db
+              .select({ id: leads.id })
+              .from(leads)
+              .where(and(inArray(leads.id, picked), eq(leads.status, "CONVERTED")))
+          ).map((row) => row.id),
+        )
+      : new Set<string>();
+  const ids = picked.filter((id) => !clientsNow.has(id));
 
   if (ids.length === 0) {
     await flash("said.nothingChosen", "bad");
@@ -670,6 +738,7 @@ export async function killApiKey(keyId: string) {
 
 export async function addFollowUp(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
+  if (await refuseForClient(leadId)) return;
 
   const day = String(formData.get("day") ?? "").trim();
   const time = String(formData.get("time") ?? "").trim() || "09:00";
@@ -703,6 +772,25 @@ export async function addFollowUp(leadId: string, formData: FormData) {
   await flash("said.saved");
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
+  revalidatePath("/follow-ups");
+}
+
+/**
+ * A follow up written from the follow ups section.
+ *
+ * The same record as one written on the enquiry, so it appears on the
+ * enquiry's own card at once: the section only asks which enquiry it is for.
+ */
+export async function addFollowUpFromList(formData: FormData) {
+  await requireUser(["ADMIN"]);
+  const leadId = String(formData.get("leadId") ?? "").trim();
+  if (!leadId) {
+    await flash("said.followUpNeedsLead", "bad");
+    revalidatePath("/follow-ups");
+    return;
+  }
+  await addFollowUp(leadId, formData);
+  revalidatePath("/follow-ups");
 }
 
 /** Done, or back to pending when somebody pressed it too early. */
@@ -758,6 +846,7 @@ export async function deleteFollowUp(followUpId: string, leadId: string) {
 /** Whose enquiry this is. */
 export async function assignLead(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
+  if (await refuseForClient(leadId)) return;
   const assignedToId = String(formData.get("assignedToId") ?? "") || null;
 
   await db
