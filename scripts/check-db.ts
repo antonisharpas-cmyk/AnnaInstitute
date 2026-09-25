@@ -185,7 +185,7 @@ async function main() {
    */
   const columnRows = await ask(
     `select table_name, column_name from information_schema.columns
-      where table_schema = 'public' and column_name = 'deleted_at'`,
+      where table_schema = 'public'`,
   );
   const columns = new Set(columnRows.map((r) => `${r.table_name}.${r.column_name}`));
   const missingColumns = EXPECTED_COLUMNS.filter(
