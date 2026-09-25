@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import DateField from "@/components/DateField";
+import { parseAmount } from "@/lib/money";
 
 /**
  * Building the installments of a contract.
@@ -67,10 +68,9 @@ const euros = (cents: number) =>
     maximumFractionDigits: Math.abs(cents) % 100 === 0 ? 0 : 2,
   }).format(cents / 100);
 
-const toCents = (value: string) => {
-  const n = Number.parseFloat(String(value).replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
-};
+/* The same reading of a typed amount as the server's, so the remaining figure
+   on screen is the one the save will find. */
+const toCents = (value: string) => parseAmount(value);
 
 const whole = (cents: number) =>
   Math.abs(cents) % 100 === 0 ? String(Math.round(cents / 100)) : (cents / 100).toFixed(2);

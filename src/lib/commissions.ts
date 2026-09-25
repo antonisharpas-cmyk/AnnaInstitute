@@ -98,7 +98,10 @@ export async function salesOfAgent(agentId: string) {
 
   return rows.map((r) => {
     const own = byContract.get(r.contract.id) ?? [];
-    const generatedCents = own.reduce((a, l) => a + l.amountCents, 0);
+    /* A line taken back is not generated. */
+    const generatedCents = own
+      .filter((l) => l.status !== "CANCELLED")
+      .reduce((a, l) => a + l.amountCents, 0);
     const paidCents = own.reduce((a, l) => a + l.paidCents, 0);
 
     // What the apartment was priced at against what it actually went for. A

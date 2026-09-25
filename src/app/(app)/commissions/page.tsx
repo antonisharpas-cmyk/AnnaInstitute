@@ -40,8 +40,10 @@ export default async function CommissionsPage({
   const matching = all.filter((r) => {
     const paidCents = toCents(r.paid);
     const owed = toCents(r.line.amount) - paidCents;
-    if (status === "PAID" && owed > 0) return false;
-    if (status === "PENDING" && owed <= 0) return false;
+    /* A commission taken back is owed by nobody. */
+    const cancelled = r.line.status === "CANCELLED";
+    if (status === "PAID" && (owed > 0 || cancelled)) return false;
+    if (status === "PENDING" && (owed <= 0 || cancelled)) return false;
     if (!query) return true;
     const haystack = [
       r.agent.name,
@@ -69,7 +71,9 @@ export default async function CommissionsPage({
     db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
   ]);
 
-  const generated = matching.reduce((a, r) => a + toCents(r.line.amount), 0);
+  const generated = matching
+    .filter((r) => r.line.status !== "CANCELLED")
+    .reduce((a, r) => a + toCents(r.line.amount), 0);
   const settled = matching.reduce((a, r) => a + toCents(r.paid), 0);
 
   return (
@@ -180,7 +184,9 @@ export default async function CommissionsPage({
                       <td className="ctr">
                         {r.line.kind === "RATE" ? formatPercent(Number(r.line.rate), locale) : ""}
                       </td>
-                      <td className="ctr font-semibold">
+                      <td
+                        className={`ctr font-semibold ${r.line.status === "CANCELLED" ? "line-through text-brand-graphite/50" : ""}`}
+                      >
                         {formatAmount(toCents(r.line.amount), locale)}
                       </td>
                       <td className="ctr">{formatAmount(toCents(r.paid), locale)}</td>
@@ -204,11 +210,15 @@ export default async function CommissionsPage({
                         })()}
                       </td>
                       <td className="ctr">
-                        <Pill tone={papers.get(r.line.id)?.complete ? "good" : "warn"}>
-                          {papers.get(r.line.id)?.complete
-                            ? t("commissions.completed")
-                            : t("commissions.notCompleted")}
-                        </Pill>
+                        {r.line.status === "CANCELLED" ? (
+                          <Pill tone="bad">{t("commissions.cancelled")}</Pill>
+                        ) : (
+                          <Pill tone={papers.get(r.line.id)?.complete ? "good" : "warn"}>
+                            {papers.get(r.line.id)?.complete
+                              ? t("commissions.completed")
+                              : t("commissions.notCompleted")}
+                          </Pill>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -424,13 +424,35 @@ export async function bulkClientBin(formData: FormData) {
     return;
   }
 
+  /*
+   * A client with a sale that is still going can be deleted: the office's
+   * rule is that the sale goes with them. The contract is cancelled (kept, with
+   * its payments and papers), the agent's commission on it is taken back, and
+   * the apartment is free, exactly as when a client is closed. A client with a
+   * finished sale or a land exchange is kept, because that is a deal that
+   * happened and a commission that was earned.
+   */
   const signed = await db
-    .select({ clientId: contracts.clientId })
+    .select({ clientId: contracts.clientId, kind: contracts.kind, status: contracts.status })
     .from(contracts)
     .where(inArray(contracts.clientId, ids));
 
-  const locked = new Set(signed.map((row) => row.clientId).filter(Boolean) as string[]);
+  const locked = new Set(
+    signed
+      .filter((row) => row.kind !== "SALE" || row.status === "COMPLETED")
+      .map((row) => row.clientId)
+      .filter(Boolean) as string[],
+  );
   const removable = ids.filter((id) => !locked.has(id));
+  const withSales = new Set(
+    signed.map((row) => row.clientId).filter((id): id is string => Boolean(id) && !locked.has(id as string)),
+  );
+
+  let cancelled = 0;
+  for (const clientId of withSales) {
+    const { open } = await walkAway(clientId, user);
+    cancelled += open.length;
+  }
 
   if (removable.length > 0) {
     await db
@@ -490,16 +512,25 @@ export async function bulkClientBin(formData: FormData) {
   await recordAudit({
     action: "client.binned.bulk",
     entity: "client",
-    detail: `${removable.length} moved to the bin, ${locked.size} kept because they have a contract`,
+    detail: `${removable.length} moved to the bin, ${cancelled} contract${cancelled === 1 ? "" : "s"} cancelled with the commission taken back, ${locked.size} kept because they have a completed sale or a land exchange`,
     userId: user.id,
     userEmail: user.email,
   });
 
   await flash(
-    removable.length > 0 ? "said.movedToBin" : "said.clientHasContract",
+    removable.length === 0
+      ? "said.clientHasContract"
+      : cancelled > 0
+        ? `said.movedToBinSaleOff|${cancelled}`
+        : "said.movedToBin",
     removable.length > 0 ? "good" : "bad",
   );
   revalidatePath("/clients");
+  if (cancelled > 0) {
+    revalidatePath("/contracts");
+    revalidatePath("/commissions");
+    revalidatePath("/agents");
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -512,13 +543,14 @@ export async function bulkClientBin(formData: FormData) {
    apartment is sitting there held by somebody who is not buying it.
    --------------------------------------------------------------------------- */
 
-export async function closeClient(clientId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN"]);
-  const reason = String(formData.get("reason") ?? "").trim() || null;
-
-  const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1);
-  if (!client) return;
-
+/**
+ * A client who is no longer buying: what that undoes.
+ *
+ * Shared by closing a client and by putting one in the bin, because the office
+ * means the same thing by both as far as the sale goes: the contract is off,
+ * the agent's commission on it is taken back, and the apartment is free.
+ */
+async function walkAway(clientId: string, user: { id: string; email: string }) {
   /* 1. Their contracts are marked cancelled, not deleted. The schedule and
         every payment stay exactly as they were, because they are the record
         of money that really moved. A completed contract is left alone: a
@@ -563,8 +595,11 @@ export async function closeClient(clientId: string, formData: FormData) {
       );
   }
 
-  /* 1b. And the agent's commission on those sales is taken back. */
-  for (const one of open) await revertCommission(one.id);
+  /* 1b. And the agent's commission on those sales is taken back, and on any
+         sale of theirs cancelled before the CRM did this by itself. */
+  for (const one of theirs) {
+    if (one.kind === "SALE" && one.status !== "COMPLETED") await revertCommission(one.id);
+  }
 
   /* 2. The apartments go back on the market: the ones assigned to them, and
         the ones on the contracts that were just cancelled. */
@@ -606,6 +641,18 @@ export async function closeClient(clientId: string, formData: FormData) {
       await followTheApartments(project, user);
     }
   }
+
+  return { open, released };
+}
+
+export async function closeClient(clientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+
+  const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!client) return;
+
+  const { open, released } = await walkAway(clientId, user);
 
   /* 3. And the client moves to the Closed list, with the reason. */
   await db

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, leads } from "@/db/schema";
+import { clients, contracts, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
@@ -49,6 +49,18 @@ export async function forGood(kind: Kind, id: string) {
   if (kind === "lead") {
     await db.delete(leads).where(eq(leads.id, id));
   } else {
+    /* A client named on a contract stays: the contract, its payments and its
+       invoices are the record of a sale, and they need their buyer. */
+    const [onContract] = await db
+      .select({ id: contracts.id })
+      .from(contracts)
+      .where(eq(contracts.clientId, id))
+      .limit(1);
+    if (onContract) {
+      await flash("said.clientHasContractsForGood", "bad");
+      revalidatePath("/bin");
+      return;
+    }
     await db.delete(clients).where(eq(clients.id, id));
   }
 

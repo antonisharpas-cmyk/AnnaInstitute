@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { and, eq, inArray, isNotNull, lt } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, leads } from "@/db/schema";
 import { recordAudit } from "@/lib/audit";
@@ -144,7 +144,16 @@ export async function readBin() {
 
   await Promise.all([
     db.delete(leads).where(and(isNotNull(leads.deletedAt), lt(leads.deletedAt, cutoff))),
-    db.delete(clients).where(and(isNotNull(clients.deletedAt), lt(clients.deletedAt, cutoff))),
+    /* Not a client named on a contract, whose sale has to keep its buyer. */
+    db
+      .delete(clients)
+      .where(
+        and(
+          isNotNull(clients.deletedAt),
+          lt(clients.deletedAt, cutoff),
+          sql`not exists (select 1 from contracts c where c.client_id = clients.id)`,
+        ),
+      ),
   ]);
 
   const [leadRows, clientRows] = await Promise.all([

@@ -19,13 +19,13 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { removeDocument, storeChosenDocuments, storeDocuments } from "@/lib/uploads";
-import { fromCents, toCents } from "@/lib/money";
+import { distributeCents, fromCents, normalizeAmount, parseAmount, toCents } from "@/lib/money";
+import { isSplit, modelOf, vatForNet } from "@/lib/vatModel";
 import { looksGenerated, nextReceiptNumber, receiptNumberTaken } from "@/lib/receipts";
 import { letterForCommission, letterForPayment, sendWaitingFor } from "@/lib/automaticEmails";
 import { issueForPayment, voidForPayment } from "@/lib/issued";
 import {
   addMonths,
-  buildSchedule,
   stageFromAnyLanguage,
   vatOn,
   type InstallmentPlanItem,
@@ -99,7 +99,7 @@ function readLines(formData: FormData): LineInput[] {
     return {
       label: String(line.label ?? "").trim() || "Installment",
       labelEl: line.labelEl ? String(line.labelEl) : null,
-      amount: String(line.amount ?? "0"),
+      amount: normalizeAmount(String(line.amount ?? "")) ?? "0",
       dueDate: line.dueDate ? String(line.dueDate) : null,
     };
   });
@@ -171,22 +171,47 @@ async function writeSchedule(
      nothing by installments. */
   if (lines.length === 0) return;
 
-  const built = buildSchedule({ netCents, rate }, planFrom(lines, netCents));
+  planFrom(lines, netCents);
+  const nets = exactAmounts(lines, netCents);
+  /* The VAT on the whole price, split over the lines by their amounts, so the
+     schedule adds up to the VAT on the price to the cent. */
+  const vats = distributeCents(vatOn(netCents, rate), nets);
 
   await db.insert(installments).values(
-    built.map((line) => ({
+    lines.map((line, i) => ({
       contractId,
-      seq: line.seq,
+      seq: i + 1,
       label: line.label,
       labelEl: line.labelEl ?? null,
-      percentage: line.percentage.toFixed(4),
-      netAmount: fromCents(line.netCents),
-      vatAmount: fromCents(line.vatCents),
-      totalAmount: fromCents(line.totalCents),
-      vatRateApplied: line.rateApplied.toFixed(3),
-      dueDate: line.dueDate ?? null,
+      percentage: (netCents > 0 ? (nets[i] / netCents) * 100 : 100 / lines.length).toFixed(4),
+      netAmount: fromCents(nets[i]),
+      vatAmount: fromCents(vats[i]),
+      totalAmount: fromCents(nets[i] + vats[i]),
+      vatRateApplied: rate.toFixed(3),
+      dueDate: line.dueDate ? new Date(line.dueDate) : null,
     })),
   );
+}
+
+/**
+ * The amounts exactly as they were typed.
+ *
+ * They used to be turned into percentages and spread over the price again,
+ * which moved a figure typed by hand by a cent here and there, and further
+ * once the percentage had been rounded for storing. Now what was typed is what
+ * is kept. The euro of slack the check allows, for a schedule worked out as
+ * percentages of an odd price, goes on the last line with money on it, so the
+ * lines still add up to the price.
+ */
+function exactAmounts(lines: LineInput[], netCents: number): number[] {
+  const nets = lines.map((line) => toCents(line.amount));
+  const gap = netCents - nets.reduce((a, b) => a + b, 0);
+  if (gap !== 0) {
+    let last = nets.length - 1;
+    while (last > 0 && nets[last] === 0) last -= 1;
+    nets[last] += gap;
+  }
+  return nets;
 }
 
 /**
@@ -233,8 +258,8 @@ function readDetails(formData: FormData) {
   return detailsSchema.parse({
     reference: formData.get("reference"),
     kind: formData.get("kind") || "SALE",
-    cashAmount: formData.get("cashAmount") || undefined,
-    contractValue: formData.get("contractValue") || undefined,
+    cashAmount: normalizeAmount(String(formData.get("cashAmount") ?? "")),
+    contractValue: normalizeAmount(String(formData.get("contractValue") ?? "")),
     plotDescription: formData.get("plotDescription") || undefined,
     plotReference: formData.get("plotReference") || undefined,
     plotArea: formData.get("plotArea") || undefined,
@@ -242,7 +267,7 @@ function readDetails(formData: FormData) {
     clientId: formData.get("clientId"),
     agentId: formData.get("agentId") || undefined,
     contractDate: formData.get("contractDate") || undefined,
-    netPrice: String(formData.get("netPrice") ?? "0"),
+    netPrice: normalizeAmount(String(formData.get("netPrice") ?? "")) ?? "0",
     vatRate: String(formData.get("vatRate") ?? "5"),
     scheduleType: formData.get("scheduleType") || "STANDARD",
     periodMonths: formData.get("periodMonths") || undefined,
@@ -569,7 +594,9 @@ export async function updateContract(
 
   if (checked) {
     await writeSchedule(contractId, netCents, rate, checked);
-  } else {
+  } else if (netCents !== before.vatSetup.netCents || rate !== before.vatSetup.rate) {
+    /* Money has come in, so the lines stay; only a new price or rate moves
+       the open ones. Saving a new name or a new note touches no figure. */
     await recalculateSchedule(contractId, user, "contract.update");
   }
 
@@ -724,9 +751,11 @@ export async function updateLine(installmentId: string, contractId: string, form
       .set({ label, labelEl, dueDate: dueDate ? new Date(dueDate) : null, updatedAt: new Date() })
       .where(eq(installments.id, installmentId));
   } else {
-    const netCents = amountField === null ? toCents(row.netAmount) : toCents(String(amountField));
-    const rate = Number(contract.vatRate);
-    const vatCents = vatOn(netCents, rate);
+    const netCents = amountField === null ? toCents(row.netAmount) : parseAmount(String(amountField));
+    /* At the contract's VAT, in its two rates when the reduced one is approved. */
+    const model = modelOf(contract);
+    const { vatCents } = vatForNet(netCents, model);
+    const rate = netCents > 0 && isSplit(model) ? Math.round((vatCents / netCents) * 100 * 1000) / 1000 : Number(contract.vatRate);
     const contractNet = toCents(contract.netPrice);
 
     await db
@@ -826,7 +855,7 @@ export async function removeLine(installmentId: string, contractId: string) {
 export async function recordPayment(contractId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const installmentId = String(formData.get("installmentId") ?? "") || null;
-  const amountCents = toCents(String(formData.get("amount") ?? "0"));
+  const amountCents = parseAmount(String(formData.get("amount") ?? "0"));
   const paidOn = String(formData.get("paidOn") ?? "");
 
   if (amountCents <= 0) throw new Error("The amount must be more than zero.");

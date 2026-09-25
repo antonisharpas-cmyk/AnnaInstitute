@@ -12,12 +12,16 @@ export default function SubmitButton({
   children,
   pendingLabel,
   className = "btn btn-primary",
+  pending: sentByHand,
 }: {
   children: React.ReactNode;
   pendingLabel?: string;
   className?: string;
+  /** For a form sent by hand, which React cannot see as pending. */
+  pending?: boolean;
 }) {
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  const pending = sentByHand ?? status.pending;
 
   return (
     <button type="submit" disabled={pending} className={className}>

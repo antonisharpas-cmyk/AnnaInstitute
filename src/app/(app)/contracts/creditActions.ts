@@ -7,7 +7,7 @@ import { clients, contracts, issuedDocuments, refunds } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { flash } from "@/lib/flash";
 import { recordAudit } from "@/lib/audit";
-import { toCents, fromCents } from "@/lib/money";
+import { toCents, fromCents, parseAmount } from "@/lib/money";
 import { approveReducedVat } from "@/lib/reducedVat";
 import { recordRefund } from "@/lib/refunds";
 import { paperAttachment, readDocument } from "@/lib/issued";
@@ -15,8 +15,7 @@ import { storeDocuments } from "@/lib/uploads";
 import { emailConfigured, sendAndRecord } from "@/lib/messaging";
 import type { EmailAttachment } from "@/lib/messaging/email";
 
-const cents = (value: FormDataEntryValue | null) =>
-  toCents(String(value ?? "").replace(/[^0-9.,-]/g, "").replace(/,/g, "") || "0");
+const cents = (value: FormDataEntryValue | null) => parseAmount(String(value ?? ""));
 
 /** The buyer's reduced VAT is approved: see lib/reducedVat for every step. */
 export async function approveReducedVatAction(contractId: string, formData: FormData) {

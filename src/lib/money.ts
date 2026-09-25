@@ -8,6 +8,46 @@ export function toCents(value: string | number | null | undefined): number {
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
 
+/**
+ * An amount as a person types it, in cents.
+ *
+ * The office types in two styles: 12,500.50 the English way and 12.500,50 the
+ * Greek way, and sometimes 1234,56 with a comma for the cents. Reading them all
+ * with one rule turned 12.500 into twelve and a half euros and 1234,56 into
+ * 123,456, which is how an installment typed by hand came out a different
+ * number from the one on the screen. So: when both marks are there, the last
+ * one is the decimal point; a comma alone is thousands only when every group
+ * after it has three digits; a dot alone followed by exactly three digits is
+ * thousands, since no amount of money has three decimals.
+ */
+export function parseAmount(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? Math.round(value * 100) : 0;
+  let text = value.replace(/[^0-9.,-]/g, "");
+  if (!text) return 0;
+  const lastDot = text.lastIndexOf(".");
+  const lastComma = text.lastIndexOf(",");
+  if (lastDot >= 0 && lastComma >= 0) {
+    const decimal = lastDot > lastComma ? "." : ",";
+    const thousands = decimal === "." ? "," : ".";
+    text = text.split(thousands).join("").replace(decimal, ".");
+  } else if (lastComma >= 0) {
+    text = /^-?\d{1,3}(,\d{3})+$/.test(text) ? text.replace(/,/g, "") : text.split(",").length === 2 ? text.replace(",", ".") : text.replace(/,/g, "");
+  } else if (lastDot >= 0) {
+    const dots = text.split(".").length - 1;
+    if (dots > 1) text = text.replace(/\./g, "");
+    else if (/^-?[1-9]\d{0,2}\.\d{3}$/.test(text)) text = text.replace(".", "");
+  }
+  const n = Number.parseFloat(text);
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+
+/** The same amount written the one way the rest of the CRM reads, "12500.50". */
+export function normalizeAmount(value: string | null | undefined): string | undefined {
+  if (value === null || value === undefined || String(value).trim() === "") return undefined;
+  return fromCents(parseAmount(value));
+}
+
 export function fromCents(cents: number): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(Math.round(cents));

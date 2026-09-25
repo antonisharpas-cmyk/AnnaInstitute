@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { asc, eq, isNull } from "drizzle-orm";
+import { asc, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, clients } from "@/db/schema";
 import { getTranslator } from "@/i18n";
@@ -22,8 +22,27 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
 
   const [free, clientList, agentList, theirs] = await Promise.all([
     unitsWithoutContract(detail.contract.unitId ?? undefined),
-    db.select().from(clients).where(isNull(clients.deletedAt)).orderBy(asc(clients.lastName)),
-    db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
+    /* The buyer and the agent already on the contract are always offered,
+       even a client since binned or an agent made inactive: a list without
+       them saved the contract with nobody in their place. */
+    db
+      .select()
+      .from(clients)
+      .where(
+        detail.contract.clientId
+          ? or(isNull(clients.deletedAt), eq(clients.id, detail.contract.clientId))
+          : isNull(clients.deletedAt),
+      )
+      .orderBy(asc(clients.lastName)),
+    db
+      .select()
+      .from(agents)
+      .where(
+        detail.contract.agentId
+          ? or(eq(agents.isActive, true), eq(agents.id, detail.contract.agentId))
+          : eq(agents.isActive, true),
+      )
+      .orderBy(asc(agents.name)),
     landExchangeUnits(id),
   ]);
 

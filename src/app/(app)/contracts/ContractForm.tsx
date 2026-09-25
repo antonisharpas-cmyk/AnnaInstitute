@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import Link from "next/link";
 import DateField from "@/components/DateField";
 import SearchSelect from "@/components/SearchSelect";
@@ -8,6 +8,7 @@ import ScheduleBuilder, { type Row } from "./ScheduleBuilder";
 import UnitPicker from "./UnitPicker";
 import type { ContractFormState } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
+import { parseAmount } from "@/lib/money";
 
 type ContractRecord = {
   id: string;
@@ -77,7 +78,7 @@ export default function ContractForm({
   editing?: boolean;
   labels: Record<string, string>;
 }) {
-  const [state, formAction] = useActionState(action, undefined);
+  const [state, formAction, pending] = useActionState(action, undefined);
   const [netPrice, setNetPrice] = useState(whole(contract?.netPrice));
   const [vatRate, setVatRate] = useState(contract ? String(Number(contract.vatRate)) : "19");
   /**
@@ -94,10 +95,7 @@ export default function ContractForm({
   const [cash, setCash] = useState(whole(contract?.cashAmount ?? undefined));
 
   /** The price and the cash added up, said out loud so nobody has to do it. */
-  const money = (value: string) => {
-    const n = Number(String(value).replace(/[^0-9.-]/g, ""));
-    return Number.isFinite(n) ? n : 0;
-  };
+  const money = (value: string) => parseAmount(value) / 100;
   const together = money(netPrice) + money(cash);
   const fullValue =
     money(cash) > 0
@@ -114,7 +112,25 @@ export default function ContractForm({
   };
 
   return (
-    <form action={formAction} className="space-y-4">
+    /*
+      The form is sent by hand rather than through its action attribute.
+
+      React empties a form after its action has run, even when the answer is
+      "the installments do not add up": every field typed went back to what the
+      page was opened with, and the client list, which keeps its choice in
+      state, went back to Choose, so the next save came out without a buyer.
+      Sending it ourselves leaves everything exactly as the user left it, so
+      the message can be read, one number fixed, and the form saved again.
+    */
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (pending) return;
+        const data = new FormData(event.currentTarget);
+        startTransition(() => formAction(data));
+      }}
+      className="space-y-4"
+    >
       {state?.error ? (
         <p className="rounded border border-[color:var(--color-negative)] bg-white px-3 py-2 text-sm text-[color:var(--color-negative)]">
           {state.error}
@@ -457,7 +473,7 @@ export default function ContractForm({
       />
 
       <div className="flex flex-wrap gap-2 border-t border-brand-line pt-4">
-        <SubmitButton>{labels.save}</SubmitButton>
+        <SubmitButton pending={pending}>{labels.save}</SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">
           {labels.cancel}
         </Link>

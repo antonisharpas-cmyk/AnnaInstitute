@@ -30,6 +30,7 @@ import BulkBar from "@/components/BulkBar";
 import RowKeys from "@/components/RowKeys";
 import { InlineText } from "@/components/Inline";
 import { bulkClientBin, bulkClientMarketing, setClientField } from "./actions";
+import ArmedSubmit from "@/components/ArmedSubmit";
 
 const PER_PAGE = 20;
 
@@ -645,13 +646,12 @@ export default async function ClientsPage({
               >
                 {t("list.marketingOff")}
               </button>
-              <button
-                type="submit"
+              <ArmedSubmit
                 formAction={bulkClientBin}
-                className="btn btn-ghost !px-2.5 !py-1 !text-xs"
-              >
-                {t("list.moveToBin")}
-              </button>
+                label={t("list.moveToBin")}
+                confirm={t("clients.binConfirm")}
+                title={t("clients.binHint")}
+              />
             </BulkBar>
 
             <p className="mt-2 text-xs text-brand-graphite/55">{t("list.keyboardHint")}</p>

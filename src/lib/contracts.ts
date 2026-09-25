@@ -122,13 +122,24 @@ export async function recalculateSchedule(
   const detail = await getContract(contractId);
   if (!detail) throw new Error("Contract not found");
 
+  /*
+   * The open lines share what is left of the price in the proportions they
+   * have now, taken from their amounts rather than from the stored
+   * percentage. The percentage is kept to four places, which on a price of a
+   * few hundred thousand is euros, so saving a contract without touching a
+   * figure used to move every open installment a little. Weighed by their own
+   * amounts, an unchanged price gives back exactly the amounts that were there.
+   */
+  const anyOpenAmount = detail.installments.some(
+    (l) => !(l.paidCents > 0 || l.lockedAt !== null) && l.netCents > 0,
+  );
   const plan: InstallmentPlanItem[] = detail.installments.map((l) => {
     const locked = l.paidCents > 0 || l.lockedAt !== null;
     return {
       seq: l.seq,
       label: l.label,
       labelEl: l.labelEl,
-      percentage: Number(l.percentage),
+      percentage: anyOpenAmount ? l.netCents : Number(l.percentage),
       dueDate: l.dueDate,
       locked,
       lockedNetCents: locked ? l.netCents : undefined,

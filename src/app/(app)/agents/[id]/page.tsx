@@ -91,7 +91,11 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           label={t("agents.rate")}
           value={formatPercent(Number(agent.commissionRate), locale)}
         />
-        <Stat label={t("agents.sales")} value={String(sales.length)} />
+        {/* A sale that fell through is not one of the agent's sales. */}
+        <Stat
+          label={t("agents.sales")}
+          value={String(sales.filter((sale) => sale.contract.status !== "CANCELLED").length)}
+        />
         <Stat label={t("agents.generated")} value={formatAmount(totals.generatedCents, locale)} />
         <Stat label={t("agents.paidOut")} value={formatAmount(totals.paidCents, locale)} />
         <Stat label={t("agents.owed")} value={formatAmount(totals.outstandingCents, locale)} />
@@ -263,7 +267,11 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                       </form>
                     </div>
 
-                    {sale.lines.length === 0 ? (
+                    {sale.contract.status === "CANCELLED" && sale.lines.length === 0 ? (
+                      <p className="mt-3 rounded border border-dashed border-brand-line bg-brand-surface p-3 text-sm font-semibold text-[color:var(--color-negative)]">
+                        {t("agents.saleCancelled")}
+                      </p>
+                    ) : sale.lines.length === 0 ? (
                       /*
                         Nothing earned yet is not the same as nothing to say.
                         Left as an empty table with a nought in it, the page
