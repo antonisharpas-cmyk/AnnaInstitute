@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { documents, expenses, projects } from "@/db/schema";
+import { documents, expenses, projects, subowners } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import { EXPENSE_CATEGORIES, expenseStatusTone } from "@/lib/expenses";
@@ -11,7 +11,17 @@ import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
 import ExpenseForm from "../ExpenseForm";
-import { deleteExpense, deleteExpenseFile, markExpensePaid, updateExpense } from "../actions";
+import {
+  deleteExpense,
+  deleteExpenseFile,
+  markExpensePaid,
+  resendCompanyInvoice,
+  updateExpense,
+  uploadPaymentReceipt,
+} from "../actions";
+import { invoiceLabels } from "../labels";
+import { whatFor } from "@/lib/partnerInvoices";
+import { dayAndTime } from "@/lib/when";
 
 const day = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
@@ -31,10 +41,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   if (!row) notFound();
   const { expense, project } = row;
 
-  const [files, projectList] = await Promise.all([
+  const [files, projectList, partnerRows] = await Promise.all([
     db.select().from(documents).where(eq(documents.expenseId, id)),
     db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
+    db
+      .select({ id: subowners.id, name: subowners.name, company: subowners.company, email: subowners.email })
+      .from(subowners)
+      .orderBy(asc(subowners.name)),
   ]);
+  const out = expense.direction === "OUT";
+  const ourPdf = files.find((file) => file.category === "INVOICE");
 
   const totalCents = toCents(expense.totalAmount);
   const paidCents = toCents(expense.paidAmount);
@@ -45,7 +61,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       <PageHeader
         title={expense.supplier}
         subtitle={[
-          t(`invoices.category.${expense.category}` as MessageKey),
+          t(`invoices.direction.${out ? "OUT" : "IN"}` as MessageKey),
+          whatFor(expense),
           expense.reference,
           expense.description,
         ]
@@ -81,26 +98,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 value,
                 label: t(`invoices.category.${value}` as MessageKey),
               }))}
-              labels={{
-                supplier: t("invoices.supplier"),
-                category: t("invoices.category"),
-                reference: t("invoices.reference"),
-                description: t("invoices.description"),
-                issued: t("invoices.issued"),
-                due: t("invoices.due"),
-                net: t("invoices.net"),
-                vat: t("invoices.vat"),
-                total: t("invoices.total"),
-                totalNote: t("invoices.totalNote"),
-                alreadyPaid: t("invoices.alreadyPaid"),
-                project: t("invoices.project"),
-                noProject: t("invoices.noProject"),
-                files: t("invoices.files"),
-                filesNote: t("invoices.filesNote"),
-                notes: t("common.notes"),
-                save: t("common.save"),
-                cancel: t("common.cancel"),
-              }}
+              partners={partnerRows.map((one) => ({
+                id: one.id,
+                name: one.company?.trim() || one.name,
+                email: one.email,
+              }))}
+              labels={invoiceLabels(t)}
             />
           </Card>
 
@@ -129,7 +132,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                           {titleWithExtension(file)}
                         </a>
                       </td>
-                      <td className="ctr text-xs">{day(file.createdAt)}</td>
+                      <td className="ctr nowrap text-xs">{dayAndTime(file.createdAt, locale)}</td>
                       <td className="ctr">
                         <form action={deleteExpenseFile.bind(null, file.id, id)}>
                           <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
@@ -173,6 +176,48 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 </dd>
               </div>
             </dl>
+
+            {out ? (
+              <div className="mb-3 space-y-2">
+                {ourPdf ? (
+                  <a
+                    href={`/api/files/${ourPdf.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary w-full justify-center"
+                  >
+                    {t("invoices.invoicePdf")} {expense.reference ?? ""}
+                  </a>
+                ) : null}
+                <form action={resendCompanyInvoice.bind(null, id)}>
+                  <button type="submit" className="btn btn-secondary w-full justify-center">
+                    {t("invoices.resend")}
+                  </button>
+                </form>
+                {expense.emailedAt ? (
+                  <p className="text-xs text-brand-graphite/60">
+                    {t("emails.sent")} {dayAndTime(expense.emailedAt, locale)}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* The partner's payment arrives with a receipt: filing it marks
+                the invoice paid. */}
+            {out && expense.status !== "PAID" ? (
+              <form
+                action={uploadPaymentReceipt.bind(null, id)}
+                className="mb-3 space-y-2 rounded border border-brand-line bg-brand-surface p-3"
+              >
+                <p className="label">{t("invoices.uploadReceipt")}</p>
+                <input name="files" type="file" required accept=".pdf,image/*" className="input !py-1.5 text-xs" />
+                <DateField name="paidOn" />
+                <p className="text-xs text-brand-graphite/60">{t("invoices.uploadReceiptHint")}</p>
+                <button type="submit" className="btn btn-primary">
+                  {t("common.save")}
+                </button>
+              </form>
+            ) : null}
 
             {expense.status === "PAID" ? null : (
               <>

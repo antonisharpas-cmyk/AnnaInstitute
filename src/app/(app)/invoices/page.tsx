@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { whatFor } from "@/lib/partnerInvoices";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import {
@@ -137,7 +138,7 @@ export default async function InvoicesPage({
                   <tr>
                     <th>{t("invoices.supplier")}</th>
                     <th>{t("invoices.category")}</th>
-                    <th>{t("invoices.reference")}</th>
+                    <th>{t("invoices.number")}</th>
                     <th className="ctr">{t("invoices.issued")}</th>
                     <th className="ctr">{t("invoices.due")}</th>
                     <th className="ctr">{t("contracts.amount")}</th>
@@ -170,7 +171,10 @@ export default async function InvoicesPage({
                           ) : null}
                         </td>
                         <td className="text-xs">
-                          {t(`invoices.category.${r.expense.category}` as MessageKey)}
+                          <Pill tone={r.expense.direction === "OUT" ? "teal" : "neutral"}>
+                            {t(`invoices.direction.${r.expense.direction === "OUT" ? "OUT" : "IN"}` as MessageKey)}
+                          </Pill>
+                          <div className="mt-0.5">{whatFor(r.expense)}</div>
                         </td>
                         <td className="text-xs">{r.expense.reference ?? ""}</td>
                         <td className="ctr text-xs">{day(r.expense.issueDate)}</td>

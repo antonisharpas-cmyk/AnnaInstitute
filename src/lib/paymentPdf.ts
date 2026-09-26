@@ -42,6 +42,8 @@ export type IssuedSnapshot = {
     vatNumber: string;
     email: string;
     phone: string;
+    /** A company's registration number, when the invoice is to a company. */
+    registration?: string;
   };
   contractReference: string;
   property: string;
@@ -76,6 +78,13 @@ export type IssuedSnapshot = {
   relatesToInvoiceDate?: string;
   purpose?: string;
   reason?: string;
+  /**
+   * An invoice One Eleven issues to a partner company, management fees and the
+   * like. It is issued before it is paid, so it says when it is due rather
+   * than that it was paid, and it carries the bank details.
+   */
+  billTo?: "partner";
+  dueOn?: string;
 };
 
 const TEAL = rgb(0x4d / 255, 0xa1 / 255, 0xb9 / 255);
@@ -328,6 +337,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
     { value: s.client.address },
     { value: s.client.country },
     { label: "ID No", value: s.client.idNumber },
+    { label: "Reg. No", value: s.client.registration ?? "" },
     { label: "VAT No", value: s.client.vatNumber },
     { label: "Email", value: s.client.email },
   ]);
@@ -343,6 +353,12 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
         },
         { label: "Reason", value: s.reason ?? "" },
       ]
+    : s.billTo === "partner"
+      ? [
+          { label: "Development", value: s.property, strong: true },
+          { label: "Invoice date", value: longDay(s.issuedOn) },
+          { label: "Due date", value: s.dueOn ? longDay(s.dueOn) : "" },
+        ]
     : [
         { label: "Property", value: s.property, strong: true },
         { label: "Contract", value: s.contractReference },
@@ -405,7 +421,14 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
     y -= 4;
   }
 
-  if (!credit) {
+  if (!credit && s.billTo === "partner") {
+    /* Issued before the money: it says when it is due, not that it was paid. */
+    const due = s.dueOn ? `PAYMENT DUE BY ${longDay(s.dueOn)}` : "PAYMENT DUE ON RECEIPT";
+    const w = f.bold.widthOfTextAtSize(due, 8.5) + 16;
+    page.drawRectangle({ x: L, y: y - 6, width: w, height: 24, borderColor: TEAL, borderWidth: 1 });
+    text(page, f.bold, due, L + 8, y + 2, 8.5, TEAL_DARK);
+    y -= 34;
+  } else if (!credit) {
     /* Settled on the day, since it is issued with the money in hand. */
     const settled =
       s.payableCents === 0 && s.creditAppliedCents

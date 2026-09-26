@@ -13,6 +13,7 @@ import { toCents } from "./money";
  */
 
 export const EXPENSE_CATEGORIES = [
+  "MANAGEMENT_FEES",
   "MARKETING",
   "OFFICE",
   "RENT",

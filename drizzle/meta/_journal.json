@@ -239,6 +239,13 @@
       "when": 1790566547383,
       "tag": "0034_credit_notes_and_reduced_vat",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790666547383,
+      "tag": "0035_partner_invoices",
+      "breakpoints": true
     }
   ]
 }

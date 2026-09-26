@@ -203,6 +203,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "refunds and delay penalties",
     migration: "0034",
   },
+  {
+    probe: "select direction, subowner_id, vat_rate, category_other from expenses limit 1",
+    what: "invoices to partners",
+    migration: "0035",
+  },
+  {
+    probe: "select expense_id from issued_documents limit 1",
+    what: "the invoice series shared with partner invoices",
+    migration: "0035",
+  },
 ];
 
 let answer: Missing[] | null = null;

@@ -24,6 +24,8 @@ import { documentsForClientWithUnits } from "@/lib/documents";
 import { notesForLead } from "@/lib/leads";
 import { clientFileLabel } from "@/lib/fileLabels";
 import { dayAndTime } from "@/lib/when";
+import { clientHistory } from "@/lib/clientHistory";
+import ClientHistory from "@/components/ClientHistory";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
@@ -54,16 +56,20 @@ const statusTone = (status: string) =>
 /** The six kinds, in the order the office listed them. */
 const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
 
+/** The parts of a client, one at a time, apartments first. */
+const TABS = ["apartments", "contracts", "appointments", "documents", "history"] as const;
+
 export default async function ClientPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ undo?: string }>;
+  searchParams: Promise<{ undo?: string; tab?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
   const { locale, t } = await getTranslator();
+  const tab = (TABS as readonly string[]).includes(query.tab ?? "") ? (query.tab as (typeof TABS)[number]) : "apartments";
 
   const found = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
   const client = found[0];
@@ -72,6 +78,26 @@ export default async function ClientPage({
   // The enquiry this client was made from, when there was one. It is what makes
   // undoing a conversion possible.
   const leadRows = await db.select().from(leads).where(eq(leads.clientId, id)).limit(1);
+  /* The whole story, only when it is the part being read. */
+  const history = tab === "history" ? await clientHistory(id, locale) : [];
+  const historyLabels = {
+    title: t("clients.tab.history"),
+    all: t("common.all"),
+    none: t("common.none"),
+    open: t("common.open"),
+    by: t("clients.historyBy"),
+    kinds: {
+      lead: t("clients.history.lead"),
+      client: t("clients.history.client"),
+      apartment: t("clients.history.apartment"),
+      contract: t("clients.history.contract"),
+      appointment: t("clients.history.appointment"),
+      payment: t("clients.history.payment"),
+      paper: t("clients.history.paper"),
+      email: t("clients.history.email"),
+      document: t("clients.history.document"),
+    },
+  };
   const fromLead = leadRows[0];
 
   const [assigned, choices, theirDocuments, enquiryNotes] = await Promise.all([
@@ -318,54 +344,92 @@ export default async function ClientPage({
           }}
         />
 
-        {/*
-          Where we are meeting them. High on the card on purpose: it is the
-          thing about a buyer that is happening this week, and the day after a
-          viewing it is the thing somebody has to answer for.
-        */}
-        <Appointments
-          rows={meetings}
-          with={`client:${id}`}
-          locale={locale}
-          labels={{
-            title: t("appointments.title"),
-            waiting: t("appointments.waiting"),
-            waitingHint: t("appointments.waitingHint"),
-            next: t("appointments.next"),
-            been: t("appointments.been"),
-            none: t("appointments.none"),
-            add: t("appointments.add"),
-            place: t("appointments.place"),
-            placeHint: t("appointments.placeHint"),
-            day: t("appointments.day"),
-            time: t("appointments.time"),
-            save: t("common.save"),
-            cancel: t("common.cancel"),
-            itHappened: t("appointments.itHappened"),
-            itDidNot: t("appointments.itDidNot"),
-            statusDone: t("appointments.done"),
-            statusMissed: t("appointments.missed"),
-            statusPlanned: t("appointments.pending"),
-            move: t("appointments.move"),
-            remove: t("common.delete"),
-            sure: t("remove.sure"),
-            type: t("appointments.type"),
-            kinds: KINDS.map((one) => ({
-              value: one,
-              label: t(`appointments.type.${one}` as MessageKey),
-            })),
-            kindOf: Object.fromEntries(
-              KINDS.map((one) => [one, t(`appointments.type.${one}` as MessageKey)]),
-            ),
-            typeOther: t("appointments.typeOther"),
-            typeOtherHint: t("appointments.typeOtherHint"),
-            assignedTo: t("appointments.assignedTo"),
-            assignTo: t("appointments.assignTo"),
-            nobody: t("appointments.nobody"),
-            team,
-          }}
-        />
 
+        {/* 5. Marketing consent, which is what the campaigns audience is built from. */}
+        <Card title={t("clients.marketing")}>
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+            {client.unsubscribedAt ? (
+              <Pill tone="bad">unsubscribed {day(client.unsubscribedAt, locale)}</Pill>
+            ) : client.marketingOptIn ? (
+              <Pill tone="good">{t("clients.marketingOn")}</Pill>
+            ) : (
+              <Pill tone="warn">{t("clients.marketingOff")}</Pill>
+            )}
+            {client.marketingOptInAt ? (
+              <span className="text-xs text-brand-graphite/60">
+                recorded {day(client.marketingOptInAt, locale)}
+                {client.marketingOptInSource ? `, ${client.marketingOptInSource}` : ""}
+              </span>
+            ) : null}
+          </div>
+
+          <form action={setMarketingConsent.bind(null, id)} className="grid gap-3 sm:grid-cols-2">
+            <label className="flex items-start gap-2 text-sm sm:col-span-2">
+              <input
+                type="checkbox"
+                name="optIn"
+                defaultChecked={client.marketingOptIn}
+                className="mt-0.5"
+              />
+              <span>{t("clients.marketingOn")}</span>
+            </label>
+            <div>
+              <label className="label" htmlFor="optInSource">
+                How it was obtained
+              </label>
+              <input
+                id="optInSource"
+                name="optInSource"
+                defaultValue={client.marketingOptInSource ?? ""}
+                placeholder="contract clause, email reply, in person"
+                className="input"
+              />
+            </div>
+            <div className="flex items-end">
+              <button type="submit" className="btn btn-primary">
+                {t("common.save")}
+              </button>
+            </div>
+          </form>
+
+          {client.unsubscribedAt ? (
+            <p className="mt-3 text-xs text-[color:var(--color-negative)]">
+              This client said stop, so campaigns will never send to them again. The record is kept
+              on purpose: that is how the campaigns section knows to leave them out.
+            </p>
+          ) : (
+            <form action={unsubscribeClient.bind(null, id)} className="mt-3">
+              <button type="submit" className="btn btn-secondary">
+                Record an unsubscribe
+              </button>
+            </form>
+          )}
+        </Card>
+
+        {/*
+          The rest of the client, one part at a time.
+
+          Buttons rather than one long page: the office picks what it came for
+          and reads only that. Apartments is open first, since it is what a
+          buyer is about. Each part has its own address, so a link can open
+          straight on the history, say.
+        */}
+        <nav className="flex flex-wrap gap-2" aria-label={t("clients.sections")}>
+          {TABS.map((one) => (
+            <Link
+              key={one}
+              href={`/clients/${id}?tab=${one}`}
+              scroll={false}
+              aria-current={tab === one ? "page" : undefined}
+              className={tab === one ? "btn btn-primary !px-4 !py-1.5" : "btn btn-secondary !px-4 !py-1.5"}
+            >
+              {t(`clients.tab.${one}` as MessageKey)}
+            </Link>
+          ))}
+        </nav>
+
+        {tab === "apartments" ? (
+          <>
         {/* 2. The apartments they hold. */}
         <Card title={t("clients.apartmentsPlural")}>
           {/* Assigning is behind a button, above the table, so the table is what
@@ -504,6 +568,11 @@ export default async function ClientPage({
           )}
         </Card>
 
+          </>
+        ) : null}
+
+        {tab === "contracts" ? (
+          <>
         {/*
           The land exchange, whole, on the owner's own page.
 
@@ -728,7 +797,63 @@ export default async function ClientPage({
             </div>
           )}
         </Card>
+          </>
+        ) : null}
 
+        {tab === "appointments" ? (
+          <>
+        {/*
+          Where we are meeting them. High on the card on purpose: it is the
+          thing about a buyer that is happening this week, and the day after a
+          viewing it is the thing somebody has to answer for.
+        */}
+        <Appointments
+          rows={meetings}
+          with={`client:${id}`}
+          locale={locale}
+          labels={{
+            title: t("appointments.title"),
+            waiting: t("appointments.waiting"),
+            waitingHint: t("appointments.waitingHint"),
+            next: t("appointments.next"),
+            been: t("appointments.been"),
+            none: t("appointments.none"),
+            add: t("appointments.add"),
+            place: t("appointments.place"),
+            placeHint: t("appointments.placeHint"),
+            day: t("appointments.day"),
+            time: t("appointments.time"),
+            save: t("common.save"),
+            cancel: t("common.cancel"),
+            itHappened: t("appointments.itHappened"),
+            itDidNot: t("appointments.itDidNot"),
+            statusDone: t("appointments.done"),
+            statusMissed: t("appointments.missed"),
+            statusPlanned: t("appointments.pending"),
+            move: t("appointments.move"),
+            remove: t("common.delete"),
+            sure: t("remove.sure"),
+            type: t("appointments.type"),
+            kinds: KINDS.map((one) => ({
+              value: one,
+              label: t(`appointments.type.${one}` as MessageKey),
+            })),
+            kindOf: Object.fromEntries(
+              KINDS.map((one) => [one, t(`appointments.type.${one}` as MessageKey)]),
+            ),
+            typeOther: t("appointments.typeOther"),
+            typeOtherHint: t("appointments.typeOtherHint"),
+            assignedTo: t("appointments.assignedTo"),
+            assignTo: t("appointments.assignTo"),
+            nobody: t("appointments.nobody"),
+            team,
+          }}
+        />
+          </>
+        ) : null}
+
+        {tab === "documents" ? (
+          <>
         {/* 4. Documents. The form is first, because adding is the common job. */}
         <Card title={t("contracts.documents")}>
           <div className="mb-5 rounded border border-brand-line bg-brand-surface p-3">
@@ -765,67 +890,15 @@ export default async function ClientPage({
           {documentSection(t("clients.docsChanges"), "CHANGE_REQUEST")}
           {documentSection(t("clients.docsOther"), "OTHER")}
         </Card>
+          </>
+        ) : null}
 
-        {/* 5. Marketing consent, which is what the campaigns audience is built from. */}
-        <Card title={t("clients.marketing")}>
-          <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-            {client.unsubscribedAt ? (
-              <Pill tone="bad">unsubscribed {day(client.unsubscribedAt, locale)}</Pill>
-            ) : client.marketingOptIn ? (
-              <Pill tone="good">{t("clients.marketingOn")}</Pill>
-            ) : (
-              <Pill tone="warn">{t("clients.marketingOff")}</Pill>
-            )}
-            {client.marketingOptInAt ? (
-              <span className="text-xs text-brand-graphite/60">
-                recorded {day(client.marketingOptInAt, locale)}
-                {client.marketingOptInSource ? `, ${client.marketingOptInSource}` : ""}
-              </span>
-            ) : null}
-          </div>
+        {tab === "history" ? (
+          <ClientHistory events={history} locale={locale} labels={historyLabels} />
+        ) : null}
 
-          <form action={setMarketingConsent.bind(null, id)} className="grid gap-3 sm:grid-cols-2">
-            <label className="flex items-start gap-2 text-sm sm:col-span-2">
-              <input
-                type="checkbox"
-                name="optIn"
-                defaultChecked={client.marketingOptIn}
-                className="mt-0.5"
-              />
-              <span>{t("clients.marketingOn")}</span>
-            </label>
-            <div>
-              <label className="label" htmlFor="optInSource">
-                How it was obtained
-              </label>
-              <input
-                id="optInSource"
-                name="optInSource"
-                defaultValue={client.marketingOptInSource ?? ""}
-                placeholder="contract clause, email reply, in person"
-                className="input"
-              />
-            </div>
-            <div className="flex items-end">
-              <button type="submit" className="btn btn-primary">
-                {t("common.save")}
-              </button>
-            </div>
-          </form>
 
-          {client.unsubscribedAt ? (
-            <p className="mt-3 text-xs text-[color:var(--color-negative)]">
-              This client said stop, so campaigns will never send to them again. The record is kept
-              on purpose: that is how the campaigns section knows to leave them out.
-            </p>
-          ) : (
-            <form action={unsubscribeClient.bind(null, id)} className="mt-3">
-              <button type="submit" className="btn btn-secondary">
-                Record an unsubscribe
-              </button>
-            </form>
-          )}
-        </Card>
+
 
         {/* 6. Where this client came from, and the way back if it was a mistake. */}
         {fromLead ? (

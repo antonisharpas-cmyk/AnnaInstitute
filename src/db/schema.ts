@@ -625,6 +625,8 @@ export const issuedDocuments = pgTable(
     replacedById: text("replaced_by_id"),
     /** The same invoice with CANCELLED stamped across it, kept beside the original. */
     stampedDocumentId: text("stamped_document_id"),
+    /** On an invoice to a partner, the company invoice it was issued for. */
+    expenseId: text("expense_id"),
     createdAt: created(),
   },
   (t) => ({
@@ -1253,6 +1255,7 @@ export const expenseCategoryEnum = pgEnum("expense_category", [
   "BILLS",
   "LEGAL",
   "CONSTRUCTION",
+  "MANAGEMENT_FEES",
   "OTHER",
 ]);
 
@@ -1276,6 +1279,20 @@ export const expenses = pgTable("expenses", {
   projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
   notes: text("notes"),
   recordedByEmail: text("recorded_by_email"),
+  /**
+   * Which way the money goes. IN is an invoice One Eleven received and pays.
+   * OUT is One Eleven charging a partner: the CRM numbers and draws that
+   * invoice in the company's own series and emails it to them.
+   */
+  direction: text("direction").default("IN").notNull(),
+  /** What Other means, in the office's words, when the category is Other. */
+  categoryOther: text("category_other"),
+  /** The partner company on either side of it, when it is one of ours. */
+  subownerId: text("subowner_id").references(() => subowners.id, { onDelete: "set null" }),
+  vatRate: rate("vat_rate"),
+  /** On an invoice we issued, the numbered paper in the invoice series. */
+  issuedDocumentId: text("issued_document_id"),
+  emailedAt: timestamp("emailed_at", { withTimezone: true }),
   createdAt: created(),
   updatedAt: updated(),
 });

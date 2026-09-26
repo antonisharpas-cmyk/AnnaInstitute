@@ -95,8 +95,10 @@ export async function keepPdf(
   filename: string,
   title: string,
   category: Category,
-  contractId: string,
+  contractId: string | null,
   userId: string | null,
+  /** A company invoice to a partner files its paper there instead. */
+  expenseId: string | null = null,
 ): Promise<string> {
   const saved = await saveUpload(new File([new Uint8Array(buffer)], filename, { type: "application/pdf" }));
   const [row] = await db
@@ -111,6 +113,7 @@ export async function keepPdf(
       /* On the contract only: a contract's files already show on the client's
          card, and a paper filed on both would be listed twice. */
       contractId,
+      expenseId,
       clientId: null,
       uploadedById: userId,
     })
@@ -572,7 +575,8 @@ export type IssuedFilters = {
  * notes, newest first, with what each one relates to.
  */
 export async function listIssued(filters: IssuedFilters) {
-  const parts: SQL[] = [];
+  /* The buyers' papers only: an invoice to a partner lives under Company. */
+  const parts: SQL[] = [isNull(issuedDocuments.expenseId)];
   if (filters.query) {
     const like = `%${filters.query}%`;
     parts.push(
