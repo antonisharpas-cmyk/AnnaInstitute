@@ -35,7 +35,7 @@ export function vatSummary(setup: VatSetup): string {
  * their own dates and their own money. Two sales on the same terms are two
  * contracts, which is what copying is for.
  */
-export async function getContract(id: string) {
+async function readContract(id: string) {
   const rows = await db
     .select({
       contract: contracts,
@@ -108,6 +108,24 @@ export async function getContract(id: string) {
     },
     vatSetup: vatSetupOf(row.contract),
   };
+}
+
+export async function getContract(id: string) {
+  const detail = await readContract(id);
+  /*
+   * After a reduced VAT approval, money paid over on a stage belongs to the
+   * next ones. If that step did not happen (it was stopped part way, or the
+   * approval ran on an earlier version) it is finished now, once, before the
+   * page or the payment form reads what is owed.
+   */
+  if (detail?.contract.reducedVatApprovedOn) {
+    const { creditLeftOver, finishReducedVat } = await import("./reducedVat");
+    if (creditLeftOver(detail.contract, detail.installments)) {
+      await finishReducedVat(id, null);
+      return readContract(id);
+    }
+  }
+  return detail;
 }
 
 /**

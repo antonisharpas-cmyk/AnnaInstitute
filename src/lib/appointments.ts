@@ -32,6 +32,47 @@ export function startOfToday(): Date {
 }
 
 /**
+ * The days a named period covers, as a start and an end the end not included.
+ *
+ * A week is Monday to Sunday, the way the office plans one. Two typed days
+ * cover both of them whole. A named period wins over typed days, so a link
+ * sent as "this week" means this week whoever opens it.
+ */
+export const PERIODS = ["today", "tomorrow", "thisWeek", "next7", "nextWeek", "thisMonth"] as const;
+
+export function periodOf(filter: { when?: string; from?: string; to?: string }): { from?: Date; to?: Date } {
+  const today = startOfToday();
+  const plus = (base: Date, days: number) =>
+    new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
+  const monday = plus(today, -((today.getDay() + 6) % 7));
+  switch (filter.when) {
+    case "today":
+      return { from: today, to: plus(today, 1) };
+    case "tomorrow":
+      return { from: plus(today, 1), to: plus(today, 2) };
+    case "thisWeek":
+      return { from: monday, to: plus(monday, 7) };
+    case "next7":
+      return { from: today, to: plus(today, 7) };
+    case "nextWeek":
+      return { from: plus(monday, 7), to: plus(monday, 14) };
+    case "thisMonth":
+      return {
+        from: new Date(today.getFullYear(), today.getMonth(), 1),
+        to: new Date(today.getFullYear(), today.getMonth() + 1, 1),
+      };
+  }
+  const day = (value?: string) => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+    const [y, m, d] = value.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const from = day(filter.from);
+  const until = day(filter.to);
+  return { from, to: until ? plus(until, 1) : undefined };
+}
+
+/**
  * Waiting for an answer: planned, and the day it was on has been and gone.
  *
  * Not "before now", because an appointment at four o'clock is not unanswered at
@@ -52,6 +93,11 @@ export async function howManyNeedAnAnswer(): Promise<number> {
 
 export type AppointmentFilter = {
   q?: string;
+  /** A period by name: today, tomorrow, thisWeek, next7, nextWeek, thisMonth. */
+  when?: string;
+  /** Or two days, as the date fields send them. */
+  from?: string;
+  to?: string;
   /**
    * What to show, in the office's own words: everything, the ones still to
    * come, the ones that were done, the ones that were cancelled, or the ones
@@ -107,6 +153,10 @@ export async function listAppointments(filter: AppointmentFilter) {
   } else if (show === "waiting") {
     parts.push(unanswered());
   }
+
+  const range = periodOf(filter);
+  if (range.from) parts.push(gte(appointments.at, range.from));
+  if (range.to) parts.push(lt(appointments.at, range.to));
 
   if (filter.assignedTo === "nobody") parts.push(isNull(appointments.assignedToId));
   else if (filter.assignedTo) parts.push(eq(appointments.assignedToId, filter.assignedTo));

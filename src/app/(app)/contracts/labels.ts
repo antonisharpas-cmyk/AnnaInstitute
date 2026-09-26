@@ -14,6 +14,7 @@ export function formLabels(t: (key: MessageKey) => string): Record<string, strin
     contractDate: t("contracts.contractDate"),
     netPrice: t("contracts.netPrice"),
     vatRate: t("contracts.vatRate"),
+    vatLocked: t("contracts.vatLocked"),
     status: t("common.status"),
     statusDraft: t("contracts.status.DRAFT"),
     statusActive: t("contracts.status.ACTIVE"),

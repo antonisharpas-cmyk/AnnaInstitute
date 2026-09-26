@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
+import { getContract } from "@/lib/contracts";
 import {
   agents,
-  changeRequests,
   clients,
   contracts,
   installments,
@@ -17,22 +17,18 @@ import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { apartmentsByClient, assignableUnits } from "@/lib/clients";
 import { landExchangesForClient } from "@/lib/contracts";
-import { nextReceiptNumber } from "@/lib/receipts";
 import { appointmentsForClient } from "@/lib/appointments";
 import { whoCanGo } from "@/lib/team";
 import Appointments from "@/components/Appointments";
 import { documentsForClientWithUnits } from "@/lib/documents";
 import { notesForLead } from "@/lib/leads";
-import { titleWithExtension } from "@/lib/fileLabels";
 import { clientFileLabel } from "@/lib/fileLabels";
+import { dayAndTime } from "@/lib/when";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
-import InstallmentsPanel from "./InstallmentsPanel";
 import PersonalInfo from "./PersonalInfo";
 import DocumentUpload from "@/components/DocumentUpload";
-import { ChangeRequestForm, PaymentForm } from "@/components/MoneyForms";
-import { addChangeRequest, recordPayment } from "../../contracts/actions";
 import { undoConversion } from "../../leads/actions";
 import {
   assignApartment,
@@ -111,16 +107,18 @@ export default async function ClientPage({
 
   /* Where the office is meeting them, what came of the last one, and who is
      free to be given the next one. */
-  const [meetings, team, nextReceipt] = await Promise.all([
-    appointmentsForClient(id),
-    whoCanGo(),
-    /* The number the next receipt will carry, so the form opens with it in. */
-    nextReceiptNumber(),
-  ]);
+  const [meetings, team] = await Promise.all([appointmentsForClient(id), whoCanGo()]);
 
   const contractIds = contractRows.map((r) => r.contract.id);
 
-  const [scheduleRows, paymentRows, requestRows] = await Promise.all([
+  /* A contract with the reduced VAT approved is read through getContract
+     first, which puts any VAT paid over on the next stage before the figures
+     below are taken. */
+  for (const row of contractRows) {
+    if (row.contract.reducedVatApprovedOn) await getContract(row.contract.id);
+  }
+
+  const [scheduleRows, paymentRows] = await Promise.all([
     contractIds.length > 0
       ? db
           .select()
@@ -135,46 +133,8 @@ export default async function ClientPage({
           .where(inArray(payments.contractId, contractIds))
           .orderBy(desc(payments.paidOn))
       : Promise.resolve([]),
-    /**
-     * Every adjustment the buyer has asked for, on any of their contracts.
-     * Here rather than only on the contract page, because "what did they ask us
-     * to change" is a question about the buyer, not about the paperwork.
-     */
-    contractIds.length > 0
-      ? db
-          .select()
-          .from(changeRequests)
-          .where(inArray(changeRequests.contractId, contractIds))
-          .orderBy(desc(changeRequests.requestedOn))
-      : Promise.resolve([]),
   ]);
 
-  /**
-   * The paperwork behind each payment and each adjustment, taken from the
-   * client's own file, so a receipt filed on the contract page shows here
-   * against the payment it belongs to.
-   */
-  const filesByPayment = new Map<string, typeof theirDocuments>();
-  const filesByRequest = new Map<string, typeof theirDocuments>();
-  for (const row of theirDocuments) {
-    if (row.document.paymentId) {
-      const list = filesByPayment.get(row.document.paymentId) ?? [];
-      list.push(row);
-      filesByPayment.set(row.document.paymentId, list);
-    }
-    if (row.document.changeRequestId) {
-      const list = filesByRequest.get(row.document.changeRequestId) ?? [];
-      list.push(row);
-      filesByRequest.set(row.document.changeRequestId, list);
-    }
-  }
-
-  /** How a payment arrived, in words, with older free text left as it stands. */
-  const howPaid = (value: string | null) => {
-    if (!value) return "";
-    const known = ["CASH", "BANK", "CHEQUE", "CARD", "OTHER"];
-    return known.includes(value) ? t(`contracts.method.${value}` as MessageKey) : value;
-  };
 
   const paidByInstallment = new Map<string, number>();
   const paidByContract = new Map<string, number>();
@@ -206,8 +166,14 @@ export default async function ClientPage({
       })),
   ];
 
+  /* The invoices, receipts and credit notes the CRM issues are filed with the
+     receipts, which is where the office looks for a buyer's money papers. */
+  const PAPERS: Record<string, string[]> = { RECEIPT: ["RECEIPT", "INVOICE", "CREDIT_NOTE", "REFUND_ACK"] };
   const byCategory = (category: string) =>
-    theirDocuments.filter((row) => row.document.category === category);
+    theirDocuments
+      .filter((row) => (PAPERS[category] ?? [category]).includes(row.document.category))
+      /* Newest first, by the moment it was filed. */
+      .sort((a, b) => new Date(b.document.createdAt).getTime() - new Date(a.document.createdAt).getTime());
 
   const documentSection = (title: string, category: string) => {
     const items = byCategory(category);
@@ -232,7 +198,7 @@ export default async function ClientPage({
                 </a>
                 <div className="flex items-center gap-2 whitespace-nowrap">
                   <span className="text-xs text-brand-graphite/60">
-                    {day(doc.createdAt, locale)}
+                    {dayAndTime(doc.createdAt, locale)}
                   </span>
                   <a
                     href={`/api/files/${doc.id}?download=1`}
@@ -668,411 +634,97 @@ export default async function ClientPage({
           </Card>
         ))}
 
-        {/* 3. The contract on each apartment, with its schedule and what this
-               apartment has paid against it. */}
+        {/*
+          3. Their contracts, as a short list.
+
+          The office works a contract on the contract's own page: the schedule,
+          the payments, the VAT and the papers are all there, and one place for
+          them is clearer than two. So the profile only says which contracts
+          this client has and where each stands, with the way in.
+        */}
         <Card title={t("contracts.title")}>
           {contractSubjects.length === 0 ? (
             <Empty message={t("clients.noApartments")} />
           ) : (
-            <div className="space-y-4">
-              {contractSubjects.map((apartment) => {
-                const row = contractRows.find((c) => c.unit.id === apartment.unitId);
-
-                if (!row) {
-                  return (
-                    <div
-                      key={apartment.unitId}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded border border-brand-line bg-brand-surface px-3 py-3"
-                    >
-                      <div>
-                        <div className="text-sm font-semibold">
-                          {apartment.projectName} {apartment.code}
-                        </div>
-                        <div className="text-xs text-brand-graphite/60">
-                          {t("clients.noContractYet")}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                          href={`/contracts/new?client=${id}&unit=${apartment.unitId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn btn-primary !px-3 !py-1 !text-xs"
-                        >
-                          {t("clients.newContract")}
-                        </Link>
-                        <Link
-                          href="/contracts"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn btn-secondary !px-3 !py-1 !text-xs"
-                        >
-                          {t("clients.copyExisting")}
-                        </Link>
-                      </div>
-                    </div>
-                  );
-                }
-
-                const lines = scheduleRows.filter((l) => l.contractId === row.contract.id);
-                const mine = {
-                  /* Money that arrived; a credit moved by the reduced VAT is
-                     counted in each stage above but is not a payment here. */
-                  payments: paymentRows.filter(
-                    (pay) => pay.contractId === row.contract.id && pay.kind !== "CREDIT",
-                  ),
-                  requests: requestRows.filter((ask) => ask.contractId === row.contract.id),
-                };
-                const scheduled = lines.reduce((a, l) => a + toCents(l.totalAmount), 0);
-                const paid = paidByContract.get(row.contract.id) ?? 0;
-
-                return (
-                  <div
-                    key={apartment.unitId}
-                    className="rounded border border-brand-line bg-white px-3 py-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <Link
-                          href={`/contracts/${row.contract.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm font-semibold text-brand-teal-dark hover:underline"
-                        >
-                          {row.contract.reference}
-                        </Link>
-                        <div className="text-xs text-brand-graphite/60">
-                          {row.project.name} {row.unit.code} .{" "}
-                          {formatAmount(toCents(row.contract.netPrice), locale)} before VAT .{" "}
-                          {t("contracts.vat")} {formatPercent(Number(row.contract.vatRate), locale)}
-                        </div>
-                        {row.agent ? (
-                          <div className="mt-1 text-xs">
-                            {t("contracts.agent")}:{" "}
+            <div className="overflow-x-auto">
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t("contracts.title")}</th>
+                    <th>{t("clients.apartments")}</th>
+                    <th className="ctr">{t("common.total")}</th>
+                    <th className="ctr">{t("contracts.paid")}</th>
+                    <th className="ctr">{t("contracts.balance")}</th>
+                    <th className="ctr">{t("common.status")}</th>
+                    <th className="ctr">{t("common.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contractSubjects.map((apartment) => {
+                    const row = contractRows.find((c) => c.unit.id === apartment.unitId);
+                    if (!row) {
+                      return (
+                        <tr key={apartment.unitId}>
+                          <td className="text-brand-graphite/60">{t("clients.noContractYet")}</td>
+                          <td>
+                            {apartment.projectName} {apartment.code}
+                          </td>
+                          <td colSpan={4} />
+                          <td className="ctr">
                             <Link
-                              href={`/agents/${row.agent.id}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-brand-teal-dark hover:underline"
+                              href={`/contracts/new?client=${id}&unit=${apartment.unitId}`}
+                              className="btn btn-primary !px-3 !py-1 !text-xs"
                             >
-                              {row.agent.name}
+                              {t("clients.newContract")}
                             </Link>
-                            {row.contract.commissionRate ? (
-                              <span className="text-brand-graphite/55">
-                                {" "}
-                                . {formatPercent(Number(row.contract.commissionRate), locale)}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        <div className="mt-1 text-xs text-brand-graphite/60">
-                          {formatAmount(paid, locale)} {t("contracts.paid").toLowerCase()} of{" "}
-                          {formatAmount(scheduled, locale)}
-                        </div>
-                        {/* Nothing left to collect, said where the buyer's
-                            money is read rather than only on the contract. */}
-                        {scheduled > 0 && paid >= scheduled ? (
-                          <div className="mt-1">
-                            <Pill tone="good">{t("contracts.paidInFull")}</Pill>
-                          </div>
-                        ) : null}
-                        {row.contract.kind === "LAND_EXCHANGE" ? (
-                          <div className="mt-1">
-                            <Pill tone="teal">{t("contracts.kind.LAND_EXCHANGE")}</Pill>
-                            {row.contract.cashAmount ? (
-                              <span className="ml-2 text-xs text-brand-graphite/60">
-                                {t("contracts.cash")}{" "}
-                                {formatAmount(toCents(row.contract.cashAmount), locale)}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        {row.contract.notes ? (
-                          /*
-                            The term the office agreed for this apartment, read
-                            where the office works. A note that only exists on
-                            the edit page is a note nobody sees.
-                          */
-                          <p className="mt-1 max-w-prose text-xs whitespace-pre-line text-brand-graphite">
-                            {row.contract.notes}
-                          </p>
-                        ) : null}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                          href={`/contracts/${row.contract.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn btn-secondary !px-3 !py-1 !text-xs"
-                        >
-                          {t("clients.openContract")}
-                        </Link>
-                        <Link
-                          href={`/contracts/new?from=${row.contract.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn btn-secondary !px-3 !py-1 !text-xs"
-                        >
-                          {t("contracts.copy")}
-                        </Link>
-                      </div>
-
-                      <InstallmentsPanel
-                        showLabel={t("clients.showInstallments")}
-                        hideLabel={t("clients.hideInstallments")}
-                      >
-                        <div className="overflow-x-auto">
-                          <table className="data">
-                            <thead>
-                              <tr>
-                                <th className="ctr">#</th>
-                                <th>{t("contracts.stage")}</th>
-                                <th className="ctr">{t("clients.period")}</th>
-                                <th className="ctr">{t("contracts.net")}</th>
-                                <th className="ctr">{t("contracts.vatCol")}</th>
-                                <th className="ctr">{t("common.total")}</th>
-                                <th className="ctr">{t("clients.paid")}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {lines.map((line) => {
-                                const paidHere = paidByInstallment.get(line.id) ?? 0;
-                                return (
-                                  <tr key={line.id}>
-                                    <td className="ctr">{line.seq}</td>
-                                    <td>{line.label}</td>
-                                    <td className="ctr">
-                                      {day(line.dueDate, locale) || "not set"}
-                                    </td>
-                                    <td className="ctr">
-                                      {formatAmount(toCents(line.netAmount), locale)}
-                                    </td>
-                                    <td className="ctr">
-                                      {formatAmount(toCents(line.vatAmount), locale)}
-                                      <div className="text-xs text-brand-graphite/50">
-                                        {formatPercent(Number(line.vatRateApplied), locale)}
-                                      </div>
-                                    </td>
-                                    <td className="ctr font-semibold">
-                                      {formatAmount(toCents(line.totalAmount), locale)}
-                                    </td>
-                                    <td className="ctr">
-                                      {paidHere > 0 ? (
-                                        <Pill
-                                          tone={
-                                            paidHere >= toCents(line.totalAmount) ? "good" : "warn"
-                                          }
-                                        >
-                                          {formatAmount(paidHere, locale)}
-                                        </Pill>
-                                      ) : (
-                                        <span className="text-xs text-brand-graphite/50">no</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        <p className="mt-2 text-xs text-brand-graphite/60">
-                          {t("clients.scheduleOnContractPage")}
-                        </p>
-                      </InstallmentsPanel>
-                    </div>
-
-                    {/*
-                      A payment and a change request belong to the contract, and
-                      a contract belongs to one buyer, so both jobs can be done
-                      from here rather than sending somebody to another page.
-                      The forms and the actions are the contract's own.
-                    */}
-                    {/*
-                      What has been received against this contract, and what the
-                      buyer has asked us to change, with the paperwork behind
-                      each one. Recorded here or on the contract page, it reads
-                      the same in both, which is what the office asked for.
-                    */}
-                    {mine.payments.length > 0 ? (
-                      <div className="mt-3 overflow-x-auto">
-                        <table className="data">
-                          <thead>
-                            <tr>
-                              <th>{t("common.date")}</th>
-                              <th className="ctr">{t("contracts.amount")}</th>
-                              <th>{t("contracts.receipt")}</th>
-                              <th>{t("contracts.method")}</th>
-                              <th>{t("clients.docsReceipts")}</th>
-                              <th className="ctr">{t("common.actions")}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {mine.payments.map((paid) => (
-                              <tr key={paid.id}>
-                                <td className="whitespace-nowrap">{day(paid.paidOn, locale)}</td>
-                                <td className="ctr font-semibold">
-                                  {formatAmount(toCents(paid.amount), locale)}
-                                </td>
-                                <td>{paid.receiptNumber ?? ""}</td>
-                                <td>{howPaid(paid.method)}</td>
-                                <td className="text-xs">
-                                  {(filesByPayment.get(paid.id) ?? []).map((file) => (
-                                    <div key={file.document.id}>
-                                      <a
-                                        href={`/api/files/${file.document.id}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="text-brand-teal-dark hover:underline"
-                                      >
-                                        {titleWithExtension(file.document)}
-                                      </a>
-                                    </div>
-                                  ))}
-                                  {paid.notes ? (
-                                    <div className="text-brand-graphite/55">{paid.notes}</div>
-                                  ) : null}
-                                </td>
-                                <td className="ctr">
-                                  {/*
-                                    The receipt for this payment, which opens to
-                                    be read and is only emailed from there.
-                                  */}
-                                  <Link
-                                    href={`/clients/${id}/receipt/${paid.id}`}
-                                    className="btn btn-secondary !px-2 !py-1 !text-xs"
-                                  >
-                                    {t("receipts.open")}
-                                  </Link>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : null}
-
-                    {mine.requests.length > 0 ? (
-                      <div className="mt-3 space-y-2">
-                        <p className="label">{t("clients.docsChanges")}</p>
-                        {mine.requests.map((ask) => (
-                          <div
-                            key={ask.id}
-                            className="rounded border border-brand-line bg-brand-surface px-3 py-2 text-sm"
+                          </td>
+                        </tr>
+                      );
+                    }
+                    const scheduled = scheduleRows
+                      .filter((l) => l.contractId === row.contract.id)
+                      .reduce((a, l) => a + toCents(l.totalAmount), 0);
+                    const paid = paidByContract.get(row.contract.id) ?? 0;
+                    return (
+                      <tr key={apartment.unitId}>
+                        <td>
+                          <Link
+                            href={`/contracts/${row.contract.id}`}
+                            className="font-semibold text-brand-teal-dark hover:underline"
                           >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-semibold">{ask.title}</span>
-                              <span className="flex flex-wrap items-center gap-2 text-xs">
-                                {ask.costImpact ? (
-                                  <span className="font-semibold">
-                                    {formatAmount(toCents(ask.costImpact), locale)}
-                                  </span>
-                                ) : null}
-                                <Pill
-                                  tone={
-                                    ask.status === "COMPLETED" || ask.status === "APPROVED"
-                                      ? "good"
-                                      : ask.status === "REJECTED"
-                                        ? "bad"
-                                        : "warn"
-                                  }
-                                >
-                                  {t(`contracts.changeStatus.${ask.status}` as MessageKey)}
-                                </Pill>
-                                <span className="text-brand-graphite/55">
-                                  {day(ask.requestedOn, locale)}
-                                </span>
-                              </span>
-                            </div>
-                            {ask.description ? (
-                              <p className="mt-1 text-xs text-brand-graphite/70">
-                                {ask.description}
-                              </p>
-                            ) : null}
-                            {(filesByRequest.get(ask.id) ?? []).map((file) => (
-                              <div key={file.document.id} className="mt-1 text-xs">
-                                <a
-                                  href={`/api/files/${file.document.id}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-brand-teal-dark hover:underline"
-                                >
-                                  {titleWithExtension(file.document)}
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    <div className="mt-3 space-y-2 border-t border-brand-line pt-3">
-                      <Disclosure
-                        showLabel={t("contracts.recordPayment")}
-                        hideLabel={t("common.cancel")}
-                      >
-                        <PaymentForm
-                          action={recordPayment.bind(null, row.contract.id)}
-                          nextReceipt={nextReceipt}
-                          lines={lines.map((l) => ({
-                            id: l.id,
-                            seq: l.seq,
-                            label: l.label,
-                            amount: formatAmount(toCents(l.totalAmount), locale),
-                            owing: String(
-                              Math.max(
-                                0,
-                                toCents(l.totalAmount) - (paidByInstallment.get(l.id) ?? 0),
-                              ) / 100,
-                            ),
-                          }))}
-                          labels={{
-                            stage: t("contracts.stage"),
-                            notAgainstOne: t("contracts.notAgainstOne"),
-                            amount: t("contracts.amount"),
-                            date: t("common.date"),
-                            receipt: t("contracts.receipt"),
-                            receiptNote: t("contracts.receiptNote"),
-                            method: t("contracts.method"),
-                            methods: {
-                              CASH: t("contracts.method.CASH"),
-                              BANK: t("contracts.method.BANK"),
-                              CHEQUE: t("contracts.method.CHEQUE"),
-                              CARD: t("contracts.method.CARD"),
-                              OTHER: t("contracts.method.OTHER"),
-                            },
-                            chooseMethod: t("contracts.chooseMethod"),
-                            reference: t("contracts.paymentReference"),
-                            referenceHint: t("contracts.paymentReferenceHint"),
-                            files: t("contracts.paymentFiles"),
-                            filesNote: t("contracts.paymentFilesNote"),
-                            fileTitle: t("contracts.paymentFileTitle"),
-                            fileTitlePlaceholder: t("contracts.paymentFileTitlePlaceholder"),
-                            save: t("common.save"),
-                          }}
-                        />
-                      </Disclosure>
-
-                      <Disclosure
-                        showLabel={t("contracts.addChangeRequest")}
-                        hideLabel={t("common.cancel")}
-                      >
-                        <ChangeRequestForm
-                          action={addChangeRequest.bind(null, row.contract.id)}
-                          labels={{
-                            name: t("common.name"),
-                            notes: t("common.notes"),
-                            amount: t("contracts.amount"),
-                            files: t("common.files"),
-                            add: t("common.add"),
-                          }}
-                        />
-                      </Disclosure>
-                    </div>
-                  </div>
-                );
-              })}
+                            {row.contract.reference}
+                          </Link>
+                        </td>
+                        <td>
+                          {row.project.name} {row.unit.code}
+                        </td>
+                        <td className="ctr">{formatAmount(scheduled, locale)}</td>
+                        <td className="ctr">{formatAmount(paid, locale)}</td>
+                        <td className="ctr font-semibold">
+                          {formatAmount(Math.max(0, scheduled - paid), locale)}
+                        </td>
+                        <td className="ctr">
+                          {scheduled > 0 && paid >= scheduled ? (
+                            <Pill tone="good">{t("contracts.paidInFull")}</Pill>
+                          ) : (
+                            <Pill tone={row.contract.status === "CANCELLED" ? "bad" : "neutral"}>
+                              {t(`contracts.status.${row.contract.status}` as MessageKey)}
+                            </Pill>
+                          )}
+                        </td>
+                        <td className="ctr">
+                          <Link
+                            href={`/contracts/${row.contract.id}`}
+                            className="btn btn-secondary !px-3 !py-1 !text-xs"
+                          >
+                            {t("clients.openContract")}
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>

@@ -3,14 +3,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import { amountInEnglish, amountInGreek } from "@/lib/words";
+import { amountInEnglish } from "@/lib/words";
 
 /**
  * The invoice and the receipt the CRM issues for a buyer's payment, as PDFs.
  *
  * They follow the office's own printed books, the blue invoice and the yellow
- * receipt, with every label in Greek and English as the books have them, and
- * carry what a Cyprus invoice has to: the company's name, address, registration
+ * receipt, in English only, as the office asked, and carry what a Cyprus invoice has to: the company's name, address, registration
  * and VAT numbers, a running number, the date, the buyer and their address,
  * what was supplied, the amount before VAT, the VAT rate and the VAT, and the
  * total. The receipt says what was received, in figures and in words, how it
@@ -165,7 +164,7 @@ async function letterhead(
   page: PDFPage,
   f: Fonts,
   s: IssuedSnapshot,
-  titleEl: string,
+  _titleEl: string,
   titleEn: string,
   number: string,
   date: string,
@@ -188,13 +187,13 @@ async function letterhead(
   const boxX = R - boxW;
   page.drawRectangle({ x: boxX, y: y - 78, width: boxW, height: 78, color: TEAL_SOFT });
   page.drawRectangle({ x: boxX, y: y - 30, width: boxW, height: 30, color: TEAL_DARK });
-  /* The name shrinks to fit the band: "ΑΠΟΔΕΙΞΗ ΕΙΣΠΡΑΞΗΣ / RECEIPT" is long. */
-  const title = `${titleEl} / ${titleEn}`;
+  /* English only, as the office asked. The name shrinks to fit the band. */
+  const title = titleEn;
   const titleSize = Math.min(12, (boxW - 20) / f.bold.widthOfTextAtSize(title, 1));
   right(page, f.bold, title, R - 10, y - 19, titleSize, WHITE);
-  text(page, f.plain, "Αριθμός / No.", boxX + 10, y - 48, 8.5, QUIET);
+  text(page, f.plain, "No.", boxX + 10, y - 48, 8.5, QUIET);
   right(page, f.bold, number, R - 10, y - 49, 13, TEAL_DARK);
-  text(page, f.plain, "Ημερομηνία / Date", boxX + 10, y - 67, 8.5, QUIET);
+  text(page, f.plain, "Date", boxX + 10, y - 67, 8.5, QUIET);
   right(page, f.bold, date, R - 10, y - 67, 10);
 
   /* The company, as the law asks it to be named, below the logo and the box. */
@@ -221,15 +220,15 @@ async function letterhead(
     y -= 11;
   }
   const ids = [
-    s.company.registration ? `Αρ. Εγγραφής / Reg. No: ${s.company.registration}` : "",
-    s.company.vat ? `Α.Φ.Π.Α. / VAT No: ${s.company.vat}` : "",
+    s.company.registration ? `Reg. No: ${s.company.registration}` : "",
+    s.company.vat ? `VAT No: ${s.company.vat}` : "",
   ].filter(Boolean);
   if (ids.length) {
     text(page, f.bold, ids.join("    "), L, y, 8.5);
     y -= 11;
   }
   if (s.company.tic) {
-    text(page, f.plain, `Α.Φ.Τ. / TIC: ${s.company.tic}`, L, y, 8.5, QUIET);
+    text(page, f.plain, `TIC: ${s.company.tic}`, L, y, 8.5, QUIET);
     y -= 11;
   }
 
@@ -314,7 +313,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
     page,
     f,
     s,
-    credit ? "ΠΙΣΤΩΤΙΚΟ ΣΗΜΕΙΩΜΑ" : "ΤΙΜΟΛΟΓΙΟ",
+    "",
     credit ? "CREDIT NOTE" : "INVOICE",
     number,
     longDay(s.issuedOn),
@@ -324,50 +323,50 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
 
   /* Who it is to, and what it is about. */
   const half = (R - L - 24) / 2;
-  const leftEnd = panel(page, f, L, y, half, "Προς / Bill to", [
+  const leftEnd = panel(page, f, L, y, half, "Bill to", [
     { value: s.client.name, strong: true },
     { value: s.client.address },
     { value: s.client.country },
-    { label: "Α.Δ.Τ. / ID No", value: s.client.idNumber },
-    { label: "Α.Φ.Π.Α. / VAT No", value: s.client.vatNumber },
+    { label: "ID No", value: s.client.idNumber },
+    { label: "VAT No", value: s.client.vatNumber },
     { label: "Email", value: s.client.email },
   ]);
   const details = credit
     ? [
-        { label: "Ακίνητο / Property", value: s.property, strong: true },
-        { label: "Συμβόλαιο / Contract", value: s.contractReference },
+        { label: "Property", value: s.property, strong: true },
+        { label: "Contract", value: s.contractReference },
         {
-          label: "Αφορά τιμολόγιο / Invoice",
+          label: "Invoice",
           value: s.relatesToInvoice
             ? `No. ${s.relatesToInvoice}${s.relatesToInvoiceDate ? ` of ${longDay(s.relatesToInvoiceDate)}` : ""}`
             : "",
         },
-        { label: "Λόγος / Reason", value: s.reason ?? "" },
+        { label: "Reason", value: s.reason ?? "" },
       ]
     : [
-        { label: "Ακίνητο / Property", value: s.property, strong: true },
-        { label: "Συμβόλαιο / Contract", value: s.contractReference },
-        { label: "Ημ. παράδοσης / Supply date", value: longDay(s.paidOn) },
-        { label: "Απόδειξη / Receipt", value: s.receiptNumber ? `No. ${s.receiptNumber}` : "" },
+        { label: "Property", value: s.property, strong: true },
+        { label: "Contract", value: s.contractReference },
+        { label: "Supply date", value: longDay(s.paidOn) },
+        { label: "Receipt", value: s.receiptNumber ? `No. ${s.receiptNumber}` : "" },
         {
-          label: "Αντικαθιστά / Replaces",
+          label: "Replaces",
           value: s.replacesNumber
             ? `Invoice ${s.replacesNumber}${s.replacedByCreditNote ? `, credit note ${s.replacedByCreditNote}` : ""}`
             : "",
         },
       ];
-  const rightEnd = panel(page, f, L + half + 24, y, half, "Στοιχεία / Details", details, 122);
+  const rightEnd = panel(page, f, L + half + 24, y, half, "Details", details, 122);
   y = Math.min(leftEnd, rightEnd) - 10;
 
   /* The line. One stage of the contract, as the books would write it. */
   const parts = s.parts && s.parts.length > 0 ? s.parts : [{ rate: s.rate, netCents: s.netCents, vatCents: s.vatCents }];
   const cols = { desc: L + 10, qty: 300, price: 385, vat: 440, amount: R - 10 };
   page.drawRectangle({ x: L, y: y - 8, width: R - L, height: 24, color: TEAL_DARK });
-  text(page, f.bold, "Περιγραφή / Description", cols.desc, y, 8, WHITE);
-  right(page, f.bold, "Ποσ. / Qty", cols.qty, y, 8, WHITE);
-  right(page, f.bold, "Τιμή / Price", cols.price, y, 8, WHITE);
-  right(page, f.bold, "Φ.Π.Α.", cols.vat, y, 8, WHITE);
-  right(page, f.bold, "Ποσό / Amount", cols.amount, y, 8, WHITE);
+  text(page, f.bold, "Description", cols.desc, y, 8, WHITE);
+  right(page, f.bold, "Qty", cols.qty, y, 8, WHITE);
+  right(page, f.bold, "Price", cols.price, y, 8, WHITE);
+  right(page, f.bold, "VAT", cols.vat, y, 8, WHITE);
+  right(page, f.bold, "Amount", cols.amount, y, 8, WHITE);
   y -= 30;
 
   const descLines = wrap(f.plain, s.description, 9, 190);
@@ -387,22 +386,22 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
     right(page, strong ? f.bold : f.plain, value, R - 10, y, 9.5);
     y -= 18;
   };
-  total("Ποσό / Amount before VAT", money(s.netCents));
+  total("Amount before VAT", money(s.netCents));
   if (parts.length > 1) {
     /* Part at the reduced rate and part at the standard rate, each said. */
-    for (const part of parts) total(`Φ.Π.Α. / VAT ${pc(part.rate)} on ${eur(part.netCents)}`, money(part.vatCents));
+    for (const part of parts) total(`VAT ${pc(part.rate)} on ${eur(part.netCents)}`, money(part.vatCents));
   } else {
-    total(`Φ.Π.Α. / VAT ${pc(parts[0].rate)}`, money(s.vatCents));
+    total(`VAT ${pc(parts[0].rate)}`, money(s.vatCents));
   }
   page.drawRectangle({ x: tx - 10, y: y - 10, width: R - tx + 10, height: 28, color: TEAL_SOFT });
-  text(page, f.bold, credit ? "Ολικό πίστωσης / Total credited" : "Ολικό / Total", tx, y, credit ? 9.5 : 10.5, TEAL_DARK);
+  text(page, f.bold, credit ? "Total credited" : "Total", tx, y, credit ? 9.5 : 10.5, TEAL_DARK);
   right(page, f.bold, money(s.totalCents), R - 10, y, 12, TEAL_DARK);
   y -= 30;
 
   /* A credit from the reduced VAT that settled part of it. */
   if (!credit && s.creditAppliedCents) {
-    total("Πίστωση / Less credit (reduced VAT)", `−${eur(s.creditAppliedCents)}`);
-    total("Πληρώθηκε / Paid", eur(s.payableCents ?? 0), true);
+    total("Less credit (reduced VAT)", `−${eur(s.creditAppliedCents)}`);
+    total("Paid", eur(s.payableCents ?? 0), true);
     y -= 4;
   }
 
@@ -410,8 +409,8 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
     /* Settled on the day, since it is issued with the money in hand. */
     const settled =
       s.payableCents === 0 && s.creditAppliedCents
-        ? `ΕΞΟΦΛΗΘΗΚΕ ΜΕ ΠΙΣΤΩΣΗ / SETTLED BY CREDIT ${longDay(s.issuedOn)}`
-        : `ΕΞΟΦΛΗΘΗΚΕ / PAID ${longDay(s.paidOn)}${s.receiptNumber ? `, receipt ${s.receiptNumber}` : ""}`;
+        ? `SETTLED BY CREDIT ${longDay(s.issuedOn)}`
+        : `PAID ${longDay(s.paidOn)}${s.receiptNumber ? `, receipt ${s.receiptNumber}` : ""}`;
     const w = f.bold.widthOfTextAtSize(settled, 8.5) + 16;
     page.drawRectangle({ x: L, y: y - 6, width: w, height: 24, borderColor: TEAL, borderWidth: 1 });
     text(page, f.bold, settled, L + 8, y + 2, 8.5, TEAL_DARK);
@@ -419,13 +418,11 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   }
 
   text(page, f.plain, amountInEnglish(s.totalCents), L, y, 8.5, QUIET);
-  y -= 11;
-  text(page, f.plain, amountInGreek(s.totalCents), L, y, 8.5, QUIET);
   y -= 22;
 
   /* Where to pay the next stage, when the bank details are set. */
   if (!credit && s.company.iban) {
-    text(page, f.bold, "ΤΡΑΠΕΖΙΚΑ ΣΤΟΙΧΕΙΑ / BANK DETAILS", L, y, 8, TEAL_DARK);
+    text(page, f.bold, "BANK DETAILS", L, y, 8, TEAL_DARK);
     y -= 14;
     for (const [label, value] of [
       ["Bank", s.company.bankName],
@@ -459,7 +456,7 @@ export async function stampCancelled(original: Buffer, lines: string[]): Promise
   const RED = rgb(0xc0 / 255, 0x2b / 255, 0x2b / 255);
   for (const page of pdf.getPages()) {
     const { width, height } = page.getSize();
-    const title = "ΑΚΥΡΩΘΗΚΕ / CANCELLED";
+    const title = "CANCELLED";
     const size = 30;
     const w = bold.widthOfTextAtSize(title, size);
     const boxW = Math.max(w, ...lines.map((line) => plain.widthOfTextAtSize(line, 12))) + 48;
@@ -499,7 +496,7 @@ export async function acknowledgementPdf(
     page,
     f,
     s,
-    "ΒΕΒΑΙΩΣΗ ΠΑΡΑΛΑΒΗΣ",
+    "",
     "ACKNOWLEDGEMENT",
     s.creditNoteNumber ? `CN ${s.creditNoteNumber}` : "",
     longDay(refund.paidOn),
@@ -517,23 +514,21 @@ export async function acknowledgementPdf(
   para(`I, ${s.client.name}${s.client.idNumber ? `, ID ${s.client.idNumber}` : ""}, confirm that I have received from ${s.company.name} the sum of ${amount} (${amountInEnglish(refund.amountCents).toLowerCase()})${how} on ${longDay(refund.paidOn)}.`, 10.5, f.bold);
   if (refund.purpose === "PENALTY") {
     para(`The amount is paid to me as the agreed compensation for the delay in the completion of the property ${s.property}, under contract ${s.contractReference}. It is covered by credit note ${s.creditNoteNumber}. The price in the Contract of Sale and its terms are unchanged.`);
-    para(`Δηλώνω ότι παρέλαβα το ποσό των ${amount} από την ${s.company.name} ως συμφωνημένη αποζημίωση για την καθυστέρηση στην ολοκλήρωση του ακινήτου ${s.property}, σύμφωνα με το συμβόλαιο ${s.contractReference}, με πιστωτικό σημείωμα ${s.creditNoteNumber}. Η τιμή και οι όροι του Συμβολαίου Πώλησης παραμένουν αμετάβλητοι.`);
   } else {
     para(`The amount is paid to me as a refund agreed as a matter of goodwill, for the property ${s.property} under contract ${s.contractReference}. It is covered by credit note ${s.creditNoteNumber}.${refund.cancelled ? " I confirm that my reservation of this property is cancelled." : ""}`);
-    para(`Δηλώνω ότι παρέλαβα το ποσό των ${amount} από την ${s.company.name} ως επιστροφή που συμφωνήθηκε για λόγους καλής θέλησης, για το ακίνητο ${s.property}, σύμφωνα με το συμβόλαιο ${s.contractReference}, με πιστωτικό σημείωμα ${s.creditNoteNumber}.${refund.cancelled ? " Επιβεβαιώνω ότι η κράτηση του ακινήτου ακυρώνεται." : ""}`);
   }
   if (refund.note) para(refund.note, 9.5);
 
   /* The two signatures. */
   y -= 40;
-  const sig = (x: number, el: string, en: string, name: string) => {
+  const sig = (x: number, en: string, name: string) => {
     page.drawLine({ start: { x, y }, end: { x: x + 210, y }, thickness: 0.8, color: GRAPHITE });
-    text(page, f.plain, `${el} / ${en}`, x, y - 13, 8, QUIET);
+    text(page, f.plain, en, x, y - 13, 8, QUIET);
     text(page, f.bold, name, x, y - 26, 9);
-    text(page, f.plain, "Ημερομηνία / Date: ____________", x, y - 44, 8.5, QUIET);
+    text(page, f.plain, "Date: ____________", x, y - 44, 8.5, QUIET);
   };
-  sig(L, "Ο πελάτης", "The client", s.client.name);
-  sig(R - 210, "Για την εταιρεία", "For the company", s.company.name);
+  sig(L, "The client", s.client.name);
+  sig(R - 210, "For the company", s.company.name);
 
   foot(page, f, s, "Refund acknowledgement");
   return Buffer.from(await pdf.save());
@@ -543,51 +538,53 @@ export async function acknowledgementPdf(
    The receipt
    --------------------------------------------------------------------------- */
 
-const METHOD_WORDS: Record<string, [string, string]> = {
-  CASH: ["Μετρητά", "Cash"],
-  CHEQUE: ["Επιταγή", "Cheque"],
-  BANK: ["Τραπεζικό έμβασμα", "Bank transfer"],
-  CARD: ["Κάρτα", "Card"],
-  OTHER: ["Άλλο", "Other"],
+const METHOD_WORDS: Record<string, string> = {
+  CASH: "Cash",
+  CHEQUE: "Cheque",
+  BANK: "Bank transfer",
+  CARD: "Card",
+  OTHER: "Other",
 };
 
 export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
   const { pdf, page, f } = await start(`Receipt ${s.receiptNumber}`);
-  let y = await letterhead(pdf, page, f, s, "ΑΠΟΔΕΙΞΗ ΕΙΣΠΡΑΞΗΣ", "RECEIPT", s.receiptNumber, longDay(s.paidOn));
+  let y = await letterhead(pdf, page, f, s, "", "RECEIPT", s.receiptNumber, longDay(s.paidOn));
 
-  const row = (labelEl: string, labelEn: string, value: string, strong = false) => {
-    text(page, f.plain, labelEl, L, y, 8, QUIET);
-    text(page, f.plain, labelEn, L, y - 10, 8, QUIET);
+  const row = (label: string, value: string, strong = false) => {
+    if (!value) return;
+    text(page, f.plain, label, L, y - 3, 8, QUIET);
     const lines = wrap(strong ? f.bold : f.plain, value, 10.5, R - L - 140);
     for (const [i, line] of lines.entries()) text(page, strong ? f.bold : f.plain, line, L + 140, y - 3 - i * 14, 10.5);
-    const used = Math.max(24, lines.length * 14 + 6);
+    const used = Math.max(20, lines.length * 14 + 6);
     page.drawLine({ start: { x: L + 140, y: y - used + 4 }, end: { x: R, y: y - used + 4 }, thickness: 0.5, color: LINE });
     y -= used + 10;
   };
 
-  row("Ελήφθη από", "Received from", s.client.name, true);
-  if (s.client.address) row("Διεύθυνση", "Address", [s.client.address, s.client.country].filter(Boolean).join(", "));
+  row("Received from", s.client.name, true);
+  if (s.client.address) row("Address", [s.client.address, s.client.country].filter(Boolean).join(", "));
 
-  /* The sum, in words and in figures, as the book asks. */
-  text(page, f.plain, "Το ποσόν των Ευρώ", L, y, 8, QUIET);
-  text(page, f.plain, "The sum of Euro", L, y - 10, 8, QUIET);
-  const words = [...wrap(f.bold, amountInEnglish(s.totalCents), 10, 250), ...wrap(f.plain, amountInGreek(s.totalCents), 9.5, 250)];
-  for (const [i, line] of words.entries()) text(page, i === 0 ? f.bold : f.plain, line, L + 140, y - 3 - i * 13, i === 0 ? 10 : 9.5);
+  /*
+   * The sum, in words and in figures, as the book asks. The words wrap in the
+   * space left of the figure box, so the box never sits on top of them.
+   */
+  text(page, f.plain, "The sum of Euro", L, y - 3, 8, QUIET);
   const boxW = 130;
+  const wordsWidth = R - boxW - 14 - (L + 140);
+  const words = wrap(f.bold, amountInEnglish(s.totalCents), 10, wordsWidth);
+  for (const [i, line] of words.entries()) text(page, f.bold, line, L + 140, y - 3 - i * 13, 10);
   page.drawRectangle({ x: R - boxW, y: y - 26, width: boxW, height: 34, color: TEAL_SOFT, borderColor: TEAL, borderWidth: 1 });
   right(page, f.bold, eur(s.totalCents), R - 10, y - 14, 15, TEAL_DARK);
   y -= Math.max(40, words.length * 13 + 12) + 8;
 
-  row("Διά", "For", s.description);
-  row("Τιμολόγιο", "Invoice", s.invoiceNumber ? `No. ${s.invoiceNumber}` : "");
+  row("For", s.description);
+  row("Invoice", s.invoiceNumber ? `No. ${s.invoiceNumber}` : "");
 
-  /* How it was paid: the book's three boxes, with the one that applies ticked. */
-  text(page, f.plain, "Τρόπος πληρωμής", L, y, 8, QUIET);
-  text(page, f.plain, "Paid by", L, y - 10, 8, QUIET);
+  /* How it was paid: the book's boxes, with the one that applies ticked. */
+  text(page, f.plain, "Paid by", L, y - 3, 8, QUIET);
   let bx = L + 140;
   const widths: Record<string, number> = { CASH: 72, CHEQUE: 80, BANK: 118, CARD: 60 };
   for (const key of ["CASH", "CHEQUE", "BANK", "CARD"]) {
-    const [el, en] = METHOD_WORDS[key];
+    const en = METHOD_WORDS[key];
     const on = s.method === key;
     page.drawRectangle({ x: bx, y: y - 7, width: 10, height: 10, borderColor: on ? TEAL_DARK : QUIET, borderWidth: 1, color: on ? TEAL_DARK : undefined });
     if (on) {
@@ -595,37 +592,35 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
       page.drawLine({ start: { x: bx + 4.5, y: y - 5 }, end: { x: bx + 8.5, y: y + 1.5 }, thickness: 1.4, color: WHITE });
     }
     text(page, on ? f.bold : f.plain, en, bx + 14, y - 5, 8.5);
-    text(page, f.plain, el, bx + 14, y - 15, 7.5, QUIET);
     bx += widths[key];
   }
-  y -= 30;
-  if (s.reference) row(s.method === "CHEQUE" ? "Επιταγή αρ." : "Αναφορά", s.method === "CHEQUE" ? "Cheque No." : "Reference", s.reference);
+  y -= 28;
 
   if (s.vatCents > 0) {
-    text(page, f.plain, `Includes VAT of ${eur(s.vatCents)} at ${Number.isInteger(s.rate) ? s.rate : s.rate.toFixed(2)}%. Περιλαμβάνει Φ.Π.Α. ${eur(s.vatCents)}.`, L + 140, y, 8, QUIET);
+    text(page, f.plain, `Includes VAT of ${eur(s.vatCents)} at ${Number.isInteger(s.rate) ? s.rate : s.rate.toFixed(2)}%.`, L + 140, y, 8, QUIET);
     y -= 22;
   }
 
   /* Where the contract stands after this money. */
   if (s.contractTotalCents > 0) {
     page.drawRectangle({ x: L, y: y - 58, width: R - L, height: 70, color: TEAL_SOFT });
-    const cell = (x: number, el: string, en: string, value: string, strong = false) => {
-      text(page, f.plain, `${el} / ${en}`, x, y - 8, 8, QUIET);
+    const cell = (x: number, en: string, value: string, strong = false) => {
+      text(page, f.plain, en, x, y - 8, 8, QUIET);
       text(page, strong ? f.bold : f.bold, value, x, y - 30, strong ? 14 : 12, strong ? TEAL_DARK : GRAPHITE);
     };
     const w3 = (R - L - 24) / 3;
-    cell(L + 12, "Αξία συμβολαίου", "Contract total", eur(s.contractTotalCents));
-    cell(L + 12 + w3, "Εισπράχθηκαν", "Received to date", eur(s.receivedToDateCents));
-    cell(L + 12 + 2 * w3, "Υπόλοιπο", "Balance", eur(s.balanceCents), true);
+    cell(L + 12, "Contract total", eur(s.contractTotalCents));
+    cell(L + 12 + w3, "Received to date", eur(s.receivedToDateCents));
+    cell(L + 12 + 2 * w3, "Balance", eur(s.balanceCents), true);
     y -= 90;
   }
 
   /* The person who took the money, and a place for a signature. */
   y -= 20;
   page.drawLine({ start: { x: R - 200, y }, end: { x: R, y }, thickness: 0.8, color: GRAPHITE });
-  right(page, f.plain, "Ο εισπράκτορας / The recipient", R, y - 12, 8, QUIET);
+  right(page, f.plain, "The recipient", R, y - 12, 8, QUIET);
   if (s.recordedBy) right(page, f.bold, s.recordedBy, R, y - 24, 9);
-  text(page, f.plain, "Ημερομηνία / Date", L, y - 12, 8, QUIET);
+  text(page, f.plain, "Date", L, y - 12, 8, QUIET);
   text(page, f.bold, longDay(s.paidOn), L, y - 24, 9);
 
   foot(page, f, s, `Receipt ${s.receiptNumber}`);

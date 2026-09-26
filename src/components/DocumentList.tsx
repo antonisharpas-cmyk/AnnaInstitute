@@ -1,6 +1,7 @@
 import type { documents as documentsTable } from "@/db/schema";
 import { categoryLabel, titleWithExtension } from "@/lib/fileLabels";
 import { Empty, Pill } from "./ui";
+import { dayAndTime, newestFirst } from "@/lib/when";
 
 type Doc = typeof documentsTable.$inferSelect;
 
@@ -26,7 +27,8 @@ export default function DocumentList({
 
   return (
     <ul className="divide-y divide-brand-line text-sm">
-      {items.map((doc) => (
+      {/* Newest first, with the time, so two files from one day still read in order. */}
+      {newestFirst(items).map((doc) => (
         <li key={doc.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
           <div className="min-w-0">
             <a
@@ -39,7 +41,7 @@ export default function DocumentList({
             </a>
             <div className="text-xs text-brand-graphite/60">
               {kb(doc.sizeBytes)} .{" "}
-              {new Date(doc.createdAt).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB")}
+              {dayAndTime(doc.createdAt, locale)}
             </div>
           </div>
           <div className="flex items-center gap-2">

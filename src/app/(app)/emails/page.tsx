@@ -129,29 +129,7 @@ export default async function AutomaticEmailsPage() {
                     className="textarea font-mono text-xs"
                   />
                 </div>
-                <div>
-                  <label className="label" htmlFor={`subjectEl-${letter.id}`}>
-                    {t("emails.subjectEl")}
-                  </label>
-                  <input
-                    id={`subjectEl-${letter.id}`}
-                    name="subjectEl"
-                    defaultValue={letter.subjectEl ?? ""}
-                    className="input"
-                  />
-                </div>
-                <div>
-                  <label className="label" htmlFor={`bodyEl-${letter.id}`}>
-                    {t("emails.bodyEl")}
-                  </label>
-                  <textarea
-                    id={`bodyEl-${letter.id}`}
-                    name="bodyEl"
-                    rows={12}
-                    defaultValue={letter.bodyEl ?? ""}
-                    className="textarea font-mono text-xs"
-                  />
-                </div>
+                {/* English only: every letter the CRM sends goes in English. */}
                 <SubmitButton>{t("common.save")}</SubmitButton>
               </form>
             </Disclosure>

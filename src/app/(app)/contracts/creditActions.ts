@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, contracts, issuedDocuments, refunds } from "@/db/schema";
@@ -32,20 +33,31 @@ export async function approveReducedVatAction(contractId: string, formData: Form
     return;
   }
 
-  const result = await approveReducedVat({
-    contractId,
-    approvedOn,
-    reducedNetCents,
-    reducedRate,
-    standardRate,
-    who: { id: user.id, name: user.name, email: user.email },
-  });
-
-  await flash(
-    `said.reducedApproved|${result.creditNotes.length} credit notes, ${result.invoices.length} new invoices, credit ${fromCents(result.creditCents)}`,
-  );
+  /*
+   * The approval writes several PDFs and can take a few seconds. Whatever
+   * happens, the office lands back on a freshly loaded contract with a line
+   * saying what was done, rather than on a page left half answered: the page
+   * itself finishes anything that was not (see finishReducedVat).
+   */
+  try {
+    const result = await approveReducedVat({
+      contractId,
+      approvedOn,
+      reducedNetCents,
+      reducedRate,
+      standardRate,
+      who: { id: user.id, name: user.name, email: user.email },
+    });
+    await flash(
+      `said.reducedApproved|${result.creditNotes.length} credit notes, ${result.invoices.length} new invoices, credit ${fromCents(result.creditCents)}`,
+    );
+  } catch (error) {
+    console.error("[reduced vat]", error);
+    await flash(`said.reducedFailed|${error instanceof Error ? error.message.slice(0, 160) : "unknown"}`, "bad");
+  }
   revalidatePath(`/contracts/${contractId}`);
   revalidatePath("/invoices/clients");
+  redirect(`/contracts/${contractId}`);
 }
 
 /** A goodwill refund or a delay penalty: see lib/refunds. */

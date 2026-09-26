@@ -84,8 +84,9 @@ export async function saveAutomatic(templateId: string, formData: FormData) {
     .set({
       subject: subject || null,
       body,
-      subjectEl: subjectEl || null,
-      bodyEl: bodyEl || null,
+      /* The Greek wording is no longer offered: kept as it was if not sent. */
+      subjectEl: formData.has("subjectEl") ? subjectEl || null : undefined,
+      bodyEl: formData.has("bodyEl") ? bodyEl || null : undefined,
       updatedAt: new Date(),
     })
     .where(eq(emailTemplates.id, templateId));

@@ -4,6 +4,7 @@ import { contracts, issuedDocuments, payments } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import { refundsFor } from "@/lib/refunds";
+import { dayAndTime } from "@/lib/when";
 import { Card, Empty, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
@@ -90,6 +91,7 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                   <table className="data">
                     <thead>
                       <tr>
+                        <th>{t("credits.recordedOn")}</th>
                         <th>{t("issued.type.CREDIT_NOTE")}</th>
                         <th>{t("credits.cancels")}</th>
                         <th>{t("credits.replacedBy")}</th>
@@ -103,6 +105,7 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                         const fresh = old?.replacedById ? byId.get(old.replacedById) : undefined;
                         return (
                           <tr key={note.id}>
+                            <td className="nowrap text-xs">{dayAndTime(note.createdAt, locale)}</td>
                             <td className="font-semibold">{note.number}</td>
                             <td>{old?.number ?? ""}</td>
                             <td>{fresh?.number ?? ""}</td>
@@ -207,6 +210,7 @@ export default async function CreditsSection({ contractId }: { contractId: strin
               <thead>
                 <tr>
                   <th>{t("common.date")}</th>
+                  <th>{t("credits.recordedOn")}</th>
                   <th>{t("credits.purpose")}</th>
                   <th className="ctr">{t("contracts.amount")}</th>
                   <th>{t("issued.type.CREDIT_NOTE")}</th>
@@ -218,6 +222,7 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                 {refunds.map(({ refund, note, amountCents }) => (
                   <tr key={refund.id}>
                     <td className="nowrap text-xs">{day(refund.paidOn)}</td>
+                    <td className="nowrap text-xs">{dayAndTime(refund.createdAt, locale)}</td>
                     <td className="text-xs">
                       {t(`issued.purpose.${refund.purpose}` as "issued.purpose.REFUND")}
                       {refund.cancelledContract ? (

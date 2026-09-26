@@ -1,49 +1,82 @@
 import Link from "next/link";
-import { asc, desc, eq } from "drizzle-orm";
-import { db } from "@/db";
-import { agents, commissionPayments } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { allCommissionLines, papersFor } from "@/lib/commissions";
+import { dayAndTime } from "@/lib/when";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import SearchBox from "@/components/SearchBox";
 import Pagination, { paginate } from "@/components/Pagination";
-import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
-import { recordCommissionPayment } from "../agents/actions";
 
 const PER_PAGE = 10;
 
-const day = (value: Date | null | undefined) =>
-  value ? new Date(value).toISOString().slice(0, 10) : "";
+/**
+ * Every commission in one table.
+ *
+ * One row per commission line: who earned it, on which sale, what was
+ * generated, what has been paid (nought until something is), when each of
+ * those happened, the two papers, and where it stands. The papers open in a new
+ * tab from the row. Paying an agent is done on the agent's own page, where the
+ * sale and its papers are.
+ */
+type Standing = "PENDING" | "PARTIAL" | "PAID" | "COMPLETED" | "CANCELLED";
 
 export default async function CommissionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    page?: string;
+    from?: string;
+    to?: string;
+    by?: string;
+  }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
   const query = (params.q ?? "").trim().toLowerCase();
   const status = params.status ?? "";
+  const by = params.by === "paid" ? "paid" : "generated";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
 
-  /**
-   * A commission belongs to one sale: one apartment on one contract. The rows
-   * are joined through the assignment, which is where the agent is recorded.
-   */
   const all = await allCommissionLines();
-  /* The two papers behind every line, so this page tells the same story the
-     agent's own page does. */
   const papers = await papersFor(all.map((row) => row.line.id));
 
+  /* Where a line stands, in the words the office uses. */
+  const standingOf = (row: (typeof all)[number]): Standing => {
+    if (row.line.status === "CANCELLED") return "CANCELLED";
+    const paid = toCents(row.paid);
+    const amount = toCents(row.line.amount);
+    if (paid <= 0) return "PENDING";
+    if (paid < amount) return "PARTIAL";
+    return papers.get(row.line.id)?.complete ? "COMPLETED" : "PAID";
+  };
+
+  /* Two days, the second one included, read as the office's own days. */
+  const dayStart = (value?: string) => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const [y, m, d] = value.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const from = dayStart(params.from);
+  const toDay = dayStart(params.to);
+  const until = toDay ? new Date(toDay.getFullYear(), toDay.getMonth(), toDay.getDate() + 1) : null;
+
   const matching = all.filter((r) => {
-    const paidCents = toCents(r.paid);
-    const owed = toCents(r.line.amount) - paidCents;
-    /* A commission taken back is owed by nobody. */
-    const cancelled = r.line.status === "CANCELLED";
-    if (status === "PAID" && (owed > 0 || cancelled)) return false;
-    if (status === "PENDING" && (owed <= 0 || cancelled)) return false;
+    const standing = standingOf(r);
+    if (status === "PENDING" && standing !== "PENDING" && standing !== "PARTIAL") return false;
+    if (status === "PAID" && standing !== "PAID" && standing !== "COMPLETED") return false;
+    if (status === "COMPLETED" && standing !== "COMPLETED") return false;
+    if (status === "CANCELLED" && standing !== "CANCELLED") return false;
+
+    if (from || until) {
+      const at = by === "paid" ? (r.paidAt ? new Date(r.paidAt) : null) : new Date(r.line.createdAt);
+      if (!at) return false;
+      if (from && at < from) return false;
+      if (until && at >= until) return false;
+    }
+
     if (!query) return true;
     const haystack = [
       r.agent.name,
@@ -61,20 +94,40 @@ export default async function CommissionsPage({
 
   const rows = matching.slice(offset, offset + perPage);
 
-  const [paymentRows, agentList] = await Promise.all([
-    db
-      .select({ payment: commissionPayments, agent: agents })
-      .from(commissionPayments)
-      .innerJoin(agents, eq(agents.id, commissionPayments.agentId))
-      .orderBy(desc(commissionPayments.paidOn))
-      .limit(20),
-    db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name)),
-  ]);
+  const live = matching.filter((r) => r.line.status !== "CANCELLED");
+  const generated = live.reduce((a, r) => a + toCents(r.line.amount), 0);
+  const settled = live.reduce((a, r) => a + toCents(r.paid), 0);
 
-  const generated = matching
-    .filter((r) => r.line.status !== "CANCELLED")
-    .reduce((a, r) => a + toCents(r.line.amount), 0);
-  const settled = matching.reduce((a, r) => a + toCents(r.paid), 0);
+  const pill = (standing: Standing) => {
+    switch (standing) {
+      case "COMPLETED":
+        return <Pill tone="good">{t("commissions.completed")}</Pill>;
+      case "PAID":
+        return <Pill tone="teal">{t("commissions.paidPapersMissing")}</Pill>;
+      case "PARTIAL":
+        return <Pill tone="warn">{t("commissions.partiallyPaid")}</Pill>;
+      case "CANCELLED":
+        return <Pill tone="bad">{t("commissions.cancelled")}</Pill>;
+      default:
+        return <Pill tone="warn">{t("commissions.pending")}</Pill>;
+    }
+  };
+
+  const paper = (file: { id: string } | null, label: string) =>
+    file ? (
+      <a
+        href={`/api/files/${file.id}`}
+        target="_blank"
+        rel="noreferrer"
+        className="text-brand-teal-dark hover:underline"
+      >
+        {"✓"} {label}
+      </a>
+    ) : (
+      <span className="text-brand-graphite/50">
+        {"–"} {label}
+      </span>
+    );
 
   return (
     <>
@@ -93,48 +146,81 @@ export default async function CommissionsPage({
         <Stat label={t("agents.owed")} value={formatAmount(generated - settled, locale)} />
       </div>
 
-      <div className="space-y-4">
-        <Card>
-          <SearchBox
-            action="/commissions"
-            query={params.q ?? ""}
-            placeholder={t("commissions.searchPlaceholder")}
-            searchLabel={t("common.search")}
-            clearLabel={t("common.clear")}
-          >
-            <div className="w-48">
-              <label className="label" htmlFor="status">
-                {t("common.status")}
-              </label>
-              <select id="status" name="status" defaultValue={status} className="select">
-                <option value="">{t("common.all")}</option>
-                <option value="PENDING">{t("commissions.owed")}</option>
-                <option value="PAID">{t("commissions.settled")}</option>
-              </select>
-            </div>
-          </SearchBox>
+      <Card>
+        <SearchBox
+          action="/commissions"
+          query={params.q ?? ""}
+          placeholder={t("commissions.searchPlaceholder")}
+          searchLabel={t("common.search")}
+          clearLabel={t("common.clear")}
+        >
+          <div className="w-44">
+            <label className="label" htmlFor="status">
+              {t("common.status")}
+            </label>
+            <select id="status" name="status" defaultValue={status} className="select">
+              <option value="">{t("common.all")}</option>
+              <option value="PENDING">{t("commissions.pending")}</option>
+              <option value="PAID">{t("commissions.paidFilter")}</option>
+              <option value="COMPLETED">{t("commissions.completed")}</option>
+              <option value="CANCELLED">{t("commissions.cancelled")}</option>
+            </select>
+          </div>
+          {/* A period, read against the day a commission was generated or the
+              day it was paid, whichever the office picks. */}
+          <div className="w-44">
+            <label className="label" htmlFor="by">
+              {t("commissions.periodBy")}
+            </label>
+            <select id="by" name="by" defaultValue={by} className="select">
+              <option value="generated">{t("commissions.byGenerated")}</option>
+              <option value="paid">{t("commissions.byPaid")}</option>
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="cFrom">
+              {t("common.from")}
+            </label>
+            <DateField id="cFrom" name="from" defaultValue={params.from ?? ""} />
+          </div>
+          <div>
+            <label className="label" htmlFor="cTo">
+              {t("common.to")}
+            </label>
+            <DateField id="cTo" name="to" defaultValue={params.to ?? ""} />
+          </div>
+        </SearchBox>
 
-          <div className="mt-4 overflow-x-auto">
-            {rows.length === 0 ? (
-              <Empty message={query || status ? t("commissions.noneFound") : t("common.none")} />
-            ) : (
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>{t("contracts.agent")}</th>
-                    <th>{t("contracts.title")}</th>
-                    <th>{t("commissions.sale")}</th>
-                    <th>{t("commissions.line")}</th>
-                    <th className="ctr">{t("commissions.base")}</th>
-                    <th className="ctr">{t("agents.rate")}</th>
-                    <th className="ctr">{t("contracts.amount")}</th>
-                    <th className="ctr">{t("agents.paidOut")}</th>
-                    <th className="ctr">{t("commissions.papers")}</th>
-                    <th className="ctr">{t("common.status")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
+        <div className="mt-4 overflow-x-auto">
+          {rows.length === 0 ? (
+            <Empty
+              message={
+                query || status || params.from || params.to
+                  ? t("commissions.noneFound")
+                  : t("common.none")
+              }
+            />
+          ) : (
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t("contracts.agent")}</th>
+                  <th>{t("commissions.sale")}</th>
+                  <th>{t("commissions.line")}</th>
+                  <th className="ctr">{t("agents.generated")}</th>
+                  <th className="ctr">{t("agents.paidOut")}</th>
+                  <th>{t("commissions.generatedOn")}</th>
+                  <th>{t("commissions.paidOn")}</th>
+                  <th>{t("commissions.papers")}</th>
+                  <th className="ctr">{t("common.status")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const standing = standingOf(r);
+                  const mine = papers.get(r.line.id);
+                  const paidCents = toCents(r.paid);
+                  return (
                     <tr key={r.line.id}>
                       <td>
                         <Link
@@ -145,204 +231,75 @@ export default async function CommissionsPage({
                         >
                           {r.agent.name}
                         </Link>
-                        <div className="text-xs text-brand-graphite/60">
-                          {r.agent.company ?? ""}
-                        </div>
-                      </td>
-                      <td>
-                        {r.contract ? (
-                          <Link
-                            href={`/contracts/${r.contract.id}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="hover:underline"
-                          >
-                            {r.contract.reference}
-                          </Link>
-                        ) : (
-                          ""
-                        )}
+                        <div className="text-xs text-brand-graphite/60">{r.agent.company ?? ""}</div>
                       </td>
                       <td>
                         {r.project && r.unit ? `${r.project.name} ${r.unit.code}` : ""}
-                        {r.client ? (
-                          <div className="text-xs text-brand-graphite/60">
-                            {r.client.firstName} {r.client.lastName}
-                          </div>
-                        ) : null}
+                        <div className="text-xs text-brand-graphite/60">
+                          {r.client ? `${r.client.firstName} ${r.client.lastName}` : ""}
+                          {r.contract ? (
+                            <>
+                              {r.client ? " . " : ""}
+                              <Link
+                                href={`/contracts/${r.contract.id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-brand-teal-dark hover:underline"
+                              >
+                                {r.contract.reference}
+                              </Link>
+                            </>
+                          ) : null}
+                        </div>
                       </td>
                       <td>
                         {r.line.kind === "RATE"
                           ? t("commissions.onThePrice")
                           : (r.line.label ?? t("commissions.extra"))}
-                      </td>
-                      <td className="ctr">
-                        {r.line.kind === "RATE"
-                          ? formatAmount(toCents(r.line.baseAmount), locale)
-                          : ""}
-                      </td>
-                      <td className="ctr">
-                        {r.line.kind === "RATE" ? formatPercent(Number(r.line.rate), locale) : ""}
+                        {r.line.kind === "RATE" ? (
+                          <div className="whitespace-nowrap text-xs text-brand-graphite/60">
+                            {formatPercent(Number(r.line.rate), locale)} {t("common.of")}{" "}
+                            {formatAmount(toCents(r.line.baseAmount), locale)}
+                          </div>
+                        ) : null}
                       </td>
                       <td
-                        className={`ctr font-semibold ${r.line.status === "CANCELLED" ? "line-through text-brand-graphite/50" : ""}`}
+                        className={`ctr nowrap font-semibold ${
+                          standing === "CANCELLED" ? "line-through text-brand-graphite/50" : ""
+                        }`}
                       >
                         {formatAmount(toCents(r.line.amount), locale)}
                       </td>
-                      <td className="ctr">{formatAmount(toCents(r.paid), locale)}</td>
-                      <td className="ctr text-xs">
-                        {/* Which of the two papers is in, so the office can see
-                            at a glance what it is chasing. */}
-                        {(() => {
-                          const mine = papers.get(r.line.id);
-                          return (
-                            <>
-                              <div className={mine?.invoice ? "" : "text-brand-graphite/50"}>
-                                {mine?.invoice ? "\u2713" : "\u2013"}{" "}
-                                {t("commissions.agentInvoice")}
-                              </div>
-                              <div className={mine?.receipt ? "" : "text-brand-graphite/50"}>
-                                {mine?.receipt ? "\u2713" : "\u2013"}{" "}
-                                {t("commissions.agentReceipt")}
-                              </div>
-                            </>
-                          );
-                        })()}
+                      <td className="ctr nowrap">{formatAmount(Math.max(0, paidCents), locale)}</td>
+                      <td className="nowrap text-xs">{dayAndTime(r.line.createdAt, locale)}</td>
+                      <td className="nowrap text-xs">
+                        {r.paidAt ? dayAndTime(r.paidAt, locale) : ""}
                       </td>
-                      <td className="ctr">
-                        {r.line.status === "CANCELLED" ? (
-                          <Pill tone="bad">{t("commissions.cancelled")}</Pill>
-                        ) : (
-                          <Pill tone={papers.get(r.line.id)?.complete ? "good" : "warn"}>
-                            {papers.get(r.line.id)?.complete
-                              ? t("commissions.completed")
-                              : t("commissions.notCompleted")}
-                          </Pill>
-                        )}
+                      <td className="nowrap text-xs">
+                        <div className="whitespace-nowrap">{paper(mine?.invoice ?? null, t("commissions.agentInvoice"))}</div>
+                        <div className="whitespace-nowrap">{paper(mine?.receipt ?? null, t("commissions.agentReceipt"))}</div>
                       </td>
+                      <td className="ctr">{pill(standing)}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <Pagination
-            basePath="/commissions"
-            params={params}
-            info={{ page, perPage, total: matching.length }}
-            labels={{
-              previous: t("common.previous"),
-              next: t("common.next"),
-              showing: t("common.showing"),
-              of: t("common.of"),
-            }}
-          />
-        </Card>
-
-        <Card title={t("commissions.paidOutTitle")}>
-          <div className="mb-4">
-            <Disclosure showLabel={t("agents.recordPayment")} hideLabel={t("common.cancel")}>
-              {agentList.length === 0 ? (
-                <p className="text-sm text-brand-graphite/60">Add an agent first.</p>
-              ) : (
-                <form
-                  action={recordCommissionPayment}
-                  className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-2"
-                >
-                  <div>
-                    <label className="label" htmlFor="agentId">
-                      {t("contracts.agent")}
-                    </label>
-                    <select id="agentId" name="agentId" required className="select">
-                      {agentList.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="commissionId">
-                      {t("commissions.sale")}
-                    </label>
-                    <select id="commissionId" name="commissionId" className="select">
-                      <option value="">not against one sale</option>
-                      {all
-                        .filter((r) => r.line.status !== "PAID")
-                        .map((r) => (
-                          <option key={r.line.id} value={r.line.id}>
-                            {r.agent.name} . {r.contract?.reference ?? ""} {r.unit?.code ?? ""} .{" "}
-                            {formatAmount(toCents(r.line.amount), locale)}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="amount">
-                      {t("contracts.amount")}
-                    </label>
-                    <input id="amount" name="amount" required className="input" />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="paidOn">
-                      {t("common.date")}
-                    </label>
-                    <DateField id="paidOn" name="paidOn" />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="reference">
-                      {t("commissions.reference")}
-                    </label>
-                    <input id="reference" name="reference" className="input" />
-                  </div>
-                  <div className="flex items-end">
-                    <button type="submit" className="btn btn-primary">
-                      {t("common.save")}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </Disclosure>
-          </div>
-
-          {paymentRows.length === 0 ? (
-            <Empty message={t("common.none")} />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>{t("common.date")}</th>
-                    <th>{t("contracts.agent")}</th>
-                    <th className="ctr">{t("contracts.amount")}</th>
-                    <th>{t("commissions.reference")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paymentRows.map((r) => (
-                    <tr key={r.payment.id}>
-                      <td>{day(r.payment.paidOn)}</td>
-                      <td>
-                        <Link
-                          href={`/agents/${r.agent.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="hover:underline"
-                        >
-                          {r.agent.name}
-                        </Link>
-                      </td>
-                      <td className="ctr">{formatAmount(toCents(r.payment.amount), locale)}</td>
-                      <td>{r.payment.reference ?? ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
-        </Card>
-      </div>
+        </div>
+
+        <Pagination
+          basePath="/commissions"
+          params={params}
+          info={{ page, perPage, total: matching.length }}
+          labels={{
+            previous: t("common.previous"),
+            next: t("common.next"),
+            showing: t("common.showing"),
+            of: t("common.of"),
+          }}
+        />
+      </Card>
     </>
   );
 }

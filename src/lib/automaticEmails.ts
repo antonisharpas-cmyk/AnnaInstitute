@@ -239,9 +239,8 @@ export async function letterForPayment(paymentId: string): Promise<void> {
   }
   papers.push(...(await filedWith(paymentId)));
 
-  /* Their own language when the record says so, otherwise English, which is
-     what the office writes in unless told otherwise. */
-  const locale = (row.client.country ?? "").toLowerCase().includes("cyprus") ? "el" : "en";
+  /* Every letter goes in English, as the office asked. */
+  const locale: string = "en";
   const money = (cents: number) => formatAmount(cents, locale);
 
   const values: Record<string, string> = {

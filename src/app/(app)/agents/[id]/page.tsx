@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { dayAndTime } from "@/lib/when";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -58,9 +59,6 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   /* The two papers filed against every commission line on this page. */
   const papers = await papersFor(sales.flatMap((sale) => sale.lines.map((line) => line.id)));
 
-  const shortDay = (value: Date | null | undefined) =>
-    value ? new Date(value).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB") : "";
-
   return (
     <>
       <BackLink href="/agents" label={`${t("common.backTo")} ${t("agents.title").toLowerCase()}`} />
@@ -101,8 +99,9 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
         <Stat label={t("agents.owed")} value={formatAmount(totals.outstandingCents, locale)} />
       </div>
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-1">
+      {/* One column, top to bottom: the agent, the sales, what was paid. */}
+      <div className="mb-4 space-y-4">
+        <div>
           <ProfileCard
             title={t("agents.profile")}
             action={saveAgentProfile.bind(null, id)}
@@ -146,7 +145,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           />
         </div>
 
-        <div className="space-y-4 lg:col-span-2">
+        <div className="space-y-4">
           {/* What he sold, and what each sale earns him. */}
           <Card title={t("agents.sales")}>
             {/*
@@ -309,6 +308,47 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                       </div>
                     ) : null}
 
+                    {/* The sale in one line: when its commission was generated,
+                        how much, how much is paid, and where it stands. The
+                        figures and the two papers open underneath on a click. */}
+                    {sale.lines.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+                        <span>
+                          <span className="text-xs text-brand-graphite/60">{t("commissions.generatedOn")} </span>
+                          <span className="font-semibold">
+                            {dayAndTime(
+                              sale.lines.reduce<Date | null>(
+                                (first, l) => (!first || l.generatedAt < first ? l.generatedAt : first),
+                                null,
+                              ),
+                              locale,
+                            )}
+                          </span>
+                        </span>
+                        <span>
+                          <span className="text-xs text-brand-graphite/60">{t("agents.generated")} </span>
+                          <span className="font-semibold">{formatAmount(sale.generatedCents, locale)}</span>
+                        </span>
+                        <span>
+                          <span className="text-xs text-brand-graphite/60">{t("agents.paidOut")} </span>
+                          <span className="font-semibold">{formatAmount(sale.paidCents, locale)}</span>
+                        </span>
+                        {sale.lines.every((l) => papers.get(l.id)?.complete) ? (
+                          <Pill tone="good">{t("commissions.completed")}</Pill>
+                        ) : sale.lines.every((l) => l.status === "CANCELLED") ? (
+                          <Pill tone="bad">{t("commissions.cancelled")}</Pill>
+                        ) : (
+                          <Pill tone="warn">{t("commissions.pending")}</Pill>
+                        )}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3">
+                      <Disclosure
+                        showLabel={t("agents.showDetails")}
+                        hideLabel={t("agents.hideDetails")}
+                        tone="secondary"
+                      >
                     <div
                       className={`mt-3 overflow-x-auto${sale.lines.length === 0 ? " hidden" : ""}`}
                     >
@@ -444,8 +484,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                                 )}`
                               : null
                           }
-                          generatedOn={`${shortDay(line.generatedAt)} . ${t("commissions.onFirstPayment")}`}
-                          completedOn={shortDay(line.completedAt) || null}
+                          generatedOn={`${dayAndTime(line.generatedAt, locale)} . ${t("commissions.onFirstPayment")}`}
+                          completedOn={dayAndTime(line.completedAt, locale) || null}
                           waitingFor={missing}
                           upload={async (kind, formData) => {
                             "use server";
@@ -521,6 +561,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                         </form>
                       </Disclosure>
                     </div>
+                      </Disclosure>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -590,6 +632,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 <thead>
                   <tr>
                     <th>{t("common.date")}</th>
+                    <th>{t("credits.recordedOn")}</th>
                     <th className="ctr">{t("contracts.amount")}</th>
                     <th>{t("commissions.reference")}</th>
                     <th className="ctr">{t("common.actions")}</th>
@@ -599,6 +642,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                   {paidOut.map((p) => (
                     <tr key={p.id}>
                       <td>{day(p.paidOn)}</td>
+                      <td className="nowrap text-xs">{dayAndTime(p.createdAt, locale)}</td>
                       <td className="ctr">{formatAmount(toCents(p.amount), locale)}</td>
                       <td>{p.reference ?? ""}</td>
                       <td className="ctr">

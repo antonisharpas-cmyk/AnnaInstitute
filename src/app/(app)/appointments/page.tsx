@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
-import { listAppointments, needsAnAnswer, whoCanBeMet } from "@/lib/appointments";
+import { listAppointments, needsAnAnswer, PERIODS, whoCanBeMet } from "@/lib/appointments";
 import { whoCanGo } from "@/lib/team";
 import { anyFilter, many } from "@/lib/filters";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
@@ -56,6 +56,9 @@ export default async function AppointmentsPage({
     show?: string;
     assignedTo?: string;
     type?: string;
+    when?: string;
+    from?: string;
+    to?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -72,6 +75,9 @@ export default async function AppointmentsPage({
       show,
       assignedTo: params.assignedTo,
       type: params.type,
+      when: params.when,
+      from: params.from,
+      to: params.to,
     }),
     whoCanBeMet(),
     whoCanGo(),
@@ -134,12 +140,39 @@ export default async function AppointmentsPage({
             name="assignedTo"
             label={t("appointments.assignedTo")}
             chosen={many(params.assignedTo ?? "")}
-            anything={t("appointments.anybody")}
+            anything={t("common.all")}
             choices={[
               ...team.map((member) => ({ value: member.id, label: member.name })),
               { value: "nobody", label: t("appointments.nobody") },
             ]}
           />
+
+          {/* When: a named period, or two days of your own. */}
+          <Pick
+            name="when"
+            label={t("appointments.when")}
+            chosen={params.when ? [params.when] : []}
+            anything={t("appointments.anyDay")}
+            choices={PERIODS.map((one) => ({
+              value: one,
+              label: t(`appointments.period.${one}` as MessageKey),
+            }))}
+            only
+          />
+          <div className="flex items-end gap-1">
+            <div>
+              <label className="label" htmlFor="apptFrom">
+                {t("common.from")}
+              </label>
+              <DateField id="apptFrom" name="from" defaultValue={params.from ?? ""} className="!py-1 !text-xs" />
+            </div>
+            <div>
+              <label className="label" htmlFor="apptTo">
+                {t("common.to")}
+              </label>
+              <DateField id="apptTo" name="to" defaultValue={params.to ?? ""} className="!py-1 !text-xs" />
+            </div>
+          </div>
 
           <Pick
             name="type"

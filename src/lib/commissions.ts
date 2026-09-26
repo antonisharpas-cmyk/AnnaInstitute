@@ -135,6 +135,8 @@ export async function allCommissionLines() {
       project: projects,
       client: clients,
       paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.commission_id = ${commissions.id}), 0)`,
+      /* When the last money to the agent against this line was recorded. */
+      paidAt: sql<Date | null>`(select max(cp.created_at) from commission_payments cp where cp.commission_id = ${commissions.id})`,
     })
     .from(commissions)
     .innerJoin(agents, eq(agents.id, commissions.agentId))

@@ -93,6 +93,13 @@ export default function ContractForm({
    */
   const [kind, setKind] = useState<"SALE" | "LAND_EXCHANGE">(contract?.kind ?? "SALE");
   const [cash, setCash] = useState(whole(contract?.cashAmount ?? undefined));
+  /*
+   * On a sale with money received, the VAT is changed from the VAT card on the
+   * contract, which credits the invoices already issued and puts the VAT paid
+   * over on the next stages. Changed here it would only move the open stages
+   * and leave the paid ones at the old rate.
+   */
+  const vatLocked = Boolean(frozen && contract && kind === "SALE");
 
   /** The price and the cash added up, said out loud so nobody has to do it. */
   const money = (value: string) => parseAmount(value) / 100;
@@ -292,10 +299,12 @@ export default function ContractForm({
             required
             value={vatRate}
             onChange={(e) => setVatRate(e.target.value)}
+            readOnly={vatLocked}
             inputMode="decimal"
             placeholder="5"
-            className="input"
+            className={vatLocked ? "input bg-brand-surface text-brand-graphite/70" : "input"}
           />
+          {vatLocked ? <p className="mt-1 text-xs text-brand-graphite/60">{labels.vatLocked}</p> : null}
         </div>
 
         {/*

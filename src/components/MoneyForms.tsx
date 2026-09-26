@@ -137,18 +137,6 @@ export function PaymentForm({
         <DateField name="paidOn" />
       </div>
       <div>
-        <label className="label">{labels.receipt}</label>
-        <input
-          name="receiptNumber"
-          defaultValue={nextReceipt ?? ""}
-          placeholder={nextReceipt ?? ""}
-          className="input"
-        />
-        {nextReceipt ? (
-          <p className="mt-1 text-xs text-brand-graphite/60">{labels.receiptNote}</p>
-        ) : null}
-      </div>
-      <div>
         <label className="label">{labels.method}</label>
         <select name="method" className="select" defaultValue="">
           <option value="">{labels.chooseMethod}</option>
@@ -159,20 +147,17 @@ export function PaymentForm({
           ))}
         </select>
       </div>
-      {/* The cheque number or the bank's reference: it is printed on the receipt. */}
-      <div>
-        <label className="label">{labels.reference ?? "Cheque no. or bank reference"}</label>
-        <input name="reference" placeholder={labels.referenceHint ?? ""} className="input" />
-      </div>
-      <div className="sm:col-span-2">
-        <label className="label">{labels.files}</label>
-        <input name="files" type="file" multiple className="input !py-1.5 text-xs" />
-        <p className="mt-1 text-xs text-brand-graphite/60">{labels.filesNote}</p>
-      </div>
-      <div>
-        <label className="label">{labels.fileTitle}</label>
-        <input name="fileTitle" placeholder={labels.fileTitlePlaceholder} className="input" />
-      </div>
+      {/*
+        Four things are asked and nothing else. The receipt number is given by
+        the CRM in the office's own run, the invoice and the receipt are drawn
+        and filed under Receipts and invoices, and both go to the client by
+        email, so there is nothing to type or attach here.
+      */}
+      {nextReceipt ? (
+        <p className="self-end text-xs text-brand-graphite/60 sm:col-span-2">
+          {labels.receiptNote.replace("{number}", nextReceipt)}
+        </p>
+      ) : null}
       <div className="flex items-end">
         <SubmitButton>{labels.save}</SubmitButton>
       </div>

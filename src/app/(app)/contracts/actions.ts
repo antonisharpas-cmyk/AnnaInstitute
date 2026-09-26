@@ -6,6 +6,7 @@ import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
+  automaticEmails,
   changeRequests,
   contracts,
   contractUnits,
@@ -527,7 +528,12 @@ export async function updateContract(
   }
 
   const netCents = toCents(parsed.netPrice);
-  const rate = Number(parsed.vatRate);
+  /* A sale with money received keeps its VAT here: it is changed from the VAT
+     card on the contract, which deals with the invoices already issued. */
+  const rate =
+    !before.open && before.contract.kind === "SALE" && parsed.kind === "SALE"
+      ? Number(before.contract.vatRate)
+      : Number(parsed.vatRate);
   const status = String(formData.get("status") ?? before.contract.status) as
     "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
 
@@ -854,6 +860,9 @@ export async function removeLine(installmentId: string, contractId: string) {
 
 export async function recordPayment(contractId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
+  /* Reading the contract first puts any VAT paid over on the next stage, so
+     this payment is matched against what is really still owed. */
+  await getContract(contractId);
   const installmentId = String(formData.get("installmentId") ?? "") || null;
   const amountCents = parseAmount(String(formData.get("amount") ?? "0"));
   const paidOn = String(formData.get("paidOn") ?? "");
@@ -953,9 +962,24 @@ export async function recordPayment(contractId: string, formData: FormData) {
     nine before it. The office should not have to read an outstanding column to
     find out that they are done collecting.
   */
-  await flash(
-    (await nothingLeftToCollect(contractId)) ? "said.paidInFull" : "said.paymentRecorded",
-  );
+  /*
+   * And what became of the email to the client, said right away. A letter
+   * that did not go used to be visible only in the automatic emails section,
+   * which is how "I am not receiving the emails" went unexplained.
+   */
+  const [letter] = await db
+    .select({ status: automaticEmails.status, reason: automaticEmails.reason })
+    .from(automaticEmails)
+    .where(eq(automaticEmails.paymentId, inserted[0].id))
+    .limit(1);
+  const done = (await nothingLeftToCollect(contractId)) ? "said.paidInFull" : "said.paymentRecorded";
+  if (letter && letter.status !== "SENT") {
+    await flash(`${done}|${letter.status === "WAITING" ? "" : "the email did not go: "}${letter.reason ?? letter.status}`, letter.status === "WAITING" ? "good" : "bad");
+  } else if (letter?.status === "SENT") {
+    await flash(`${done}|the invoice and receipt were emailed to the client`);
+  } else {
+    await flash(done);
+  }
 
   revalidatePath(`/contracts/${contractId}`);
   await alsoTheBuyer(contractId);

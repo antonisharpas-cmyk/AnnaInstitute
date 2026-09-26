@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CreditsSection from "./CreditsSection";
-import { desc, eq } from "drizzle-orm";
-import { db } from "@/db";
-import { changeRequests } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
 import { contractStatusTone, getContract, landExchangeUnits } from "@/lib/contracts";
@@ -14,19 +11,18 @@ import { titleWithExtension } from "@/lib/fileLabels";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DocumentList from "@/components/DocumentList";
+import { dayAndTime } from "@/lib/when";
 import DocumentUpload from "@/components/DocumentUpload";
 import DeleteRecord from "@/components/DeleteRecord";
-import { ChangeRequestForm, PaymentForm } from "@/components/MoneyForms";
+import { PaymentForm } from "@/components/MoneyForms";
 import DateField from "@/components/DateField";
 import {
-  addChangeRequest,
   addLine,
   deleteContract,
   deleteContractDocument,
   deletePayment,
   recordPayment,
   removeLine,
-  setChangeRequestStatus,
   setDates,
   updateLine,
   uploadContractDocuments,
@@ -59,12 +55,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const theirApartments =
     detail.contract.kind === "LAND_EXCHANGE" ? await landExchangeUnits(id) : [];
 
-  const [requests, contractDocuments, paymentFiles, nextReceipt] = await Promise.all([
-    db
-      .select()
-      .from(changeRequests)
-      .where(eq(changeRequests.contractId, id))
-      .orderBy(desc(changeRequests.requestedOn)),
+  const [contractDocuments, paymentFiles, nextReceipt] = await Promise.all([
     documentsForContract(id),
     documentsByPayment(id),
     /* The number the next receipt will carry, so the form opens with it in. */
@@ -599,11 +590,46 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 <tbody>
                   {payments.map((p) => (
                     <tr key={p.id}>
-                      <td>{dateFor(p.paidOn)}</td>
-                      <td className="ctr">{formatAmount(toCents(p.amount), locale)}</td>
+                      <td className="nowrap">{dayAndTime(p.paidOn, locale).slice(0, 10)}</td>
+                      <td className="ctr nowrap">
+                        {toCents(p.amount) < 0
+                          ? `${t("contracts.creditOut")} ${formatAmount(Math.abs(toCents(p.amount)), locale)}`
+                          : formatAmount(toCents(p.amount), locale)}
+                      </td>
                       <td>{p.receiptNumber ?? ""}</td>
-                      <td>{howPaid(p.method)}</td>
+                      <td>
+                        {howPaid(p.method)}
+                        {/* A credit says where it went, in the row, where it
+                            can wrap, rather than in a column of its own. */}
+                        {p.kind === "CREDIT" && p.notes ? (
+                          <div className="mt-0.5 max-w-xs text-xs text-brand-graphite/60">
+                            {p.notes.replace(/^Credit from the reduced VAT approved on [0-9/]+, /, "")}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="text-xs">
+                        {/* The invoice and the receipt the CRM issued for this
+                            money, then anything filed with it before. */}
+                        {p.kind !== "CREDIT" ? (
+                          <div className="flex flex-wrap gap-2">
+                            <a
+                              href={`/api/receipts/${p.id}?kind=invoice`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-brand-teal-dark hover:underline"
+                            >
+                              {t("issued.pdf.INVOICE")}
+                            </a>
+                            <a
+                              href={`/api/receipts/${p.id}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-brand-teal-dark hover:underline"
+                            >
+                              {t("issued.pdf.RECEIPT")}
+                            </a>
+                          </div>
+                        ) : null}
                         {(paymentFiles.get(p.id) ?? []).map((doc) => (
                           <div key={doc.id}>
                             <a
@@ -620,9 +646,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                       <td className="ctr">
                         {/* A credit moved by the reduced VAT is not money, and
                             comes in pairs: it is not deleted on its own. */}
-                        {p.kind === "CREDIT" ? (
-                          <span className="text-xs text-brand-graphite/60">{p.notes ?? ""}</span>
-                        ) : (
+                        {p.kind === "CREDIT" ? null : (
                           <form action={deletePayment.bind(null, p.id, id)}>
                             <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
                               {t("common.delete")}
@@ -642,99 +666,6 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
         {/* 3b. The VAT approval, credit notes and money paid back. */}
         <CreditsSection contractId={id} />
-
-        {/* 4. What the buyer asked to change, with the drawings attached. */}
-        <Card title={t("contracts.changeRequests")}>
-          {requests.length === 0 ? (
-            <Empty message={t("common.none")} />
-          ) : (
-            <table className="data mb-4">
-              <thead>
-                <tr>
-                  <th>{t("common.date")}</th>
-                  <th>{t("common.name")}</th>
-                  <th className="ctr">{t("contracts.amount")}</th>
-                  <th>{t("common.status")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((r) => (
-                  <tr key={r.id}>
-                    <td>{dateFor(r.requestedOn)}</td>
-                    <td>
-                      <div className="font-semibold">{r.title}</div>
-                      {r.description ? (
-                        <div className="text-xs text-brand-graphite/60">{r.description}</div>
-                      ) : null}
-                    </td>
-                    <td className="ctr">
-                      {r.costImpact ? formatAmount(toCents(r.costImpact), locale) : ""}
-                    </td>
-                    <td>
-                      <form
-                        action={setChangeRequestStatus.bind(null, r.id, id)}
-                        className="flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <select
-                          name="status"
-                          defaultValue={r.status}
-                          className="select !w-32 !py-1 !text-xs"
-                          aria-label={t("common.status")}
-                        >
-                          {(
-                            ["SUBMITTED", "IN_REVIEW", "APPROVED", "REJECTED", "COMPLETED"] as const
-                          ).map((one) => (
-                            <option key={one} value={one}>
-                              {t(`contracts.changeStatus.${one}` as MessageKey)}
-                            </option>
-                          ))}
-                        </select>
-                        <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
-                          {t("common.save")}
-                        </button>
-                      </form>
-                      <div className="mt-1 space-y-0.5">
-                        {contractDocuments
-                          .filter((d) => d.changeRequestId === r.id)
-                          .map((d) => (
-                            <span key={d.id} className="flex items-center gap-2">
-                              <a
-                                href={`/api/files/${d.id}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs text-brand-teal-dark hover:underline"
-                              >
-                                {titleWithExtension(d)}
-                              </a>
-                              <a
-                                href={`/api/files/${d.id}?download=1`}
-                                className="text-xs text-brand-graphite/60 hover:underline"
-                              >
-                                {t("common.download").toLowerCase()}
-                              </a>
-                            </span>
-                          ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          <Disclosure showLabel={t("contracts.addChangeRequest")} hideLabel={t("common.cancel")}>
-            <ChangeRequestForm
-              action={addChangeRequest.bind(null, id)}
-              labels={{
-                name: t("common.name"),
-                notes: t("common.notes"),
-                amount: t("contracts.amount"),
-                files: t("common.files"),
-                add: t("common.add"),
-              }}
-            />
-          </Disclosure>
-        </Card>
 
         {/* 5. Files kept against the contract. */}
         <Card title={t("contracts.documents")}>

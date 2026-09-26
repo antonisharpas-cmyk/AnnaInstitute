@@ -2,6 +2,7 @@ import Link from "next/link";
 import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
+import { dayAndTime } from "@/lib/when";
 import { getTranslator } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { formatAmount, toCents } from "@/lib/money";
@@ -176,7 +177,16 @@ export default async function ClientInvoicesPage({
                   const sign = creditNote ? "−" : "";
                   return (
                     <tr key={paper.id} className={voided ? "opacity-60" : ""}>
-                      <td className="nowrap text-xs">{day(paper.issuedOn)}</td>
+                      <td className="nowrap text-xs">
+                        {/* When it was recorded, to the minute; and the date on
+                            the paper itself when that is a different day. */}
+                        {dayAndTime(paper.createdAt, locale)}
+                        {day(paper.issuedOn) !== day(paper.createdAt) ? (
+                          <div className="text-brand-graphite/55">
+                            {t("issued.datedOn")} {day(paper.issuedOn)}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="text-xs">
                         {t(`issued.type.${paper.kind}` as "issued.type.INVOICE")}
                       </td>

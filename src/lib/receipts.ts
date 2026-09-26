@@ -267,7 +267,10 @@ export async function agentReceipt(paymentId: string) {
  * likely to be read and less likely to be filtered. The office can print the
  * page for the paper copy.
  */
-export function buyerReceiptEmail(receipt: NonNullable<BuyerReceipt>, locale: string) {
+export function buyerReceiptEmail(receipt: NonNullable<BuyerReceipt>, ...ignored: string[]) {
+  void ignored;
+  /* English only, whatever the screen is set to. */
+  const locale: string = "en";
   const name = receipt.client
     ? `${receipt.client.firstName} ${receipt.client.lastName}`.trim()
     : "";
@@ -302,7 +305,9 @@ export function buyerReceiptEmail(receipt: NonNullable<BuyerReceipt>, locale: st
   };
 }
 
-export function agentReceiptEmail(receipt: NonNullable<AgentReceipt>, locale: string) {
+export function agentReceiptEmail(receipt: NonNullable<AgentReceipt>, ...ignored: string[]) {
+  void ignored;
+  const locale: string = "en";
   const what =
     receipt.project && receipt.unit ? `${receipt.project.name} ${receipt.unit.code}` : "";
 
