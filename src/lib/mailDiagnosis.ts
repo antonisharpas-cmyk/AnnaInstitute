@@ -16,7 +16,21 @@ import { MAIL_KEYS } from "@/lib/messaging/email";
 export type MailDiagnosis = {
   folder: string;
   startedAt: Date;
-  settings: { setting: string; foundAs: string | null; required: boolean }[];
+  settings: {
+    setting: string;
+    foundAs: string | null;
+    required: boolean;
+    /**
+     * Whether the value the CRM runs with is the one written in .env.local.
+     * Null when .env.local has no value for it. Only this yes or no is ever
+     * shown, never the value, except the address the mail signs in with.
+     */
+    sameAsLocal: boolean | null;
+    /** The sign in address itself, which is not a secret and is where typing mistakes hide. */
+    shown?: string;
+  }[];
+  /** The app password as the CRM reads it: how long, and whether it is only letters. */
+  password: { length: number; lettersOnly: boolean } | null;
   files: { name: string; exists: boolean; changedAfterStart: boolean; keys: { key: string; hasValue: boolean }[] }[];
   hints: string[];
 };
@@ -24,6 +38,22 @@ export type MailDiagnosis = {
 const FILES = [".env.local", ".env", ".env.development.local", ".env.development", ".env.production.local", ".env.production", ".env.example"];
 
 const ALL_KEYS = new Set<string>(Object.values(MAIL_KEYS).flat());
+
+const unquote = (value: string) => value.replace(/\s+#.*$/, "").trim().replace(/^["']|["']$/g, "").trim();
+
+/** The mail values written in a file, kept here to compare and never returned. */
+function valuesIn(file: string): Map<string, string> {
+  const out = new Map<string, string>();
+  try {
+    for (const raw of readFileSync(file, "utf8").split(/\r?\n/)) {
+      const match = /^(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)$/.exec(raw.trim());
+      if (match && ALL_KEYS.has(match[1])) out.set(match[1], unquote(match[2]));
+    }
+  } catch {
+    /* No file, nothing to compare with. */
+  }
+  return out;
+}
 
 function keysIn(file: string): { key: string; hasValue: boolean }[] {
   try {
@@ -46,10 +76,29 @@ export function diagnoseMail(): MailDiagnosis {
   const folder = process.cwd();
   const startedAt = new Date(Date.now() - process.uptime() * 1000);
 
+  const written = valuesIn(path.join(folder, ".env.local"));
+  const running = (key: string) => (process.env[key] ?? "").trim().replace(/^["']|["']$/g, "").trim();
   const settings = (Object.keys(MAIL_KEYS) as (keyof typeof MAIL_KEYS)[]).map((setting) => {
-    const found = MAIL_KEYS[setting].find((key) => (process.env[key] ?? "").trim().replace(/^["']|["']$/g, "").trim());
-    return { setting, foundAs: found ?? null, required: setting === "host" || setting === "user" || setting === "password" };
+    const found = MAIL_KEYS[setting].find((key) => running(key));
+    const inFile = MAIL_KEYS[setting].map((key) => written.get(key) ?? "").find(Boolean) ?? "";
+    const now = found ? running(found) : "";
+    /* The password is compared the way it is used, spaces taken out. */
+    const same =
+      setting === "password" ? now.replace(/\s+/g, "") === inFile.replace(/\s+/g, "") : now === inFile;
+    return {
+      setting,
+      foundAs: found ?? null,
+      required: setting === "host" || setting === "user" || setting === "password",
+      sameAsLocal: inFile ? same : null,
+      shown: setting === "user" && now ? now : undefined,
+    };
   });
+  const pass = (() => {
+    const key = MAIL_KEYS.password.find((one) => running(one));
+    if (!key) return null;
+    const value = running(key).replace(/\s+/g, "");
+    return { length: value.length, lettersOnly: /^[a-z]+$/i.test(value) };
+  })();
 
   const files = FILES.map((name) => {
     const full = path.join(folder, name);
@@ -92,5 +141,21 @@ export function diagnoseMail(): MailDiagnosis {
   if (hostLoaded && userSet && passwordMissing) {
     hints.push("SMTP_HOST is set but there is no SMTP_PASSWORD. For Google Workspace it is the 16 letter app password.");
   }
-  return { folder, startedAt, settings, files, hints };
+  /*
+   * A value that is not the one in .env.local came from somewhere else, and
+   * that somewhere wins: a Windows environment variable, or a terminal where it
+   * was set by hand. The CRM never lets .env.local overwrite those.
+   */
+  const differ = settings.filter((one) => one.sameAsLocal === false);
+  if (differ.length > 0) {
+    hints.push(
+      `The CRM is not using the ${differ.map((one) => one.foundAs).join(", ")} written in .env.local. A value set in Windows (System, Environment variables) or in the terminal the CRM was started from wins over the file. Remove it there, close the terminal, open a new one and start the CRM again.`,
+    );
+  }
+  if (pass && (pass.length !== 16 || !pass.lettersOnly)) {
+    hints.push(
+      `The password the CRM reads has ${pass.length} characters${pass.lettersOnly ? "" : " and not only letters"}. A Google app password is 16 letters. Your normal Gmail password does not work here.`,
+    );
+  }
+  return { folder, startedAt, settings, files, hints, password: pass };
 }

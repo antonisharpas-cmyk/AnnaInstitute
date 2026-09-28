@@ -216,6 +216,7 @@ export default async function SettingsPage() {
                       <tr>
                         <th>{t("settings.mailSetting")}</th>
                         <th>{t("settings.mailLoaded")}</th>
+                        <th>{t("settings.mailSameAsFile")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -229,6 +230,22 @@ export default async function SettingsPage() {
                               <span className={one.required ? "text-[color:var(--color-negative)]" : "text-brand-graphite/50"}>
                                 {one.required ? t("settings.mailMissing") : t("settings.mailOptional")}
                               </span>
+                            )}
+                            {one.shown ? <div className="font-mono text-brand-graphite/70">{one.shown}</div> : null}
+                            {one.setting === "password" && diagnosis.password ? (
+                              <div className="text-brand-graphite/70">
+                                {diagnosis.password.length} {t("settings.mailCharacters")}
+                                {diagnosis.password.lettersOnly ? `, ${t("settings.mailLettersOnly")}` : ""}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td>
+                            {one.sameAsLocal === null ? (
+                              <span className="text-brand-graphite/40">{t("settings.mailNotInFile")}</span>
+                            ) : one.sameAsLocal ? (
+                              <span className="text-[color:var(--color-positive,#2f855a)]">✓</span>
+                            ) : (
+                              <span className="font-semibold text-[color:var(--color-negative)]">{t("settings.mailDiffers")}</span>
                             )}
                           </td>
                         </tr>
