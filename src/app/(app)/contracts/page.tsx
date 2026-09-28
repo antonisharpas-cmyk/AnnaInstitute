@@ -1,3 +1,4 @@
+import { optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -29,7 +30,6 @@ import ConfirmButton from "@/components/ConfirmButton";
 import { deleteContract } from "./actions";
 
 const PER_PAGE = 15;
-const STATUSES = ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"] as const;
 
 export default async function ContractsPage({
   searchParams,
@@ -136,10 +136,7 @@ export default async function ContractsPage({
             label={t("common.status")}
             chosen={many(status)}
             anything={t("common.all")}
-            choices={STATUSES.map((one) => ({
-              value: one,
-              label: t(`contracts.status.${one}` as MessageKey),
-            }))}
+            choices={await optionsFor("contractStatus", t, { everything: true })}
           />
         </SearchBox>
 
@@ -379,7 +376,7 @@ export default async function ContractsPage({
                                 "good" | "warn" | "bad" | "teal"
                             }
                           >
-                            {t(`contracts.status.${r.contract.status}` as MessageKey)}
+                            {t(`contracts.status.${shownCode(r.contract.status, r.contract.statusChoice)}` as MessageKey)}
                           </Pill>
                         </td>
                       ) : null}

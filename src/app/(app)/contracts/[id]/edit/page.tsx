@@ -1,4 +1,6 @@
+import { stageOptions } from "@/lib/choices/stages";
 import { notFound } from "next/navigation";
+import { optionsFor, shownCode } from "@/lib/choices";
 import { asc, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, clients } from "@/db/schema";
@@ -83,6 +85,12 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
             cancelHref={`/contracts/${id}`}
             frozen={!detail.open}
             editing
+            statuses={await optionsFor("contractStatus", t, {
+              current: shownCode(detail.contract.status, detail.contract.statusChoice),
+            })}
+            kinds={await optionsFor("contractKind", t, { current: shownCode(detail.contract.kind, detail.contract.kindChoice) })}
+            stages={(await stageOptions()).choices}
+            named={(await stageOptions()).named}
             labels={formLabels(t)}
           />
         </Card>

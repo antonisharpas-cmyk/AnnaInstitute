@@ -1,5 +1,6 @@
 "use server";
 
+import { shownCode, splitChoice } from "@/lib/choices/lists";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
@@ -255,10 +256,12 @@ async function unitIsFree(unitId: string | undefined, exceptId?: string) {
   return rows.length === 0;
 }
 
+/* The kind may be the office's own from the Builder: the sale or land exchange it counts as is what is checked and kept. */
 function readDetails(formData: FormData) {
-  return detailsSchema.parse({
+  const kind = splitChoice(String(formData.get("kind") || "SALE"));
+  const parsed = detailsSchema.parse({
     reference: formData.get("reference"),
-    kind: formData.get("kind") || "SALE",
+    kind: kind.base,
     cashAmount: normalizeAmount(String(formData.get("cashAmount") ?? "")),
     contractValue: normalizeAmount(String(formData.get("contractValue") ?? "")),
     plotDescription: formData.get("plotDescription") || undefined,
@@ -274,6 +277,7 @@ function readDetails(formData: FormData) {
     periodMonths: formData.get("periodMonths") || undefined,
     notes: formData.get("notes") || undefined,
   });
+  return { ...parsed, kindChoice: kind.choice };
 }
 
 /**
@@ -420,6 +424,7 @@ export async function createContract(
     .values({
       reference,
       kind: parsed.kind,
+      kindChoice: parsed.kindChoice,
       unitId: parsed.unitId,
       clientId: parsed.clientId,
       agentId: parsed.agentId || null,
@@ -534,8 +539,14 @@ export async function updateContract(
     !before.open && before.contract.kind === "SALE" && parsed.kind === "SALE"
       ? Number(before.contract.vatRate)
       : Number(parsed.vatRate);
-  const status = String(formData.get("status") ?? before.contract.status) as
-    "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+  /* The office's own status counts as one of the four, which is what is kept. */
+  const pickedStatus = splitChoice(
+    String(formData.get("status") ?? shownCode(before.contract.status, before.contract.statusChoice)),
+  );
+  const status = (
+    ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"].includes(pickedStatus.base) ? pickedStatus.base : before.contract.status
+  ) as "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+  const statusChoice = status === pickedStatus.base ? pickedStatus.choice : null;
 
   const checked = before.open
     ? validated(formData, netCents, parsed.kind === "LAND_EXCHANGE")
@@ -547,6 +558,7 @@ export async function updateContract(
     .set({
       reference,
       kind: parsed.kind,
+      kindChoice: parsed.kindChoice,
       unitId: parsed.unitId,
       clientId: parsed.clientId,
       agentId: parsed.agentId || null,
@@ -576,6 +588,7 @@ export async function updateContract(
       scheduleType: parsed.scheduleType,
       periodMonths: parsed.periodMonths ? Number(parsed.periodMonths) : null,
       status,
+      statusChoice,
       notes: parsed.notes || null,
       updatedAt: new Date(),
     })

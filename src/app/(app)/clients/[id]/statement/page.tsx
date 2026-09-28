@@ -1,3 +1,4 @@
+import { isCustom } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, desc, eq, inArray } from "drizzle-orm";
@@ -96,7 +97,7 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
   const howPaid = (value: string | null) => {
     if (!value) return "";
     const known = ["CASH", "BANK", "CHEQUE", "CARD", "OTHER"];
-    return known.includes(value) ? t(`contracts.method.${value}` as MessageKey) : value;
+    return known.includes(value) || isCustom(value) ? t(`contracts.method.${value}` as MessageKey) : value;
   };
 
   const name = `${client.firstName} ${client.lastName}`.trim();

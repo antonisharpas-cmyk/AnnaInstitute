@@ -1,4 +1,5 @@
 import "server-only";
+import { choiceFilter } from "@/lib/choices/filter";
 import {
   and,
   asc,
@@ -14,7 +15,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { db } from "@/db";
-import { many, manyOf } from "@/lib/filters";
+import { many } from "@/lib/filters";
 import {
   agents,
   appointments,
@@ -300,9 +301,8 @@ export async function listLeads({
    * Status takes a list: "the new ones and the ones we have contacted" is the
    * question somebody actually asks before they start telephoning.
    */
-  const wanted = manyOf(status, LEAD_STATUSES);
-  if (wanted.length === 1) filters.push(eq(leads.status, wanted[0]));
-  if (wanted.length > 1) filters.push(inArray(leads.status, wanted));
+  const wanted = choiceFilter(leads.status, leads.statusChoice, many(status), LEAD_STATUSES);
+  if (wanted) filters.push(wanted);
   /**
    * Handled is the office's own word for the rest of the board: an enquiry
    * somebody has already picked up, whatever happened to it afterwards. It is
@@ -312,9 +312,8 @@ export async function listLeads({
   if (many(status).includes("HANDLED")) {
     filters.push(ne(leads.status, "NEW") as SQL);
   }
-  const from = manyOf(source, LEAD_SOURCES);
-  if (from.length === 1) filters.push(eq(leads.sourceKind, from[0]));
-  if (from.length > 1) filters.push(inArray(leads.sourceKind, from));
+  const from = choiceFilter(leads.sourceKind, leads.sourceChoice, many(source), [...LEAD_SOURCES, "ENQUIRY"]);
+  if (from) filters.push(from);
 
   /* Whose enquiries these are, and who introduced them: two different people,
      two different questions, so two filters. */

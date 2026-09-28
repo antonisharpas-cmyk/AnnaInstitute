@@ -1,5 +1,6 @@
 "use client";
 
+import { baseOf } from "@/lib/choices/lists";
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import SubmitButton from "@/components/SubmitButton";
@@ -210,7 +211,7 @@ export default function LeadForm({
       </div>
 
       {/* The agent, only when there is one to name. */}
-      {source === "AGENT" ? (
+      {baseOf(source) === "AGENT" ? (
         <div className="sm:w-1/2">
           <label className="label" htmlFor="agentId">
             {labels.agent}

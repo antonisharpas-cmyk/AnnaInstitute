@@ -609,9 +609,21 @@ export async function ensureSystemTemplates() {
   );
 }
 
+/**
+ * The templates a campaign can start from.
+ *
+ * Only the campaign ones. The automatic emails live on their own page and go
+ * by themselves when the money or an appointment calls for them, so offering
+ * "Reservation received" as the start of a campaign only made it look as if
+ * the same letter existed twice.
+ */
 export async function listTemplates() {
   await ensureSystemTemplates();
-  return db.select().from(emailTemplates).orderBy(asc(emailTemplates.name));
+  return db
+    .select()
+    .from(emailTemplates)
+    .where(eq(emailTemplates.isAutomatic, false))
+    .orderBy(asc(emailTemplates.name));
 }
 
 export async function templateByKey(key: string) {

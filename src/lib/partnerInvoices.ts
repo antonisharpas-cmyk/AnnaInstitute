@@ -9,6 +9,7 @@ import { invoicePdf, type IssuedSnapshot } from "@/lib/paymentPdf";
 import { sendAndRecord } from "@/lib/messaging";
 import { sendEmail, type EmailAttachment } from "@/lib/messaging/email";
 import { readSetting } from "@/lib/settings";
+import { listEntries, shownCode } from "@/lib/choices";
 
 /**
  * Invoices under Company, both ways.
@@ -35,10 +36,25 @@ export const CATEGORY_WORDS: Record<string, string> = {
   OTHER: "Other",
 };
 
-/** What the invoice is for, as it is printed: Other says what it is. */
-export function whatFor(expense: { category: string; categoryOther: string | null }): string {
+/**
+ * What the invoice is for, as it is printed: Other says what it is, and a
+ * category the office added in the Builder prints under its own English name.
+ */
+export function whatFor(
+  expense: { category: string; categoryOther: string | null; categoryChoice?: string | null },
+  own: Record<string, string> = {},
+): string {
+  const shown = shownCode(expense.category, expense.categoryChoice);
+  if (own[shown]) return own[shown];
   if (expense.category === "OTHER" && expense.categoryOther?.trim()) return expense.categoryOther.trim();
   return CATEGORY_WORDS[expense.category] ?? expense.category;
+}
+
+/** The English names of the categories the office added, for whatFor. */
+export async function ownCategoryWords(): Promise<Record<string, string>> {
+  return Object.fromEntries(
+    (await listEntries("expenseCategory")).filter((one) => !one.builtin).map((one) => [one.code, one.labelEn || one.defaultEn]),
+  );
 }
 
 async function load(expenseId: string) {
@@ -89,7 +105,7 @@ export async function issuePartnerInvoice(
   const rate = expense.vatRate !== null ? Number(expense.vatRate) : netCents > 0 ? Math.round((vatCents / netCents) * 100000) / 1000 : 0;
   const issuedOn = expense.issueDate ?? new Date();
   const number = await nextInvoiceNumber();
-  const label = whatFor(expense);
+  const label = whatFor(expense, await ownCategoryWords());
 
   const snapshot: IssuedSnapshot = {
     company: await companyDetails(),
@@ -151,6 +167,62 @@ export async function issuePartnerInvoice(
   return number;
 }
 
+/**
+ * The words of the two invoice emails, in one place.
+ *
+ * Used for the real email and for the test the office sends itself from the
+ * Automatic emails page, so the test is always the letter that really goes.
+ */
+export function partnerLetter(v: {
+  number: string;
+  dear: string;
+  what: string;
+  project: string;
+  net: string;
+  vat: string;
+  total: string;
+  due: string;
+}): { subject: string; body: string } {
+  return {
+    subject: `Invoice ${v.number} from One Eleven: ${v.what}`,
+    body: [
+      `Dear ${v.dear},`,
+      "",
+      `Please find attached invoice ${v.number} for ${v.what}${v.project ? `, ${v.project}` : ""}.`,
+      "",
+      `Amount before VAT: ${v.net}`,
+      `VAT: ${v.vat}`,
+      `Total: ${v.total}`,
+      v.due ? `Due by: ${v.due}` : "",
+      "",
+      "Kind regards,",
+      "One Eleven",
+    ]
+      .filter((line, i, all) => line !== "" || all[i - 1] !== "")
+      .join("\n"),
+  };
+}
+
+export function receivedLetter(v: {
+  supplier: string;
+  number: string;
+  what: string;
+  project: string;
+  total: string;
+  due: string;
+}): { subject: string; body: string; html: string } {
+  const body = [
+    `Invoice received from ${v.supplier}${v.number ? `, their number ${v.number}` : ""}.`,
+    `For: ${v.what}${v.project ? `, ${v.project}` : ""}`,
+    `Total: ${v.total}${v.due ? `, due ${v.due}` : ""}`,
+  ].join("\n");
+  return {
+    subject: `Invoice received: ${v.supplier}, ${v.total}`,
+    body,
+    html: body.split("\n").map((line) => `<p>${line.replace(/</g, "&lt;")}</p>`).join(""),
+  };
+}
+
 export type Emailed = { status: "SENT" | "SKIPPED" | "FAILED"; to: string | null; detail: string };
 
 /**
@@ -163,7 +235,7 @@ export async function emailCompanyInvoice(expenseId: string): Promise<Emailed> {
   const row = await load(expenseId);
   if (!row) return { status: "SKIPPED", to: null, detail: "The invoice is not there." };
   const { expense, partner, project } = row;
-  const label = whatFor(expense);
+  const label = whatFor(expense, await ownCategoryWords());
   const money = (value: string) =>
     new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(toCents(value) / 100);
 
@@ -182,43 +254,36 @@ export async function emailCompanyInvoice(expenseId: string): Promise<Emailed> {
     to = await partnerEmail(partner.id, partner.email);
     if (!to) return { status: "SKIPPED", to: null, detail: `${partner.name} has no email address on their record.` };
     const paper = files.filter((one) => one.filename.startsWith("Invoice "));
+    const letter = partnerLetter({
+      number: expense.reference ?? "",
+      dear: partner.contactName?.trim() || partner.company?.trim() || partner.name,
+      what: expense.description?.trim() || label,
+      project: project?.name ?? "",
+      net: money(expense.netAmount),
+      vat: money(expense.vatAmount),
+      total: money(expense.totalAmount),
+      due: expense.dueDate ? expense.dueDate.toLocaleDateString("en-GB") : "",
+    });
     result = await sendAndRecord({
       channel: "EMAIL",
       recipient: { name: partner.name, email: to, subownerId: partner.id },
-      subject: `Invoice ${expense.reference ?? ""} from One Eleven: ${expense.description?.trim() || label}`,
-      body: [
-        `Dear ${partner.contactName?.trim() || partner.company?.trim() || partner.name},`,
-        "",
-        `Please find attached invoice ${expense.reference ?? ""} for ${expense.description?.trim() || label}${project ? `, ${project.name}` : ""}.`,
-        "",
-        `Amount before VAT: ${money(expense.netAmount)}`,
-        `VAT: ${money(expense.vatAmount)}`,
-        `Total: ${money(expense.totalAmount)}`,
-        expense.dueDate ? `Due by: ${expense.dueDate.toLocaleDateString("en-GB")}` : "",
-        "",
-        "Kind regards,",
-        "One Eleven",
-      ]
-        .filter((line, i, all) => line !== "" || all[i - 1] !== "")
-        .join("\n"),
+      subject: letter.subject,
+      body: letter.body,
       withOptOut: false,
       attachments: paper.length > 0 ? paper : files,
     });
   } else {
     to = (await readSetting("company.email"))?.trim() || null;
     if (!to) return { status: "SKIPPED", to: null, detail: "The company email is not set in Settings." };
-    const text = [
-      `Invoice received from ${expense.supplier}${expense.reference ? `, their number ${expense.reference}` : ""}.`,
-      `For: ${expense.description?.trim() || label}${project ? `, ${project.name}` : ""}`,
-      `Total: ${money(expense.totalAmount)}${expense.dueDate ? `, due ${expense.dueDate.toLocaleDateString("en-GB")}` : ""}`,
-    ].join("\n");
-    result = await sendEmail({
-      to,
-      subject: `Invoice received: ${expense.supplier}, ${money(expense.totalAmount)}`,
-      text,
-      html: text.split("\n").map((line) => `<p>${line.replace(/</g, "&lt;")}</p>`).join(""),
-      attachments: files,
+    const letter = receivedLetter({
+      supplier: expense.supplier,
+      number: expense.reference ?? "",
+      what: expense.description?.trim() || label,
+      project: project?.name ?? "",
+      total: money(expense.totalAmount),
+      due: expense.dueDate ? expense.dueDate.toLocaleDateString("en-GB") : "",
     });
+    result = await sendEmail({ to, subject: letter.subject, text: letter.body, html: letter.html, attachments: files });
   }
 
   if (result.status === "SENT") {

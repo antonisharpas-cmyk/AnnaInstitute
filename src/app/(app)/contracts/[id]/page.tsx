@@ -1,3 +1,4 @@
+import { isCustom, optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CreditsSection from "./CreditsSection";
@@ -49,7 +50,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
     if (!value) return "";
     if (value === "CREDIT") return t("contracts.method.CREDIT");
     const known = ["CASH", "BANK", "CHEQUE", "CARD", "OTHER"];
-    return known.includes(value) ? t(`contracts.method.${value}` as MessageKey) : value;
+    return known.includes(value) || isCustom(value) ? t(`contracts.method.${value}` as MessageKey) : value;
   };
 
   const theirApartments =
@@ -102,7 +103,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             ) : null}
             {paidInFull ? <Pill tone="good">{t("contracts.paidInFull")}</Pill> : null}
             <Pill tone={contractStatusTone(contract.status) as "good" | "warn" | "bad" | "teal"}>
-              {t(`contracts.status.${contract.status}` as MessageKey)}
+              {t(`contracts.status.${shownCode(contract.status, contract.statusChoice)}` as MessageKey)}
             </Pill>
             <Link href={`/contracts/${id}/edit`} className="btn btn-secondary">
               {t("common.edit")}
@@ -231,7 +232,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             <div>
               <dt className="label">{t("contracts.kind")}</dt>
               <dd className="text-sm font-semibold">
-                {t(`contracts.kind.${contract.kind}` as MessageKey)}
+                {t(`contracts.kind.${shownCode(contract.kind, contract.kindChoice)}` as MessageKey)}
               </dd>
             </div>
 
@@ -339,7 +340,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                                   : "neutral"
                             }
                           >
-                            {t(`units.status.${row.unit.status}` as MessageKey)}
+                            {t(`units.status.${shownCode(row.unit.status, row.unit.statusChoice)}` as MessageKey)}
                           </Pill>
                         </td>
                       </tr>
@@ -555,13 +556,10 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 receipt: t("contracts.receipt"),
                 receiptNote: t("contracts.receiptNote"),
                 method: t("contracts.method"),
-                methods: {
-                  CASH: t("contracts.method.CASH"),
-                  BANK: t("contracts.method.BANK"),
-                  CHEQUE: t("contracts.method.CHEQUE"),
-                  CARD: t("contracts.method.CARD"),
-                  OTHER: t("contracts.method.OTHER"),
-                },
+                /* In the office's own order, with its own methods from the Builder. */
+                methods: Object.fromEntries(
+                  (await optionsFor("paymentMethod", t)).map((one) => [one.value, one.label]),
+                ),
                 chooseMethod: t("contracts.chooseMethod"),
                 reference: t("contracts.paymentReference"),
                 referenceHint: t("contracts.paymentReferenceHint"),

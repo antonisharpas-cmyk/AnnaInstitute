@@ -246,6 +246,20 @@
       "when": 1790666547383,
       "tag": "0035_partner_invoices",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790766547383,
+      "tag": "0036_choices",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790866547383,
+      "tag": "0037_contract_kind_choice",
+      "breakpoints": true
     }
   ]
 }

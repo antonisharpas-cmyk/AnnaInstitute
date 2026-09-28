@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { documents, expenses, projects, subowners } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
-import { EXPENSE_CATEGORIES, expenseStatusTone } from "@/lib/expenses";
+import { expenseStatusTone } from "@/lib/expenses";
 import { titleWithExtension } from "@/lib/fileLabels";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
@@ -20,7 +20,8 @@ import {
   uploadPaymentReceipt,
 } from "../actions";
 import { invoiceLabels } from "../labels";
-import { whatFor } from "@/lib/partnerInvoices";
+import { ownCategoryWords, whatFor } from "@/lib/partnerInvoices";
+import { optionsFor, shownCode } from "@/lib/choices";
 import { dayAndTime } from "@/lib/when";
 
 const day = (value: Date | null | undefined) =>
@@ -62,7 +63,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         title={expense.supplier}
         subtitle={[
           t(`invoices.direction.${out ? "OUT" : "IN"}` as MessageKey),
-          whatFor(expense),
+          whatFor(expense, await ownCategoryWords()),
           expense.reference,
           expense.description,
         ]
@@ -94,10 +95,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               expense={expense}
               projects={projectList}
               cancelHref="/invoices"
-              categories={EXPENSE_CATEGORIES.map((value) => ({
-                value,
-                label: t(`invoices.category.${value}` as MessageKey),
-              }))}
+              categories={await optionsFor("expenseCategory", t, {
+                current: shownCode(expense.category, expense.categoryChoice),
+              })}
               partners={partnerRows.map((one) => ({
                 id: one.id,
                 name: one.company?.trim() || one.name,

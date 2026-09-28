@@ -8,11 +8,16 @@ import { filesUrl } from "@/lib/campaignFiles";
 import { priceListUrl } from "@/lib/priceList";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
-import { audienceFor, messagesForCampaign, sendCampaign } from "../actions";
+import { audienceFor, messagesForCampaign, saveCampaignTester, sendCampaign, sendCampaignTest } from "../actions";
+import { whatsappTest } from "@/lib/campaignTest";
+import { readSetting } from "@/lib/settings";
+import { requireUser } from "@/lib/auth";
+import SubmitButton from "@/components/SubmitButton";
 import SendButton from "./SendButton";
 
 export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const user = await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
 
   const rows = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
@@ -67,6 +72,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     (!campaign.viaEmail || emailConfigured()) &&
     (!campaign.viaWhatsapp || channelConfigured("WHATSAPP"));
   const alreadySent = campaign.status !== "DRAFT";
+
+  /* Trying it on yourself: the email to your inbox, the WhatsApp opened ready to send to your own number. */
+  const testTo = (await readSetting("emails.testAddress")).trim();
+  const tryWhatsapp = await whatsappTest(campaign);
 
   // The files of a campaign also live behind a link of their own, because a
   // WhatsApp message cannot carry a PDF the way an email can.
@@ -273,6 +282,60 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         </div>
 
         <div className="space-y-4">
+          <Card title={t("campaigns.test.title")}>
+            <p className="mb-3 text-xs text-brand-graphite/60">{t("campaigns.test.note")}</p>
+            <form action={saveCampaignTester.bind(null, id)} className="mb-3 space-y-2" data-campaign-tester>
+              <div>
+                <label className="label" htmlFor="testTo">
+                  {t("emails.test.address")}
+                </label>
+                <input id="testTo" name="to" type="email" defaultValue={testTo} placeholder={user.email} className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="testPhone">
+                  {t("campaigns.test.phone")}
+                </label>
+                <input
+                  id="testPhone"
+                  name="phone"
+                  inputMode="tel"
+                  defaultValue={tryWhatsapp?.phone ?? ""}
+                  placeholder="+357 99 000000"
+                  className="input"
+                />
+              </div>
+              <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("common.save")}</SubmitButton>
+            </form>
+            <div className="flex flex-col gap-2 border-t border-brand-line pt-3">
+              {campaign.viaEmail ? (
+                <form action={sendCampaignTest.bind(null, id)}>
+                  <SubmitButton className="btn btn-primary w-full">
+                    {t("campaigns.test.email")}
+                  </SubmitButton>
+                  <p className="mt-1 text-xs text-brand-graphite/60">
+                    {t("emails.test.goesTo")} <span className="font-semibold">{testTo || user.email}</span>
+                  </p>
+                </form>
+              ) : null}
+              {tryWhatsapp ? (
+                <div>
+                  <a
+                    href={tryWhatsapp.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary w-full"
+                    data-whatsapp-test
+                  >
+                    {t("campaigns.test.whatsapp")}
+                  </a>
+                  <p className="mt-1 text-xs text-brand-graphite/60">
+                    {tryWhatsapp.phone ? `${t("campaigns.test.whatsappTo")} ${tryWhatsapp.phone}` : t("campaigns.test.whatsappPick")}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </Card>
+
           <Card title="Send">
             {alreadySent ? (
               <p className="text-sm text-brand-graphite/70">

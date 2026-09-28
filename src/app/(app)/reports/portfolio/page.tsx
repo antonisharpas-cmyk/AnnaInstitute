@@ -1,3 +1,4 @@
+import { shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent } from "@/lib/money";
@@ -83,7 +84,7 @@ export default async function PortfolioReportPage() {
                                 : "neutral"
                           }
                         >
-                          {t(`projects.status.${row.project.status}` as MessageKey)}
+                          {t(`projects.status.${shownCode(row.project.status, row.project.statusChoice)}` as MessageKey)}
                         </Pill>
                       </td>
                       <td className="ctr">{row.total}</td>

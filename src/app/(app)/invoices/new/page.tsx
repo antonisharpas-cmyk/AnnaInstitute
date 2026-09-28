@@ -1,8 +1,8 @@
 import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, subowners } from "@/db/schema";
-import { getTranslator, type MessageKey } from "@/i18n";
-import { EXPENSE_CATEGORIES } from "@/lib/expenses";
+import { getTranslator } from "@/i18n";
+import { optionsFor } from "@/lib/choices";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import ExpenseForm from "../ExpenseForm";
 import { createExpense } from "../actions";
@@ -28,10 +28,7 @@ export default async function NewInvoicePage() {
             action={createExpense}
             projects={projectList}
             cancelHref="/invoices"
-            categories={EXPENSE_CATEGORIES.map((value) => ({
-              value,
-              label: t(`invoices.category.${value}` as MessageKey),
-            }))}
+            categories={await optionsFor("expenseCategory", t)}
             partners={partnerRows.map((one) => ({
               id: one.id,
               name: one.company?.trim() || one.name,

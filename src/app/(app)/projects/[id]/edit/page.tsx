@@ -1,3 +1,4 @@
+import { optionsFor, shownCode } from "@/lib/choices";
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -28,6 +29,7 @@ export default async function EditProjectPage({ params }: { params: Promise<{ id
             companies={companyList}
             cancelHref={`/projects/${id}`}
             t={t}
+            statuses={await optionsFor("projectStatus", t, { current: shownCode(project.status, project.statusChoice) })}
           />
         </Card>
       </div>

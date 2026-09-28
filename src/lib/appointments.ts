@@ -1,4 +1,5 @@
 import "server-only";
+import { choiceFilter } from "@/lib/choices/filter";
 import { and, asc, desc, eq, gte, ilike, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { appointments, clients, leads, teamMembers } from "@/db/schema";
@@ -162,9 +163,8 @@ export async function listAppointments(filter: AppointmentFilter) {
   else if (filter.assignedTo) parts.push(eq(appointments.assignedToId, filter.assignedTo));
 
   const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"];
-  if (filter.type && KINDS.includes(filter.type)) {
-    parts.push(eq(appointments.type, filter.type as (typeof KINDS)[number] as never));
-  }
+  const byKind = filter.type ? choiceFilter(appointments.type, appointments.typeChoice, filter.type.split(",").filter(Boolean), KINDS) : null;
+  if (byKind) parts.push(byKind);
 
   const where = parts.length > 0 ? and(...parts) : undefined;
 
@@ -199,7 +199,8 @@ const withMember = {
   place: appointments.place,
   at: appointments.at,
   status: appointments.status,
-  type: appointments.type,
+  /* What it reads as: the office's own kind from the Builder while it still counts as the built in one. */
+  type: sql<string>`case when ${appointments.typeChoice} like ${appointments.type}::text || '~%' then ${appointments.typeChoice} else ${appointments.type}::text end`,
   typeOther: appointments.typeOther,
   assignedToId: appointments.assignedToId,
   assignedToName: teamMembers.name,

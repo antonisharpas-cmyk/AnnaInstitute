@@ -34,7 +34,8 @@ export type AppointmentRow = {
   place: string;
   at: Date;
   status: "PLANNED" | "DONE" | "MISSED";
-  type: AppointmentKind;
+  /** The kind as it reads: a built in one, or the office's own from the Builder. */
+  type: AppointmentKind | string;
   typeOther: string | null;
   assignedToId: string | null;
   assignedToName: string | null;

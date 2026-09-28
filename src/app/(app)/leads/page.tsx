@@ -1,3 +1,4 @@
+import { optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -10,8 +11,6 @@ import { whoCanGo } from "@/lib/team";
 import {
   latestNoteByLead,
   LEAD_ORDER,
-  LEAD_SOURCES,
-  LEAD_STATUSES,
   leadCounts,
   listLeads,
 } from "@/lib/leads";
@@ -48,7 +47,6 @@ const PER_PAGE = 20;
  * carry: choosing it creates the client record and the enquiry leaves this list
  * for the clients list, which is the office's own rule.
  */
-const STATUSES = LEAD_STATUSES;
 
 const when = (value: Date, locale: string) =>
   new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB", {
@@ -139,10 +137,16 @@ export default async function LeadsPage({
     sortHref("/leads", params as Record<string, string | undefined>, key, sort);
   const currentView = views.find((view) => view.id === params.view) ?? null;
 
-  const statusOptions = STATUSES.map((one) => ({
-    value: one,
-    label: t(`leads.status.${one}` as MessageKey),
-  }));
+  /* The statuses and sources as the office has them in the Builder. The
+     filters find the old ones too; the pickers offer only what is active. */
+  const everyStatus = await optionsFor("leadStatus", t, { everything: true });
+  const everySource = await optionsFor("leadSource", t, { everything: true });
+  const pickable = (await optionsFor("leadStatus", t)).filter((one) => one.value !== "CONVERTED");
+  const statusOptions = [
+    ...everyStatus.filter((one) => one.value === "NEW"),
+    ...pickable,
+    ...everyStatus.filter((one) => one.value === "CONVERTED"),
+  ];
 
   return (
     <>
@@ -246,20 +250,14 @@ export default async function LeadsPage({
             label={t("common.status")}
             chosen={many(status)}
             anything={t("common.all")}
-            choices={STATUSES.map((one) => ({
-              value: one,
-              label: t(`leads.status.${one}` as MessageKey),
-            }))}
+            choices={everyStatus}
           />
           <Pick
             name="source"
             label={t("leads.camefrom")}
             chosen={many(source)}
             anything={t("common.all")}
-            choices={LEAD_SOURCES.map((one) => ({
-              value: one,
-              label: t(`leads.source.${one}` as MessageKey),
-            }))}
+            choices={everySource}
           />
           <Pick
             name="agent"
@@ -432,7 +430,7 @@ export default async function LeadsPage({
 
                       {on("source") ? (
                         <td className="text-xs">
-                          <div>{t(`leads.source.${r.lead.sourceKind}` as MessageKey)}</div>
+                          <div>{t(`leads.source.${shownCode(r.lead.sourceKind, r.lead.sourceChoice)}` as MessageKey)}</div>
                           {r.lead.sourceKind === "OTHER" && r.lead.source ? (
                             <div className="text-brand-graphite/60">{r.lead.source}</div>
                           ) : null}
@@ -464,8 +462,17 @@ export default async function LeadsPage({
                           ) : (
                             <InlineSelect
                               label={t("common.status")}
-                              value={r.lead.status}
-                              options={statusOptions}
+                              value={shownCode(r.lead.status, r.lead.statusChoice)}
+                              options={
+                                statusOptions.some((one) => one.value === shownCode(r.lead.status, r.lead.statusChoice))
+                                  ? statusOptions
+                                  : [
+                                      ...statusOptions,
+                                      ...everyStatus.filter(
+                                        (one) => one.value === shownCode(r.lead.status, r.lead.statusChoice),
+                                      ),
+                                    ]
+                              }
                               save={setLeadStatusInline.bind(null, r.lead.id)}
                             />
                           )}
@@ -530,11 +537,13 @@ export default async function LeadsPage({
                 {t("list.setStatus")}
                 <select name="newStatus" className="select !w-auto !py-1 !text-xs">
                   {/* A conversion is a record at a time, so it is not offered here. */}
-                  {STATUSES.filter((one) => one !== "CONVERTED").map((one) => (
-                    <option key={one} value={one}>
-                      {t(`leads.status.${one}` as MessageKey)}
-                    </option>
-                  ))}
+                  {statusOptions
+                    .filter((one) => one.value !== "CONVERTED")
+                    .map((one) => (
+                      <option key={one.value} value={one.value}>
+                        {one.label}
+                      </option>
+                    ))}
                 </select>
               </label>
               <button type="submit" className="btn btn-primary !px-2.5 !py-1 !text-xs">

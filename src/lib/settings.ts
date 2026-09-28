@@ -28,6 +28,10 @@ export const DEFAULTS = {
   "appointments.reminderHour": "10",
   /** The master switch for every email the CRM sends. */
   "mail.enabled": "yes",
+  /** Where the tests from the Automatic emails page go. Empty means the signed in user. */
+  "emails.testAddress": "",
+  /** The office's own WhatsApp number, for trying a campaign on itself. */
+  "campaigns.testPhone": "",
 
   /*
    * The company as its invoices and receipts name it. Prefilled from the

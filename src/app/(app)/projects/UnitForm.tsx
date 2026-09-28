@@ -3,6 +3,7 @@ import type { units as unitsTable } from "@/db/schema";
 import type { MessageKey } from "@/i18n";
 import { amountForInput } from "@/lib/money";
 import SubmitButton from "@/components/SubmitButton";
+import { shownCode } from "@/lib/choices/lists";
 
 type Unit = typeof unitsTable.$inferSelect;
 
@@ -11,11 +12,14 @@ export default function UnitForm({
   unit,
   cancelHref,
   t,
+  statuses,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   unit?: Unit;
   cancelHref: string;
   t: (key: MessageKey) => string;
+  /** The statuses as the office has them in the Builder. */
+  statuses: { value: string; label: string }[];
 }) {
   return (
     <form action={action} className="space-y-4">
@@ -129,13 +133,14 @@ export default function UnitForm({
           <select
             id="status"
             name="status"
-            defaultValue={unit?.status ?? "AVAILABLE"}
+            defaultValue={unit ? shownCode(unit.status, unit.statusChoice) : "AVAILABLE"}
             className="select"
           >
-            <option value="AVAILABLE">{t("units.status.AVAILABLE")}</option>
-            <option value="RESERVED">{t("units.status.RESERVED")}</option>
-            <option value="SOLD">{t("units.status.SOLD")}</option>
-            <option value="DELIVERED">{t("units.status.DELIVERED")}</option>
+            {statuses.map((one) => (
+              <option key={one.value} value={one.value}>
+                {one.label}
+              </option>
+            ))}
           </select>
         </div>
 

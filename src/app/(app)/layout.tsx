@@ -130,6 +130,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       ],
     },
     { href: "/reports", label: t("nav.reports"), group: "insights" },
+    /* Where the office shapes the CRM itself: its own lists, and the settings. */
+    { href: "/builder", label: t("nav.builder"), group: "editor" },
+    { href: "/settings", label: t("nav.settings"), group: "editor" },
   ];
 
   const creates = [
@@ -203,6 +206,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             marketing: t("shell.groupMarketing"),
             finance: t("shell.groupFinance"),
             insights: t("shell.groupInsights"),
+            editor: t("shell.groupEditor"),
             clients: t("nav.clients"),
             projects: t("nav.projects"),
             units: t("units.title"),

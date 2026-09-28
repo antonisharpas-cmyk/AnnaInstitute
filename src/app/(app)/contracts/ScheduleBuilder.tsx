@@ -35,8 +35,12 @@ const CHOICES: { label: string; labelEl: string }[] = [
   { label: "On completion of the apartment", labelEl: "Ολοκλήρωση διαμερίσματος" },
 ];
 
-const greekFor = (label: string) =>
-  CHOICES.find((c) => c.label.toLowerCase() === label.trim().toLowerCase())?.labelEl ?? null;
+const plainWord = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 /**
  * The office's standard contract: seven stages, no figures.
@@ -103,8 +107,14 @@ export default function ScheduleBuilder({
   initialType,
   initialPeriodMonths,
   frozen,
+  stages,
+  named = {},
   labels,
 }: {
+  /** The stages from the Builder, in the office's order and words. The CRM's own list when not given. */
+  stages?: { label: string; labelEl: string }[];
+  /** The office's name for each of the CRM's stages, by the CRM's English name, for the ready made plans. */
+  named?: Record<string, { label: string; labelEl: string }>;
   netPrice: string;
   vatRate: string;
   initialRows: Row[];
@@ -135,11 +145,20 @@ export default function ScheduleBuilder({
     frozen: string;
   };
 }) {
+  const choices = stages && stages.length > 0 ? stages : CHOICES;
+  const greekFor = (label: string) =>
+    choices.find((c) => plainWord(c.label) === plainWord(label))?.labelEl ?? null;
+  /* A ready made line in the office's words, when the office renamed that stage. */
+  const inWords = <T extends { label: string; labelEl?: string | null }>(line: T): T => {
+    const own = named[plainWord(line.label)];
+    return own ? { ...line, label: own.label, labelEl: own.labelEl } : line;
+  };
+  const standard = STANDARD.map(inWords);
   const [type, setType] = useState<"STANDARD" | "PERIODIC">(initialType);
   const [rows, setRows] = useState<Row[]>(
     initialRows.length > 0
       ? initialRows
-      : STANDARD.map((s) => ({
+      : standard.map((s) => ({
           key: nextKey(),
           label: s.label,
           labelEl: s.labelEl,
@@ -173,7 +192,7 @@ export default function ScheduleBuilder({
   const useStandard = () => {
     setType("STANDARD");
     setRows(
-      STANDARD.map((s, i) => ({
+      standard.map((s, i) => ({
         key: nextKey(),
         label: s.label,
         labelEl: s.labelEl,
@@ -226,7 +245,7 @@ export default function ScheduleBuilder({
     const from = start ? addMonths(start, opening.length > 1 ? 1 : 0) : "";
 
     setRows([
-      ...opening.map((one) => ({
+      ...opening.map(inWords).map((one) => ({
         key: nextKey(),
         label: one.label,
         labelEl: one.labelEl,
@@ -373,7 +392,7 @@ export default function ScheduleBuilder({
       )}
 
       <datalist id="stage-choices">
-        {CHOICES.map((c) => (
+        {choices.map((c) => (
           <option key={c.label} value={c.label} />
         ))}
       </datalist>

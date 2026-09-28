@@ -1,3 +1,4 @@
+import { isCustom } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslator, type MessageKey } from "@/i18n";
@@ -72,7 +73,7 @@ export default async function BuyerReceiptPage({
           {
             label: t("contracts.method"),
             value: receipt.method
-              ? ["CASH", "BANK", "CHEQUE", "CARD", "OTHER"].includes(receipt.method)
+              ? ["CASH", "BANK", "CHEQUE", "CARD", "OTHER"].includes(receipt.method) || isCustom(receipt.method)
                 ? t(`contracts.method.${receipt.method}` as MessageKey)
                 : receipt.method
               : "",

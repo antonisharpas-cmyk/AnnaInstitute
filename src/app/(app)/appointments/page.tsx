@@ -1,3 +1,4 @@
+import { optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
@@ -35,7 +36,6 @@ import {
  */
 
 /** The six kinds, in the order the office listed them. */
-const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
 
 /**
  * What to show: the same words as the status on every row.
@@ -64,6 +64,9 @@ export default async function AppointmentsPage({
   const params = await searchParams;
   await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
+  /* The kinds as the office has them in the Builder: all of them to filter by, the active ones to pick. */
+  const everyKind = await optionsFor("appointmentType", t, { everything: true });
+  const activeKinds = await optionsFor("appointmentType", t);
 
   const show = (UNDERSTOOD as readonly string[]).includes(params.show ?? "")
     ? (params.show as string)
@@ -179,10 +182,7 @@ export default async function AppointmentsPage({
             label={t("appointments.type")}
             chosen={many(params.type ?? "")}
             anything={t("common.all")}
-            choices={KINDS.map((kind) => ({
-              value: kind,
-              label: t(`appointments.type.${kind}` as MessageKey),
-            }))}
+            choices={everyKind}
           />
         </SearchBox>
 
@@ -241,10 +241,7 @@ export default async function AppointmentsPage({
               </div>
               <KindField
                 id="type"
-                kinds={KINDS.map((kind) => ({
-                  value: kind,
-                  label: t(`appointments.type.${kind}` as MessageKey),
-                }))}
+                kinds={activeKinds}
                 labels={{
                   kind: t("appointments.type"),
                   other: t("appointments.typeOther"),
@@ -308,8 +305,9 @@ export default async function AppointmentsPage({
                     <tr key={appointment.id}>
                       <td className="font-semibold">{appointment.place}</td>
                       <td className="text-xs">
-                        {t(`appointments.type.${appointment.type}` as MessageKey)}
-                        {appointment.type === "TIMBER" || appointment.type === "BATHROOMS_TILES" ? (
+                        {t(`appointments.type.${shownCode(appointment.type, appointment.typeChoice)}` as MessageKey)}
+                        {shownCode(appointment.type, appointment.typeChoice) === appointment.type &&
+                        (appointment.type === "TIMBER" || appointment.type === "BATHROOMS_TILES") ? (
                           <div className="text-brand-graphite/60">
                             {t(`appointments.company.${appointment.type}` as MessageKey)}
                           </div>
@@ -444,12 +442,13 @@ export default async function AppointmentsPage({
                               </div>
                               <KindField
                                 id={`type-${appointment.id}`}
-                                defaultKind={appointment.type}
+                                defaultKind={shownCode(appointment.type, appointment.typeChoice)}
                                 defaultOther={appointment.typeOther ?? ""}
-                                kinds={KINDS.map((kind) => ({
-                                  value: kind,
-                                  label: t(`appointments.type.${kind}` as MessageKey),
-                                }))}
+                                kinds={everyKind.filter(
+                                  (one) =>
+                                    activeKinds.some((active) => active.value === one.value) ||
+                                    one.value === shownCode(appointment.type, appointment.typeChoice),
+                                )}
                                 labels={{
                                   kind: t("appointments.type"),
                                   other: t("appointments.typeOther"),

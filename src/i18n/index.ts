@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { dictionaries, type Locale, type MessageKey } from "./dictionaries";
+import { choiceWords } from "@/lib/choices";
 
 export const LOCALE_COOKIE = "oe_locale";
 
@@ -9,13 +10,19 @@ export async function getLocale(): Promise<Locale> {
   return value === "el" ? "el" : "en";
 }
 
-export function translator(locale: Locale) {
-  return (key: MessageKey): string => dictionaries[locale][key] ?? dictionaries.en[key] ?? key;
+/**
+ * The words for a locale.
+ *
+ * The office's own names from the Builder come first, so a status renamed there
+ * reads the new way on every page without any page knowing about it.
+ */
+export function translator(locale: Locale, own: Record<string, string> = {}) {
+  return (key: MessageKey): string => own[key] ?? dictionaries[locale][key] ?? dictionaries.en[key] ?? key;
 }
 
 export async function getTranslator() {
   const locale = await getLocale();
-  return { locale, t: translator(locale) };
+  return { locale, t: translator(locale, await choiceWords(locale)) };
 }
 
 export type { Locale, MessageKey };

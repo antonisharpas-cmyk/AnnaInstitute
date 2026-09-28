@@ -1,7 +1,8 @@
 import "server-only";
+import { choiceFilter } from "@/lib/choices/filter";
 import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { manyOf } from "@/lib/filters";
+import { many } from "@/lib/filters";
 import {
   agents,
   clients,
@@ -280,9 +281,13 @@ export async function listContracts(options?: {
       ) as SQL,
     );
   }
-  const wanted = manyOf(options?.status, ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED"] as const);
-  if (wanted.length === 1) filters.push(eq(contracts.status, wanted[0]));
-  if (wanted.length > 1) filters.push(inArray(contracts.status, wanted));
+  const wanted = choiceFilter(contracts.status, contracts.statusChoice, many(options?.status), [
+    "DRAFT",
+    "ACTIVE",
+    "COMPLETED",
+    "CANCELLED",
+  ]);
+  if (wanted) filters.push(wanted);
   const where = filters.length > 0 ? and(...filters) : undefined;
 
   const chosen = CONTRACT_ORDER[options?.sort ?? ""] ?? null;

@@ -1,4 +1,6 @@
 import "server-only";
+import { choiceFilter } from "@/lib/choices/filter";
+import { LIST_BY_KEY } from "@/lib/choices/lists";
 import { and, asc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { many } from "@/lib/filters";
@@ -9,6 +11,7 @@ export type AssignedApartment = {
   unitId: string;
   code: string;
   status: "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED";
+  statusChoice: string | null;
   netPrice: string;
   projectId: string;
   projectName: string;
@@ -46,6 +49,7 @@ export async function apartmentsByClient(
       unitId: row.unit.id,
       code: row.unit.code,
       status: row.unit.status,
+      statusChoice: row.unit.statusChoice,
       netPrice: row.unit.netPrice,
       projectId: row.project.id,
       projectName: row.project.name,
@@ -180,7 +184,9 @@ export function clientFilters({
       );
     }
     if (ourOwn.length > 0) {
-      reasons.push(sql`${clients.source}::text in ${ourOwn}`);
+      /* The office's own sources from the Builder are found by their own value. */
+      const own = choiceFilter(clients.source, clients.sourceChoice, ourOwn, LIST_BY_KEY.clientSource.builtins.map((one) => one.code));
+      if (own) reasons.push(own);
     }
     parts.push(or(...reasons) as SQL);
   }

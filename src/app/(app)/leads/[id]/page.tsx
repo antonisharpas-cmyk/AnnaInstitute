@@ -11,7 +11,7 @@ import NoteList from "@/components/NoteList";
 import { whoCanGo } from "@/lib/team";
 import { followUpsForLead } from "@/lib/followUps";
 import { historyForLead } from "@/lib/leads";
-import { CHOOSABLE_LEAD_STATUSES } from "@/lib/leads";
+import { optionsFor, shownCode } from "@/lib/choices";
 import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
 import ConfirmButton from "@/components/ConfirmButton";
@@ -85,6 +85,11 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
    * so there is one place to keep up to date rather than two.
    */
   const locked = lead.status === "CONVERTED";
+  /* The statuses the office picks from, in its own order and words, and the
+     lead's own one even if it has since been made inactive. */
+  const statusOptions = await optionsFor("leadStatus", t, { current: shownCode(lead.status, lead.statusChoice) }).then(
+    (all) => all.filter((one) => one.value !== "NEW" && one.value !== "CONVERTED"),
+  );
 
   return (
     <>
@@ -94,7 +99,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         subtitle={`${t("leads.received")} ${when(lead.createdAt, locale)}`}
         action={
           <Pill tone={leadStatusTone(lead.status) as "good" | "warn" | "neutral"}>
-            {t(`leads.status.${lead.status}` as MessageKey)}
+            {t(`leads.status.${shownCode(lead.status, lead.statusChoice)}` as MessageKey)}
           </Pill>
         }
       />
@@ -161,7 +166,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
           <Card title={t("leads.whereFrom")}>
             <Line label={t("leads.camefrom")}>
-              {t(`leads.source.${lead.sourceKind}` as MessageKey)}
+              {t(`leads.source.${shownCode(lead.sourceKind, lead.sourceChoice)}` as MessageKey)}
               {lead.sourceKind === "OTHER" && lead.source ? ` . ${lead.source}` : ""}
             </Line>
             {lead.formName ? <Line label={t("leads.formName")}>{lead.formName}</Line> : null}
@@ -410,7 +415,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
           <Card title={t("leads.moveTo")}>
             <form action={setLeadStatus.bind(null, id)} className="flex flex-wrap gap-2">
-              <select name="status" defaultValue={lead.status} className="select">
+              <select name="status" defaultValue={shownCode(lead.status, lead.statusChoice)} className="select">
                 {/*
                   New is written by the CRM when the enquiry arrives, so it is
                   only in the list while the enquiry still holds it: nobody
@@ -419,9 +424,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 {lead.status === "NEW" ? (
                   <option value="NEW">{t("leads.status.NEW")}</option>
                 ) : null}
-                {CHOOSABLE_LEAD_STATUSES.map((one) => (
-                  <option key={one} value={one}>
-                    {t(`leads.status.${one}` as MessageKey)}
+                {statusOptions.map((one) => (
+                  <option key={one.value} value={one.value}>
+                    {one.label}
                   </option>
                 ))}
                 {/* Choosing this makes the client and leaves the enquiries list. */}

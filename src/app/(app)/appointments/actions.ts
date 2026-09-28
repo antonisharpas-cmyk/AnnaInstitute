@@ -1,5 +1,6 @@
 "use server";
 
+import { splitChoice } from "@/lib/choices/lists";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -42,7 +43,14 @@ const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", 
 type Kind = (typeof KINDS)[number];
 
 function kindOf(raw: string): Kind {
-  return (KINDS as readonly string[]).includes(raw) ? (raw as Kind) : "OTHER";
+  const base = splitChoice(raw).base;
+  return (KINDS as readonly string[]).includes(base) ? (base as Kind) : "OTHER";
+}
+
+/** The office's own kind from the Builder, kept beside the built in one it counts as. */
+function ownKind(raw: string): string | null {
+  const { base, choice } = splitChoice(raw);
+  return choice && (KINDS as readonly string[]).includes(base) ? choice : null;
 }
 
 /** Who it is with, from one field that carries both kinds of person. */
@@ -84,9 +92,10 @@ export async function createAppointment(formData: FormData) {
       clientId,
       leadId,
       type: kindOf(String(formData.get("type") ?? "OTHER")),
-      /* What Other was, kept only when Other is what was chosen. */
+      typeChoice: ownKind(String(formData.get("type") ?? "OTHER")),
+      /* What Other was, kept only when Other itself is what was chosen. */
       typeOther:
-        kindOf(String(formData.get("type") ?? "OTHER")) === "OTHER"
+        String(formData.get("type") ?? "OTHER") === "OTHER"
           ? String(formData.get("typeOther") ?? "").trim() || null
           : null,
       assignedToId: String(formData.get("assignedToId") ?? "") || null,
@@ -131,8 +140,9 @@ export async function updateAppointment(appointmentId: string, formData: FormDat
   const at =
     moment(String(formData.get("day") ?? ""), String(formData.get("time") ?? "")) ?? row.at;
   const type = formData.has("type") ? kindOf(String(formData.get("type"))) : row.type;
+  const typeChoice = formData.has("type") ? ownKind(String(formData.get("type"))) : row.typeChoice;
   const typeOther =
-    type === "OTHER"
+    type === "OTHER" && !typeChoice
       ? formData.has("typeOther")
         ? String(formData.get("typeOther") ?? "").trim() || null
         : row.typeOther
@@ -143,7 +153,7 @@ export async function updateAppointment(appointmentId: string, formData: FormDat
 
   await db
     .update(appointments)
-    .set({ place, at, type, typeOther, assignedToId, updatedAt: new Date() })
+    .set({ place, at, type, typeChoice, typeOther, assignedToId, updatedAt: new Date() })
     .where(eq(appointments.id, appointmentId));
 
   /*
@@ -158,6 +168,7 @@ export async function updateAppointment(appointmentId: string, formData: FormDat
     place !== row.place ||
     at.getTime() !== new Date(row.at).getTime() ||
     type !== row.type ||
+    typeChoice !== row.typeChoice ||
     assignedToId !== row.assignedToId;
   if (moved) await letterForAppointment(appointmentId, "moved");
 

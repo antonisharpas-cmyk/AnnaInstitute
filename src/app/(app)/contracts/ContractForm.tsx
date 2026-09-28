@@ -1,5 +1,6 @@
 "use client";
 
+import { baseOf, shownCode } from "@/lib/choices/lists";
 import { startTransition, useActionState, useState } from "react";
 import Link from "next/link";
 import DateField from "@/components/DateField";
@@ -18,6 +19,7 @@ type ContractRecord = {
   agentId: string | null;
   contractDate: Date | null;
   kind: "SALE" | "LAND_EXCHANGE";
+  kindChoice?: string | null;
   netPrice: string;
   vatRate: string;
   cashAmount: string | null;
@@ -28,6 +30,7 @@ type ContractRecord = {
   scheduleType: "STANDARD" | "PERIODIC";
   periodMonths: number | null;
   status: "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+  statusChoice?: string | null;
   notes: string | null;
 };
 
@@ -61,8 +64,19 @@ export default function ContractForm({
   cancelHref,
   frozen,
   editing,
+  statuses = [],
+  kinds = [],
+  stages,
+  named,
   labels,
 }: {
+  /** The kinds of contract from the Builder: a sale, a land exchange, and the office's own. */
+  kinds?: { value: string; label: string }[];
+  /** The installment stages from the Builder, for the schedule. */
+  stages?: { label: string; labelEl: string }[];
+  named?: Record<string, { label: string; labelEl: string }>;
+  /** The statuses as the office has them in the Builder, for an edit. */
+  statuses?: { value: string; label: string }[];
   action: (prev: ContractFormState, formData: FormData) => Promise<ContractFormState>;
   contract?: ContractRecord;
   rows: Row[];
@@ -91,7 +105,9 @@ export default function ContractForm({
    * and asks for the cash, and choosing a sale puts the rate back and takes the
    * question away, which is the whole difference between the two on this form.
    */
-  const [kind, setKind] = useState<"SALE" | "LAND_EXCHANGE">(contract?.kind ?? "SALE");
+  /* What was picked, which may be the office's own kind, and the built in kind it counts as. */
+  const [picked, setPicked] = useState<string>(contract ? shownCode(contract.kind, contract.kindChoice) : "SALE");
+  const kind: "SALE" | "LAND_EXCHANGE" = baseOf(picked) === "LAND_EXCHANGE" ? "LAND_EXCHANGE" : "SALE";
   const [cash, setCash] = useState(whole(contract?.cashAmount ?? undefined));
   /*
    * On a sale with money received, the VAT is changed from the VAT card on the
@@ -112,9 +128,9 @@ export default function ContractForm({
         )}`
       : null;
 
-  const chooseKind = (value: "SALE" | "LAND_EXCHANGE") => {
-    setKind(value);
-    if (value === "LAND_EXCHANGE") setVatRate("0");
+  const chooseKind = (value: string) => {
+    setPicked(value);
+    if (baseOf(value) === "LAND_EXCHANGE") setVatRate("0");
     else setVatRate(contract ? String(Number(contract.vatRate)) : "19");
   };
 
@@ -152,12 +168,22 @@ export default function ContractForm({
           <select
             id="kind"
             name="kind"
-            value={kind}
-            onChange={(event) => chooseKind(event.target.value as "SALE" | "LAND_EXCHANGE")}
+            value={picked}
+            onChange={(event) => chooseKind(event.target.value)}
             className="select"
           >
-            <option value="SALE">{labels.kindSale}</option>
-            <option value="LAND_EXCHANGE">{labels.kindLandExchange}</option>
+            {kinds.length > 0 ? (
+              kinds.map((one) => (
+                <option key={one.value} value={one.value}>
+                  {one.label}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="SALE">{labels.kindSale}</option>
+                <option value="LAND_EXCHANGE">{labels.kindLandExchange}</option>
+              </>
+            )}
           </select>
           <p className="mt-1 text-xs text-brand-graphite/60">
             {kind === "LAND_EXCHANGE" ? labels.kindLandExchangeHint : labels.kindSaleHint}
@@ -344,13 +370,23 @@ export default function ContractForm({
             <select
               id="status"
               name="status"
-              defaultValue={contract?.status ?? "ACTIVE"}
+              defaultValue={contract ? shownCode(contract.status, contract.statusChoice) : "ACTIVE"}
               className="select"
             >
-              <option value="DRAFT">{labels.statusDraft}</option>
-              <option value="ACTIVE">{labels.statusActive}</option>
-              <option value="COMPLETED">{labels.statusCompleted}</option>
-              <option value="CANCELLED">{labels.statusCancelled}</option>
+              {statuses.length > 0 ? (
+                statuses.map((one) => (
+                  <option key={one.value} value={one.value}>
+                    {one.label}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="DRAFT">{labels.statusDraft}</option>
+                  <option value="ACTIVE">{labels.statusActive}</option>
+                  <option value="COMPLETED">{labels.statusCompleted}</option>
+                  <option value="CANCELLED">{labels.statusCancelled}</option>
+                </>
+              )}
             </select>
           </div>
         ) : null}
@@ -451,6 +487,8 @@ export default function ContractForm({
       ) : null}
 
       <ScheduleBuilder
+        stages={stages}
+        named={named}
         netPrice={netPrice}
         vatRate={vatRate}
         initialRows={rows}

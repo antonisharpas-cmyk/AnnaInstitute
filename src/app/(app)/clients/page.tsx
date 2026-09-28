@@ -1,3 +1,4 @@
+import { optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -251,22 +252,10 @@ export default async function ClientsPage({
               client's own source is the one the office sets and the one the
               column shows, so that is the one to filter by.
             */
-            choices={(
-              [
-                "BUYER",
-                "ENQUIRY",
-                "WEBSITE",
-                "WHATSAPP",
-                "AGENT_REFERRAL",
-                "LAND_OWNER",
-                "OTHER",
-              ] as const
-            ).map(
-              (one) => ({
-                value: `own:${one}`,
-                label: t(`clients.source.${one}` as MessageKey),
-              }),
-            )}
+            choices={(await optionsFor("clientSource", t, { everything: true })).map((one) => ({
+              value: `own:${one.value}`,
+              label: one.label,
+            }))}
           />
           <Pick
             name="agent"
@@ -568,7 +557,7 @@ export default async function ClientsPage({
                               the enquiry said in its own words is kept
                               underneath.
                             */}
-                            {t(`clients.source.${r.client.source}` as MessageKey)}
+                            {t(`clients.source.${shownCode(r.client.source, r.client.sourceChoice)}` as MessageKey)}
                             {r.leadSourceText ? (
                               <div className="text-brand-graphite/55">{r.leadSourceText}</div>
                             ) : null}
@@ -593,7 +582,7 @@ export default async function ClientsPage({
                                     <Pill
                                       tone={statusTone(a.status) as "good" | "warn" | "neutral"}
                                     >
-                                      {t(`units.status.${a.status}` as MessageKey)}
+                                      {t(`units.status.${shownCode(a.status, a.statusChoice)}` as MessageKey)}
                                     </Pill>
                                   </li>
                                 ))}

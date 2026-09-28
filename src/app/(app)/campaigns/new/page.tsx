@@ -41,8 +41,11 @@ export default async function NewCampaignPage({
       ? await detailsForProject(params.project, locale)
       : null;
 
+  /* The month is known whatever the campaign was started from: the price list
+     is sent without an apartment or a development, and its subject names the month. */
+  const month = new Date().toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", { month: "long", year: "numeric" });
   const fill = (text: string) => {
-    if (!extras) return text;
+    if (!extras) return text.replaceAll("{{month}}", month);
     let filled = text;
     for (const [key, value] of Object.entries(extras)) {
       filled = filled.replaceAll(`{{${key}}}`, value);

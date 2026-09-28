@@ -1,3 +1,4 @@
+import { baseOf, optionsFor } from "@/lib/choices";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { contracts, issuedDocuments, payments } from "@/db/schema";
@@ -30,6 +31,8 @@ export default async function CreditsSection({ contractId }: { contractId: strin
   const { locale, t } = await getTranslator();
   const [contract] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
   if (!contract) return null;
+  /* How the money went back, in the office's own methods; card refunds are not offered. */
+  const methods = (await optionsFor("paymentMethod", t)).filter((one) => baseOf(one.value) !== "CARD");
 
   const [notes, refunds, creditRow] = await Promise.all([
     db
@@ -306,9 +309,9 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                 {t("contracts.method")}
               </label>
               <select id="refundMethod" name="method" className="select" defaultValue="BANK">
-                {["BANK", "CHEQUE", "CASH", "OTHER"].map((one) => (
-                  <option key={one} value={one}>
-                    {t(`contracts.method.${one}` as "contracts.method.BANK")}
+                {methods.map((one) => (
+                  <option key={one.value} value={one.value}>
+                    {one.label}
                   </option>
                 ))}
               </select>

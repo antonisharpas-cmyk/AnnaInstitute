@@ -1,3 +1,4 @@
+import { shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq, sql } from "drizzle-orm";
@@ -196,7 +197,7 @@ export default async function ProjectPage({
         />
         <Stat
           label={t("common.status")}
-          value={t(`projects.status.${project.status}` as MessageKey)}
+          value={t(`projects.status.${shownCode(project.status, project.statusChoice)}` as MessageKey)}
           hint={project.statusByHandAt ? t("projects.statusByHand") : t("projects.statusFromUnits")}
         />
       </div>
@@ -435,7 +436,7 @@ export default async function ProjectPage({
                         </td>
                         <td className="ctr">
                           <Pill tone={statusTone(u.status) as "good" | "warn" | "neutral"}>
-                            {t(`units.status.${u.status}` as MessageKey)}
+                            {t(`units.status.${shownCode(u.status, u.statusChoice)}` as MessageKey)}
                           </Pill>
                           {u.statusByHandAt ? (
                             /*

@@ -1,4 +1,5 @@
 import "server-only";
+import { splitChoice } from "@/lib/choices/lists";
 import { cookies } from "next/headers";
 import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -78,7 +79,11 @@ export async function applyUndo(undo: Undo, who: { id: string; email: string }):
       if (!row.value) continue;
       await db
         .update(leads)
-        .set({ status: row.value as "NEW", updatedAt: new Date() })
+        .set({
+          status: splitChoice(row.value).base as "NEW",
+          statusChoice: splitChoice(row.value).choice,
+          updatedAt: new Date(),
+        })
         .where(eq(leads.id, row.id));
       touched += 1;
     }

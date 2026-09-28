@@ -1,3 +1,5 @@
+import { optionsFor, shownCode } from "@/lib/choices";
+import { choiceFilter } from "@/lib/choices/filter";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -9,7 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { formatAmount, toCents } from "@/lib/money";
 import { partnersByProject } from "@/lib/subowners";
 import { readSort, sortHref } from "@/lib/sorting";
-import { anyFilter, many, manyOf } from "@/lib/filters";
+import { anyFilter, many } from "@/lib/filters";
 import {
   COLUMNS,
   filterQuery,
@@ -78,14 +80,13 @@ export default async function ProjectsPage({
       or(ilike(projects.name, `%${query}%`), ilike(projects.location, `%${query}%`)) as SQL,
     );
   }
-  const wanted = manyOf(status, [
+  const wanted = choiceFilter(projects.status, projects.statusChoice, many(status), [
     "PLANNING",
     "UNDER_CONSTRUCTION",
     "COMPLETED",
     "DELIVERED",
-  ] as const);
-  if (wanted.length === 1) parts.push(eq(projects.status, wanted[0]));
-  if (wanted.length > 1) parts.push(inArray(projects.status, wanted));
+  ]);
+  if (wanted) parts.push(wanted);
 
   const companies_ = many(company);
   if (companies_.length === 1) parts.push(eq(projects.companyId, companies_[0]));
@@ -217,9 +218,7 @@ export default async function ProjectsPage({
             label={t("common.status")}
             chosen={many(status)}
             anything={t("common.all")}
-            choices={(["PLANNING", "UNDER_CONSTRUCTION", "COMPLETED", "DELIVERED"] as const).map(
-              (one) => ({ value: one, label: t(`projects.status.${one}` as MessageKey) }),
-            )}
+            choices={await optionsFor("projectStatus", t, { everything: true })}
           />
 
           <Pick
@@ -393,7 +392,7 @@ export default async function ProjectsPage({
                       {on("status") ? (
                         <td>
                           <Pill tone={statusTone(r.project.status) as "good" | "warn" | "neutral"}>
-                            {t(`projects.status.${r.project.status}` as MessageKey)}
+                            {t(`projects.status.${shownCode(r.project.status, r.project.statusChoice)}` as MessageKey)}
                           </Pill>
                         </td>
                       ) : null}

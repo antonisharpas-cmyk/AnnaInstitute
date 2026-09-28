@@ -1,3 +1,4 @@
+import { optionsFor } from "@/lib/choices";
 import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { companies } from "@/db/schema";
@@ -24,6 +25,7 @@ export default async function NewProjectPage() {
             companies={companyList}
             cancelHref="/projects"
             t={t}
+            statuses={await optionsFor("projectStatus", t)}
           />
           <p className="mt-3 text-xs text-brand-graphite/60">
             The units are added on the project page once it is saved.

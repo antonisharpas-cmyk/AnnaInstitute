@@ -38,6 +38,15 @@ const escapeHtml = (value: string) =>
  *   3. the outcome is recorded per recipient, including the provider reference
  *      or the error, so there is proof of what went where.
  */
+/** A letter's text as the email's HTML, the same for every letter the CRM sends. */
+export function letterHtml(body: string): string {
+  return `<div style="font-family:system-ui,Arial,sans-serif;font-size:14px;line-height:1.6;color:#121111">${escapeHtml(
+    body,
+  )
+    .split("\n")
+    .join("<br>")}</div>`;
+}
+
 export async function sendAndRecord(options: {
   campaignId?: string | null;
   channel: Channel;
@@ -95,11 +104,7 @@ export async function sendAndRecord(options: {
   }
 
   let body = options.body;
-  let html = `<div style="font-family:system-ui,Arial,sans-serif;font-size:14px;line-height:1.6;color:#121111">${escapeHtml(
-    body,
-  )
-    .split("\n")
-    .join("<br>")}</div>`;
+  let html = letterHtml(body);
 
   if (options.withOptOut && recipient.clientId) {
     if (channel === "EMAIL") {

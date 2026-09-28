@@ -1,4 +1,5 @@
 import "server-only";
+import { choiceFilter } from "@/lib/choices/filter";
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { expenses, projects } from "@/db/schema";
@@ -51,9 +52,9 @@ export async function listExpenses({
       ) as SQL,
     );
   }
-  if ((EXPENSE_CATEGORIES as readonly string[]).includes(category)) {
-    filters.push(eq(expenses.category, category as ExpenseCategory));
-  }
+  /* A built in category finds the office's own ones under it too; an own one finds itself. */
+  const byCategory = category ? choiceFilter(expenses.category, expenses.categoryChoice, [category], EXPENSE_CATEGORIES) : null;
+  if (byCategory) filters.push(byCategory);
   if (["UNPAID", "PARTIALLY_PAID", "PAID"].includes(status)) {
     filters.push(eq(expenses.status, status as "UNPAID"));
   }

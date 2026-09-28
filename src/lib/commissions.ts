@@ -4,6 +4,7 @@
  * records into line. Nothing in this file is safe for a browser anyway, since
  * it talks to the database directly.
  */
+import { stageFrom, stageNames } from "@/lib/choices/stages";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -209,7 +210,10 @@ const plainly = (value: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-function isOpening(line: { label: string; labelEl: string | null }): boolean {
+function isOpening(line: { label: string; labelEl: string | null }, names?: Map<string, string>): boolean {
+  /* Every name the reservation and the signing have in the Builder, the office's own stages that count as them included. */
+  const stage = names ? stageFrom(names, line.label, line.labelEl) : null;
+  if (stage === "RESERVATION" || stage === "SIGNING") return true;
   const words = [plainly(line.label), plainly(line.labelEl ?? "")];
   return OPENING.some((pair) => pair.some((one) => words.includes(one)));
 }
@@ -243,7 +247,8 @@ export async function openingIsPaid(contractId: string): Promise<boolean> {
 
   if (lines.length === 0) return paidCents > 0;
 
-  const opening = lines.filter(isOpening);
+  const names = await stageNames();
+  const opening = lines.filter((line) => isOpening(line, names));
   const wanted = opening.length > 0 ? opening : [lines[0]];
   const wantedCents = wanted.reduce((all, one) => all + toCents(one.totalAmount), 0);
 

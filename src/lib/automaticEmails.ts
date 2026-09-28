@@ -1,4 +1,6 @@
 import "server-only";
+import { stageFrom, stageNames } from "@/lib/choices/stages";
+import { englishWord, shownCode } from "@/lib/choices";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -42,6 +44,8 @@ import type { EmailAttachment } from "@/lib/messaging/email";
 function letterFor(options: {
   stage: string | null;
   outstandingCents: number;
+  /** The built in stage the line counts as, from its words in the Builder. */
+  counted?: string | null;
 }): AutomaticKey {
   const stage = (options.stage ?? "")
     .trim()
@@ -52,6 +56,8 @@ function letterFor(options: {
   /* Paid off is the last word, whatever stage it happened on: a buyer who
      clears the balance early gets the congratulations, not a statement. */
   if (options.outstandingCents <= 0) return "paid_final";
+  if (options.counted === "RESERVATION") return "paid_reservation";
+  if (options.counted === "SIGNING") return "paid_signing";
   /* Both wordings of the signing, because contracts written before the office
      settled on their seven stages say it the shorter way. */
   const SIGNING = ["on signing of the contract", "on signing of contract", "υπογραφη συμβολαιου"];
@@ -61,7 +67,7 @@ function letterFor(options: {
 }
 
 /** What the braces in a letter are filled with. */
-function fill(text: string, values: Record<string, string>): string {
+export function fill(text: string, values: Record<string, string>): string {
   return text.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (whole, key: string) => values[key] ?? whole);
 }
 
@@ -155,6 +161,7 @@ export async function letterForPayment(paymentId: string): Promise<void> {
   const outstandingCents = dueCents - paidCents;
 
   const key = letterFor({
+    counted: stageFrom(await stageNames(), row.installment?.label, row.installment?.labelEl),
     stage: row.installment?.label ?? null,
     outstandingCents: dueCents > 0 ? outstandingCents : 1,
   });
@@ -414,9 +421,11 @@ export async function letterForAppointment(
     place: row.appointment.place,
     /* Other says what it was, because "Other" tells the buyer nothing. */
     kind:
-      row.appointment.type === "OTHER"
-        ? (row.appointment.typeOther ?? "").trim() || "A meeting"
-        : (KIND_WORDS[row.appointment.type] ?? row.appointment.type),
+      shownCode(row.appointment.type, row.appointment.typeChoice) !== row.appointment.type
+        ? await englishWord("appointmentType", row.appointment.typeChoice ?? "")
+        : row.appointment.type === "OTHER"
+          ? (row.appointment.typeOther ?? "").trim() || "A meeting"
+          : (KIND_WORDS[row.appointment.type] ?? row.appointment.type),
     day: at.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" }),
     time: at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
     who: row.member?.name ?? "somebody from the office",

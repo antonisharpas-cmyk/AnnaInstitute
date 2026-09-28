@@ -1,4 +1,5 @@
 import "server-only";
+import { baseOf, isCustom } from "@/lib/choices/lists";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
@@ -52,6 +53,8 @@ export type IssuedSnapshot = {
   paidOn: string;
   issuedOn: string;
   method: string;
+  /** The office's own name for the method, from the Builder, when it has one. */
+  methodName?: string;
   reference: string;
   netCents: number;
   vatCents: number;
@@ -532,7 +535,7 @@ export async function acknowledgementPdf(
     y -= 8;
   };
   const amount = eur(refund.amountCents);
-  const how = refund.method ? ` by ${({ CASH: "cash", CHEQUE: "cheque", BANK: "bank transfer", CARD: "card" } as Record<string, string>)[refund.method] ?? refund.method.toLowerCase()}${refund.reference ? ` (${refund.reference})` : ""}` : "";
+  const how = refund.method ? ` by ${({ CASH: "cash", CHEQUE: "cheque", BANK: "bank transfer", CARD: "card" } as Record<string, string>)[refund.method] ?? (isCustom(refund.method) ? ({ CASH: "cash", CHEQUE: "cheque", BANK: "bank transfer", CARD: "card", OTHER: "other means" } as Record<string, string>)[baseOf(refund.method)] ?? "other means" : refund.method.toLowerCase())}${refund.reference ? ` (${refund.reference})` : ""}` : "";
 
   para(`I, ${s.client.name}${s.client.idNumber ? `, ID ${s.client.idNumber}` : ""}, confirm that I have received from ${s.company.name} the sum of ${amount} (${amountInEnglish(refund.amountCents).toLowerCase()})${how} on ${longDay(refund.paidOn)}.`, 10.5, f.bold);
   if (refund.purpose === "PENALTY") {
@@ -608,7 +611,7 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
   const widths: Record<string, number> = { CASH: 72, CHEQUE: 80, BANK: 118, CARD: 60 };
   for (const key of ["CASH", "CHEQUE", "BANK", "CARD"]) {
     const en = METHOD_WORDS[key];
-    const on = s.method === key;
+    const on = baseOf(s.method ?? "") === key;
     page.drawRectangle({ x: bx, y: y - 7, width: 10, height: 10, borderColor: on ? TEAL_DARK : QUIET, borderWidth: 1, color: on ? TEAL_DARK : undefined });
     if (on) {
       page.drawLine({ start: { x: bx + 2, y: y - 2 }, end: { x: bx + 4.5, y: y - 5 }, thickness: 1.4, color: WHITE });
@@ -617,6 +620,8 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
     text(page, on ? f.bold : f.plain, en, bx + 14, y - 5, 8.5);
     bx += widths[key];
   }
+  /* The office's own method, named after the boxes: "Bank transfer" ticked, "Standing order" said. */
+  if (s.methodName) text(page, f.bold, s.methodName.slice(0, 24), bx + 4, y - 5, 8.5);
   y -= 28;
 
   if (s.vatCents > 0) {

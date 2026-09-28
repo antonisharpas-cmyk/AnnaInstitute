@@ -1,4 +1,5 @@
 import "server-only";
+import { listEntries, shownCode } from "@/lib/choices";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { appointments, clients, leads, teamMembers } from "@/db/schema";
@@ -86,6 +87,11 @@ async function linesFor(from: Date, to: Date) {
     .where(and(gte(appointments.at, from), lt(appointments.at, to)))
     .orderBy(asc(appointments.at));
 
+  /* The office's own kinds from the Builder, by their English names. */
+  const own = new Map(
+    (await listEntries("appointmentType")).filter((one) => !one.builtin).map((one) => [one.code, one.labelEn || one.defaultEn]),
+  );
+
   return rows.map(({ appointment, client, lead }) => ({
     assignedToId: appointment.assignedToId,
     line: {
@@ -96,7 +102,12 @@ async function linesFor(from: Date, to: Date) {
           ? `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "an enquiry"
           : "nobody named",
       place: appointment.place,
-      kind: KIND[appointment.type] ?? appointment.type,
+      kind:
+        (appointment.typeChoice && shownCode(appointment.type, appointment.typeChoice) === appointment.typeChoice
+          ? own.get(appointment.typeChoice)
+          : undefined) ??
+        KIND[appointment.type] ??
+        appointment.type,
       status: appointment.status,
     } satisfies SummaryLine,
   }));

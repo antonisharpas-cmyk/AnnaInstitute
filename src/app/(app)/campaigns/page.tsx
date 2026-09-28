@@ -185,7 +185,14 @@ export default async function CampaignsPage() {
             </Link>
           }
         >
-          <p className="mb-3 text-xs text-brand-graphite/60">{t("campaigns.templatesNote")}</p>
+          <p className="mb-1 text-xs text-brand-graphite/60">{t("campaigns.templatesNote")}</p>
+          {/* The letters that go by themselves are not campaigns, and live on their own page. */}
+          <p className="mb-3 text-xs text-brand-graphite/60">
+            {t("campaigns.automaticElsewhere")}{" "}
+            <Link href="/emails" className="text-brand-teal-dark hover:underline">
+              {t("nav.emails")}
+            </Link>
+          </p>
           <ul className="divide-y divide-brand-line text-sm">
             {templates.map((template) => (
               <li

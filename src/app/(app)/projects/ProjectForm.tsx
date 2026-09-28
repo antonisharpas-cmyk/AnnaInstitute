@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { projects as projectsTable } from "@/db/schema";
 import type { MessageKey } from "@/i18n";
 import SubmitButton from "@/components/SubmitButton";
+import { shownCode } from "@/lib/choices/lists";
 
 type Project = typeof projectsTable.$inferSelect;
 
@@ -11,12 +12,15 @@ export default function ProjectForm({
   companies,
   cancelHref,
   t,
+  statuses,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   project?: Project;
   companies: { id: string; name: string }[];
   cancelHref: string;
   t: (key: MessageKey) => string;
+  /** The statuses as the office has them in the Builder. */
+  statuses: { value: string; label: string }[];
 }) {
   return (
     <form action={action} className="space-y-4">
@@ -100,13 +104,14 @@ export default function ProjectForm({
           <select
             id="status"
             name="status"
-            defaultValue={project?.status ?? "UNDER_CONSTRUCTION"}
+            defaultValue={project ? shownCode(project.status, project.statusChoice) : "UNDER_CONSTRUCTION"}
             className="select"
           >
-            <option value="PLANNING">{t("projects.status.PLANNING")}</option>
-            <option value="UNDER_CONSTRUCTION">{t("projects.status.UNDER_CONSTRUCTION")}</option>
-            <option value="COMPLETED">{t("projects.status.COMPLETED")}</option>
-            <option value="DELIVERED">{t("projects.status.DELIVERED")}</option>
+            {statuses.map((one) => (
+              <option key={one.value} value={one.value}>
+                {one.label}
+              </option>
+            ))}
           </select>
         </div>
 

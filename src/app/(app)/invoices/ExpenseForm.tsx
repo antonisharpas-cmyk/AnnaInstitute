@@ -5,6 +5,7 @@ import Link from "next/link";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { parseAmount } from "@/lib/money";
+import { shownCode } from "@/lib/choices/lists";
 
 export type ExpenseRecord = {
   direction: string;
@@ -12,6 +13,7 @@ export type ExpenseRecord = {
   subownerId: string | null;
   category: string;
   categoryOther: string | null;
+  categoryChoice?: string | null;
   reference: string | null;
   description: string | null;
   issueDate: Date | null;
@@ -67,7 +69,9 @@ export default function ExpenseForm({
 }) {
   const locked = Boolean(expense?.issuedDocumentId && expense.direction === "OUT");
   const [direction, setDirection] = useState(expense?.direction === "OUT" ? "OUT" : expense ? "IN" : "OUT");
-  const [category, setCategory] = useState(expense?.category ?? "MANAGEMENT_FEES");
+  const [category, setCategory] = useState(
+    expense ? shownCode(expense.category, expense.categoryChoice) : "MANAGEMENT_FEES",
+  );
   const [net, setNet] = useState(plain(expense?.netAmount));
   const [rate, setRate] = useState(
     expense?.vatRate !== null && expense?.vatRate !== undefined ? plain(expense.vatRate) : "19",

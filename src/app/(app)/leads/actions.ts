@@ -18,6 +18,7 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { offerUndo } from "@/lib/undo";
 import { LEAD_SOURCES, LEAD_STATUSES, OLD_LEAD_SOURCES, listLeads } from "@/lib/leads";
+import { englishWord, isAllowed, listEntries, shownCode, splitChoice } from "@/lib/choices";
 import { removeDocument } from "@/lib/uploads";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeys";
 
@@ -28,6 +29,37 @@ type LeadStatus = (typeof STATUSES)[number];
 
 const SOURCES = [...LEAD_SOURCES, ...OLD_LEAD_SOURCES] as const;
 type LeadSource = (typeof SOURCES)[number];
+
+/**
+ * A status as it was picked.
+ *
+ * The built in status goes in the status column, where every count and every
+ * automation reads it; the office's own status from the Builder, if that is
+ * what was picked, goes beside it. Anything the list does not hold is refused.
+ */
+async function readStatus(value: string): Promise<{ status: LeadStatus; statusChoice: string | null } | null> {
+  const { base, choice } = splitChoice(value);
+  if (!STATUSES.includes(base as LeadStatus)) return null;
+  if (choice && !(await isAllowed("leadStatus", choice))) return null;
+  return { status: base as LeadStatus, statusChoice: choice };
+}
+
+/**
+ * The office's own source, carried across when the client list has it too.
+ *
+ * The Builder keeps the two lists apart, so "Open day" on the enquiry becomes
+ * "Open day" on the client only if the office added it to both; otherwise the
+ * client simply reads as the built in source it counted as.
+ */
+async function clientSourceChoiceFor(lead: { sourceKind: string; sourceChoice: string | null }): Promise<string | null> {
+  if (!lead.sourceChoice || shownCode(lead.sourceKind, lead.sourceChoice) !== lead.sourceChoice) return null;
+  const name = (await englishWord("leadSource", lead.sourceChoice)).trim().toLowerCase();
+  const base = clientSourceFor(lead.sourceKind);
+  const match = (await listEntries("clientSource")).find(
+    (one) => !one.builtin && one.base === base && (one.labelEn ?? "").trim().toLowerCase() === name,
+  );
+  return match?.code ?? null;
+}
 
 /**
  * The same source, on the client's side of the fence.
@@ -81,7 +113,7 @@ function clientSourceFor(kind: string): typeof clients.$inferInsert.source {
  */
 async function isClientNow(leadId: string): Promise<boolean> {
   const [row] = await db
-    .select({ status: leads.status })
+    .select({ status: leads.status, statusChoice: leads.statusChoice })
     .from(leads)
     .where(eq(leads.id, leadId))
     .limit(1);
@@ -113,9 +145,12 @@ export async function createLead(
   const email = String(formData.get("email") ?? "").trim() || null;
   const phone = String(formData.get("phone") ?? "").trim() || null;
   const note = String(formData.get("message") ?? "").trim() || null;
-  const chosen = String(formData.get("sourceKind") ?? "ENQUIRY");
-  const sourceKind = (SOURCES as readonly string[]).includes(chosen)
-    ? (chosen as LeadSource)
+  /* The office's own source from the Builder counts as one of the built in ones. */
+  const pickedSource = splitChoice(String(formData.get("sourceKind") ?? "ENQUIRY"));
+  const sourceChoice =
+    pickedSource.choice && (await isAllowed("leadSource", pickedSource.choice)) ? pickedSource.choice : null;
+  const sourceKind = (SOURCES as readonly string[]).includes(pickedSource.base)
+    ? (pickedSource.base as LeadSource)
     : "OTHER";
   const other = String(formData.get("sourceOther") ?? "").trim();
 
@@ -174,6 +209,7 @@ export async function createLead(
       phone,
       message: note,
       sourceKind,
+      sourceChoice: sourceKind === pickedSource.base ? sourceChoice : null,
       /* Whose enquiry this is, from the moment it is written down. */
       assignedToId: String(formData.get("assignedToId") ?? "") || null,
       source: sourceKind === "OTHER" ? other || "other" : sourceKind.toLowerCase(),
@@ -205,7 +241,8 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   if (await refuseForClient(leadId)) return;
   const status = String(formData.get("status") ?? "");
-  if (!STATUSES.includes(status as LeadStatus)) return;
+  const picked = await readStatus(status);
+  if (!picked) return;
 
   /**
    * Became a client is not a status, it is a move.
@@ -228,21 +265,21 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
      where it landed. "Contacted to No response" is the sentence somebody wants
      three weeks later. */
   const [was] = await db
-    .select({ status: leads.status })
+    .select({ status: leads.status, statusChoice: leads.statusChoice })
     .from(leads)
     .where(eq(leads.id, leadId))
     .limit(1);
 
   await db
     .update(leads)
-    .set({ status: status as LeadStatus, updatedAt: new Date() })
+    .set({ status: picked.status, statusChoice: picked.statusChoice, updatedAt: new Date() })
     .where(eq(leads.id, leadId));
 
   await recordAudit({
     action: "lead.status",
     entity: "lead",
     entityId: leadId,
-    detail: was?.status && was.status !== status ? `${was.status} to ${status}` : status,
+    detail: was && shownCode(was.status, was.statusChoice) !== status ? `${shownCode(was.status, was.statusChoice)} to ${status}` : status,
     userId: user.id,
     userEmail: user.email,
   });
@@ -381,6 +418,7 @@ async function makeClient(
         came from. A WhatsApp enquiry is now a WhatsApp client.
       */
       source: clientSourceFor(lead.sourceKind),
+      sourceChoice: await clientSourceChoiceFor(lead),
       marketingOptIn: optIn,
       marketingOptInAt: optIn ? new Date() : null,
       marketingOptInSource: optIn ? (lead.consentText ?? "the enquiry") : null,
@@ -518,7 +556,8 @@ export async function setLeadStatusInline(
   status: string,
 ): Promise<{ error?: string }> {
   const user = await requireUser(["ADMIN"]);
-  if (!STATUSES.includes(status as LeadStatus)) return { error: "Unknown status" };
+  const picked = await readStatus(status);
+  if (!picked) return { error: "Unknown status" };
   if (await isClientNow(leadId)) return { error: "This enquiry is a client now, so it is changed on the client." };
 
   const [before] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
@@ -546,26 +585,26 @@ export async function setLeadStatusInline(
      where it landed. "Contacted to No response" is the sentence somebody wants
      three weeks later. */
   const [was] = await db
-    .select({ status: leads.status })
+    .select({ status: leads.status, statusChoice: leads.statusChoice })
     .from(leads)
     .where(eq(leads.id, leadId))
     .limit(1);
 
   await db
     .update(leads)
-    .set({ status: status as LeadStatus, updatedAt: new Date() })
+    .set({ status: picked.status, statusChoice: picked.statusChoice, updatedAt: new Date() })
     .where(eq(leads.id, leadId));
 
   await recordAudit({
     action: "lead.status",
     entity: "lead",
     entityId: leadId,
-    detail: was?.status && was.status !== status ? `${was.status} to ${status}` : status,
+    detail: was && shownCode(was.status, was.statusChoice) !== status ? `${shownCode(was.status, was.statusChoice)} to ${status}` : status,
     userId: user.id,
     userEmail: user.email,
   });
 
-  await offerUndo({ kind: "lead.status", was: [{ id: leadId, value: before.status }] });
+  await offerUndo({ kind: "lead.status", was: [{ id: leadId, value: shownCode(before.status, before.statusChoice) }] });
   await flash("said.statusSet");
   revalidatePath("/leads");
   return {};
@@ -611,7 +650,8 @@ export async function bulkLeadStatus(formData: FormData) {
       : new Set<string>();
   const ids = picked.filter((id) => !clientsNow.has(id));
 
-  if (!STATUSES.includes(status as LeadStatus) || ids.length === 0) {
+  const chosen = await readStatus(status);
+  if (!chosen || ids.length === 0) {
     await flash("said.nothingChosen", "bad");
     revalidatePath("/leads");
     return;
@@ -623,7 +663,7 @@ export async function bulkLeadStatus(formData: FormData) {
 
   await db
     .update(leads)
-    .set({ status: status as LeadStatus, updatedAt: new Date() })
+    .set({ status: chosen.status, statusChoice: chosen.statusChoice, updatedAt: new Date() })
     .where(
       inArray(
         leads.id,
@@ -641,7 +681,7 @@ export async function bulkLeadStatus(formData: FormData) {
 
   await offerUndo({
     kind: "lead.status",
-    was: movable.map((row) => ({ id: row.id, value: row.status })),
+    was: movable.map((row) => ({ id: row.id, value: shownCode(row.status, row.statusChoice) })),
   });
   await flash("said.statusSet");
   revalidatePath("/leads");

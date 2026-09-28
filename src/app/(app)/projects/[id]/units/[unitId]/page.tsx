@@ -1,3 +1,4 @@
+import { optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
@@ -75,7 +76,7 @@ export default async function EditUnitPage({
         subtitle={row.project.name}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Pill>{t(`units.status.${row.unit.status}` as MessageKey)}</Pill>
+            <Pill>{t(`units.status.${shownCode(row.unit.status, row.unit.statusChoice)}` as MessageKey)}</Pill>
             {row.unit.statusByHandAt ? (
               <form action={letTheMoneyDecide.bind(null, unitId, id)}>
                 <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
@@ -101,6 +102,7 @@ export default async function EditUnitPage({
               unit={row.unit}
               cancelHref={`/projects/${id}`}
               t={t}
+              statuses={await optionsFor("unitStatus", t, { current: shownCode(row.unit.status, row.unit.statusChoice) })}
             />
           </Card>
 
@@ -195,7 +197,7 @@ export default async function EditUnitPage({
                                   : "neutral"
                           }
                         >
-                          {t(`contracts.status.${s.contract.status}` as MessageKey)}
+                          {t(`contracts.status.${shownCode(s.contract.status, s.contract.statusChoice)}` as MessageKey)}
                         </Pill>
                       </div>
                     </div>

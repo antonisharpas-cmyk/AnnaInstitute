@@ -10,7 +10,8 @@ export type ClientRecord = {
   lastName: string;
   email: string | null;
   phone: string | null;
-  idType: "ID_CARD" | "PASSPORT" | "YELLOW_SLIP" | null;
+  /** The kind of ID as it reads, the office's own from the Builder included. */
+  idType: string | null;
   idNumber: string | null;
   vatNumber?: string | null;
   country: string | null;
@@ -20,12 +21,6 @@ export type ClientRecord = {
 };
 
 type State = { ok: true } | { error: string } | null;
-
-const ID_LABELS: Record<string, string> = {
-  ID_CARD: "Identity card",
-  PASSPORT: "Passport",
-  YELLOW_SLIP: "Yellow slip",
-};
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -75,9 +70,14 @@ function Field({
  */
 export default function PersonalInfo({
   client,
+  idTypes,
+  sources,
   labels,
 }: {
   client: ClientRecord;
+  /** What the two pickers offer, in the office's own order and words. */
+  idTypes: { value: string; label: string }[];
+  sources: { value: string; label: string }[];
   labels: {
     title: string;
     edit: string;
@@ -94,8 +94,11 @@ export default function PersonalInfo({
     address: string;
     source: string;
     notes: string;
+    notRecorded: string;
   };
 }) {
+  const word = (list: { value: string; label: string }[], value: string | null) =>
+    value ? (list.find((one) => one.value === value)?.label ?? humanLabel(value)) : "";
   const [editing, setEditing] = useState(false);
   const action = updateClient.bind(null, client.id);
   const [state, formAction, pending] = useActionState<State, FormData>(action, null);
@@ -124,12 +127,12 @@ export default function PersonalInfo({
           <Row label={labels.surname} value={client.lastName} />
           <Row label={labels.email} value={client.email ?? ""} />
           <Row label={labels.phone} value={client.phone ?? ""} />
-          <Row label={labels.idType} value={client.idType ? ID_LABELS[client.idType] : ""} />
+          <Row label={labels.idType} value={word(idTypes, client.idType)} />
           <Row label={labels.idNumber} value={client.idNumber ?? ""} />
           {client.vatNumber ? <Row label={labels.vatNumber} value={client.vatNumber} /> : null}
           <Row label={labels.country} value={client.country ?? ""} />
           <Row label={labels.address} value={client.address ?? ""} />
-          <Row label={labels.source} value={humanLabel(client.source)} />
+          <Row label={labels.source} value={word(sources, client.source)} />
           <div className="py-2">
             <span className="label">{labels.notes}</span>
             <p className="whitespace-pre-wrap text-sm">{client.notes ?? ""}</p>
@@ -162,10 +165,12 @@ export default function PersonalInfo({
             defaultValue={client.idType ?? ""}
             className="select max-w-sm flex-1"
           >
-            <option value="">not recorded</option>
-            <option value="ID_CARD">{ID_LABELS.ID_CARD}</option>
-            <option value="PASSPORT">{ID_LABELS.PASSPORT}</option>
-            <option value="YELLOW_SLIP">{ID_LABELS.YELLOW_SLIP}</option>
+            <option value="">{labels.notRecorded}</option>
+            {idTypes.map((one) => (
+              <option key={one.value} value={one.value}>
+                {one.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -184,13 +189,11 @@ export default function PersonalInfo({
             defaultValue={client.source}
             className="select max-w-sm flex-1"
           >
-            <option value="BUYER">Buyer</option>
-            <option value="ENQUIRY">Enquiry</option>
-            <option value="WEBSITE">Website</option>
-            <option value="WHATSAPP">WhatsApp</option>
-            <option value="AGENT_REFERRAL">Agent Referral</option>
-            <option value="LAND_OWNER">Land Owner</option>
-            <option value="OTHER">Other</option>
+            {sources.map((one) => (
+              <option key={one.value} value={one.value}>
+                {one.label}
+              </option>
+            ))}
           </select>
         </div>
 

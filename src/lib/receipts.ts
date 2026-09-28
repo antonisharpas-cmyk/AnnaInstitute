@@ -11,6 +11,7 @@
  * is the point: the office looks at it, and only then presses the button.
  */
 import { and, eq, sql } from "drizzle-orm";
+import { englishWord, isCustom } from "@/lib/choices";
 import { db } from "@/db";
 import {
   agents,
@@ -189,7 +190,12 @@ export async function buyerReceipt(paymentId: string) {
     paidOn: row.payment.paidOn,
     amountCents: toCents(row.payment.amount),
     method: row.payment.method,
-    methodInWords: row.payment.method ? (METHODS[row.payment.method] ?? row.payment.method) : null,
+    methodInWords: row.payment.method
+      ? (METHODS[row.payment.method] ??
+        (isCustom(row.payment.method)
+          ? (await englishWord("paymentMethod", row.payment.method)).toLowerCase()
+          : row.payment.method))
+      : null,
     notes: row.payment.notes,
     client: row.client,
     contract: row.contract,

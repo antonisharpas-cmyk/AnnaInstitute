@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { whatFor } from "@/lib/partnerInvoices";
+import { ownCategoryWords, whatFor } from "@/lib/partnerInvoices";
+import { optionsFor } from "@/lib/choices";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import {
-  EXPENSE_CATEGORIES,
   expenseStatusTone,
   expensesByCategory,
   listExpenses,
@@ -35,6 +35,9 @@ export default async function InvoicesPage({
   ]);
 
   const today = new Date();
+  /* The categories as the office has them in the Builder. */
+  const ownWords = await ownCategoryWords();
+  const everyCategory = await optionsFor("expenseCategory", t, { everything: true });
 
   return (
     <>
@@ -105,9 +108,9 @@ export default async function InvoicesPage({
               </label>
               <select id="category" name="category" defaultValue={category} className="select">
                 <option value="">{t("common.all")}</option>
-                {EXPENSE_CATEGORIES.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`invoices.category.${value}` as MessageKey)}
+                {everyCategory.map((one) => (
+                  <option key={one.value} value={one.value}>
+                    {one.label}
                   </option>
                 ))}
               </select>
@@ -174,7 +177,7 @@ export default async function InvoicesPage({
                           <Pill tone={r.expense.direction === "OUT" ? "teal" : "neutral"}>
                             {t(`invoices.direction.${r.expense.direction === "OUT" ? "OUT" : "IN"}` as MessageKey)}
                           </Pill>
-                          <div className="mt-0.5">{whatFor(r.expense)}</div>
+                          <div className="mt-0.5">{whatFor(r.expense, ownWords)}</div>
                         </td>
                         <td className="text-xs">{r.expense.reference ?? ""}</td>
                         <td className="ctr text-xs">{day(r.expense.issueDate)}</td>

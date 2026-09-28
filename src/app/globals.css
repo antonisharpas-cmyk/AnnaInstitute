@@ -2528,6 +2528,14 @@ table.data thead th[data-sorted="desc"]::after {
   opacity: 1;
 }
 
+/* A table kept in an order of its own, the Builder's lists, sorts by nothing. */
+table.data[data-nosort="true"] thead th {
+  cursor: default;
+}
+table.data[data-nosort="true"] thead th::after {
+  content: none;
+}
+
 table.data thead th[data-sorted] {
   color: var(--color-brand-teal-dark);
 }

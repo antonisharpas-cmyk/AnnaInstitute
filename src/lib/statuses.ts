@@ -148,6 +148,8 @@ export async function followTheMoney(contractId: string, who: Who = null): Promi
         .update(units)
         .set({
           status: should,
+          /* The office's own name for the old status no longer applies. */
+          statusChoice: null,
           /*
             Once the money has carried an apartment past what somebody typed,
             that hand-set status has had its say. Clearing it hands the
@@ -228,7 +230,7 @@ export async function followTheApartments(projectId: string, who: Who = null): P
 
   await db
     .update(projects)
-    .set({ status: should, updatedAt: new Date() })
+    .set({ status: should, statusChoice: null, updatedAt: new Date() })
     .where(eq(projects.id, projectId));
 
   await recordAudit({

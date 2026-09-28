@@ -1,10 +1,10 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { agents } from "@/db/schema";
-import { getTranslator, type MessageKey } from "@/i18n";
+import { getTranslator } from "@/i18n";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import { whoCanGo } from "@/lib/team";
-import { LEAD_SOURCES } from "@/lib/leads";
+import { optionsFor } from "@/lib/choices";
 import LeadForm from "../LeadForm";
 import { createLead } from "../actions";
 
@@ -58,10 +58,7 @@ export default async function NewLeadPage() {
               cancel: t("common.cancel"),
               assignedTo: t("appointments.assignedTo"),
               nobody: t("appointments.nobody"),
-              sources: LEAD_SOURCES.map((value) => ({
-                value,
-                label: t(`leads.source.${value}` as MessageKey),
-              })),
+              sources: await optionsFor("leadSource", t),
             }}
           />
         </Card>

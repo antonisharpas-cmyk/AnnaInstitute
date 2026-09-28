@@ -1,5 +1,6 @@
 "use server";
 
+import { splitChoice } from "@/lib/choices/lists";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
@@ -21,7 +22,9 @@ import { EXPENSE_CATEGORIES, statusFor, type ExpenseCategory } from "@/lib/expen
  */
 async function read(formData: FormData) {
   const direction = String(formData.get("direction") ?? "IN") === "OUT" ? "OUT" : "IN";
-  const category = String(formData.get("category") ?? "OTHER");
+  /* The office's own category from the Builder counts as a built in one. */
+  const picked = splitChoice(String(formData.get("category") ?? "OTHER"));
+  const category = picked.base;
   const netCents = parseAmount(String(formData.get("netAmount") ?? "0"));
   const rateText = String(formData.get("vatRate") ?? "").replace(",", ".").trim();
   const vatRate = rateText === "" ? 0 : Math.max(0, Number(rateText) || 0);
@@ -48,7 +51,9 @@ async function read(formData: FormData) {
     category: (EXPENSE_CATEGORIES as readonly string[]).includes(category)
       ? (category as ExpenseCategory)
       : "OTHER",
-    categoryOther: category === "OTHER" ? String(formData.get("categoryOther") ?? "").trim() || null : null,
+    categoryChoice: (EXPENSE_CATEGORIES as readonly string[]).includes(category) ? picked.choice : null,
+    categoryOther:
+      category === "OTHER" && !picked.choice ? String(formData.get("categoryOther") ?? "").trim() || null : null,
     /* Their own number, on an invoice we received. Ours is given by the CRM. */
     reference: direction === "IN" ? String(formData.get("reference") ?? "").trim() || null : undefined,
     description: String(formData.get("description") ?? "").trim() || null,

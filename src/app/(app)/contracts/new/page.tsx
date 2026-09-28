@@ -1,3 +1,5 @@
+import { stageOptions } from "@/lib/choices/stages";
+import { optionsFor, shownCode } from "@/lib/choices";
 import { asc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, clients, leads } from "@/db/schema";
@@ -115,7 +117,10 @@ export default async function NewContractPage({
                 }))}
                 defaults={{ unitId: unit, clientId: client, agentId: introducedBy }}
                 cancelHref="/contracts"
-                labels={formLabels(t)}
+                kinds={await optionsFor("contractKind", t, { current: source ? shownCode(source.contract.kind, source.contract.kindChoice) : null })}
+            stages={(await stageOptions()).choices}
+            named={(await stageOptions()).named}
+            labels={formLabels(t)}
               />
             </>
           )}

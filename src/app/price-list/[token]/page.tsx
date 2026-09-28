@@ -72,7 +72,7 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
 
       {byProject.size === 0 ? (
         <p className="py-10 text-center text-sm text-brand-graphite/60">
-          Everything is sold at the moment.
+          Nothing is available at the moment.
         </p>
       ) : (
         [...byProject.values()].map((project) => (
@@ -92,7 +92,6 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
                     <th className="num">Veranda</th>
                     <th className="num">Parking</th>
                     <th className="num">Price before VAT</th>
-                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -109,7 +108,6 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
                       </td>
                       <td className="num">{unit.parkingSpaces}</td>
                       <td className="num font-semibold">{formatAmount(toCents(unit.netPrice))}</td>
-                      <td>{unit.status === "RESERVED" ? "reserved" : "available"}</td>
                     </tr>
                   ))}
                 </tbody>

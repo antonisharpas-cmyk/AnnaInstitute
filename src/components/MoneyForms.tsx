@@ -140,9 +140,10 @@ export function PaymentForm({
         <label className="label">{labels.method}</label>
         <select name="method" className="select" defaultValue="">
           <option value="">{labels.chooseMethod}</option>
-          {PAYMENT_METHODS.map((one) => (
-            <option key={one} value={one}>
-              {labels.methods[one] ?? one}
+          {/* The methods come in the office's order, its own ones from the Builder included. */}
+          {Object.entries(labels.methods).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
             </option>
           ))}
         </select>

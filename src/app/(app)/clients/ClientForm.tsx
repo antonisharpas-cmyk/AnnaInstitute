@@ -10,11 +10,16 @@ export default function ClientForm({
   client,
   cancelHref,
   t,
+  idTypes,
+  sources,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   client?: Client;
   cancelHref: string;
   t: (key: MessageKey) => string;
+  /** What the two pickers offer, as the office has them in the Builder. */
+  idTypes: { value: string; label: string }[];
+  sources: { value: string; label: string }[];
 }) {
   return (
     <form action={action} className="space-y-4">
@@ -72,10 +77,12 @@ export default function ClientForm({
             {t("clients.idType")}
           </label>
           <select id="idType" name="idType" className="select" defaultValue={client?.idType ?? ""}>
-            <option value="">not recorded</option>
-            <option value="ID_CARD">{t("clients.idType.ID_CARD")}</option>
-            <option value="PASSPORT">{t("clients.idType.PASSPORT")}</option>
-            <option value="YELLOW_SLIP">{t("clients.idType.YELLOW_SLIP")}</option>
+            <option value="">{t("clients.notRecorded")}</option>
+            {idTypes.map((one) => (
+              <option key={one.value} value={one.value}>
+                {one.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -135,13 +142,11 @@ export default function ClientForm({
             className="select"
             defaultValue={client?.source ?? "BUYER"}
           >
-            <option value="BUYER">Buyer</option>
-            <option value="ENQUIRY">Enquiry</option>
-            <option value="WEBSITE">Website</option>
-            <option value="WHATSAPP">WhatsApp</option>
-            <option value="AGENT_REFERRAL">Agent Referral</option>
-            <option value="LAND_OWNER">Land Owner</option>
-            <option value="OTHER">Other</option>
+            {sources.map((one) => (
+              <option key={one.value} value={one.value}>
+                {one.label}
+              </option>
+            ))}
           </select>
         </div>
         <div className="sm:col-span-2">

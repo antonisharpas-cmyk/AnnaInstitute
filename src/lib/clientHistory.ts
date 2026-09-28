@@ -1,4 +1,5 @@
 import "server-only";
+import { englishWord, isCustom, shownCode } from "@/lib/choices";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -113,7 +114,11 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
     /* Where it came from, said once: the form's name, or else the source. */
     const where =
       lead.formName ||
-      (lead.sourceKind === "OTHER" ? lead.source : lead.sourceKind?.toLowerCase().replace(/_/g, " ")) ||
+      (lead.sourceChoice && shownCode(lead.sourceKind, lead.sourceChoice) === lead.sourceChoice
+        ? await englishWord("leadSource", lead.sourceChoice)
+        : lead.sourceKind === "OTHER"
+          ? lead.source
+          : lead.sourceKind?.toLowerCase().replace(/_/g, " ")) ||
       "";
     push({
       id: `lead-${lead.id}`,
@@ -174,7 +179,9 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
     switch (row.action) {
       case "lead.status": {
         const [from, to] = (row.detail ?? "").split(" to ");
-        const words = to ? `${LEAD_STATUS[from] ?? from} to ${LEAD_STATUS[to] ?? to}` : LEAD_STATUS[from] ?? from;
+        const say = async (code: string) =>
+          isCustom(code) ? await englishWord("leadStatus", code) : (LEAD_STATUS[code] ?? code);
+        const words = to ? `${await say(from)} to ${await say(to)}` : await say(from);
         push({ ...base, kind: "lead", title: `Status changed: ${words}` });
         break;
       }
@@ -286,7 +293,9 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
         title: `Paid ${stage ?? "on the contract"}: ${money(payment.amount)}`,
         note: [
           `Paid on ${new Date(payment.paidOn).toLocaleDateString("en-GB")}`,
-          payment.method ? `by ${METHOD[payment.method] ?? payment.method.toLowerCase()}` : null,
+          payment.method
+            ? `by ${METHOD[payment.method] ?? (isCustom(payment.method) ? (await englishWord("paymentMethod", payment.method)).toLowerCase() : payment.method.toLowerCase())}`
+            : null,
           invoice ? `invoice ${invoice.number}` : null,
           receipt ? `receipt ${receipt.number}` : payment.receiptNumber ? `receipt ${payment.receiptNumber}` : null,
         ]
@@ -332,7 +341,12 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
         : eq(appointments.clientId, clientId),
     );
   for (const { meeting, member } of meetings) {
-    const kind = meeting.type === "OTHER" && meeting.typeOther ? meeting.typeOther : APPOINTMENT_KIND[meeting.type] ?? meeting.type;
+    const kind =
+      meeting.typeChoice && shownCode(meeting.type, meeting.typeChoice) === meeting.typeChoice
+        ? await englishWord("appointmentType", meeting.typeChoice)
+        : meeting.type === "OTHER" && meeting.typeOther
+          ? meeting.typeOther
+          : (APPOINTMENT_KIND[meeting.type] ?? meeting.type);
     push({
       id: `appt-${meeting.id}`,
       at: meeting.at,

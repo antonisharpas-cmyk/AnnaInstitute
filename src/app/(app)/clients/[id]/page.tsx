@@ -1,3 +1,4 @@
+import { optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, desc, eq, inArray } from "drizzle-orm";
@@ -54,7 +55,6 @@ const statusTone = (status: string) =>
   status === "SOLD" || status === "DELIVERED" ? "good" : status === "RESERVED" ? "warn" : "neutral";
 
 /** The six kinds, in the order the office listed them. */
-const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
 
 /** The parts of a client, one at a time, apartments first. */
 const TABS = ["apartments", "contracts", "appointments", "documents", "history"] as const;
@@ -134,6 +134,8 @@ export default async function ClientPage({
   /* Where the office is meeting them, what came of the last one, and who is
      free to be given the next one. */
   const [meetings, team] = await Promise.all([appointmentsForClient(id), whoCanGo()]);
+  const everyKind = await optionsFor("appointmentType", t, { everything: true });
+  const activeKinds = new Set((await optionsFor("appointmentType", t)).map((one) => one.value));
 
   const contractIds = contractRows.map((r) => r.contract.id);
 
@@ -318,13 +320,17 @@ export default async function ClientPage({
             lastName: client.lastName,
             email: client.email,
             phone: client.phone,
-            idType: client.idType,
+            idType: client.idType ? shownCode(client.idType, client.idTypeChoice) : null,
             idNumber: client.idNumber,
             country: client.country,
             address: client.address,
-            source: client.source,
+            source: shownCode(client.source, client.sourceChoice),
             notes: client.notes,
           }}
+          idTypes={await optionsFor("idType", t, {
+            current: client.idType ? shownCode(client.idType, client.idTypeChoice) : null,
+          })}
+          sources={await optionsFor("clientSource", t, { current: shownCode(client.source, client.sourceChoice) })}
           labels={{
             title: t("clients.personal"),
             edit: t("clients.edit"),
@@ -341,6 +347,7 @@ export default async function ClientPage({
             address: t("clients.address"),
             source: t("clients.source"),
             notes: t("common.notes"),
+            notRecorded: t("clients.notRecorded"),
           }}
         />
 
@@ -541,7 +548,7 @@ export default async function ClientPage({
                       <td className="ctr">{formatAmount(toCents(a.netPrice), locale)}</td>
                       <td className="ctr">
                         <Pill tone={statusTone(a.status) as "good" | "warn" | "neutral"}>
-                          {t(`units.status.${a.status}` as MessageKey)}
+                          {t(`units.status.${shownCode(a.status, a.statusChoice)}` as MessageKey)}
                         </Pill>
                       </td>
                       <td className="ctr">
@@ -638,7 +645,7 @@ export default async function ClientPage({
                 <dt className="label">{t("common.status")}</dt>
                 <dd className="text-sm">
                   <Pill tone={contract.status === "COMPLETED" ? "good" : "warn"}>
-                    {t(`contracts.status.${contract.status}` as MessageKey)}
+                    {t(`contracts.status.${shownCode(contract.status, contract.statusChoice)}` as MessageKey)}
                   </Pill>
                 </dd>
               </div>
@@ -777,7 +784,7 @@ export default async function ClientPage({
                             <Pill tone="good">{t("contracts.paidInFull")}</Pill>
                           ) : (
                             <Pill tone={row.contract.status === "CANCELLED" ? "bad" : "neutral"}>
-                              {t(`contracts.status.${row.contract.status}` as MessageKey)}
+                              {t(`contracts.status.${shownCode(row.contract.status, row.contract.statusChoice)}` as MessageKey)}
                             </Pill>
                           )}
                         </td>
@@ -834,13 +841,12 @@ export default async function ClientPage({
             remove: t("common.delete"),
             sure: t("remove.sure"),
             type: t("appointments.type"),
-            kinds: KINDS.map((one) => ({
-              value: one,
-              label: t(`appointments.type.${one}` as MessageKey),
-            })),
-            kindOf: Object.fromEntries(
-              KINDS.map((one) => [one, t(`appointments.type.${one}` as MessageKey)]),
+            /* The kinds as the office has them in the Builder, and any older
+               one these appointments still carry. */
+            kinds: everyKind.filter(
+              (one) => activeKinds.has(one.value) || meetings.some((row) => row.type === one.value),
             ),
+            kindOf: Object.fromEntries(everyKind.map((one) => [one.value, one.label])),
             typeOther: t("appointments.typeOther"),
             typeOtherHint: t("appointments.typeOtherHint"),
             assignedTo: t("appointments.assignedTo"),
@@ -909,7 +915,7 @@ export default async function ClientPage({
                   t("leads.title")}
               </Link>
               <span className="ml-2 text-xs text-brand-graphite/60">
-                {t(`leads.source.${fromLead.sourceKind}` as MessageKey)}
+                {t(`leads.source.${shownCode(fromLead.sourceKind, fromLead.sourceChoice)}` as MessageKey)}
                 {fromLead.source ? ` . ${fromLead.source}` : ""}
               </span>
             </p>

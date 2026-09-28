@@ -234,12 +234,15 @@ export const clients = pgTable("clients", {
   email: text("email"),
   phone: text("phone"),
   idType: idTypeEnum("id_type"),
+  /** The office's own kind of ID from the Builder, when one was picked. See choices. */
+  idTypeChoice: text("id_type_choice"),
   idNumber: text("id_number"),
   /** A company buying: its VAT number, printed on the invoices it receives. */
   vatNumber: text("vat_number"),
   address: text("address"),
   country: text("country"),
   source: contactSourceEnum("source").default("BUYER").notNull(),
+  sourceChoice: text("source_choice"),
   // Marketing consent. The campaign module may never send to anyone without it.
   marketingOptIn: boolean("marketing_opt_in").default(false).notNull(),
   marketingOptInAt: timestamp("marketing_opt_in_at", { withTimezone: true }),
@@ -308,6 +311,7 @@ export const projects = pgTable("projects", {
   location: text("location"),
   description: text("description"),
   status: projectStatusEnum("status").default("UNDER_CONSTRUCTION").notNull(),
+  statusChoice: text("status_choice"),
   /**
    * When somebody set the status by hand, and who.
    *
@@ -379,6 +383,7 @@ export const units = pgTable(
      */
     vatRate: rate("vat_rate").default("19").notNull(),
     status: unitStatusEnum("status").default("AVAILABLE").notNull(),
+    statusChoice: text("status_choice"),
     /**
      * When somebody set this apartment's status by hand, and who.
      *
@@ -434,6 +439,8 @@ export const contracts = pgTable("contracts", {
   contractDate: timestamp("contract_date", { withTimezone: true }),
   /** A sale, or land given in exchange for apartments. */
   kind: contractKindEnum("kind").default("SALE").notNull(),
+  /** The office's own kind of contract from the Builder, counting as a sale or a land exchange. */
+  kindChoice: text("kind_choice"),
   netPrice: money("net_price").notNull(),
   /**
    * The rate the whole price is at. Every sale starts at the standard 19% and
@@ -495,6 +502,7 @@ export const contracts = pgTable("contracts", {
   /** 1 for monthly, 3 for quarterly. Only meaningful for a periodic schedule. */
   periodMonths: integer("period_months"),
   status: contractStatusEnum("status").default("DRAFT").notNull(),
+  statusChoice: text("status_choice"),
   notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
@@ -1050,6 +1058,7 @@ export const leads = pgTable("leads", {
   country: text("country"),
   /** Where it came from, as one of the office's own categories. */
   sourceKind: leadSourceEnum("source_kind").default("WEBSITE").notNull(),
+  sourceChoice: text("source_choice"),
   /** The free text behind OTHER, or whatever the website called itself. */
   source: text("source"),
   formName: text("form_name"),
@@ -1062,6 +1071,7 @@ export const leads = pgTable("leads", {
   consent: boolean("consent").default(false).notNull(),
   consentText: text("consent_text"),
   status: leadStatusEnum("status").default("NEW").notNull(),
+  statusChoice: text("status_choice"),
   /**
    * The agent who brought this enquiry, when one did.
    *
@@ -1265,6 +1275,7 @@ export const expenses = pgTable("expenses", {
   id: id(),
   supplier: text("supplier").notNull(),
   category: expenseCategoryEnum("category").default("OTHER").notNull(),
+  categoryChoice: text("category_choice"),
   reference: text("reference"),
   description: text("description"),
   issueDate: timestamp("issue_date", { withTimezone: true }),
@@ -1358,6 +1369,7 @@ export const appointments = pgTable("appointments", {
   place: text("place").notNull(),
   /** Which of the office's six kinds of appointment this is. */
   type: appointmentTypeEnum("type").default("OTHER").notNull(),
+  typeChoice: text("type_choice"),
   /**
    * What Other was.
    *
@@ -1383,3 +1395,30 @@ export const appointments = pgTable("appointments", {
   createdAt: created(),
   updatedAt: updated(),
 });
+
+/* ---------------------------------------------------------------------------
+   The office's own lists, from the Builder.
+
+   One row for every value the office has touched: a built in one it renamed,
+   moved or switched off, or one it added itself. A built in value nobody has
+   touched has no row and reads as the CRM ships it. A value the office added
+   has a code that starts with the built in value it counts as, which is what
+   the record's own column holds, so the money and the reports never need to
+   know the office's words. See src/lib/choices.
+   --------------------------------------------------------------------------- */
+export const choices = pgTable(
+  "choices",
+  {
+    id: id(),
+    list: text("list").notNull(),
+    code: text("code").notNull(),
+    labelEn: text("label_en"),
+    labelEl: text("label_el"),
+    active: boolean("active").default(true).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    builtin: boolean("builtin").default(false).notNull(),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (table) => ({ listCode: uniqueIndex("choices_list_code_idx").on(table.list, table.code) }),
+);

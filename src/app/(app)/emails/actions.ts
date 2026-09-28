@@ -8,6 +8,8 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { keysIn, requiredKeys } from "@/lib/templates";
+import { readSetting, writeSetting } from "@/lib/settings";
+import { isTestKey, sendTestLetter } from "@/lib/testLetters";
 
 /**
  * The automatic emails: switched on or off, and rewritten.
@@ -101,5 +103,45 @@ export async function saveAutomatic(templateId: string, formData: FormData) {
   });
 
   await flash("said.saved");
+  revalidatePath("/emails");
+}
+
+/**
+ * Where the tests go.
+ *
+ * Kept, so the office types its own address once and then presses Send test
+ * down the list, one letter after another.
+ */
+export async function saveTestAddress(formData: FormData) {
+  await requireUser(["ADMIN"]);
+  const to = String(formData.get("to") ?? "").trim();
+  if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    await flash("said.testAddressBad", "bad");
+    return;
+  }
+  await writeSetting("emails.testAddress", to);
+  await flash("said.saved");
+  revalidatePath("/emails");
+}
+
+/** One automatic email, as a test, to the office's own address. */
+export async function sendTestLetterNow(key: string) {
+  const user = await requireUser(["ADMIN"]);
+  if (!isTestKey(key)) return;
+  const to = (await readSetting("emails.testAddress"))?.trim() || user.email;
+
+  const result = await sendTestLetter(key, to);
+  await recordAudit({
+    action: "email.automatic.test",
+    entity: "email_template",
+    entityId: key,
+    detail: `${to}: ${result.detail}`.slice(0, 300),
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(
+    result.ok ? `said.testLetterSent|${result.detail}` : `said.testLetterFailed|${result.detail.slice(0, 200)}`,
+    result.ok ? "good" : "bad",
+  );
   revalidatePath("/emails");
 }

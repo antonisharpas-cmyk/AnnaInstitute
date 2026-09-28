@@ -1,4 +1,5 @@
 import "server-only";
+import { englishWord, isCustom } from "@/lib/choices";
 import { readFile } from "node:fs/promises";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
@@ -263,6 +264,8 @@ export async function issueForPayment(
     paidOn: new Date(row.payment.paidOn).toISOString(),
     issuedOn: new Date(row.payment.paidOn).toISOString(),
     method: row.payment.method ?? "",
+    methodName:
+      row.payment.method && isCustom(row.payment.method) ? await englishWord("paymentMethod", row.payment.method) : undefined,
     reference: row.payment.reference ?? "",
     netCents: split.netCents,
     vatCents: split.vatCents,

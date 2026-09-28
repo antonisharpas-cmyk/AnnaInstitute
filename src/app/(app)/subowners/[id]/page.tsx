@@ -1,3 +1,4 @@
+import { shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
@@ -113,7 +114,7 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
                                   : "neutral"
                             }
                           >
-                            {t(`projects.status.${row.project.status}` as MessageKey)}
+                            {t(`projects.status.${shownCode(row.project.status, row.project.statusChoice)}` as MessageKey)}
                           </Pill>
                         </td>
                       </tr>

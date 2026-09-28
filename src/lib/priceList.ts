@@ -12,13 +12,16 @@ import { recordAudit } from "./audit";
  * It is a link to a live page rather than a file, so the prices an agent quotes
  * are the prices in the system on the day they look, not the prices on the day
  * the file was made. A link can be given an expiry date and can be revoked.
+ *
+ * Only what can be bought today is on it: a reserved apartment is off the list
+ * the moment its reservation is recorded.
  */
 export async function availableForPriceList() {
   return db
     .select({ unit: units, project: projects })
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
-    .where(or(eq(units.status, "AVAILABLE"), eq(units.status, "RESERVED")))
+    .where(eq(units.status, "AVAILABLE"))
     .orderBy(asc(projects.name), asc(units.code));
 }
 

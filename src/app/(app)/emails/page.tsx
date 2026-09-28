@@ -11,7 +11,9 @@ import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
 import EmailSwitch from "@/components/EmailSwitch";
-import { saveAutomatic, switchAutomatic } from "./actions";
+import { saveAutomatic, saveTestAddress, sendTestLetterNow, switchAutomatic } from "./actions";
+import { readSetting } from "@/lib/settings";
+import type { MessageKey } from "@/i18n";
 
 /**
  * The letters the CRM writes by itself.
@@ -26,7 +28,7 @@ import { saveAutomatic, switchAutomatic } from "./actions";
  * draft are promises and the list is what happened.
  */
 export default async function AutomaticEmailsPage() {
-  await requireUser(["ADMIN"]);
+  const user = await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
 
   await ensureSystemTemplates();
@@ -54,6 +56,21 @@ export default async function AutomaticEmailsPage() {
   };
   const letters = [...written].sort((a, b) => order(a.key) - order(b.key));
 
+  /* Where the tests go, and the twelve emails in the order they happen. */
+  const testTo = (await readSetting("emails.testAddress")).trim();
+  const nameOf = (key: string) =>
+    letters.find((one) => one.key === key)?.name ?? t(`emails.test.${key}` as MessageKey);
+  const testGroups: { title: string; keys: string[] }[] = [
+    { title: t("emails.test.buyer"), keys: ["paid_reservation", "paid_signing", "paid_installment", "paid_final"] },
+    {
+      title: t("emails.test.appointments"),
+      keys: ["appointment_made", "appointment_moved", "appointment_cancelled", "appointment_reminder"],
+    },
+    { title: t("emails.test.agent"), keys: ["agent_commission"] },
+    { title: t("emails.test.team"), keys: ["day_summary"] },
+    { title: t("emails.test.invoices"), keys: ["partner_invoice", "invoice_received"] },
+  ];
+
   const when = (value: Date | null) =>
     value ? new Date(value).toLocaleString(locale === "el" ? "el-GR" : "en-GB") : "";
 
@@ -71,6 +88,57 @@ export default async function AutomaticEmailsPage() {
           {t("emails.notConfigured")}
         </div>
       )}
+
+      {/* Try every letter on yourself first, one at a time. */}
+      <div className="mb-4">
+        <Card title={t("emails.test.title")}>
+          <p className="mb-3 max-w-prose text-sm text-brand-graphite/70">{t("emails.test.note")}</p>
+          {emailConfigured() ? null : (
+            <p className="mb-3 text-sm text-[color:var(--color-negative)]">{t("emails.test.notConfigured")}</p>
+          )}
+          <form action={saveTestAddress} className="mb-4 flex flex-wrap items-end gap-2" data-test-address>
+            <div className="min-w-64 flex-1 sm:max-w-sm">
+              <label className="label" htmlFor="testTo">
+                {t("emails.test.address")}
+              </label>
+              <input
+                id="testTo"
+                name="to"
+                type="email"
+                defaultValue={testTo}
+                placeholder={user.email}
+                className="input"
+              />
+              <p className="mt-1 text-xs text-brand-graphite/60">{t("emails.test.addressHint")}</p>
+            </div>
+            <SubmitButton className="btn btn-secondary">{t("common.save")}</SubmitButton>
+          </form>
+          <p className="mb-2 text-xs text-brand-graphite/60">
+            {t("emails.test.goesTo")} <span className="font-semibold">{testTo || user.email}</span>
+          </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            {testGroups.map((group) => (
+              <div key={group.title}>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite/60">
+                  {group.title}
+                </p>
+                <ul className="divide-y divide-brand-line rounded border border-brand-line">
+                  {group.keys.map((key) => (
+                    <li key={key} className="flex items-center justify-between gap-2 px-3 py-1.5" data-test-letter={key}>
+                      <span className="text-sm">{nameOf(key)}</span>
+                      <form action={sendTestLetterNow.bind(null, key)}>
+                        <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                          {t("emails.test.send")}
+                        </SubmitButton>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
 
       <div className="space-y-4">
         {letters.map((letter) => (

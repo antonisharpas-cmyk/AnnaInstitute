@@ -14,6 +14,7 @@ import { removeDocument, storeChosenDocuments } from "@/lib/uploads";
 import { flash } from "@/lib/flash";
 import { offerUndo } from "@/lib/undo";
 import { matchingClientIds } from "@/lib/clients";
+import { splitChoice } from "@/lib/choices/lists";
 
 const clientSchema = z.object({
   firstName: z.string().min(1),
@@ -33,24 +34,40 @@ const clientSchema = z.object({
     "AGENT_REFERRAL",
     "LAND_OWNER",
     "OTHER",
+    "INSTAGRAM",
+    "FACEBOOK",
+    "SOCIAL_MEDIA",
+    "PHONE",
+    "EMAIL",
+    "REFERRAL",
   ]),
   notes: z.string().optional(),
 });
 
+/**
+ * The client as typed.
+ *
+ * The source and the kind of ID may be the office's own values from the
+ * Builder: the built in value they count as is what is checked and kept in the
+ * record's own column, and the office's value goes beside it.
+ */
 function readClient(formData: FormData) {
-  return clientSchema.parse({
+  const source = splitChoice(String(formData.get("source") || "BUYER"));
+  const idType = splitChoice(String(formData.get("idType") || ""));
+  const parsed = clientSchema.parse({
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
     email: formData.get("email") || "",
     phone: formData.get("phone") || undefined,
-    idType: formData.get("idType") || undefined,
     idNumber: formData.get("idNumber") || undefined,
     vatNumber: formData.get("vatNumber") || undefined,
     address: formData.get("address") || undefined,
     country: formData.get("country") || undefined,
-    source: formData.get("source") || "BUYER",
+    source: source.base,
     notes: formData.get("notes") || undefined,
+    idType: idType.base || undefined,
   });
+  return { ...parsed, sourceChoice: source.choice, idTypeChoice: parsed.idType ? idType.choice : null };
 }
 
 export async function createClient(formData: FormData) {

@@ -15,6 +15,7 @@ import {
   markProjectByHand,
   markUnitByHand,
 } from "@/lib/statuses";
+import { shownCode, splitChoice } from "@/lib/choices/lists";
 import { flash } from "@/lib/flash";
 import { fromCents, toCents } from "@/lib/money";
 import { readUploadFields, removeDocument, storeDocuments } from "@/lib/uploads";
@@ -37,14 +38,18 @@ const projectSchema = z.object({
   description: z.string().optional(),
 });
 
+/* A status may be the office's own from the Builder: the built in one it counts
+   as goes in the status column, the office's own beside it. */
 function readProject(formData: FormData) {
-  return projectSchema.parse({
+  const status = splitChoice(String(formData.get("status") || "UNDER_CONSTRUCTION"));
+  const parsed = projectSchema.parse({
     name: formData.get("name"),
     location: formData.get("location") || undefined,
     completionBy: formData.get("completionBy") || undefined,
-    status: formData.get("status") || "UNDER_CONSTRUCTION",
+    status: status.base,
     description: formData.get("description") || undefined,
   });
+  return { ...parsed, statusChoice: status.choice };
 }
 
 /**
@@ -122,7 +127,7 @@ export async function updateProject(projectId: string, formData: FormData) {
    * the apartments stop deciding it. Everything else on the form leaves that
    * alone: editing a location should not freeze a status.
    */
-  if (parsed.status !== before[0].status) {
+  if (shownCode(parsed.status, parsed.statusChoice) !== shownCode(before[0].status, before[0].statusChoice)) {
     await markProjectByHand(projectId, user);
   }
 
@@ -155,6 +160,7 @@ const unitSchema = z.object({
 });
 
 function readUnit(formData: FormData) {
+  const status = splitChoice(String(formData.get("status") || "AVAILABLE"));
   const parsed = unitSchema.parse({
     code: formData.get("code"),
     floor: formData.get("floor") || undefined,
@@ -165,7 +171,7 @@ function readUnit(formData: FormData) {
     parkingSpaces: formData.get("parkingSpaces") || 0,
     netPrice: String(formData.get("netPrice") ?? "0"),
     vatRate: formData.get("vatRate") || undefined,
-    status: formData.get("status") || "AVAILABLE",
+    status: status.base,
     notes: formData.get("notes") || undefined,
   });
 
@@ -185,6 +191,7 @@ function readUnit(formData: FormData) {
      */
     vatRate: Number(parsed.vatRate ?? 19).toFixed(3),
     status: parsed.status,
+    statusChoice: status.choice,
     notes: parsed.notes?.trim() || null,
   };
 }
@@ -230,7 +237,7 @@ export async function updateUnit(unitId: string, formData: FormData) {
     .set({ ...values, updatedAt: new Date() })
     .where(eq(units.id, unitId));
 
-  if (values.status !== unit.status) {
+  if (shownCode(values.status, values.statusChoice) !== shownCode(unit.status, unit.statusChoice)) {
     await markUnitByHand(unitId, user);
     await followTheApartments(unit.projectId, user);
   }
@@ -252,13 +259,14 @@ export async function updateUnit(unitId: string, formData: FormData) {
 export async function updateUnitPrice(unitId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const netPrice = fromCents(toCents(String(formData.get("netPrice") ?? "0")));
-  const status = String(formData.get("status") ?? "AVAILABLE") as
-    "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED";
+  const picked = splitChoice(String(formData.get("status") ?? "AVAILABLE"));
+  if (!["AVAILABLE", "RESERVED", "SOLD", "DELIVERED"].includes(picked.base)) return;
+  const status = picked.base as "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED";
 
   const before = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
   await db
     .update(units)
-    .set({ netPrice, status, updatedAt: new Date() })
+    .set({ netPrice, status, statusChoice: picked.choice, updatedAt: new Date() })
     .where(eq(units.id, unitId));
 
   await recordAudit({

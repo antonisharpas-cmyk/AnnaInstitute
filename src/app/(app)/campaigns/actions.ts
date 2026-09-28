@@ -21,7 +21,11 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { storeDocument } from "@/lib/uploads";
 import { resolveStored } from "@/lib/storage";
-import { fillPlaceholders, sendAndRecord } from "@/lib/messaging";
+import { fillPlaceholders, letterHtml, sendAndRecord } from "@/lib/messaging";
+import { sendEmail } from "@/lib/messaging/email";
+import { normalisePhone } from "@/lib/messaging/text";
+import { readSetting, writeSetting } from "@/lib/settings";
+import { testValues } from "@/lib/campaignTest";
 import { createPriceListLink, priceListUrl } from "@/lib/priceList";
 import { filesLinkFor, filesUrl } from "@/lib/campaignFiles";
 
@@ -385,4 +389,84 @@ export async function messagesForCampaign(campaignId: string) {
     .from(messages)
     .where(eq(messages.campaignId, campaignId))
     .orderBy(asc(messages.createdAt));
+}
+
+/* ---------------------------------------------------------------------------
+   Trying a campaign on yourself first
+   --------------------------------------------------------------------------- */
+
+/** Where the office's own tests go: the same address as the automatic emails, and a WhatsApp number. */
+export async function saveCampaignTester(campaignId: string, formData: FormData) {
+  await requireUser(["ADMIN"]);
+  const to = String(formData.get("to") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    await flash("said.testAddressBad", "bad");
+    return;
+  }
+  if (phone && phone.replace(/\D/g, "").length < 8) {
+    await flash("said.testPhoneBad", "bad");
+    return;
+  }
+  await writeSetting("emails.testAddress", to);
+  await writeSetting("campaigns.testPhone", phone ? normalisePhone(phone) : "");
+  await flash("said.saved");
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
+/**
+ * The campaign's email, once, to the office's own inbox.
+ *
+ * The same subject, words, attachments and links the audience will get, with
+ * [Test] in front of the subject and a first line saying so. Nothing is written
+ * to the campaign's log and the campaign stays a draft, so it can be tried as
+ * often as it takes and then sent for real.
+ */
+export async function sendCampaignTest(campaignId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  if (!campaign) return;
+  const to = (await readSetting("emails.testAddress"))?.trim() || user.email;
+
+  const attachmentRows = await db
+    .select({ document: documents })
+    .from(campaignDocuments)
+    .innerJoin(documents, eq(documents.id, campaignDocuments.documentId))
+    .where(eq(campaignDocuments.campaignId, campaignId));
+  const attachments = attachmentRows.map((r) => ({
+    filename: r.document.originalName ?? path.basename(r.document.filePath),
+    path: resolveStored(r.document.filePath),
+    contentType: r.document.mimeType ?? undefined,
+  }));
+
+  const values = await testValues(campaign);
+  const clientsToo = campaign.toClients || campaign.audience === "CLIENTS_CONSENTED";
+  const intro = `This is a test of the campaign "${campaign.title}". It is what the audience will receive, with example names.`;
+  let body = `${intro}\n\n${fillPlaceholders(campaign.body, values)}`;
+  if (clientsToo) body += "\n\nIf you would rather not receive these, unsubscribe here: (each client gets their own link)";
+
+  const result = await sendEmail({
+    to,
+    subject: `[Test] ${campaign.subject ? fillPlaceholders(campaign.subject, values) : campaign.title}`,
+    text: body,
+    html: letterHtml(body),
+    attachments,
+    pastTheSwitch: true,
+  });
+
+  await recordAudit({
+    action: "campaign.test",
+    entity: "campaign",
+    entityId: campaignId,
+    detail: `${to}: ${result.status}${result.error ? `, ${result.error}` : ""}`.slice(0, 300),
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(
+    result.status === "SENT"
+      ? `said.testLetterSent|${campaign.title} went to ${to}`
+      : `said.testLetterFailed|${String(result.error ?? "no answer").slice(0, 200)}`,
+    result.status === "SENT" ? "good" : "bad",
+  );
+  revalidatePath(`/campaigns/${campaignId}`);
 }

@@ -213,6 +213,26 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the invoice series shared with partner invoices",
     migration: "0035",
   },
+  {
+    probe: "select list, code, label_en, active, sort_order from choices limit 1",
+    what: "the office's own lists in the Builder",
+    migration: "0036",
+  },
+  {
+    probe: "select l.status_choice, l.source_choice, c.source_choice, c.id_type_choice from leads l, clients c limit 1",
+    what: "the Builder's own values on leads and clients",
+    migration: "0036",
+  },
+  {
+    probe: "select p.status_choice, u.status_choice, k.status_choice, a.type_choice, e.category_choice from projects p, units u, contracts k, appointments a, expenses e limit 1",
+    what: "the Builder's own values on projects, apartments, contracts, appointments and invoices",
+    migration: "0036",
+  },
+  {
+    probe: "select kind_choice from contracts limit 1",
+    what: "the office's own kinds of contract",
+    migration: "0037",
+  },
 ];
 
 let answer: Missing[] | null = null;

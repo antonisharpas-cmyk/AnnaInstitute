@@ -1,3 +1,4 @@
+import { optionsFor } from "@/lib/choices";
 import { getTranslator } from "@/i18n";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import ClientForm from "../ClientForm";
@@ -15,7 +16,13 @@ export default async function NewClientPage() {
       <PageHeader title={t("clients.newTitle")} />
       <div className="max-w-3xl">
         <Card title={t("clients.title")}>
-          <ClientForm action={createClient} cancelHref="/clients" t={t} />
+          <ClientForm
+            action={createClient}
+            cancelHref="/clients"
+            t={t}
+            idTypes={await optionsFor("idType", t)}
+            sources={await optionsFor("clientSource", t)}
+          />
           <p className="mt-3 text-xs text-brand-graphite/60">
             The apartment is assigned on the client page once the record is saved.
           </p>
