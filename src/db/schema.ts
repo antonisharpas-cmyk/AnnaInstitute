@@ -928,6 +928,13 @@ export const campaigns = pgTable("campaigns", {
   bodyWhatsapp: text("body_whatsapp"),
   status: campaignStatusEnum("status").default("DRAFT").notNull(),
   shareLinkId: text("share_link_id"),
+  /**
+   * What the campaign is about, a development or one apartment in it. Fills
+   * {{project}}, {{unit}}, {{location}}, {{details}}, {{price}} and
+   * {{completion}} when it is tested and when it is sent.
+   */
+  projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+  unitId: text("unit_id").references(() => units.id, { onDelete: "set null" }),
   createdByEmail: text("created_by_email"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: created(),

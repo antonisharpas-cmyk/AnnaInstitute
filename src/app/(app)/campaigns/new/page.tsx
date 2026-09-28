@@ -1,3 +1,6 @@
+import { asc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { projects, units } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { activePriceListLinks } from "@/lib/priceList";
 import { detailsForProject, detailsForUnit, listTemplates } from "@/lib/templates";
@@ -25,6 +28,21 @@ export default async function NewCampaignPage({
     audienceFor({ toClients: true, toAgents: true, toSubowners: true }),
     listTemplates(),
   ]);
+
+  /* What a campaign can be about: a development, or one apartment in it. */
+  const [projectRows, unitRows] = await Promise.all([
+    db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
+    db
+      .select({ id: units.id, code: units.code, project: projects.name })
+      .from(units)
+      .innerJoin(projects, eq(projects.id, units.projectId))
+      .orderBy(asc(projects.name), asc(units.code)),
+  ]);
+  const about = [
+    ...projectRows.map((one) => ({ value: `project:${one.id}`, label: one.name, group: t("campaigns.aboutProjects") })),
+    ...unitRows.map((one) => ({ value: `unit:${one.id}`, label: `${one.project} ${one.code}`, group: t("campaigns.aboutUnits") })),
+  ];
+  const aboutDefault = params.unit ? `unit:${params.unit}` : params.project ? `project:${params.project}` : "";
 
   const counts = {
     clients: everyone.filter((r) => r.group === "CLIENTS").length,
@@ -96,12 +114,19 @@ export default async function NewCampaignPage({
             chosenTemplate={params.template}
             counts={counts}
             groups={groups}
+            about={about}
+            aboutDefault={aboutDefault}
             priceLists={links.map((l) => ({
               id: l.id,
               label: l.note ?? new Date(l.createdAt).toISOString().slice(0, 10),
             }))}
             labels={{
               template: t("campaigns.template"),
+              about: t("campaigns.about"),
+              aboutNothing: t("campaigns.aboutNothing"),
+              aboutNote: t("campaigns.aboutNote"),
+              aboutNeedsProject: t("campaigns.aboutNeedsProject"),
+              aboutNeedsUnit: t("campaigns.aboutNeedsUnit"),
               noTemplate: t("campaigns.noTemplate"),
               templateNote: t("campaigns.templateNote"),
               whoGetsIt: t("campaigns.whoGetsIt"),

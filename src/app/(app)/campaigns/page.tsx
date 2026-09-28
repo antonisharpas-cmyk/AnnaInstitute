@@ -124,6 +124,7 @@ export default async function CampaignsPage() {
                     <th className="ctr">{t("campaigns.howToSend")}</th>
                     <th className="ctr">{t("common.status")}</th>
                     <th className="ctr">{t("common.date")}</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
@@ -169,6 +170,12 @@ export default async function CampaignsPage() {
                         </Pill>
                       </td>
                       <td className="ctr">{day(c.sentAt ?? c.createdAt)}</td>
+                      <td className="ctr">
+                        {/* Straight to the test on the campaign's own page. */}
+                        <Link href={`/campaigns/${c.id}#test`} className="btn btn-secondary !px-3 !py-1 !text-xs" data-test-campaign>
+                          {t("campaigns.test.button")}
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

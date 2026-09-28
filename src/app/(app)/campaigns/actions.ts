@@ -15,6 +15,7 @@ import {
   messages,
   shareLinks,
   subowners,
+  units,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
@@ -25,9 +26,40 @@ import { fillPlaceholders, letterHtml, sendAndRecord } from "@/lib/messaging";
 import { sendEmail } from "@/lib/messaging/email";
 import { normalisePhone } from "@/lib/messaging/text";
 import { readSetting, writeSetting } from "@/lib/settings";
-import { testValues } from "@/lib/campaignTest";
+import { campaignExtras, testValues, unfilledIn } from "@/lib/campaignTest";
 import { createPriceListLink, priceListUrl } from "@/lib/priceList";
 import { filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+
+/**
+ * What the campaign is about, from the form: "project:<id>", "unit:<id>" or nothing.
+ * An apartment brings its development with it.
+ */
+async function aboutFrom(formData: FormData): Promise<{ projectId: string | null; unitId: string | null }> {
+  const raw = String(formData.get("about") ?? "");
+  if (raw.startsWith("unit:")) {
+    const [unit] = await db.select().from(units).where(eq(units.id, raw.slice(5))).limit(1);
+    if (unit) return { projectId: unit.projectId, unitId: unit.id };
+  }
+  if (raw.startsWith("project:")) return { projectId: raw.slice(8) || null, unitId: null };
+  return { projectId: null, unitId: null };
+}
+
+/** Change what a draft is about, so its placeholders can be filled. */
+export async function setCampaignAbout(campaignId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const about = await aboutFrom(formData);
+  await db.update(campaigns).set({ ...about, updatedAt: new Date() }).where(eq(campaigns.id, campaignId));
+  await recordAudit({
+    action: "campaign.about",
+    entity: "campaign",
+    entityId: campaignId,
+    detail: about.unitId ? `unit ${about.unitId}` : about.projectId ? `project ${about.projectId}` : "nothing in particular",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
+  revalidatePath(`/campaigns/${campaignId}`);
+}
 
 export async function createCampaign(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
@@ -70,6 +102,7 @@ export async function createCampaign(formData: FormData) {
       body: body || bodyWhatsapp,
       bodyWhatsapp: bodyWhatsapp || null,
       shareLinkId: String(formData.get("shareLinkId") ?? "") || null,
+      ...(await aboutFrom(formData)),
       createdByEmail: user.email,
     })
     .returning({ id: campaigns.id });
@@ -227,6 +260,14 @@ export async function sendCampaign(campaignId: string) {
     throw new Error("This campaign has already been sent.");
   }
 
+  /* Nothing goes out with {{project}} in it: the office is told which placeholders have no value. */
+  const unfilled = await unfilledIn(campaign);
+  if (unfilled.length > 0) {
+    await flash(`said.placeholdersLeft|${unfilled.join(", ")}`, "bad");
+    revalidatePath(`/campaigns/${campaignId}`);
+    return;
+  }
+
   await db.update(campaigns).set({ status: "SENDING" }).where(eq(campaigns.id, campaignId));
 
   const attachmentRows = await db
@@ -260,6 +301,7 @@ export async function sendCampaign(campaignId: string) {
   }
 
   const recipients = await audienceFor(campaign);
+  const extras = await campaignExtras(campaign);
   let sent = 0;
   let failed = 0;
 
@@ -268,7 +310,7 @@ export async function sendCampaign(campaignId: string) {
     files && !whatsappBody.includes("{{files_url}}") ? `${whatsappBody}\n${files}` : whatsappBody;
 
   for (const recipient of recipients) {
-    const values = { ...recipient, priceListUrl: url, filesUrl: files };
+    const values = { ...recipient, priceListUrl: url, filesUrl: files, extras };
 
     if (campaign.viaEmail) {
       const result = await sendAndRecord({
@@ -439,6 +481,12 @@ export async function sendCampaignTest(campaignId: string) {
     contentType: r.document.mimeType ?? undefined,
   }));
 
+  const unfilled = await unfilledIn(campaign);
+  if (unfilled.length > 0) {
+    await flash(`said.placeholdersLeft|${unfilled.join(", ")}`, "bad");
+    revalidatePath(`/campaigns/${campaignId}`);
+    return;
+  }
   const values = await testValues(campaign);
   const clientsToo = campaign.toClients || campaign.audience === "CLIENTS_CONSENTED";
   const intro = `This is a test of the campaign "${campaign.title}". It is what the audience will receive, with example names.`;

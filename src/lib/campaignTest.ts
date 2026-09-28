@@ -2,7 +2,8 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaignDocuments, campaigns, shareLinks } from "@/db/schema";
-import { fillPlaceholders } from "@/lib/messaging";
+import { fillPlaceholders, placeholdersLeft } from "@/lib/messaging";
+import { detailsForProject, detailsForUnit } from "@/lib/templates";
 import { filesUrl } from "@/lib/campaignFiles";
 import { priceListUrl } from "@/lib/priceList";
 import { readSetting } from "@/lib/settings";
@@ -15,6 +16,45 @@ import { readSetting } from "@/lib/settings";
  * will get them.
  */
 type Campaign = typeof campaigns.$inferSelect;
+
+/**
+ * The words about the development or the apartment the campaign is about.
+ *
+ * Filled when it is tested and when it is sent, so a template picked without
+ * starting from a development still reads properly. The month is always known.
+ * A campaign about a whole development has no apartment and no price, so those
+ * two are left out and are caught as unfilled rather than sent as blanks.
+ */
+export async function campaignExtras(campaign: Campaign): Promise<Record<string, string>> {
+  const month = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  if (campaign.unitId) {
+    const unit = await detailsForUnit(campaign.unitId, "en");
+    if (unit) return { ...unit, month };
+  }
+  if (campaign.projectId) {
+    const project = await detailsForProject(campaign.projectId, "en");
+    if (project) {
+      const { unit: _unit, price: _price, ...rest } = project;
+      void _unit;
+      void _price;
+      return { ...rest, month };
+    }
+  }
+  return { month };
+}
+
+/**
+ * The placeholders that would go out as they are, in the subject, the email or
+ * the WhatsApp. Sending and testing both stop while there are any, and say which.
+ */
+export async function unfilledIn(campaign: Campaign): Promise<string[]> {
+  const values = await testValues(campaign);
+  return placeholdersLeft(
+    campaign.viaEmail ? fillPlaceholders(campaign.subject ?? "", values) : "",
+    campaign.viaEmail ? fillPlaceholders(campaign.body, values) : "",
+    campaign.viaWhatsapp ? fillPlaceholders(campaign.bodyWhatsapp ?? campaign.body, values) : "",
+  );
+}
 
 export async function testValues(campaign: Campaign) {
   let price: string | undefined;
@@ -32,6 +72,7 @@ export async function testValues(campaign: Campaign) {
     firstName: "Maria",
     priceListUrl: price,
     filesUrl: files ? filesUrl(files.token) : undefined,
+    extras: await campaignExtras(campaign),
   };
 }
 

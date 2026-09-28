@@ -34,8 +34,13 @@ export default function CampaignForm({
   counts,
   groups,
   priceLists,
+  about = [],
+  aboutDefault = "",
   labels,
 }: {
+  /** The developments and apartments a campaign can be about, as "project:<id>" and "unit:<id>". */
+  about?: { value: string; label: string; group: string }[];
+  aboutDefault?: string;
   action: (formData: FormData) => void | Promise<void>;
   templates: TemplateChoice[];
   chosenTemplate?: string;
@@ -57,6 +62,21 @@ export default function CampaignForm({
 
   const [viaEmail, setViaEmail] = useState(true);
   const [viaWhatsapp, setViaWhatsapp] = useState(Boolean(picked?.bodyWhatsapp));
+  const [aboutValue, setAboutValue] = useState(aboutDefault);
+
+  /*
+   * The placeholders that need the development or the apartment. Said on the
+   * form, before saving, rather than found in a client's inbox.
+   */
+  const words = `${viaEmail ? `${subject} ${body}` : ""} ${viaWhatsapp ? whatsapp : ""}`;
+  const needsProject = /\{\{\s*(project|location|details|completion)\s*\}\}/i.test(words);
+  const needsUnit = /\{\{\s*(unit|price)\s*\}\}/i.test(words);
+  const aboutWarning =
+    needsUnit && !aboutValue.startsWith("unit:")
+      ? labels.aboutNeedsUnit
+      : needsProject && !aboutValue
+        ? labels.aboutNeedsProject
+        : "";
 
   const applyTemplate = (key: string) => {
     setTemplateKey(key);
@@ -100,6 +120,40 @@ export default function CampaignForm({
           <p className="mt-1 text-xs text-brand-graphite/60">
             {templates.find((t) => t.key === templateKey)?.description ?? labels.templateNote}
           </p>
+        </div>
+      ) : null}
+
+      {about.length > 0 ? (
+        <div>
+          <label className="label" htmlFor="about">
+            {labels.about}
+          </label>
+          <select
+            id="about"
+            name="about"
+            value={aboutValue}
+            onChange={(event) => setAboutValue(event.target.value)}
+            className="select"
+          >
+            <option value="">{labels.aboutNothing}</option>
+            {[...new Set(about.map((one) => one.group))].map((group) => (
+              <optgroup key={group} label={group}>
+                {about
+                  .filter((one) => one.group === group)
+                  .map((one) => (
+                    <option key={one.value} value={one.value}>
+                      {one.label}
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-brand-graphite/60">{labels.aboutNote}</p>
+          {aboutWarning ? (
+            <p className="mt-1 text-xs font-semibold text-[color:var(--color-negative)]" data-about-warning>
+              {aboutWarning}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

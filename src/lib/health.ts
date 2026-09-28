@@ -233,6 +233,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the office's own kinds of contract",
     migration: "0037",
   },
+  {
+    probe: "select project_id, unit_id from campaigns limit 1",
+    what: "what a campaign is about, for its placeholders",
+    migration: "0038",
+  },
 ];
 
 let answer: Missing[] | null = null;

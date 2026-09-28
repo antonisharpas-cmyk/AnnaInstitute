@@ -5,7 +5,7 @@ import { isSuppressed } from "../suppression";
 import { unsubscribeUrl } from "../unsubscribe";
 import { emailConfigured, sendEmail, type EmailAttachment } from "./email";
 import { channelConfigured, sendViaSmsTo, smsConfigured } from "./smsto";
-export { fillPlaceholders, looksLikeStop, normalisePhone } from "./text";
+export { fillPlaceholders, looksLikeStop, normalisePhone, placeholdersLeft } from "./text";
 import type { Channel, SendResult } from "./types";
 
 export type { Channel, SendResult } from "./types";

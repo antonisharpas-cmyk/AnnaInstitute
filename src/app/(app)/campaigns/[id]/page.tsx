@@ -1,15 +1,15 @@
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { campaignDocuments, campaigns, documents, shareLinks } from "@/db/schema";
+import { campaignDocuments, campaigns, documents, projects, shareLinks, units } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { addressFor, channelConfigured, emailConfigured, fillPlaceholders } from "@/lib/messaging";
 import { filesUrl } from "@/lib/campaignFiles";
 import { priceListUrl } from "@/lib/priceList";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
-import { audienceFor, messagesForCampaign, saveCampaignTester, sendCampaign, sendCampaignTest } from "../actions";
-import { whatsappTest } from "@/lib/campaignTest";
+import { audienceFor, messagesForCampaign, saveCampaignTester, sendCampaign, sendCampaignTest, setCampaignAbout } from "../actions";
+import { campaignExtras, unfilledIn, whatsappTest } from "@/lib/campaignTest";
 import { readSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/auth";
 import SubmitButton from "@/components/SubmitButton";
@@ -75,6 +75,19 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
   /* Trying it on yourself: the email to your inbox, the WhatsApp opened ready to send to your own number. */
   const testTo = (await readSetting("emails.testAddress")).trim();
+  /* Placeholders that nothing would fill, and what the campaign can be about to fill them. */
+  const unfilled = await unfilledIn(campaign);
+  const [projectRows, unitRows] = alreadySent
+    ? [[], []]
+    : await Promise.all([
+        db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
+        db
+          .select({ id: units.id, code: units.code, project: projects.name })
+          .from(units)
+          .innerJoin(projects, eq(projects.id, units.projectId))
+          .orderBy(asc(projects.name), asc(units.code)),
+      ]);
+  const aboutNow = campaign.unitId ? `unit:${campaign.unitId}` : campaign.projectId ? `project:${campaign.projectId}` : "";
   const tryWhatsapp = await whatsappTest(campaign);
 
   // The files of a campaign also live behind a link of their own, because a
@@ -85,6 +98,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     firstName: checked[0]?.firstName ?? "Name",
     priceListUrl: url,
     filesUrl: filesLink,
+    extras: await campaignExtras(campaign),
   };
   const preview = fillPlaceholders(campaign.body, values);
   const previewWhatsapp = campaign.bodyWhatsapp
@@ -120,6 +134,98 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
           </Pill>
         }
       />
+
+      {/* What would go out unfilled, said before anybody tests or sends it. */}
+      {unfilled.length > 0 ? (
+        <div className="card mb-4 border-[color:var(--color-negative)] p-4" data-unfilled>
+          <p className="text-sm font-semibold text-[color:var(--color-negative)]">
+            {t("campaigns.unfilledTitle")}: <span className="font-mono">{unfilled.join(", ")}</span>
+          </p>
+          <p className="mt-1 text-xs text-brand-graphite/70">{t("campaigns.unfilledNote")}</p>
+        </div>
+      ) : null}
+
+      {!alreadySent ? (
+        <form action={setCampaignAbout.bind(null, id)} className="card mb-4 flex flex-wrap items-end gap-2 p-4" data-campaign-about>
+          <div className="min-w-64 flex-1">
+            <label className="label" htmlFor="about">
+              {t("campaigns.about")}
+            </label>
+            <select id="about" name="about" defaultValue={aboutNow} className="select">
+              <option value="">{t("campaigns.aboutNothing")}</option>
+              <optgroup label={t("campaigns.aboutProjects")}>
+                {projectRows.map((one) => (
+                  <option key={one.id} value={`project:${one.id}`}>
+                    {one.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={t("campaigns.aboutUnits")}>
+                {unitRows.map((one) => (
+                  <option key={one.id} value={`unit:${one.id}`}>
+                    {one.project} {one.code}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <p className="mt-1 text-xs text-brand-graphite/60">{t("campaigns.aboutNote")}</p>
+          </div>
+          <SubmitButton className="btn btn-secondary">{t("campaigns.aboutSave")}</SubmitButton>
+        </form>
+      ) : null}
+
+      {/* Try it first: at the top, so it is the first thing on a draft whatever the screen size. */}
+      <div id="test" className="mb-4 scroll-mt-20">
+        <Card title={t("campaigns.test.title")}>
+          <p className="mb-3 text-xs text-brand-graphite/60">{t("campaigns.test.note")}</p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <form action={saveCampaignTester.bind(null, id)} className="space-y-2" data-campaign-tester>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <label className="label" htmlFor="testTo">
+                    {t("emails.test.address")}
+                  </label>
+                  <input id="testTo" name="to" type="email" defaultValue={testTo} placeholder={user.email} className="input" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="testPhone">
+                    {t("campaigns.test.phone")}
+                  </label>
+                  <input
+                    id="testPhone"
+                    name="phone"
+                    inputMode="tel"
+                    defaultValue={tryWhatsapp?.phone ?? ""}
+                    placeholder="+357 99 000000"
+                    className="input"
+                  />
+                </div>
+              </div>
+              <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("common.save")}</SubmitButton>
+            </form>
+            <div className="flex flex-col gap-2 md:border-l md:border-brand-line md:pl-4">
+              {campaign.viaEmail ? (
+                <form action={sendCampaignTest.bind(null, id)}>
+                  <SubmitButton className="btn btn-primary w-full">{t("campaigns.test.email")}</SubmitButton>
+                  <p className="mt-1 text-xs text-brand-graphite/60">
+                    {t("emails.test.goesTo")} <span className="font-semibold">{testTo || user.email}</span>
+                  </p>
+                </form>
+              ) : null}
+              {tryWhatsapp && unfilled.length === 0 ? (
+                <div>
+                  <a href={tryWhatsapp.link} target="_blank" rel="noreferrer" className="btn btn-secondary w-full" data-whatsapp-test>
+                    {t("campaigns.test.whatsapp")}
+                  </a>
+                  <p className="mt-1 text-xs text-brand-graphite/60">
+                    {tryWhatsapp.phone ? `${t("campaigns.test.whatsappTo")} ${tryWhatsapp.phone}` : t("campaigns.test.whatsappPick")}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </Card>
+      </div>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-4">
         <Stat label="In the audience" value={String(checked.length)} />
@@ -282,60 +388,6 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         </div>
 
         <div className="space-y-4">
-          <Card title={t("campaigns.test.title")}>
-            <p className="mb-3 text-xs text-brand-graphite/60">{t("campaigns.test.note")}</p>
-            <form action={saveCampaignTester.bind(null, id)} className="mb-3 space-y-2" data-campaign-tester>
-              <div>
-                <label className="label" htmlFor="testTo">
-                  {t("emails.test.address")}
-                </label>
-                <input id="testTo" name="to" type="email" defaultValue={testTo} placeholder={user.email} className="input" />
-              </div>
-              <div>
-                <label className="label" htmlFor="testPhone">
-                  {t("campaigns.test.phone")}
-                </label>
-                <input
-                  id="testPhone"
-                  name="phone"
-                  inputMode="tel"
-                  defaultValue={tryWhatsapp?.phone ?? ""}
-                  placeholder="+357 99 000000"
-                  className="input"
-                />
-              </div>
-              <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("common.save")}</SubmitButton>
-            </form>
-            <div className="flex flex-col gap-2 border-t border-brand-line pt-3">
-              {campaign.viaEmail ? (
-                <form action={sendCampaignTest.bind(null, id)}>
-                  <SubmitButton className="btn btn-primary w-full">
-                    {t("campaigns.test.email")}
-                  </SubmitButton>
-                  <p className="mt-1 text-xs text-brand-graphite/60">
-                    {t("emails.test.goesTo")} <span className="font-semibold">{testTo || user.email}</span>
-                  </p>
-                </form>
-              ) : null}
-              {tryWhatsapp ? (
-                <div>
-                  <a
-                    href={tryWhatsapp.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-secondary w-full"
-                    data-whatsapp-test
-                  >
-                    {t("campaigns.test.whatsapp")}
-                  </a>
-                  <p className="mt-1 text-xs text-brand-graphite/60">
-                    {tryWhatsapp.phone ? `${t("campaigns.test.whatsappTo")} ${tryWhatsapp.phone}` : t("campaigns.test.whatsappPick")}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </Card>
-
           <Card title="Send">
             {alreadySent ? (
               <p className="text-sm text-brand-graphite/70">

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fillPlaceholders, looksLikeStop, normalisePhone } from "./text";
+import { fillPlaceholders, looksLikeStop, normalisePhone, placeholdersLeft } from "./text";
 
 test("stop keywords are recognised in the forms people actually type", () => {
   for (const text of [
@@ -54,4 +54,21 @@ test("placeholders are filled per recipient", () => {
 
 test("a missing price list link leaves nothing odd behind", () => {
   assert.equal(fillPlaceholders("See {{price_list_url}}", { name: "A B", firstName: "A" }), "See ");
+});
+
+test("placeholders are filled however they are typed", () => {
+  assert.equal(
+    fillPlaceholders("Dear {{ first_name }}, {{Project}} and {{first name}}.", {
+      name: "Maria Georgiou",
+      firstName: "Maria",
+      extras: { project: "Magnum Opus" },
+    }),
+    "Dear Maria, Magnum Opus and Maria.",
+  );
+});
+
+test("a placeholder with no value stays, so it can be caught before sending", () => {
+  const filled = fillPlaceholders("{{unit}} at {{project}}", { name: "A", firstName: "A" });
+  assert.equal(filled, "{{unit}} at {{project}}");
+  assert.deepEqual(placeholdersLeft(filled), ["{{unit}}", "{{project}}"]);
 });

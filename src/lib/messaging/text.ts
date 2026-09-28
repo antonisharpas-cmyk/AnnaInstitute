@@ -46,7 +46,15 @@ export function looksLikeStop(text: string): boolean {
  * needs, such as the apartment a message is about, is passed in `extras` and
  * filled by name, so a template can say {{unit}} without this file knowing what
  * a unit is.
+ *
+ * Forgiving about how a placeholder is typed, because it is typed by a person:
+ * {{ first_name }}, {{First_Name}} and {{first name}} all mean the same thing.
+ * One the CRM has no value for is left as it is, so placeholdersLeft can find it
+ * before anything is sent.
  */
+const PLACEHOLDER = /\{\{\s*([A-Za-z][A-Za-z_ ]*?)\s*\}\}/g;
+const keyOf = (raw: string) => raw.trim().toLowerCase().replace(/\s+/g, "_");
+
 export function fillPlaceholders(
   template: string,
   values: {
@@ -57,15 +65,20 @@ export function fillPlaceholders(
     extras?: Record<string, string>;
   },
 ): string {
-  let filled = template
-    .replaceAll("{{name}}", values.name)
-    .replaceAll("{{first_name}}", values.firstName)
-    .replaceAll("{{price_list_url}}", values.priceListUrl ?? "")
-    .replaceAll("{{files_url}}", values.filesUrl ?? "");
+  const known: Record<string, string> = {
+    name: values.name,
+    first_name: values.firstName,
+    firstname: values.firstName,
+    price_list_url: values.priceListUrl ?? "",
+    files_url: values.filesUrl ?? "",
+  };
+  for (const [key, value] of Object.entries(values.extras ?? {})) known[keyOf(key)] = value;
+  return template.replace(PLACEHOLDER, (whole, raw: string) => known[keyOf(raw)] ?? whole);
+}
 
-  for (const [key, value] of Object.entries(values.extras ?? {})) {
-    filled = filled.replaceAll(`{{${key}}}`, value);
-  }
-
-  return filled;
+/** The placeholders still in a text after filling it: the ones that would go out as they are. */
+export function placeholdersLeft(...texts: (string | null | undefined)[]): string[] {
+  const found = new Set<string>();
+  for (const text of texts) for (const match of (text ?? "").matchAll(PLACEHOLDER)) found.add(`{{${keyOf(match[1])}}}`);
+  return [...found];
 }

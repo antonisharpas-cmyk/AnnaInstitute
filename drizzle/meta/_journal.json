@@ -260,6 +260,13 @@
       "when": 1790866547383,
       "tag": "0037_contract_kind_choice",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790966547383,
+      "tag": "0038_campaign_about",
+      "breakpoints": true
     }
   ]
 }
