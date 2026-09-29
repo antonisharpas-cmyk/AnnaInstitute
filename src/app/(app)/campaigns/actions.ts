@@ -26,7 +26,7 @@ import { fillPlaceholders, letterHtml, sendAndRecord } from "@/lib/messaging";
 import { sendEmail } from "@/lib/messaging/email";
 import { normalisePhone } from "@/lib/messaging/text";
 import { readSetting, writeSetting } from "@/lib/settings";
-import { campaignExtras, testValues, unfilledIn } from "@/lib/campaignTest";
+import { campaignExtras, ensureCampaignLinks, testValues, unfilledIn } from "@/lib/campaignTest";
 import { createPriceListLink, priceListUrl } from "@/lib/priceList";
 import { filesLinkFor, filesUrl } from "@/lib/campaignFiles";
 
@@ -49,6 +49,8 @@ export async function setCampaignAbout(campaignId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const about = await aboutFrom(formData);
   await db.update(campaigns).set({ ...about, updatedAt: new Date() }).where(eq(campaigns.id, campaignId));
+  const [changed] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  if (changed) await ensureCampaignLinks(changed, user.email);
   await recordAudit({
     action: "campaign.about",
     entity: "campaign",
@@ -126,10 +128,9 @@ export async function createCampaign(formData: FormData) {
     await db.insert(campaignDocuments).values({ campaignId, documentId });
   }
 
-  // A WhatsApp message cannot carry the files, so they get a link of their own.
-  if (files.length > 0 && viaWhatsapp) {
-    await filesLinkFor(campaignId, user.email);
-  }
+  // The price list link and the files page, made now when the office has not chosen them.
+  const [saved] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  if (saved) await ensureCampaignLinks(saved, user.email);
 
   await recordAudit({
     action: "campaign.create",
@@ -254,8 +255,8 @@ export async function sendCampaign(campaignId: string) {
   const user = await requireUser(["ADMIN"]);
 
   const rows = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
-  const campaign = rows[0];
-  if (!campaign) throw new Error("Campaign not found");
+  if (!rows[0]) throw new Error("Campaign not found");
+  const campaign = await ensureCampaignLinks(rows[0], user.email);
   if (campaign.status === "SENT" || campaign.status === "SENDING") {
     throw new Error("This campaign has already been sent.");
   }
@@ -295,7 +296,7 @@ export async function sendCampaign(campaignId: string) {
   // The files reach WhatsApp as a link, and the link is added to the end of the
   // message when the office has not put {{files_url}} in it itself.
   let files: string | undefined;
-  if (attachmentRows.length > 0 && campaign.viaWhatsapp) {
+  if (attachmentRows.length > 0) {
     const link = await filesLinkFor(campaignId, user.email);
     files = filesUrl(link.token);
   }
@@ -466,8 +467,9 @@ export async function saveCampaignTester(campaignId: string, formData: FormData)
  */
 export async function sendCampaignTest(campaignId: string) {
   const user = await requireUser(["ADMIN"]);
-  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
-  if (!campaign) return;
+  const [found] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  if (!found) return;
+  const campaign = await ensureCampaignLinks(found, user.email);
   const to = (await readSetting("emails.testAddress"))?.trim() || user.email;
 
   const attachmentRows = await db

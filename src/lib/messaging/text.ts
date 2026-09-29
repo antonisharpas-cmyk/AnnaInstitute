@@ -69,9 +69,11 @@ export function fillPlaceholders(
     name: values.name,
     first_name: values.firstName,
     firstname: values.firstName,
-    price_list_url: values.priceListUrl ?? "",
-    files_url: values.filesUrl ?? "",
   };
+  /* A link that does not exist is left as it is, so it is caught as unfilled
+     rather than sent as "The full price list is here: " with nothing after it. */
+  if (values.priceListUrl) known.price_list_url = values.priceListUrl;
+  if (values.filesUrl) known.files_url = values.filesUrl;
   for (const [key, value] of Object.entries(values.extras ?? {})) known[keyOf(key)] = value;
   return template.replace(PLACEHOLDER, (whole, raw: string) => known[keyOf(raw)] ?? whole);
 }

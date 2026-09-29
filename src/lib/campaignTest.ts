@@ -4,8 +4,8 @@ import { db } from "@/db";
 import { campaignDocuments, campaigns, shareLinks } from "@/db/schema";
 import { fillPlaceholders, placeholdersLeft } from "@/lib/messaging";
 import { detailsForProject, detailsForUnit } from "@/lib/templates";
-import { filesUrl } from "@/lib/campaignFiles";
-import { priceListUrl } from "@/lib/priceList";
+import { filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { createPriceListLink, priceListUrl, resolvePriceListToken } from "@/lib/priceList";
 import { readSetting } from "@/lib/settings";
 
 /**
@@ -16,6 +16,43 @@ import { readSetting } from "@/lib/settings";
  * will get them.
  */
 type Campaign = typeof campaigns.$inferSelect;
+
+/**
+ * The links a campaign needs, made for it when the office has not chosen them.
+ *
+ * A template that says {{price_list_url}} gets a live price list link of its
+ * own the first time it is saved, tested or sent without one, so the office
+ * never has to make a link first and the page always shows today's prices. A
+ * link that was revoked or has run out is replaced the same way. Files get
+ * their page as soon as there are any, for WhatsApp and for {{files_url}} in
+ * the email.
+ */
+export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): Promise<Campaign> {
+  let current = campaign;
+  const words = `${campaign.subject ?? ""} ${campaign.body} ${campaign.bodyWhatsapp ?? ""}`;
+
+  if (/\{\{\s*price[ _]list[ _]url\s*\}\}/i.test(words)) {
+    let usable = false;
+    if (campaign.shareLinkId) {
+      const [link] = await db.select().from(shareLinks).where(eq(shareLinks.id, campaign.shareLinkId)).limit(1);
+      usable = Boolean(link && (await resolvePriceListToken(link.token)));
+    }
+    if (!usable) {
+      const made = await createPriceListLink({ note: `For the campaign "${campaign.title}"`, createdByEmail: byEmail });
+      await db.update(campaigns).set({ shareLinkId: made.id }).where(eq(campaigns.id, campaign.id));
+      current = { ...current, shareLinkId: made.id };
+    }
+  }
+
+  const [hasFiles] = await db
+    .select({ id: campaignDocuments.documentId })
+    .from(campaignDocuments)
+    .where(eq(campaignDocuments.campaignId, campaign.id))
+    .limit(1);
+  if (hasFiles) await filesLinkFor(campaign.id, byEmail);
+
+  return current;
+}
 
 /**
  * The words about the development or the apartment the campaign is about.

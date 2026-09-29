@@ -6,6 +6,7 @@ import { getTranslator } from "@/i18n";
 import { addressFor, channelConfigured, emailConfigured, fillPlaceholders } from "@/lib/messaging";
 import { filesUrl } from "@/lib/campaignFiles";
 import { priceListUrl } from "@/lib/priceList";
+import { appUrl } from "@/lib/unsubscribe";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
 import { audienceFor, messagesForCampaign, saveCampaignTester, sendCampaign, sendCampaignTest, setCampaignAbout } from "../actions";
@@ -178,6 +179,11 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       <div id="test" className="mb-4 scroll-mt-20">
         <Card title={t("campaigns.test.title")}>
           <p className="mb-3 text-xs text-brand-graphite/60">{t("campaigns.test.note")}</p>
+          {/localhost|127\.0\.0\.1/.test(appUrl()) ? (
+            <p className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-local-links>
+              {t("campaigns.test.localLinks")} <code className="font-mono">{appUrl()}</code>. {t("campaigns.test.localLinksFix")}
+            </p>
+          ) : null}
           <div className="grid gap-4 md:grid-cols-2">
             <form action={saveCampaignTester.bind(null, id)} className="space-y-2" data-campaign-tester>
               <div className="grid gap-2 sm:grid-cols-2">
