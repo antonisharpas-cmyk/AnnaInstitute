@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { desc, sql, isNull } from "drizzle-orm";
+import { asc, desc, eq, sql, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { campaigns, clients, suppressions } from "@/db/schema";
+import { campaigns, clients, projects, suppressions, units } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { channelConfigured, emailConfigured } from "@/lib/messaging";
-import { activePriceListLinks, priceListUrl } from "@/lib/priceList";
+import { activePriceListLinks, priceListUrl, scopeWords } from "@/lib/priceList";
 import { listTemplates } from "@/lib/templates";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
@@ -33,6 +33,17 @@ export default async function CampaignsPage() {
     activePriceListLinks(),
     audienceFor({ toClients: true, toAgents: true, toSubowners: true }),
     listTemplates(),
+  ]);
+
+  /* What each price list link shows, and what a new one can show. */
+  const shows = await Promise.all(links.map((l) => scopeWords({ projectId: l.projectId, unitId: l.unitId })));
+  const [projectRows, unitRows] = await Promise.all([
+    db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
+    db
+      .select({ id: units.id, code: units.code, project: projects.name })
+      .from(units)
+      .innerJoin(projects, eq(projects.id, units.projectId))
+      .orderBy(asc(projects.name), asc(units.code)),
   ]);
 
   const group = (name: "CLIENTS" | "AGENTS" | "SUBOWNERS") =>
@@ -251,6 +262,28 @@ export default async function CampaignsPage() {
                   />
                 </div>
                 <div>
+                  <label className="label" htmlFor="linkShows">
+                    {t("campaigns.linkShows")}
+                  </label>
+                  <select id="linkShows" name="about" className="select !w-64 !py-1 !text-xs">
+                    <option value="">{t("campaigns.linkShowsAll")}</option>
+                    <optgroup label={t("campaigns.aboutProjects")}>
+                      {projectRows.map((one) => (
+                        <option key={one.id} value={`project:${one.id}`}>
+                          {one.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label={t("campaigns.aboutUnits")}>
+                      {unitRows.map((one) => (
+                        <option key={one.id} value={`unit:${one.id}`}>
+                          {one.project} {one.code}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+                <div>
                   <label className="label" htmlFor="days">
                     Expires in days
                   </label>
@@ -276,15 +309,17 @@ export default async function CampaignsPage() {
                 <thead>
                   <tr>
                     <th>{t("common.notes")}</th>
+                    <th>{t("campaigns.linkShows")}</th>
                     <th>Address</th>
                     <th className="ctr">Expires</th>
                     <th className="ctr">{t("common.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {links.map((l) => (
+                  {links.map((l, index) => (
                     <tr key={l.id}>
                       <td>{l.note ?? ""}</td>
+                      <td className="text-xs" data-link-shows>{shows[index] || t("campaigns.linkShowsAll")}</td>
                       <td>
                         <a
                           href={priceListUrl(l.token)}

@@ -25,10 +25,64 @@ export async function availableForPriceList() {
     .orderBy(asc(projects.name), asc(units.code));
 }
 
+/** What a price list link shows: everything, one development, or one apartment. */
+export type PriceListScope = { projectId?: string | null; unitId?: string | null };
+
+/**
+ * The apartments a link shows, read at the moment the page is opened.
+ *
+ * An apartment link shows that apartment. Once it is reserved or sold it is no
+ * longer offered, and the page says so and shows what is still available in the
+ * same development instead, so a link sent in a campaign never goes blank.
+ */
+export async function priceListRows(scope: PriceListScope) {
+  const all = await availableForPriceList();
+  if (scope.unitId) {
+    const [chosen] = await db
+      .select({ unit: units, project: projects })
+      .from(units)
+      .innerJoin(projects, eq(projects.id, units.projectId))
+      .where(eq(units.id, scope.unitId))
+      .limit(1);
+    if (chosen) {
+      const stillThere = all.filter((row) => row.unit.id === chosen.unit.id);
+      if (stillThere.length > 0) return { rows: stillThere, focus: chosen, gone: false };
+      return { rows: all.filter((row) => row.project.id === chosen.project.id), focus: chosen, gone: true };
+    }
+  }
+  if (scope.projectId) {
+    const [project] = await db.select().from(projects).where(eq(projects.id, scope.projectId)).limit(1);
+    if (project) return { rows: all.filter((row) => row.project.id === project.id), focus: null, gone: false };
+  }
+  return { rows: all, focus: null, gone: false };
+}
+
+/** What a link shows, in words, for the list of links. */
+export async function scopeWords(scope: PriceListScope): Promise<string> {
+  if (scope.unitId) {
+    const [row] = await db
+      .select({ code: units.code, project: projects.name })
+      .from(units)
+      .innerJoin(projects, eq(projects.id, units.projectId))
+      .where(eq(units.id, scope.unitId))
+      .limit(1);
+    if (row) return `${row.project} ${row.code}`;
+  }
+  if (scope.projectId) {
+    const [row] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, scope.projectId)).limit(1);
+    if (row) return row.name;
+  }
+  return "";
+}
+
 export async function createPriceListLink(options: {
   note?: string | null;
   days?: number | null;
   createdByEmail: string;
+  projectId?: string | null;
+  unitId?: string | null;
+  /** Set when the CRM makes the link for a campaign, so the link can follow it. */
+  campaignId?: string | null;
 }) {
   const token = randomBytes(16).toString("base64url");
   const expiresAt = options.days ? new Date(Date.now() + options.days * 24 * 60 * 60 * 1000) : null;
@@ -41,6 +95,9 @@ export async function createPriceListLink(options: {
       note: options.note ?? null,
       expiresAt,
       createdByEmail: options.createdByEmail,
+      projectId: options.unitId ? null : (options.projectId ?? null),
+      unitId: options.unitId ?? null,
+      campaignId: options.campaignId ?? null,
     })
     .returning({ id: shareLinks.id, token: shareLinks.token });
 

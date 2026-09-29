@@ -988,6 +988,14 @@ export const shareLinks = pgTable("share_links", {
   kind: shareLinkKindEnum("kind").notNull(),
   /** The campaign whose files this link opens, for a CAMPAIGN_FILES link. */
   campaignId: text("campaign_id"),
+  /**
+   * Which apartments a PRICE_LIST link shows. Both empty is everything
+   * available; a development is its available apartments; an apartment is that
+   * one, and the rest of its development once it has gone. A campaign's own
+   * link follows what the campaign is about.
+   */
+  projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+  unitId: text("unit_id").references(() => units.id, { onDelete: "set null" }),
   note: text("note"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),

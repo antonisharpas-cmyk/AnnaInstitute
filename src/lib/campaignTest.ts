@@ -27,6 +27,8 @@ type Campaign = typeof campaigns.$inferSelect;
  * their page as soon as there are any, for WhatsApp and for {{files_url}} in
  * the email.
  */
+const ownNote = (campaign: Campaign) => `For the campaign "${campaign.title}"`;
+
 export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): Promise<Campaign> {
   let current = campaign;
   const words = `${campaign.subject ?? ""} ${campaign.body} ${campaign.bodyWhatsapp ?? ""}`;
@@ -36,9 +38,27 @@ export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): 
     if (campaign.shareLinkId) {
       const [link] = await db.select().from(shareLinks).where(eq(shareLinks.id, campaign.shareLinkId)).limit(1);
       usable = Boolean(link && (await resolvePriceListToken(link.token)));
+      /* The campaign's own link follows what the campaign is about: choose
+         apartment 101 and the link shows apartment 101, choose the development
+         and it shows the development. The address stays the same. A link the
+         office picked from its own list is left exactly as it is. */
+      const own = link && (link.campaignId === campaign.id || link.note === ownNote(campaign));
+      const scope = { projectId: campaign.unitId ? null : campaign.projectId, unitId: campaign.unitId };
+      if (usable && own && (link.projectId !== scope.projectId || link.unitId !== scope.unitId || !link.campaignId)) {
+        await db
+          .update(shareLinks)
+          .set({ ...scope, campaignId: campaign.id })
+          .where(eq(shareLinks.id, link.id));
+      }
     }
     if (!usable) {
-      const made = await createPriceListLink({ note: `For the campaign "${campaign.title}"`, createdByEmail: byEmail });
+      const made = await createPriceListLink({
+        note: ownNote(campaign),
+        createdByEmail: byEmail,
+        projectId: campaign.projectId,
+        unitId: campaign.unitId,
+        campaignId: campaign.id,
+      });
       await db.update(campaigns).set({ shareLinkId: made.id }).where(eq(campaigns.id, campaign.id));
       current = { ...current, shareLinkId: made.id };
     }

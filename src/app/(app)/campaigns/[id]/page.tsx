@@ -10,7 +10,7 @@ import { appUrl } from "@/lib/unsubscribe";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
 import { audienceFor, messagesForCampaign, saveCampaignTester, sendCampaign, sendCampaignTest, setCampaignAbout } from "../actions";
-import { campaignExtras, unfilledIn, whatsappTest } from "@/lib/campaignTest";
+import { campaignExtras, ensureCampaignLinks, unfilledIn, whatsappTest } from "@/lib/campaignTest";
 import { readSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/auth";
 import SubmitButton from "@/components/SubmitButton";
@@ -22,8 +22,11 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const { locale, t } = await getTranslator();
 
   const rows = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
-  const campaign = rows[0];
-  if (!campaign) notFound();
+  if (!rows[0]) notFound();
+  /* A draft saved before the links were made by themselves gets them now, so
+     {{price_list_url}} is never left empty at the bottom of the message. */
+  const campaign =
+    rows[0].status === "DRAFT" ? await ensureCampaignLinks(rows[0], user.email) : rows[0];
 
   const [attachments, recipients, log, fileLinkRows] = await Promise.all([
     db

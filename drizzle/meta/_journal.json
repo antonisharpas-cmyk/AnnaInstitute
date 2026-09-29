@@ -267,6 +267,13 @@
       "when": 1790966547383,
       "tag": "0038_campaign_about",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791066547383,
+      "tag": "0039_price_list_scope",
+      "breakpoints": true
     }
   ]
 }

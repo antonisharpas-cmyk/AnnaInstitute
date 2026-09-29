@@ -70,6 +70,7 @@ const NEEDED_COLUMNS = [
   ["expenses", "category_choice", "0036"],
   ["contracts", "kind_choice", "0037"],
   ["campaigns", "project_id", "0038"],
+  ["share_links", "unit_id", "0039"],
 ] as const;
 
 type Ask = (text: string) => Promise<Record<string, unknown>[]>;

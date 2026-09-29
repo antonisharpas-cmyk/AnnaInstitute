@@ -406,6 +406,7 @@ export async function makePriceListLink(formData: FormData) {
     note: String(formData.get("note") ?? "") || null,
     days: days ? Number(days) : null,
     createdByEmail: user.email,
+    ...(await aboutFrom(formData)),
   });
 
   revalidatePath("/campaigns");

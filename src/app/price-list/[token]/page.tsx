@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
 import { formatAmount, toCents } from "@/lib/money";
-import { availableForPriceList, resolvePriceListToken } from "@/lib/priceList";
+import { priceListRows, resolvePriceListToken } from "@/lib/priceList";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,8 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
   const link = await resolvePriceListToken(token);
   if (!link) notFound();
 
-  const rows = await availableForPriceList();
+  /* Everything, one development or one apartment, as the link was made for. */
+  const { rows, focus, gone } = await priceListRows({ projectId: link.projectId, unitId: link.unitId });
   const byProject = new Map<
     string,
     {
@@ -53,7 +54,13 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-brand-line pb-5">
         <div>
           <Logo width={150} />
-          <h1 className="mt-3 text-xl font-semibold">Available apartments</h1>
+          <h1 className="mt-3 text-xl font-semibold" data-price-list-title>
+            {focus && !gone
+              ? `Apartment ${focus.unit.code}, ${focus.project.name}`
+              : link.projectId && rows[0]
+                ? `Available apartments, ${rows[0].project.name}`
+                : "Available apartments"}
+          </h1>
           <p className="text-sm text-brand-graphite/70">
             Prices before VAT. Correct as at {today}.
           </p>
@@ -69,6 +76,13 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
           ) : null}
         </div>
       </header>
+
+      {focus && gone ? (
+        <p className="mb-6 rounded border border-brand-line bg-brand-surface px-4 py-3 text-sm" data-price-list-gone>
+          Apartment {focus.unit.code} at {focus.project.name} is no longer available.
+          {rows.length > 0 ? ` These are the apartments still available at ${focus.project.name}.` : ""}
+        </p>
+      ) : null}
 
       {byProject.size === 0 ? (
         <p className="py-10 text-center text-sm text-brand-graphite/60">
