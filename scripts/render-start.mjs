@@ -19,7 +19,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 
@@ -55,12 +55,68 @@ function startFromTemplate(dataDir) {
   const template = path.join(process.cwd(), "assets", "empty-database.tgz");
   if (!existsSync(template)) return;
   const parent = path.dirname(dataDir);
+  /* The folder the database goes in must already be there: on Render it is the
+     disk. If it is missing, the disk is not attached where DATABASE_URL says,
+     and a database made anyway would vanish at the next deploy. */
+  if (!existsSync(parent) && process.env.RENDER) {
+    console.error(
+      `\n  ${parent} does not exist, so the disk is not attached there.` +
+        `\n  In Render, open Settings, then Disks, and set the Mount Path to ${parent},` +
+        `\n  or change DATABASE_URL to a folder inside the disk's Mount Path.\n`,
+    );
+    process.exit(1);
+  }
   mkdirSync(parent, { recursive: true });
   const unpacked = mkdtempSync(path.join(parent, ".oe-new-database-"));
   execFileSync("tar", ["-xzf", template, "-C", unpacked]);
   renameSync(path.join(unpacked, "db"), dataDir);
   rmSync(unpacked, { recursive: true, force: true });
   console.log(`  A new, empty database was set up in ${dataDir}`);
+}
+
+/*
+ * Data uploaded from Settings, Move data onto this server, waiting to be put
+ * in place. The CRM is not running at this moment, so nothing has the database
+ * open. What is there now is moved aside, never deleted.
+ */
+function applyWaitingImport(dataDir) {
+  const dir = path.join(path.dirname(dataDir), ".import");
+  const pending = path.join(dir, "pending.json");
+  const archive = path.join(dir, "data.tar");
+  if (!existsSync(pending) || !existsSync(archive)) return;
+
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const unpacked = path.join(dir, `unpacked-${stamp}`);
+  mkdirSync(unpacked, { recursive: true });
+  console.log("  Unpacking the uploaded data");
+  execFileSync("tar", ["-xf", archive, "-C", unpacked]);
+
+  const tops = readdirSync(unpacked);
+  const db = tops.find((name) => existsSync(path.join(unpacked, name, "PG_VERSION")));
+  if (!db) {
+    console.error("  The uploaded archive has no database in it, so nothing was changed.");
+    rmSync(unpacked, { recursive: true, force: true });
+    rmSync(pending, { force: true });
+    return;
+  }
+
+  if (existsSync(dataDir)) renameSync(dataDir, `${dataDir}-before-import-${stamp}`);
+  renameSync(path.join(unpacked, db), dataDir);
+  let summary = "the database";
+
+  const storage = process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : null;
+  if (storage && existsSync(path.join(unpacked, "storage"))) {
+    if (existsSync(storage)) renameSync(storage, `${storage}-before-import-${stamp}`);
+    mkdirSync(path.dirname(storage), { recursive: true });
+    renameSync(path.join(unpacked, "storage"), storage);
+    summary += " and the uploaded files";
+  }
+
+  rmSync(unpacked, { recursive: true, force: true });
+  rmSync(archive, { force: true });
+  rmSync(pending, { force: true });
+  writeFileSync(path.join(dir, "last.json"), JSON.stringify({ at: new Date().toISOString(), summary: `${summary} were put in place` }));
+  console.log(`  The uploaded data is in place: ${summary}. The data from before is kept beside it, marked before-import-${stamp}.`);
 }
 
 async function firstAdministrator(query) {
@@ -89,6 +145,7 @@ async function main() {
     const withoutScheme = raw.replace(/^pglite:(\/\/)?/, "").replace(/^file:(\/\/)?/, "");
     const dataDir = path.resolve(process.cwd(), withoutScheme || "./.localdb");
 
+    applyWaitingImport(dataDir);
     startFromTemplate(dataDir);
     const client = new PGlite(dataDir, LEAN);
     await client.waitReady;

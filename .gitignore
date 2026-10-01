@@ -50,3 +50,6 @@ next-env.d.ts
 
 # holds a generated secret, do not commit
 /LOCAL_SETUP.txt
+
+# A packed copy of the CRM data for moving it to the server: every client and payment.
+oneeleven-data*.tar

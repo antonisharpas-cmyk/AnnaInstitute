@@ -19,6 +19,7 @@
     "db:fix": "node --env-file=.env.local --import tsx scripts/fix-db.ts",
     "db:check": "node --env-file=.env.local --import tsx scripts/check-db.ts",
     "db:check:ci": "tsx scripts/check-db.ts",
+    "data:export": "node scripts/export-data.mjs",
     "db:demo": "node --env-file=.env.local --import tsx scripts/demo.ts",
     "db:partners": "node --env-file=.env.local --import tsx scripts/partners.ts",
     "db:statuses": "node --env-file=.env.local --import tsx scripts/statuses.ts",

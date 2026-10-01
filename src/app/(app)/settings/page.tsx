@@ -75,7 +75,14 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title={t("settings.title")} />
+      <PageHeader
+        title={t("settings.title")}
+        action={
+          <a href="/settings/data" className="btn btn-secondary" data-data-link>
+            {t("data.link")}
+          </a>
+        }
+      />
 
       <EmailSwitch />
 
