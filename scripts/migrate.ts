@@ -7,13 +7,16 @@
  * Safe to run repeatedly: migrations already applied are skipped. On Render this
  * runs as part of the build, so a deploy brings the schema up to date by itself.
  */
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import postgres from "postgres";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { migrate as migratePglite } from "drizzle-orm/pglite/migrator";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import { migrate as migratePostgres } from "drizzle-orm/postgres-js/migrator";
-import { connectionOptions, DatabaseUrlError, target } from "../src/db/url";
+import { connectionOptions, DatabaseUrlError, leanPglite, target } from "../src/db/url";
 
 /**
  * A local database can only be opened by one process at a time, so this is the
@@ -21,7 +24,7 @@ import { connectionOptions, DatabaseUrlError, target } from "../src/db/url";
  */
 async function openLocal(dataDir: string): Promise<PGlite> {
   try {
-    const client = new PGlite(dataDir);
+    const client = new PGlite(dataDir, leanPglite());
     await client.waitReady;
     return client;
   } catch (error) {
@@ -35,6 +38,32 @@ async function openLocal(dataDir: string): Promise<PGlite> {
     }
     throw error;
   }
+}
+
+/*
+ * A new local database starts from a ready made empty one.
+ *
+ * A database kept as a folder lives inside the memory of the process that
+ * opens it. Creating one from nothing is by far the most expensive moment of
+ * its life: about 650 MB, which a 512 MB server cannot give, so the server
+ * stopped it half way and the CRM never came up. Opening one that already
+ * exists takes under 200 MB. So the CRM ships an empty database, created once
+ * on a machine with memory to spare (scripts/make-empty-database.mjs), and a
+ * new folder is unpacked from it rather than created. The migrations then run
+ * as usual and need under 300 MB.
+ */
+const TEMPLATE = path.join(process.cwd(), "assets", "empty-database.tgz");
+
+function startFromTemplate(dataDir: string) {
+  if (existsSync(dataDir)) return;
+  if (!existsSync(TEMPLATE)) return;
+  const parent = path.dirname(dataDir);
+  mkdirSync(parent, { recursive: true });
+  const unpacked = mkdtempSync(path.join(parent, ".oe-new-database-"));
+  execFileSync("tar", ["-xzf", TEMPLATE, "-C", unpacked]);
+  renameSync(path.join(unpacked, "db"), dataDir);
+  rmSync(unpacked, { recursive: true, force: true });
+  console.log(`  A new, empty database was set up in ${dataDir}`);
 }
 
 async function main() {
@@ -52,6 +81,7 @@ async function main() {
   console.log(`  Applying migrations to ${resolved.label}`);
 
   if (resolved.kind === "pglite") {
+    startFromTemplate(resolved.dataDir);
     const client = await openLocal(resolved.dataDir);
     await migratePglite(drizzlePglite(client), { migrationsFolder: "./drizzle" });
     await client.close();

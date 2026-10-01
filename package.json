@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "start:render": "npx --yes tsx scripts/migrate.ts && npx --yes tsx scripts/seed.ts && NODE_OPTIONS='--max-old-space-size=256 --max-semi-space-size=8' next start",
+    "start:render": "node scripts/render-start.mjs && NODE_OPTIONS='--max-old-space-size=256 --max-semi-space-size=8' next start",
     "lint": "eslint",
     "test": "tsx --test \"src/lib/**/*.test.ts\"",
     "db:push": "node --env-file=.env.local node_modules/drizzle-kit/bin.cjs push --force",

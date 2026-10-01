@@ -113,3 +113,34 @@ export function connectionOptions(max = 5) {
 export function describeTarget(): string {
   return target().label;
 }
+
+/*
+ * A database kept as a folder runs inside the app's own memory, so it is told
+ * to be frugal. Postgres' own defaults are sized for a machine of its own, and
+ * on a small server they would take most of the memory there is, above all
+ * the first time, when the empty database is created and every migration runs.
+ * The CRM's tables are small, so smaller buffers cost nothing noticeable.
+ */
+export function leanPglite() {
+  const mb = (name: string, fallback: number) => {
+    const n = Number(process.env[name]);
+    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
+  };
+  return {
+    startParams: [
+      "--single", "-F", "-O", "-j",
+      "-c", "search_path=public",
+      "-c", "exit_on_error=false",
+      "-c", "log_checkpoints=false",
+      "-c", "max_worker_processes=0",
+      "-c", "max_parallel_workers=0",
+      "-c", "max_parallel_workers_per_gather=0",
+      "-c", "io_method=sync",
+      "-c", "max_parallel_maintenance_workers=0",
+      "-c", `shared_buffers=${mb("PGLITE_SHARED_BUFFERS_MB", 8)}MB`,
+      "-c", "work_mem=4MB",
+      "-c", "maintenance_work_mem=16MB",
+      "-c", "temp_buffers=4MB",
+    ],
+  };
+}

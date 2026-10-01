@@ -3,39 +3,9 @@ import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import postgres from "postgres";
 import * as schema from "./schema";
-import { connectionOptions, target } from "./url";
+import { connectionOptions, leanPglite, target } from "./url";
 
 type Database = PostgresJsDatabase<typeof schema>;
-
-/*
- * A database kept as a folder runs inside the app's own memory, so it is told
- * to be frugal: Postgres' own defaults are sized for a machine of its own, and
- * on a small server they would take most of the memory the app has. The CRM's
- * tables are small, so smaller buffers cost nothing noticeable.
- */
-function lean() {
-  const mb = (name: string, fallback: number) => {
-    const n = Number(process.env[name]);
-    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
-  };
-  return {
-    startParams: [
-      "--single", "-F", "-O", "-j",
-      "-c", "search_path=public",
-      "-c", "exit_on_error=false",
-      "-c", "log_checkpoints=false",
-      "-c", "max_worker_processes=0",
-      "-c", "max_parallel_workers=0",
-      "-c", "max_parallel_workers_per_gather=0",
-      "-c", "io_method=sync",
-      "-c", "max_parallel_maintenance_workers=0",
-      "-c", `shared_buffers=${mb("PGLITE_SHARED_BUFFERS_MB", 8)}MB`,
-      "-c", "work_mem=4MB",
-      "-c", "maintenance_work_mem=16MB",
-      "-c", "temp_buffers=4MB",
-    ],
-  };
-}
 
 const globalForDb = globalThis as unknown as {
   sql?: ReturnType<typeof postgres>;
@@ -58,7 +28,7 @@ function getDb(): Database {
   let instance: Database;
 
   if (resolved.kind === "pglite") {
-    const client = globalForDb.pglite ?? new PGlite(resolved.dataDir, lean());
+    const client = globalForDb.pglite ?? new PGlite(resolved.dataDir, leanPglite());
     globalForDb.pglite = client;
     instance = drizzlePglite(client, { schema }) as unknown as Database;
   } else {
