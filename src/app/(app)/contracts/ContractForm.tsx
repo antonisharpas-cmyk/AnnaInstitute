@@ -7,6 +7,7 @@ import DateField from "@/components/DateField";
 import SearchSelect from "@/components/SearchSelect";
 import ScheduleBuilder, { type Row } from "./ScheduleBuilder";
 import UnitPicker from "./UnitPicker";
+import { standardContractName } from "@/lib/contractName";
 import type { ContractFormState } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { parseAmount } from "@/lib/money";
@@ -80,8 +81,9 @@ export default function ContractForm({
   action: (prev: ContractFormState, formData: FormData) => Promise<ContractFormState>;
   contract?: ContractRecord;
   rows: Row[];
-  units: { id: string; label: string }[];
-  clients: { id: string; label: string }[];
+  /** With the building and the number, which the standard name is made from. */
+  units: { id: string; label: string; building?: string; code?: string }[];
+  clients: { id: string; label: string; firstName?: string; lastName?: string }[];
   agents: { id: string; label: string }[];
   /** Preselected apartment and buyer, for a contract started from a client. */
   defaults?: { unitId?: string; clientId?: string; agentId?: string };
@@ -109,6 +111,35 @@ export default function ContractForm({
   const [picked, setPicked] = useState<string>(contract ? shownCode(contract.kind, contract.kindChoice) : "SALE");
   const kind: "SALE" | "LAND_EXCHANGE" = baseOf(picked) === "LAND_EXCHANGE" ? "LAND_EXCHANGE" : "SALE";
   const [cash, setCash] = useState(whole(contract?.cashAmount ?? undefined));
+
+  /*
+   * The standard name, MA-MOQ-401, filled in as the buyer and the apartment
+   * are chosen. Once somebody types their own name it is left alone; the
+   * button beside the box puts the standard one back.
+   */
+  const [clientId, setClientId] = useState(contract?.clientId ?? defaults?.clientId ?? "");
+  const [unitId, setUnitId] = useState(contract?.unitId ?? defaults?.unitId ?? "");
+  const standardFor = (who: string, where: string) => {
+    const person = clients.find((one) => one.id === who);
+    const flat = units.find((one) => one.id === where);
+    if (!person || !flat) return "";
+    return standardContractName({
+      firstName: person.firstName,
+      lastName: person.lastName,
+      building: flat.building,
+      unit: flat.code,
+    });
+  };
+  const [reference, setReference] = useState(
+    contract?.reference ?? standardFor(contract?.clientId ?? defaults?.clientId ?? "", contract?.unitId ?? defaults?.unitId ?? ""),
+  );
+  const [typed, setTyped] = useState(Boolean(editing && contract?.reference));
+  const standard = standardFor(clientId, unitId);
+  const follow = (who: string, where: string) => {
+    if (typed) return;
+    const next = standardFor(who, where);
+    if (next) setReference(next);
+  };
   /*
    * On a sale with money received, the VAT is changed from the VAT card on the
    * contract, which credits the invoices already issued and puts the VAT paid
@@ -200,6 +231,10 @@ export default function ContractForm({
             name="clientId"
             required
             defaultValue={contract?.clientId ?? defaults?.clientId ?? ""}
+            onChange={(value) => {
+              setClientId(value);
+              follow(value, unitId);
+            }}
             choose={labels.choose}
             searchPlaceholder={labels.searchClient}
             noMatch={labels.noMatch}
@@ -217,6 +252,10 @@ export default function ContractForm({
               name="unitId"
               required
               defaultValue={contract?.unitId ?? defaults?.unitId ?? ""}
+              onChange={(event) => {
+                setUnitId(event.target.value);
+                follow(clientId, event.target.value);
+              }}
               className="select"
             >
               <option value="">{labels.choose}</option>
@@ -237,10 +276,36 @@ export default function ContractForm({
             id="reference"
             name="reference"
             required
-            defaultValue={contract?.reference ?? ""}
-            placeholder="Standard 5% . 200,000"
+            value={reference}
+            onChange={(event) => {
+              setReference(event.target.value);
+              setTyped(true);
+            }}
+            placeholder={kind === "SALE" ? "MA-MOQ-401" : ""}
             className="input"
+            data-contract-name
           />
+          {kind === "SALE" ? (
+            <p className="mt-1 text-xs text-brand-graphite/60">
+              {labels.nameHint}
+              {standard && standard !== reference ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="font-semibold text-brand-teal-dark hover:underline"
+                    onClick={() => {
+                      setReference(standard);
+                      setTyped(false);
+                    }}
+                    data-use-standard
+                  >
+                    {labels.useStandard} {standard}
+                  </button>
+                </>
+              ) : null}
+            </p>
+          ) : null}
         </div>
 
         <div>

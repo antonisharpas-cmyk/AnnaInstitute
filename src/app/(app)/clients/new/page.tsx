@@ -1,3 +1,6 @@
+import { asc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { agents } from "@/db/schema";
 import { optionsFor } from "@/lib/choices";
 import { getTranslator } from "@/i18n";
 import { BackLink, Card, PageHeader } from "@/components/ui";
@@ -22,6 +25,11 @@ export default async function NewClientPage() {
             t={t}
             idTypes={await optionsFor("idType", t)}
             sources={await optionsFor("clientSource", t)}
+            agents={(await db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name))).map((one) => ({
+              value: one.id,
+              label: one.name,
+              hint: one.email ?? one.phone ?? undefined,
+            }))}
           />
           <p className="mt-3 text-xs text-brand-graphite/60">
             The apartment is assigned on the client page once the record is saved.

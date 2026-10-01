@@ -97,13 +97,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const items: NavItem[] = [
     { href: "/", label: t("nav.dashboard"), group: "main" },
     { href: "/leads", label: t("nav.leads"), group: "main", count: waiting?.total ?? 0 },
+    { href: "/clients", label: t("nav.clients"), group: "main" },
     {
       href: "/follow-ups",
       label: t("nav.followUps"),
       group: "main",
       count: followUps ?? 0,
     },
-    { href: "/clients", label: t("nav.clients"), group: "main" },
     {
       href: "/appointments",
       label: t("nav.appointments"),

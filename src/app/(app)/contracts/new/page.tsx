@@ -28,14 +28,15 @@ export default async function NewContractPage({
   const { from, client, unit } = await searchParams;
 
   /**
-   * The agent who introduced this buyer, taken from the enquiry they came from.
+   * The agent who introduced this buyer, taken from the lead they came from.
    *
-   * The office named the agent when the enquiry was taken, so the contract
+   * The office named the agent when the lead was taken, so the contract
    * should not ask again: it arrives chosen, and can be changed if the sale
    * actually came through somebody else.
    */
   const introducedBy = client
-    ? ((
+    ? ((await db.select({ agentId: clients.agentId }).from(clients).where(eq(clients.id, client)).limit(1))[0]?.agentId ??
+      (
         await db
           .select({ agentId: leads.agentId })
           .from(leads)
@@ -102,6 +103,8 @@ export default async function NewContractPage({
                 rows={rows}
                 units={free.map((u) => ({
                   id: u.unit.id,
+                  building: u.project.name,
+                  code: u.unit.code,
                   label: `${u.project.name} ${u.unit.code} . ${formatAmount(
                     Number(u.unit.netPrice) * 100,
                     locale,
@@ -110,6 +113,8 @@ export default async function NewContractPage({
                 clients={clientList.map((c) => ({
                   id: c.id,
                   label: `${c.lastName} ${c.firstName}`,
+                  firstName: c.firstName,
+                  lastName: c.lastName,
                 }))}
                 agents={agentList.map((a) => ({
                   id: a.id,

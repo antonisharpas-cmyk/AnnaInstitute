@@ -83,7 +83,7 @@ export async function listEntries(list: ListKey): Promise<Entry[]> {
       builtin: true,
       auto: Boolean(one.auto),
       locked: Boolean(one.locked || one.auto),
-      active: one.auto || one.locked ? true : (row?.active ?? true),
+      active: one.auto || one.locked ? true : (row?.active ?? !one.offByDefault),
       order: row?.sortOrder ?? (index + 1) * 10,
       labelEn: row?.labelEn ?? null,
       labelEl: row?.labelEl ?? null,

@@ -103,7 +103,7 @@ export async function GET(request: Request) {
     case "leads": {
       const sources = await leadsBySource(range);
       rows = [
-        ["Source", "Enquiries", "Became clients"],
+        ["Source", "Leads", "Became clients"],
         ...sources.map((row) => [row.source, row.total, row.converted]),
       ];
       break;

@@ -243,6 +243,31 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "price lists for one development or one apartment",
     migration: "0039",
   },
+  {
+    probe: "select to_leads, project_ids from campaigns limit 1",
+    what: "campaigns to leads, companies with shareholders, cash received and appointments with anybody",
+    migration: "0040",
+  },
+  {
+    probe: "select id from cash_receipts limit 1",
+    what: "cash received against a contract",
+    migration: "0040",
+  },
+  {
+    probe: "select logo_path, iban, next_invoice from subowners limit 1",
+    what: "each company's own invoices, receipts and credit notes",
+    migration: "0041",
+  },
+  {
+    probe: "select issuer_id from issued_documents limit 1",
+    what: "a running number series for each company",
+    migration: "0041",
+  },
+  {
+    probe: "select client_id, agent_id, other_name, assigned_to_id from lead_follow_ups limit 1",
+    what: "follow ups with clients, agents and anybody else",
+    migration: "0041",
+  },
 ];
 
 let answer: Missing[] | null = null;

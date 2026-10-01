@@ -41,6 +41,8 @@ export type Builtin = {
   auto?: boolean;
   /** Needed by the CRM, so it can be renamed and moved but not switched off. */
   locked?: boolean;
+  /** Kept for the records that have it, but off until the office switches it on in the Builder. */
+  offByDefault?: boolean;
 };
 
 export type ListDef = {
@@ -193,12 +195,15 @@ export const LISTS: ListDef[] = [
     key: "appointmentType",
     section: "appointments",
     prefix: "appointments.type",
+    /* In the office's order: the office, a building, Studio Bagno, Ocriam, or
+       something else. A call is kept for the appointments that were calls, and
+       is off until somebody switches it on again. */
     builtins: [
-      { code: "TIMBER" },
-      { code: "BATHROOMS_TILES" },
       { code: "OFFICE" },
-      { code: "PHONE_CALL" },
-      { code: "BUILDING" },
+      { code: "BUILDING", locked: true },
+      { code: "BATHROOMS_TILES" },
+      { code: "TIMBER" },
+      { code: "PHONE_CALL", offByDefault: true },
       { code: "OTHER", locked: true },
     ],
   },

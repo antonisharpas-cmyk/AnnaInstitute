@@ -23,7 +23,7 @@ import { removeDocument } from "@/lib/uploads";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeys";
 
 /* One list of statuses and one list of sources for the whole CRM, kept where
-   the enquiries themselves are described rather than copied into each page. */
+   the leads themselves are described rather than copied into each page. */
 const STATUSES = LEAD_STATUSES;
 type LeadStatus = (typeof STATUSES)[number];
 
@@ -47,7 +47,7 @@ async function readStatus(value: string): Promise<{ status: LeadStatus; statusCh
 /**
  * The office's own source, carried across when the client list has it too.
  *
- * The Builder keeps the two lists apart, so "Open day" on the enquiry becomes
+ * The Builder keeps the two lists apart, so "Open day" on the lead becomes
  * "Open day" on the client only if the office added it to both; otherwise the
  * client simply reads as the built in source it counted as.
  */
@@ -65,9 +65,9 @@ async function clientSourceChoiceFor(lead: { sourceKind: string; sourceChoice: s
  * The same source, on the client's side of the fence.
  *
  * Both lists hold the same ways of reaching One Eleven, so this is nearly an
- * identity: an Instagram enquiry becomes an Instagram client. The two that are
+ * identity: an Instagram lead becomes an Instagram client. The two that are
  * spelled differently are named here, and anything a client has no word for
- * falls back to Other rather than being quietly called an enquiry.
+ * falls back to Other rather than being quietly called a lead.
  */
 function clientSourceFor(kind: string): typeof clients.$inferInsert.source {
   if (kind === "AGENT") return "AGENT_REFERRAL";
@@ -91,12 +91,12 @@ function clientSourceFor(kind: string): typeof clients.$inferInsert.source {
 /**
  * A lead typed in by the office.
  *
- * The same record as one that arrives from the website, so an enquiry taken over
+ * The same record as one that arrives from the website, so a lead taken over
  * the phone or forwarded by an agent sits in the same list and follows the same
  * road to becoming a client.
  */
 /**
- * What the enquiry form gets back when it cannot be saved as it stands.
+ * What the lead form gets back when it cannot be saved as it stands.
  *
  * The message, and everything that was typed. React empties a form once its
  * action has run, so without carrying the answers back the office would be
@@ -105,7 +105,7 @@ function clientSourceFor(kind: string): typeof clients.$inferInsert.source {
  */
 
 /**
- * An enquiry that became a client is read only.
+ * A lead that became a client is read only.
  *
  * Everything that changes about the person is changed on the client record,
  * which is where the office now looks after them. The pages hide the controls;
@@ -172,17 +172,17 @@ export async function createLead(
   if (!email && !phone) {
     return {
       error:
-        "Give the enquiry an email address or a telephone number, or there is no way to reply.",
+        "Give the lead an email address or a telephone number, or there is no way to reply.",
       values: typedBack(),
       attempt: (previous?.attempt ?? 0) + 1,
     };
   }
 
-  /* An enquiry that came from an agent names the agent, or the commission
+  /* A lead that came from an agent names the agent, or the commission
      has nobody to go to later. */
   if (sourceKind === "AGENT" && !String(formData.get("agentId") ?? "").trim()) {
     return {
-      error: "The enquiry came from an agent, so choose which agent before saving it.",
+      error: "The lead came from an agent, so choose which agent before saving it.",
       values: typedBack(),
       attempt: (previous?.attempt ?? 0) + 1,
     };
@@ -194,8 +194,8 @@ export async function createLead(
    * Somebody who agrees on the telephone has agreed, and making the office go
    * to another screen afterwards to record it is how a campaign list ends up
    * with people on it who never said yes, or without people who did. It is
-   * written on the enquiry with a note saying where it came from, and it
-   * travels to the client record when the enquiry becomes a buyer.
+   * written on the lead with a note saying where it came from, and it
+   * travels to the client record when the lead becomes a buyer.
    */
   const consented = String(formData.get("consent") ?? "") === "on";
   const agentId = String(formData.get("agentId") ?? "").trim() || null;
@@ -210,15 +210,15 @@ export async function createLead(
       message: note,
       sourceKind,
       sourceChoice: sourceKind === pickedSource.base ? sourceChoice : null,
-      /* Whose enquiry this is, from the moment it is written down. */
+      /* Whose lead this is, from the moment it is written down. */
       assignedToId: String(formData.get("assignedToId") ?? "") || null,
       source: sourceKind === "OTHER" ? other || "other" : sourceKind.toLowerCase(),
       projectName: String(formData.get("projectName") ?? "").trim() || null,
-      // Only meaningful when the enquiry came from an agent, and ignored
+      // Only meaningful when the lead came from an agent, and ignored
       // otherwise, so changing the source does not leave a stray name behind.
       agentId: sourceKind === "AGENT" ? agentId : null,
       consent: consented,
-      consentText: consented ? "Given to the office when the enquiry was taken" : null,
+      consentText: consented ? "Given to the office when the lead was taken" : null,
       status: "NEW",
     })
     .returning({ id: leads.id });
@@ -247,9 +247,9 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
   /**
    * Became a client is not a status, it is a move.
    *
-   * Setting it here does what the button on the enquiry does: the client record
-   * is created from everything the enquiry knows, the enquiry leaves the
-   * enquiries list, and the office lands on the new profile ready to assign an
+   * Setting it here does what the button on the lead does: the client record
+   * is created from everything the lead knows, the lead leaves the
+   * leads list, and the office lands on the new profile ready to assign an
    * apartment. Anything already converted is left alone rather than doubled.
    */
   if (status === "CONVERTED") {
@@ -289,12 +289,12 @@ export async function setLeadStatus(leadId: string, formData: FormData) {
 }
 
 /**
- * Add one note to an enquiry's record.
+ * Add one note to a lead's record.
  *
  * Notes are added, never overwritten: "contacted", then "contacted again, he
  * asked for the plans", then "meeting agreed for Tuesday" is the history the
  * office works from, and a single box that the next person types over destroys
- * exactly the part that was worth keeping. The enquiry's own updated stamp
+ * exactly the part that was worth keeping. The lead's own updated stamp
  * moves too, so a list sorted by activity puts it where it belongs.
  */
 export async function addLeadNote(leadId: string, formData: FormData) {
@@ -360,15 +360,15 @@ export async function removeLeadNote(leadId: string, formData: FormData) {
  * form said is copied into the client's notes rather than thrown away.
  */
 /**
- * Make a client out of an enquiry.
+ * Make a client out of a lead.
  *
  * Written once and called from two places, because the office asked for both:
- * the button on the enquiry, where the name can be corrected and consent
+ * the button on the lead, where the name can be corrected and consent
  * confirmed first, and the status "Became a client", which is the way somebody
  * working down a list thinks about it. Whichever is used, the same thing
- * happens, and the enquiry leaves the enquiries list the moment it does.
+ * happens, and the lead leaves the leads list the moment it does.
  *
- * Everything the enquiry knew goes with it: the name, the contact details, what
+ * Everything the lead knew goes with it: the name, the contact details, what
  * they asked about, consent if it was given, and the agent who introduced them,
  * which the contract later picks up so the commission has an owner.
  */
@@ -382,20 +382,20 @@ async function makeClient(
   if (!lead) return null;
   if (lead.clientId) return lead.clientId;
 
-  const firstName = chosen?.firstName?.trim() || lead.firstName || "Enquiry";
+  const firstName = chosen?.firstName?.trim() || lead.firstName || "Lead";
   const lastName = chosen?.lastName?.trim() || lead.lastName || "";
 
   /**
    * Consent carries over, and can only be added by somebody saying so.
    *
-   * The enquiry may already carry it, from the website's own box or from the
+   * The lead may already carry it, from the website's own box or from the
    * office ticking it while taking the call. The conversion form can confirm it
    * as well. Neither can take it away silently, and nothing here invents it.
    */
   const optIn = chosen?.optIn ?? lead.consent;
 
   const notes = [
-    lead.message ? `From the enquiry: ${lead.message}` : null,
+    lead.message ? `From the lead: ${lead.message}` : null,
     lead.projectName ? `Asked about ${lead.projectName}` : null,
     lead.pageUrl ? `Page: ${lead.pageUrl}` : null,
   ]
@@ -413,15 +413,17 @@ async function makeClient(
       /*
         The source carries over as it stands.
         
-        It used to be flattened to "Enquiry" unless an agent had brought it,
+        It used to be flattened to "Lead" unless an agent had brought it,
         which threw away the one thing the office knew about where the buyer
-        came from. A WhatsApp enquiry is now a WhatsApp client.
+        came from. A WhatsApp lead is now a WhatsApp client.
       */
       source: clientSourceFor(lead.sourceKind),
       sourceChoice: await clientSourceChoiceFor(lead),
+      /* The agent who brought the lead brought the client. */
+      agentId: lead.agentId ?? null,
       marketingOptIn: optIn,
       marketingOptInAt: optIn ? new Date() : null,
-      marketingOptInSource: optIn ? (lead.consentText ?? "the enquiry") : null,
+      marketingOptInSource: optIn ? (lead.consentText ?? "the lead") : null,
       notes: notes || null,
     })
     .returning({ id: clients.id });
@@ -464,7 +466,7 @@ export async function convertLead(leadId: string, formData: FormData) {
  * Undo a conversion.
  *
  * Pressed by mistake, or the buyer changed their mind before anything was
- * signed: the client record goes and the enquiry returns to the leads list where
+ * signed: the client record goes and the lead returns to the leads list where
  * it can be picked up again. A client who already has a contract is never
  * removed this way, because that would take the contract with it. Cancel the
  * contract first, and the office keeps the choice rather than losing the record.
@@ -516,7 +518,7 @@ export async function undoConversion(clientId: string) {
 }
 
 /**
- * Deleting an enquiry, which is not the same as destroying it.
+ * Deleting a lead, which is not the same as destroying it.
  *
  * It goes to the recycle bin, disappears from every list and count, and can be
  * put back from the line at the bottom of the screen or from the bin itself for
@@ -558,10 +560,10 @@ export async function setLeadStatusInline(
   const user = await requireUser(["ADMIN"]);
   const picked = await readStatus(status);
   if (!picked) return { error: "Unknown status" };
-  if (await isClientNow(leadId)) return { error: "This enquiry is a client now, so it is changed on the client." };
+  if (await isClientNow(leadId)) return { error: "This lead is a client now, so it is changed on the client." };
 
   const [before] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
-  if (!before) return { error: "That enquiry is gone" };
+  if (!before) return { error: "That lead is gone" };
 
   if (before.status === "CONVERTED" && status !== "CONVERTED" && before.clientId) {
     // Undoing a conversion is its own action, with its own checks.
@@ -570,11 +572,11 @@ export async function setLeadStatusInline(
 
   /**
    * Chosen from the list itself, Became a client does the same move, and the
-   * row disappears from the list because a client is not an enquiry any more.
+   * row disappears from the list because a client is not a lead any more.
    */
   if (status === "CONVERTED") {
     const clientId = await makeClient(leadId, user);
-    if (!clientId) return { error: "That enquiry is gone" };
+    if (!clientId) return { error: "That lead is gone" };
     await flash("said.leadConverted");
     revalidatePath("/leads");
     revalidatePath("/clients");
@@ -649,6 +651,29 @@ export async function bulkLeadStatus(formData: FormData) {
         )
       : new Set<string>();
   const ids = picked.filter((id) => !clientsNow.has(id));
+
+  /* Became a client, for everything chosen: each one is made a client the same
+     way as the button on the lead does it, and leaves the list. */
+  if (status === "CONVERTED") {
+    if (ids.length === 0) {
+      await flash("said.nothingChosen", "bad");
+      revalidatePath("/leads");
+      return;
+    }
+    let made = 0;
+    for (const id of ids) if (await makeClient(id, user)) made += 1;
+    await recordAudit({
+      action: "lead.converted.bulk",
+      entity: "lead",
+      detail: `${made} made clients`,
+      userId: user.id,
+      userEmail: user.email,
+    });
+    await flash("said.leadConverted");
+    revalidatePath("/leads");
+    revalidatePath("/clients");
+    return;
+  }
 
   const chosen = await readStatus(status);
   if (!chosen || ids.length === 0) {
@@ -767,7 +792,7 @@ export async function killApiKey(keyId: string) {
 }
 
 /* ---------------------------------------------------------------------------
-   Follow ups: what happens next on this enquiry.
+   Follow ups: what happens next on this lead.
 
    A note is the past, a follow up is the future. It carries a day, a short
    line about what is to be done, and nothing else, because the office asked
@@ -797,7 +822,8 @@ export async function addFollowUp(leadId: string, formData: FormData) {
     return;
   }
 
-  await db.insert(leadFollowUps).values({ leadId, at, note, createdById: user.id });
+  const assignedToId = String(formData.get("assignedToId") ?? "").trim() || null;
+  await db.insert(leadFollowUps).values({ leadId, at, note, assignedToId, createdById: user.id });
   await db.update(leads).set({ updatedAt: new Date() }).where(eq(leads.id, leadId));
 
   await recordAudit({
@@ -818,25 +844,58 @@ export async function addFollowUp(leadId: string, formData: FormData) {
 /**
  * A follow up written from the follow ups section.
  *
- * The same record as one written on the enquiry, so it appears on the
- * enquiry's own card at once: the section only asks which enquiry it is for.
+ * With a lead, a client, an agent or somebody the CRM has no record of, the
+ * same four ways as an appointment. One with a lead is the same record as one
+ * written on the lead, so it shows on the lead's card at once.
  */
 export async function addFollowUpFromList(formData: FormData) {
-  await requireUser(["ADMIN"]);
-  const leadId = String(formData.get("leadId") ?? "").trim();
-  if (!leadId) {
-    await flash("said.followUpNeedsLead", "bad");
+  const user = await requireUser(["ADMIN"]);
+  const raw = String(formData.get("with") ?? formData.get("leadId") ?? "").trim();
+  const back = async (key: "said.followUpNeedsLead" | "said.needADay") => {
+    await flash(key, "bad");
+    revalidatePath("/follow-ups");
+  };
+  if (raw.startsWith("lead:") || (raw && !raw.includes(":") && raw !== "other")) {
+    await addFollowUp(raw.startsWith("lead:") ? raw.slice(5) : raw, formData);
     revalidatePath("/follow-ups");
     return;
   }
-  await addFollowUp(leadId, formData);
+  const who = {
+    clientId: raw.startsWith("client:") ? raw.slice(7) || null : null,
+    agentId: raw.startsWith("agent:") ? raw.slice(6) || null : null,
+    otherName: raw === "other" ? String(formData.get("otherName") ?? "").trim() || null : null,
+    otherEmail: raw === "other" ? String(formData.get("otherEmail") ?? "").trim() || null : null,
+  };
+  if (!who.clientId && !who.agentId && !who.otherName) return back("said.followUpNeedsLead");
+
+  const day = String(formData.get("day") ?? "").trim();
+  const time = String(formData.get("time") ?? "").trim() || "09:00";
+  const at = new Date(`${day}T${time.length === 5 ? time : "09:00"}:00`);
+  if (!day || Number.isNaN(at.getTime())) return back("said.needADay");
+  const note = String(formData.get("note") ?? "").trim() || null;
+  const assignedToId = String(formData.get("assignedToId") ?? "").trim() || null;
+
+  const [row] = await db
+    .insert(leadFollowUps)
+    .values({ ...who, at, note, assignedToId, createdById: user.id })
+    .returning({ id: leadFollowUps.id });
+  await recordAudit({
+    action: "followUp.add",
+    entity: who.clientId ? "client" : who.agentId ? "agent" : "followUp",
+    entityId: who.clientId ?? who.agentId ?? row.id,
+    detail: `${at.toISOString().slice(0, 16)}${who.otherName ? `, ${who.otherName}` : ""}${note ? `, ${note.slice(0, 80)}` : ""}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
   revalidatePath("/follow-ups");
+  if (who.clientId) revalidatePath(`/clients/${who.clientId}`);
 }
 
 /** Done, or back to pending when somebody pressed it too early. */
 export async function setFollowUpStatus(
   followUpId: string,
-  leadId: string,
+  leadId: string | null,
   status: "PENDING" | "DONE",
 ) {
   const user = await requireUser(["ADMIN"]);
@@ -852,38 +911,40 @@ export async function setFollowUpStatus(
 
   await recordAudit({
     action: "lead.followUp.status",
-    entity: "lead",
-    entityId: leadId,
+    entity: leadId ? "lead" : "followUp",
+    entityId: leadId ?? followUpId,
     detail: `${followUpId} ${status}`,
     userId: user.id,
     userEmail: user.email,
   });
 
   await flash("said.saved");
-  revalidatePath(`/leads/${leadId}`);
+  if (leadId) revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
+  revalidatePath("/follow-ups");
 }
 
-export async function deleteFollowUp(followUpId: string, leadId: string) {
+export async function deleteFollowUp(followUpId: string, leadId: string | null) {
   const user = await requireUser(["ADMIN"]);
 
   await db.delete(leadFollowUps).where(eq(leadFollowUps.id, followUpId));
 
   await recordAudit({
     action: "lead.followUp.delete",
-    entity: "lead",
-    entityId: leadId,
+    entity: leadId ? "lead" : "followUp",
+    entityId: leadId ?? followUpId,
     detail: followUpId,
     userId: user.id,
     userEmail: user.email,
   });
 
   await flash("said.deleted");
-  revalidatePath(`/leads/${leadId}`);
+  if (leadId) revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
+  revalidatePath("/follow-ups");
 }
 
-/** Whose enquiry this is. */
+/** Whose lead this is. */
 export async function assignLead(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   if (await refuseForClient(leadId)) return;

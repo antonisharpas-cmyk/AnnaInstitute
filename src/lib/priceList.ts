@@ -26,7 +26,7 @@ export async function availableForPriceList() {
 }
 
 /** What a price list link shows: everything, one development, or one apartment. */
-export type PriceListScope = { projectId?: string | null; unitId?: string | null };
+export type PriceListScope = { projectId?: string | null; unitId?: string | null; projectIds?: string | null };
 
 /**
  * The apartments a link shows, read at the moment the page is opened.
@@ -50,6 +50,17 @@ export async function priceListRows(scope: PriceListScope) {
       return { rows: all.filter((row) => row.project.id === chosen.project.id), focus: chosen, gone: true };
     }
   }
+  const several = (() => {
+    try {
+      const list = JSON.parse(scope.projectIds ?? "[]");
+      return Array.isArray(list) ? (list as string[]) : [];
+    } catch {
+      return [];
+    }
+  })();
+  if (several.length > 0) {
+    return { rows: all.filter((row) => several.includes(row.project.id)), focus: null, gone: false };
+  }
   if (scope.projectId) {
     const [project] = await db.select().from(projects).where(eq(projects.id, scope.projectId)).limit(1);
     if (project) return { rows: all.filter((row) => row.project.id === project.id), focus: null, gone: false };
@@ -59,6 +70,18 @@ export async function priceListRows(scope: PriceListScope) {
 
 /** What a link shows, in words, for the list of links. */
 export async function scopeWords(scope: PriceListScope): Promise<string> {
+  if (scope.projectIds) {
+    let ids: string[] = [];
+    try {
+      ids = JSON.parse(scope.projectIds);
+    } catch {
+      ids = [];
+    }
+    if (ids.length > 0) {
+      const rows = await db.select({ id: projects.id, name: projects.name }).from(projects);
+      return rows.filter((one) => ids.includes(one.id)).map((one) => one.name).join(", ");
+    }
+  }
   if (scope.unitId) {
     const [row] = await db
       .select({ code: units.code, project: projects.name })
@@ -81,6 +104,7 @@ export async function createPriceListLink(options: {
   createdByEmail: string;
   projectId?: string | null;
   unitId?: string | null;
+  projectIds?: string | null;
   /** Set when the CRM makes the link for a campaign, so the link can follow it. */
   campaignId?: string | null;
 }) {
@@ -97,6 +121,7 @@ export async function createPriceListLink(options: {
       createdByEmail: options.createdByEmail,
       projectId: options.unitId ? null : (options.projectId ?? null),
       unitId: options.unitId ?? null,
+      projectIds: options.projectIds ?? null,
       campaignId: options.campaignId ?? null,
     })
     .returning({ id: shareLinks.id, token: shareLinks.token });

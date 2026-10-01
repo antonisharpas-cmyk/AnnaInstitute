@@ -65,10 +65,10 @@ export const contactSourceEnum = pgEnum("contact_source", [
   "LAND_OWNER",
   "OTHER",
   /*
-   * The two an enquiry can arrive by that a client had no word for.
+   * The two a lead can arrive by that a client had no word for.
    *
    * A lead that came in on WhatsApp became a client whose source read
-   * "Enquiry", so the one thing the office knew about where the buyer came
+   * "Lead", so the one thing the office knew about where the buyer came
    * from was thrown away at the moment of conversion. The client's own source
    * now holds every way somebody can reach us.
    */
@@ -175,6 +175,28 @@ export const subowners = pgTable("subowners", {
   country: text("country"),
   vatNumber: text("vat_number"),
   registryNumber: text("registry_number"),
+  /*
+   * What the company's own invoices, receipts and credit notes print. A
+   * development the company holds is invoiced in its name, with its logo, its
+   * numbers and its bank, and in its own running series.
+   */
+  tic: text("tic"),
+  mobile: text("mobile"),
+  fax: text("fax"),
+  website: text("website"),
+  bankName: text("bank_name"),
+  bankBeneficiary: text("bank_beneficiary"),
+  bankAccount: text("bank_account"),
+  iban: text("iban"),
+  bic: text("bic"),
+  /** "public:brand/companies/x.png" for a shipped logo, or a stored upload's path. */
+  logoPath: text("logo_path"),
+  /** The colour its papers are drawn in, as #RRGGBB. */
+  brandColor: text("brand_color"),
+  /** Where each of its series carries on from, when its old books stopped somewhere. */
+  nextInvoice: integer("next_invoice"),
+  nextReceipt: integer("next_receipt"),
+  nextCreditNote: integer("next_credit_note"),
   isActive: boolean("is_active").default(true).notNull(),
   /** Partners are business contacts, but a stop is still a stop. */
   unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
@@ -222,6 +244,15 @@ export const subownerShares = pgTable("subowner_shares", {
     .references(() => subowners.id, { onDelete: "cascade" }),
   holder: text("holder").notNull(),
   sharePercent: rate("share_percent"),
+  /** One Eleven's own line, which every company has and which cannot be taken off. */
+  isOneEleven: boolean("is_one_eleven").default(false).notNull(),
+  /** A person or a company, and the details the office keeps for them. */
+  holderKind: text("holder_kind"),
+  /** Their ID or passport number, or the company's registration number. */
+  idNumber: text("id_number"),
+  email: text("email"),
+  phone: text("phone"),
+  address: text("address"),
   notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
@@ -243,6 +274,8 @@ export const clients = pgTable("clients", {
   country: text("country"),
   source: contactSourceEnum("source").default("BUYER").notNull(),
   sourceChoice: text("source_choice"),
+  /** The agent who brought them, when they came by an agent's referral. */
+  agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   // Marketing consent. The campaign module may never send to anyone without it.
   marketingOptIn: boolean("marketing_opt_in").default(false).notNull(),
   marketingOptInAt: timestamp("marketing_opt_in_at", { withTimezone: true }),
@@ -309,6 +342,14 @@ export const projects = pgTable("projects", {
   companyId: text("company_id").references(() => companies.id, { onDelete: "set null" }),
   slug: text("slug").notNull().unique(),
   location: text("location"),
+  /**
+   * The development on Google Maps, as the link the office copies from Maps.
+   *
+   * The location above is words for people; this is where the building is. Every
+   * email that sends somebody to the building carries it, so nobody is sent to
+   * whatever an address typed from memory happens to find.
+   */
+  mapsUrl: text("maps_url"),
   description: text("description"),
   status: projectStatusEnum("status").default("UNDER_CONSTRUCTION").notNull(),
   statusChoice: text("status_choice"),
@@ -635,10 +676,15 @@ export const issuedDocuments = pgTable(
     stampedDocumentId: text("stamped_document_id"),
     /** On an invoice to a partner, the company invoice it was issued for. */
     expenseId: text("expense_id"),
+    /**
+     * The company that issued it, which has its own series: empty for One
+     * Eleven, a company's id for a development that company holds.
+     */
+    issuerId: text("issuer_id").default("").notNull(),
     createdAt: created(),
   },
   (t) => ({
-    numberOnce: unique("issued_documents_kind_number").on(t.kind, t.number),
+    numberOnce: unique("issued_documents_issuer_kind_number").on(t.issuerId, t.kind, t.number),
   }),
 );
 
@@ -919,6 +965,12 @@ export const campaigns = pgTable("campaigns", {
   toClients: boolean("to_clients").default(false).notNull(),
   toAgents: boolean("to_agents").default(false).notNull(),
   toSubowners: boolean("to_subowners").default(false).notNull(),
+  /** Leads, all of them or only the ones chosen below. */
+  toLeads: boolean("to_leads").default(false).notNull(),
+  /** The leads chosen by hand, as a JSON list of ids. Empty means every lead. */
+  leadIds: text("lead_ids"),
+  /** The developments a campaign shows, for {{projects}}, as a JSON list of ids. */
+  projectIds: text("project_ids"),
   /** The template this was written from, when it came from one. */
   templateKey: text("template_key"),
   subject: text("subject"),
@@ -970,6 +1022,7 @@ export const messages = pgTable("messages", {
   agentId: text("agent_id").references(() => agents.id, {
     onDelete: "set null",
   }),
+  leadId: text("lead_id").references(() => leads.id, { onDelete: "set null" }),
   subownerId: text("subowner_id").references(() => subowners.id, {
     onDelete: "set null",
   }),
@@ -996,6 +1049,8 @@ export const shareLinks = pgTable("share_links", {
    */
   projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
   unitId: text("unit_id").references(() => units.id, { onDelete: "set null" }),
+  /** Several developments, as a JSON list of ids, for a campaign that shows more than one. */
+  projectIds: text("project_ids"),
   note: text("note"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -1006,7 +1061,7 @@ export const shareLinks = pgTable("share_links", {
 /* ---------------------------------------------------------------------------
    Leads from the website.
 
-   The website posts an enquiry to the CRM the moment somebody fills a form. A
+   The website posts a lead to the CRM the moment somebody fills a form. A
    lead is kept exactly as it arrived, is never a client until the office says
    so, and carries no consent of its own: ticking a box on a website form is
    recorded on the lead, and it only becomes marketing consent when the office
@@ -1016,9 +1071,9 @@ export const shareLinks = pgTable("share_links", {
 /**
  * Where a lead came to us.
  *
- * The office's own list, in the office's own words. WEBSITE is the enquiry form
+ * The office's own list, in the office's own words. WEBSITE is the lead form
  * on the website, which is what the API posts; everything else is typed in by
- * whoever took the enquiry. ENQUIRY is kept because older leads carry it and
+ * whoever took the lead. ENQUIRY is kept because older leads carry it and
  * nothing the office recorded is rewritten to suit a newer list.
  */
 export const leadSourceEnum = pgEnum("lead_source_kind", [
@@ -1036,9 +1091,9 @@ export const leadSourceEnum = pgEnum("lead_source_kind", [
 ]);
 
 /**
- * Where an enquiry stands.
+ * Where a lead stands.
  *
- * NEW is written by the CRM the moment an enquiry arrives and is never chosen
+ * NEW is written by the CRM the moment a lead arrives and is never chosen
  * by hand. The rest are the office's own words: contacted, no response, not
  * interested, on hold, active, became a client, closed. ACTIVE is the old
  * word for ACTIVE and stays in the type so leads recorded under it are not
@@ -1062,7 +1117,7 @@ export const leads = pgTable("leads", {
   email: text("email"),
   phone: text("phone"),
   message: text("message"),
-  /** What the enquiry is about, in the website's own words. */
+  /** What the lead is about, in the website's own words. */
   interest: text("interest"),
   /** The project the form was about, matched by name or by code where it was given. */
   projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
@@ -1088,20 +1143,20 @@ export const leads = pgTable("leads", {
   status: leadStatusEnum("status").default("NEW").notNull(),
   statusChoice: text("status_choice"),
   /**
-   * The agent who brought this enquiry, when one did.
+   * The agent who brought this lead, when one did.
    *
-   * Written on the enquiry rather than worked out later, because the person
+   * Written on the lead rather than worked out later, because the person
    * taking the telephone call is the one who knows. It travels to the contract
    * when the sale is written, which is where the commission is calculated from,
    * so nobody has to remember who introduced a buyer six months ago.
    */
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   /**
-   * Whose enquiry this is.
+   * Whose lead this is.
    *
-   * One person in the office owns every enquiry, by name, and it is the same
+   * One person in the office owns every lead, by name, and it is the same
    * list of people who go to the appointments, so nobody has to keep two ideas
-   * of who works here. The follow ups on this enquiry are theirs, and the
+   * of who works here. The follow ups on this lead are theirs, and the
    * evening email that lists tomorrow's follow ups goes to them.
    */
   assignedToId: text("assigned_to_id").references(() => teamMembers.id, {
@@ -1121,12 +1176,12 @@ export const leads = pgTable("leads", {
 });
 
 /**
- * One note on an enquiry, with the day it was written.
+ * One note on a lead, with the day it was written.
  *
- * The office does not keep one note on an enquiry, it keeps a running record:
+ * The office does not keep one note on a lead, it keeps a running record:
  * contacted, contacted again, meeting agreed, came to the show flat. A single
  * box loses all of that the moment somebody types over it, so each note is its
- * own row with its own date and its own author, and the enquiry reads as a
+ * own row with its own date and its own author, and the lead reads as a
  * history rather than as a last known state.
  */
 export const leadNotes = pgTable("lead_notes", {
@@ -1143,7 +1198,7 @@ export const leadNotes = pgTable("lead_notes", {
 export const followUpStatusEnum = pgEnum("follow_up_status", ["PENDING", "DONE"]);
 
 /**
- * The next time somebody is going back to this enquiry.
+ * The next time somebody is going back to this lead.
  *
  * A note on a lead says what happened. A follow up says what happens next, and
  * when, and it does not go quiet: it sits in the notifications from the evening
@@ -1154,9 +1209,16 @@ export const followUpStatusEnum = pgEnum("follow_up_status", ["PENDING", "DONE"]
  */
 export const leadFollowUps = pgTable("lead_follow_ups", {
   id: id(),
-  leadId: text("lead_id")
-    .notNull()
-    .references(() => leads.id, { onDelete: "cascade" }),
+  /* Who it is with, the same four ways as an appointment: a lead, a client,
+     an agent, or somebody the CRM has no record of. */
+  leadId: text("lead_id").references(() => leads.id, { onDelete: "cascade" }),
+  clientId: text("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  agentId: text("agent_id").references(() => agents.id, { onDelete: "cascade" }),
+  otherName: text("other_name"),
+  otherEmail: text("other_email"),
+  otherPhone: text("other_phone"),
+  /** Who in the office follows it up; for a lead it is the lead's own person unless said. */
+  assignedToId: text("assigned_to_id").references(() => teamMembers.id, { onDelete: "set null" }),
   /** The day and time of the next meeting or call. */
   at: timestamp("at", { withTimezone: true }).notNull(),
   note: text("note"),
@@ -1211,6 +1273,7 @@ export const emailTemplates = pgTable("email_templates", {
   toClients: boolean("to_clients").default(false).notNull(),
   toAgents: boolean("to_agents").default(false).notNull(),
   toSubowners: boolean("to_subowners").default(false).notNull(),
+  toLeads: boolean("to_leads").default(false).notNull(),
   /** A template the CRM ships with. It can be edited but not deleted. */
   isSystem: boolean("is_system").default(false).notNull(),
   /**
@@ -1331,7 +1394,7 @@ export const expenses = pgTable("expenses", {
    The office keeps these on paper and in their heads, which is why a viewing
    gets double booked and why nobody can say afterwards whether it happened. So
    an appointment is a record: a place, a day, a time, and the person it is
-   with, who may be a client or still only an enquiry, since most first viewings
+   with, who may be a client or still only a lead, since most first viewings
    happen before anybody is a client.
 
    The day after, it is either done or it did not happen, and until somebody
@@ -1399,9 +1462,21 @@ export const appointments = pgTable("appointments", {
   }),
   /** The day and the time in one, so the two can never disagree. */
   at: timestamp("at", { withTimezone: true }).notNull(),
-  /** Who it is with: a client, or an enquiry who is not one yet. */
+  /** Who it is with: a client, a lead who is not one yet, an agent, or somebody else. */
   clientId: text("client_id").references(() => clients.id, { onDelete: "cascade" }),
   leadId: text("lead_id").references(() => leads.id, { onDelete: "cascade" }),
+  agentId: text("agent_id").references(() => agents.id, { onDelete: "cascade" }),
+  /**
+   * Somebody the CRM has no record of: the valuer, the bank, a supplier.
+   * Named here, with the address the confirmation goes to.
+   */
+  otherName: text("other_name"),
+  otherEmail: text("other_email"),
+  otherPhone: text("other_phone"),
+  /** Which development, when the appointment is at a building. */
+  projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+  /** Anything added to the place: the meeting room, the floor. The place above is written from it. */
+  placeDetail: text("place_detail"),
   status: appointmentStatusEnum("status").default("PLANNED").notNull(),
   /** When somebody said whether it happened, and who. */
   answeredAt: timestamp("answered_at", { withTimezone: true }),
@@ -1409,6 +1484,27 @@ export const appointments = pgTable("appointments", {
   createdById: text("created_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: created(),
   updatedAt: updated(),
+});
+
+/**
+ * Cash received against the cash part of a sale.
+ *
+ * The contract says how much of the price is paid in cash beside the figure on
+ * the contract. This is the money as it actually arrives, a line at a time, so
+ * the office can see what has come in and what is still to come. It is kept
+ * apart from the payments on purpose: it carries no VAT, no invoice and no
+ * receipt, and no automatic email goes out for it.
+ */
+export const cashReceipts = pgTable("cash_receipts", {
+  id: id(),
+  contractId: text("contract_id")
+    .notNull()
+    .references(() => contracts.id, { onDelete: "cascade" }),
+  amount: money("amount").notNull(),
+  receivedOn: timestamp("received_on", { withTimezone: true }).notNull(),
+  note: text("note"),
+  recordedById: text("recorded_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: created(),
 });
 
 /* ---------------------------------------------------------------------------

@@ -65,7 +65,6 @@ export const COLUMNS: Record<ListKey, Column[]> = {
   ],
   projects: [
     { key: "name", label: "common.name", fixed: true },
-    { key: "company", label: "projects.company" },
     { key: "partner", label: "clients.partner" },
     { key: "location", label: "projects.location" },
     { key: "completion", label: "projects.completion" },

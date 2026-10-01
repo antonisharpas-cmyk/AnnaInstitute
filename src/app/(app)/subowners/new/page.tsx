@@ -64,6 +64,99 @@ export default async function NewSubownerPage() {
               </div>
             </div>
 
+            <fieldset className="rounded border border-brand-line p-3">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite/70">
+                {t("subowners.papers")}
+              </legend>
+              <p className="mb-3 text-xs text-brand-graphite/70">{t("subowners.papersHint")}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="tic">
+                  {t("subowners.tic")}
+                </label>
+                <input id="tic" name="tic" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="mobile">
+                  {t("subowners.mobile")}
+                </label>
+                <input id="mobile" name="mobile" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="fax">
+                  {t("subowners.fax")}
+                </label>
+                <input id="fax" name="fax" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="website">
+                  {t("subowners.website")}
+                </label>
+                <input id="website" name="website" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="bankName">
+                  {t("subowners.bankName")}
+                </label>
+                <input id="bankName" name="bankName" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="bankBeneficiary">
+                  {t("subowners.bankBeneficiary")}
+                </label>
+                <input id="bankBeneficiary" name="bankBeneficiary" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="bankAccount">
+                  {t("subowners.bankAccount")}
+                </label>
+                <input id="bankAccount" name="bankAccount" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="iban">
+                  {t("subowners.iban")}
+                </label>
+                <input id="iban" name="iban" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="bic">
+                  {t("subowners.bic")}
+                </label>
+                <input id="bic" name="bic" className="input" />
+              </div>
+              <div>
+                <label className="label" htmlFor="brandColor">
+                  {t("subowners.brandColor")}
+                </label>
+                <input id="brandColor" name="brandColor" className="input" placeholder="#3D8397" />
+              </div>
+              <div>
+                <label className="label" htmlFor="nextInvoice">
+                  {t("subowners.nextInvoice")}
+                </label>
+                <input id="nextInvoice" name="nextInvoice" className="input" placeholder="1" inputMode="numeric" />
+              </div>
+              <div>
+                <label className="label" htmlFor="nextReceipt">
+                  {t("subowners.nextReceipt")}
+                </label>
+                <input id="nextReceipt" name="nextReceipt" className="input" placeholder="1" inputMode="numeric" />
+              </div>
+              <div>
+                <label className="label" htmlFor="nextCreditNote">
+                  {t("subowners.nextCreditNote")}
+                </label>
+                <input id="nextCreditNote" name="nextCreditNote" className="input" placeholder="1" inputMode="numeric" />
+              </div>
+              <div>
+                <label className="label" htmlFor="logo">
+                  {t("subowners.logo")}
+                </label>
+                <input id="logo" name="logo" type="file" accept="image/png,image/jpeg" className="text-sm" />
+              </div>
+              </div>
+            </fieldset>
+
             <div>
               <label className="label" htmlFor="address">
                 {t("clients.address")}

@@ -10,14 +10,16 @@ import { Figure } from "@/components/charts";
 import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
-import SearchSelect from "@/components/SearchSelect";
+import AppointmentFields from "@/components/AppointmentFields";
+import { peopleOptions, whoWhereLabels } from "@/lib/appointmentLabels";
 import { whoCanBeMet } from "@/lib/appointments";
+import { followUpWho } from "@/lib/followUps";
 import { addFollowUpFromList, deleteFollowUp, setFollowUpStatus } from "../leads/actions";
 
 /**
  * Every follow up, in one list.
  *
- * The office asked the right question: with a hundred enquiries each carrying a
+ * The office asked the right question: with a hundred leads each carrying a
  * pending follow up, where do you look? Not at a hundred cards. Here: soonest
  * first, overdue at the top of the mind because it has its own figure and its
  * own view, narrowed to one person when somebody wants their own, and each line
@@ -48,6 +50,7 @@ export default async function FollowUpsPage({
     whoCanBeMet(),
   ]);
 
+  const words = whoWhereLabels(t);
   const dayOf = (value: Date) =>
     new Date(value).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", {
       weekday: "short",
@@ -146,33 +149,35 @@ export default async function FollowUpsPage({
       {/* eslint-enable @next/next/no-html-link-for-pages */}
 
       {/*
-        A new follow up, written from here for any open enquiry. It is the same
-        record as one written on the enquiry, so it shows on its card at once.
+        A new follow up, written from here for any open lead. It is the same
+        record as one written on the lead, so it shows on its card at once.
       */}
       <div className="mb-4">
         <Disclosure showLabel={t("followUps.add")} hideLabel={t("common.cancel")}>
           <form
             key={rows.length}
             action={addFollowUpFromList}
-            className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 md:grid-cols-[2fr_1fr_1fr_2fr_auto]"
+            className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-2 lg:grid-cols-4"
           >
+            <AppointmentFields
+              id="followUp"
+              people={peopleOptions(people)}
+              labels={words}
+              withWhere={false}
+              firstGroup="lead"
+            />
             <div>
-              <label className="label" htmlFor="followUpLead">
-                {t("followUps.forWhom")}
+              <label className="label" htmlFor="followUpAssigned">
+                {t("appointments.assignTo")}
               </label>
-              <SearchSelect
-                id="followUpLead"
-                name="leadId"
-                required
-                choose={t("common.choose")}
-                searchPlaceholder={t("common.searchByName")}
-                noMatch={t("common.noMatch")}
-                options={people.leads.map((one) => ({
-                  value: one.id,
-                  label: [one.firstName, one.lastName].filter(Boolean).join(" ") || "?",
-                  hint: one.phone ?? one.email ?? undefined,
-                }))}
-              />
+              <select id="followUpAssigned" name="assignedToId" className="select" defaultValue="">
+                <option value="">{t("followUps.leadsOwn")}</option>
+                {team.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="label" htmlFor="followUpDay">
@@ -197,7 +202,7 @@ export default async function FollowUpsPage({
                 className="input"
               />
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end lg:col-span-4">
               <SubmitButton>{t("common.save")}</SubmitButton>
             </div>
           </form>
@@ -221,76 +226,85 @@ export default async function FollowUpsPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ followUp, lead, member }) => (
-                  <tr key={followUp.id}>
-                    <td className="nowrap text-xs">
-                      <span className={late(followUp) ? "font-semibold" : ""}>
-                        {dayOf(followUp.at)}
-                      </span>
-                      <div className="text-brand-graphite/60">{timeOf(followUp.at)}</div>
-                    </td>
-                    <td>
-                      <Link
-                        href={`/leads/${lead.id}`}
-                        className="font-semibold hover:underline"
-                        prefetch={false}
-                      >
-                        {[lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?"}
-                      </Link>
-                      <div className="text-xs text-brand-graphite/60">
-                        {[lead.phone, lead.email].filter(Boolean).join(" . ")}
-                      </div>
-                    </td>
-                    <td className="text-xs">{followUp.note ?? ""}</td>
-                    <td className="text-xs">
-                      {member ? (
-                        member.name
-                      ) : (
-                        <span className="text-brand-graphite/50">{t("appointments.nobody")}</span>
-                      )}
-                    </td>
-                    <td>
-                      <Pill
-                        tone={
-                          followUp.status === "DONE" ? "good" : late(followUp) ? "bad" : "warn"
-                        }
-                      >
-                        {t(
-                          followUp.status === "DONE"
-                            ? "leads.followUpDone"
-                            : late(followUp)
-                              ? "followUps.late"
-                              : "leads.followUpPending",
+                {rows.map((row) => {
+                  const { followUp, lead, member } = row;
+                  const who = followUpWho(row);
+                  return (
+                    <tr key={followUp.id} data-follow-up-kind={who.kind}>
+                      <td className="nowrap text-xs">
+                        <span className={late(followUp) ? "font-semibold" : ""}>
+                          {dayOf(followUp.at)}
+                        </span>
+                        <div className="text-brand-graphite/60">{timeOf(followUp.at)}</div>
+                      </td>
+                      <td>
+                        {who.href ? (
+                          <Link
+                            href={who.href}
+                            className="font-semibold hover:underline"
+                            prefetch={false}
+                          >
+                            {who.name}
+                          </Link>
+                        ) : (
+                          <span className="font-semibold">{who.name}</span>
                         )}
-                      </Pill>
-                    </td>
-                    <td>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <form
-                          action={setFollowUpStatus.bind(
-                            null,
-                            followUp.id,
-                            lead.id,
-                            followUp.status === "DONE" ? "PENDING" : "DONE",
-                          )}
+                        <div className="text-xs text-brand-graphite/60">
+                          {t(`followUps.kind.${who.kind}` as "followUps.kind.lead")}
+                          {who.contact ? ` . ${who.contact}` : ""}
+                        </div>
+                      </td>
+                      <td className="text-xs">{followUp.note ?? ""}</td>
+                      <td className="text-xs">
+                        {member ? (
+                          member.name
+                        ) : (
+                          <span className="text-brand-graphite/50">{t("appointments.nobody")}</span>
+                        )}
+                      </td>
+                      <td>
+                        <Pill
+                          tone={
+                            followUp.status === "DONE" ? "good" : late(followUp) ? "bad" : "warn"
+                          }
                         >
-                          <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
-                            {t(
-                              followUp.status === "DONE"
-                                ? "leads.followUpReopen"
-                                : "leads.followUpMarkDone",
+                          {t(
+                            followUp.status === "DONE"
+                              ? "leads.followUpDone"
+                              : late(followUp)
+                                ? "followUps.late"
+                                : "leads.followUpPending",
+                          )}
+                        </Pill>
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <form
+                            action={setFollowUpStatus.bind(
+                              null,
+                              followUp.id,
+                              lead?.id ?? null,
+                              followUp.status === "DONE" ? "PENDING" : "DONE",
                             )}
-                          </SubmitButton>
-                        </form>
-                        <ConfirmButton
-                          action={deleteFollowUp.bind(null, followUp.id, lead.id)}
-                          label={t("common.delete")}
-                          confirm={t("remove.sure")}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          >
+                            <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                              {t(
+                                followUp.status === "DONE"
+                                  ? "leads.followUpReopen"
+                                  : "leads.followUpMarkDone",
+                              )}
+                            </SubmitButton>
+                          </form>
+                          <ConfirmButton
+                            action={deleteFollowUp.bind(null, followUp.id, lead?.id ?? null)}
+                            label={t("common.delete")}
+                            confirm={t("remove.sure")}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

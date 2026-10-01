@@ -3,14 +3,14 @@
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
+  leads,
   campaignDocuments,
   campaigns,
   clients,
-  documents,
   emailTemplates,
   messages,
   shareLinks,
@@ -28,7 +28,8 @@ import { normalisePhone } from "@/lib/messaging/text";
 import { readSetting, writeSetting } from "@/lib/settings";
 import { campaignExtras, ensureCampaignLinks, testValues, unfilledIn } from "@/lib/campaignTest";
 import { createPriceListLink, priceListUrl } from "@/lib/priceList";
-import { filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { campaignAttachments, emailAttachments, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { idsOf } from "@/lib/campaignProjects";
 
 /**
  * What the campaign is about, from the form: "project:<id>", "unit:<id>" or nothing.
@@ -63,6 +64,28 @@ export async function setCampaignAbout(campaignId: string, formData: FormData) {
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
+/** Change the developments a draft shows, for {{projects}}. */
+export async function setCampaignProjects(campaignId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const projectIds = formData.getAll("projectIds").map(String).filter(Boolean);
+  await db
+    .update(campaigns)
+    .set({ projectIds: projectIds.length > 0 ? JSON.stringify(projectIds) : null, updatedAt: new Date() })
+    .where(eq(campaigns.id, campaignId));
+  const [changed] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  if (changed) await ensureCampaignLinks(changed, user.email);
+  await recordAudit({
+    action: "campaign.projects",
+    entity: "campaign",
+    entityId: campaignId,
+    detail: `${projectIds.length} developments`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
 export async function createCampaign(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
 
@@ -71,10 +94,17 @@ export async function createCampaign(formData: FormData) {
   const toClients = String(formData.get("toClients") ?? "") === "on";
   const toAgents = String(formData.get("toAgents") ?? "") === "on";
   const toSubowners = String(formData.get("toSubowners") ?? "") === "on";
-  if (!toClients && !toAgents && !toSubowners) {
+  const toLeads = String(formData.get("toLeads") ?? "") === "on";
+  if (!toClients && !toAgents && !toSubowners && !toLeads) {
     throw new Error("Choose at least one group to send it to.");
   }
   const audience = toClients ? "CLIENTS_CONSENTED" : toAgents ? "AGENTS" : "SUBOWNERS";
+  /* Every lead, or only the ones ticked. Ticking none of them means every one. */
+  const leadIds =
+    toLeads && String(formData.get("leadMode") ?? "all") === "chosen"
+      ? formData.getAll("leadIds").map(String).filter(Boolean)
+      : [];
+  const projectIds = formData.getAll("projectIds").map(String).filter(Boolean);
 
   const viaEmail = String(formData.get("viaEmail") ?? "") === "on";
   const viaWhatsapp = String(formData.get("viaWhatsapp") ?? "") === "on";
@@ -99,6 +129,9 @@ export async function createCampaign(formData: FormData) {
       toClients,
       toAgents,
       toSubowners,
+      toLeads,
+      leadIds: leadIds.length > 0 ? JSON.stringify(leadIds) : null,
+      projectIds: projectIds.length > 0 ? JSON.stringify(projectIds) : null,
       templateKey: String(formData.get("templateKey") ?? "") || null,
       subject: String(formData.get("subject") ?? "") || null,
       body: body || bodyWhatsapp,
@@ -151,6 +184,9 @@ export type CampaignGroups = {
   toClients?: boolean;
   toAgents?: boolean;
   toSubowners?: boolean;
+  toLeads?: boolean;
+  /** JSON list of the leads chosen by hand; empty is every lead. */
+  leadIds?: string | null;
   /** Older campaigns carried one audience rather than three flags. */
   audience?: "CLIENTS_CONSENTED" | "AGENTS" | "SUBOWNERS";
 };
@@ -175,7 +211,8 @@ export async function audienceFor(groups: CampaignGroups) {
     clientId: string | null;
     agentId: string | null;
     subownerId: string | null;
-    group: "CLIENTS" | "AGENTS" | "SUBOWNERS";
+    leadId?: string | null;
+    group: "CLIENTS" | "AGENTS" | "SUBOWNERS" | "LEADS";
   }[] = [];
 
   if (wantsClients) {
@@ -248,6 +285,38 @@ export async function audienceFor(groups: CampaignGroups) {
     }
   }
 
+  if (groups.toLeads) {
+    /* The leads still open: not deleted, not already a client. Chosen by
+       hand when the office ticked some, every one of them otherwise. */
+    const chosen = idsOf(groups.leadIds);
+    const rows = await db
+      .select()
+      .from(leads)
+      .where(
+        and(
+          isNull(leads.deletedAt),
+          isNull(leads.clientId),
+          chosen.length > 0 ? inArray(leads.id, chosen) : undefined,
+        ),
+      )
+      .orderBy(asc(leads.createdAt));
+
+    for (const l of rows) {
+      const name = `${l.firstName ?? ""} ${l.lastName ?? ""}`.trim() || l.email || l.phone || "";
+      people.push({
+        name,
+        firstName: (l.firstName ?? "").trim() || name.split(" ")[0] || "",
+        email: l.email,
+        phone: l.phone,
+        clientId: null,
+        agentId: null,
+        subownerId: null,
+        leadId: l.id,
+        group: "LEADS",
+      });
+    }
+  }
+
   return people;
 }
 
@@ -271,11 +340,10 @@ export async function sendCampaign(campaignId: string) {
 
   await db.update(campaigns).set({ status: "SENDING" }).where(eq(campaigns.id, campaignId));
 
-  const attachmentRows = await db
-    .select({ document: documents })
-    .from(campaignDocuments)
-    .innerJoin(documents, eq(documents.id, campaignDocuments.documentId))
-    .where(eq(campaignDocuments.campaignId, campaignId));
+  /* Its own files and the developments' brochures, specifications and
+     drawings. The pictures are on the campaign's page, behind {{files_url}}. */
+  const attachmentRows = (await emailAttachments(campaignId)).map((document) => ({ document }));
+  const pageFiles = await campaignAttachments(campaignId);
 
   const attachments = attachmentRows.map((r) => ({
     filename: r.document.originalName ?? path.basename(r.document.filePath),
@@ -296,7 +364,7 @@ export async function sendCampaign(campaignId: string) {
   // The files reach WhatsApp as a link, and the link is added to the end of the
   // message when the office has not put {{files_url}} in it itself.
   let files: string | undefined;
-  if (attachmentRows.length > 0) {
+  if (pageFiles.length > 0) {
     const link = await filesLinkFor(campaignId, user.email);
     files = filesUrl(link.token);
   }
@@ -320,7 +388,7 @@ export async function sendCampaign(campaignId: string) {
         recipient,
         subject: campaign.subject ? fillPlaceholders(campaign.subject, values) : null,
         body: fillPlaceholders(campaign.body, values),
-        withOptOut: recipient.group === "CLIENTS",
+        withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
         attachments,
       });
       if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
@@ -333,7 +401,7 @@ export async function sendCampaign(campaignId: string) {
         channel: "WHATSAPP",
         recipient,
         body: fillPlaceholders(withFilesLink, values),
-        withOptOut: recipient.group === "CLIENTS",
+        withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
       });
       if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
       else failed += 1;
@@ -473,11 +541,7 @@ export async function sendCampaignTest(campaignId: string) {
   const campaign = await ensureCampaignLinks(found, user.email);
   const to = (await readSetting("emails.testAddress"))?.trim() || user.email;
 
-  const attachmentRows = await db
-    .select({ document: documents })
-    .from(campaignDocuments)
-    .innerJoin(documents, eq(documents.id, campaignDocuments.documentId))
-    .where(eq(campaignDocuments.campaignId, campaignId));
+  const attachmentRows = (await emailAttachments(campaignId)).map((document) => ({ document }));
   const attachments = attachmentRows.map((r) => ({
     filename: r.document.originalName ?? path.basename(r.document.filePath),
     path: resolveStored(r.document.filePath),
@@ -491,7 +555,7 @@ export async function sendCampaignTest(campaignId: string) {
     return;
   }
   const values = await testValues(campaign);
-  const clientsToo = campaign.toClients || campaign.audience === "CLIENTS_CONSENTED";
+  const clientsToo = campaign.toClients || campaign.toLeads || campaign.audience === "CLIENTS_CONSENTED";
   const intro = `This is a test of the campaign "${campaign.title}". It is what the audience will receive, with example names.`;
   let body = `${intro}\n\n${fillPlaceholders(campaign.body, values)}`;
   if (clientsToo) body += "\n\nIf you would rather not receive these, unsubscribe here: (each client gets their own link)";

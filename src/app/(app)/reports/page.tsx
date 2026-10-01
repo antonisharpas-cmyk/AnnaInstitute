@@ -25,6 +25,7 @@ const REPORTS: { href: string; title: MessageKey; note: MessageKey }[] = [
   { href: "/reports/marketing", title: "reports.marketing", note: "reports.marketingNote" },
   { href: "/reports/costs", title: "reports.costs", note: "reports.costsNote" },
   { href: "/reports/portfolio", title: "reports.portfolio", note: "reports.portfolioNote" },
+  { href: "/reports/shareholders", title: "reports.shareholders", note: "reports.shareholdersNote" },
 ];
 
 export default async function ReportsPage({

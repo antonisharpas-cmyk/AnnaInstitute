@@ -18,14 +18,14 @@ import { audienceFor, createCampaign } from "../actions";
 export default async function NewCampaignPage({
   searchParams,
 }: {
-  searchParams: Promise<{ audience?: string; template?: string; unit?: string; project?: string }>;
+  searchParams: Promise<{ audience?: string; template?: string; unit?: string; project?: string; leads?: string }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
 
   const [links, everyone, templates] = await Promise.all([
     activePriceListLinks(),
-    audienceFor({ toClients: true, toAgents: true, toSubowners: true }),
+    audienceFor({ toClients: true, toAgents: true, toSubowners: true, toLeads: true }),
     listTemplates(),
   ]);
 
@@ -48,7 +48,12 @@ export default async function NewCampaignPage({
     clients: everyone.filter((r) => r.group === "CLIENTS").length,
     agents: everyone.filter((r) => r.group === "AGENTS").length,
     subowners: everyone.filter((r) => r.group === "SUBOWNERS").length,
+    leads: everyone.filter((r) => r.group === "LEADS").length,
   };
+  /* The leads, to choose from one by one. */
+  const leadChoices = everyone
+    .filter((r) => r.group === "LEADS" && r.leadId)
+    .map((r) => ({ id: r.leadId as string, label: r.name, hint: r.email ?? r.phone ?? "" }));
 
   // What the message is about, when it was started from an apartment or a
   // development. The person placeholders are left alone: they are filled per
@@ -84,12 +89,14 @@ export default async function NewCampaignPage({
     toClients: template.toClients,
     toAgents: template.toAgents,
     toSubowners: template.toSubowners,
+    toLeads: template.toLeads,
   }));
 
   const groups = {
-    clients: params.audience !== "AGENTS" && params.audience !== "SUBOWNERS",
+    clients: params.audience !== "AGENTS" && params.audience !== "SUBOWNERS" && params.audience !== "LEADS",
     agents: params.audience === "AGENTS",
     subowners: params.audience === "SUBOWNERS",
+    leads: params.audience === "LEADS",
   };
 
   return (
@@ -116,6 +123,10 @@ export default async function NewCampaignPage({
             groups={groups}
             about={about}
             aboutDefault={aboutDefault}
+            leadChoices={leadChoices}
+            projectChoices={projectRows}
+            projectsDefault={params.project ? [params.project] : []}
+            leadsDefault={(params.leads ?? "").split(",").filter(Boolean)}
             priceLists={links.map((l) => ({
               id: l.id,
               label: l.note ?? new Date(l.createdAt).toISOString().slice(0, 10),
@@ -133,6 +144,14 @@ export default async function NewCampaignPage({
               groupClients: t("campaigns.groupClients"),
               groupAgents: t("campaigns.groupAgents"),
               groupSubowners: t("campaigns.groupSubowners"),
+              groupLeads: t("campaigns.groupLeads"),
+              leadsAll: t("campaigns.leadsAll"),
+              leadsChosen: t("campaigns.leadsChosen"),
+              leadsSearch: t("campaigns.leadsSearch"),
+              leadsPicked: t("campaigns.leadsPicked"),
+              showProjects: t("campaigns.showProjects"),
+              showProjectsNote: t("campaigns.showProjectsNote"),
+              showProjectsNeeded: t("campaigns.showProjectsNeeded"),
               groupsNote: t("campaigns.groupsNote"),
               willReceive: t("campaigns.willReceive"),
               title: t("campaigns.name"),

@@ -46,6 +46,15 @@ const PARTNERS = [
   {
     name: "DEX-INNO GREEN PROPERTIES LTD",
     registryNumber: "ΗΕ 449137",
+    papers: {
+      tic: "60046592L",
+      bankName: "Bank of Cyprus",
+      bankAccount: "357039852026",
+      iban: "CY58002001950000357039852026",
+      bic: "BCYPCY2N",
+      logoPath: "public:brand/companies/dex-inno.png",
+      brandColor: "#2B2B2B",
+    },
     directors: [
       {
         name: "Andreas Kailis",
@@ -63,6 +72,15 @@ const PARTNERS = [
   {
     name: "TRIVEST PROPERTY DEVELOPMENT LIMITED",
     registryNumber: "ΗΕ 476522",
+    papers: {
+      tic: "60181173S",
+      bankName: "Bank of Cyprus",
+      bankAccount: "357044417362",
+      iban: "CY94002001950000357044417362",
+      bic: "BCYPCY2N",
+      logoPath: "public:brand/companies/trivest.png",
+      brandColor: "#3F4796",
+    },
     directors: [
       { name: "George", role: "Director", email: "gm@oliverlandon.com", phone: "97566567" },
       {
@@ -912,8 +930,8 @@ async function main() {
     ["vat_changes", "vat changes"],
     ["contracts", "contracts"],
     ["messages", "sent messages"],
-    ["lead_notes", "enquiry notes"],
-    ["leads", "enquiries"],
+    ["lead_notes", "lead notes"],
+    ["leads", "leads"],
     ["units", "apartments"],
     ["project_partners", "partner shares"],
     ["projects", "developments"],
@@ -941,9 +959,22 @@ async function main() {
   for (const partner of PARTNERS) {
     const id = newId();
     await ask(
-      `insert into subowners (id, name, company, registry_number, is_active)
-       values ($1, $2, $3, $4, true)`,
-      [id, partner.name, partner.name, partner.registryNumber],
+      `insert into subowners (id, name, company, registry_number, is_active,
+         tic, bank_name, bank_beneficiary, bank_account, iban, bic, logo_path, brand_color)
+       values ($1, $2, $3, $4, true, $5, $6, $3, $7, $8, $9, $10, $11)`,
+      [
+        id,
+        partner.name,
+        partner.name,
+        partner.registryNumber,
+        partner.papers.tic,
+        partner.papers.bankName,
+        partner.papers.bankAccount,
+        partner.papers.iban,
+        partner.papers.bic,
+        partner.papers.logoPath,
+        partner.papers.brandColor,
+      ],
     );
     partnerIds.set(partner.name, id);
     console.log(`  added    ${partner.name}  ${partner.registryNumber}`);

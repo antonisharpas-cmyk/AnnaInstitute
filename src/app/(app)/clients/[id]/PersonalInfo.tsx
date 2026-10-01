@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { humanLabel } from "@/lib/fileLabels";
 import { updateClient } from "../actions";
+import SourceAgentFields from "@/components/SourceAgentFields";
 
 export type ClientRecord = {
   id: string;
@@ -17,6 +18,7 @@ export type ClientRecord = {
   country: string | null;
   address: string | null;
   source: string;
+  agentId?: string | null;
   notes: string | null;
 };
 
@@ -72,9 +74,11 @@ export default function PersonalInfo({
   client,
   idTypes,
   sources,
+  agents = [],
   labels,
 }: {
   client: ClientRecord;
+  agents?: { value: string; label: string; hint?: string }[];
   /** What the two pickers offer, in the office's own order and words. */
   idTypes: { value: string; label: string }[];
   sources: { value: string; label: string }[];
@@ -93,6 +97,10 @@ export default function PersonalInfo({
     country: string;
     address: string;
     source: string;
+    agent: string;
+    choose: string;
+    search: string;
+    noMatch: string;
     notes: string;
     notRecorded: string;
   };
@@ -133,6 +141,9 @@ export default function PersonalInfo({
           <Row label={labels.country} value={client.country ?? ""} />
           <Row label={labels.address} value={client.address ?? ""} />
           <Row label={labels.source} value={word(sources, client.source)} />
+          {client.agentId ? (
+            <Row label={labels.agent} value={agents.find((one) => one.value === client.agentId)?.label ?? ""} />
+          ) : null}
           <div className="py-2">
             <span className="label">{labels.notes}</span>
             <p className="whitespace-pre-wrap text-sm">{client.notes ?? ""}</p>
@@ -179,23 +190,20 @@ export default function PersonalInfo({
         <Field label={labels.country} name="country" defaultValue={client.country ?? ""} />
         <Field label={labels.address} name="address" defaultValue={client.address ?? ""} />
 
-        <div className="flex flex-wrap items-center gap-2 border-b border-brand-line py-2">
-          <label className="label !mb-0 w-44 shrink-0" htmlFor="source">
-            {labels.source}
-          </label>
-          <select
-            id="source"
-            name="source"
-            defaultValue={client.source}
-            className="select max-w-sm flex-1"
-          >
-            {sources.map((one) => (
-              <option key={one.value} value={one.value}>
-                {one.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SourceAgentFields
+          row
+          sources={sources}
+          agents={agents}
+          defaultSource={client.source}
+          defaultAgentId={client.agentId ?? null}
+          labels={{
+            source: labels.source,
+            agent: labels.agent,
+            choose: labels.choose,
+            search: labels.search,
+            noMatch: labels.noMatch,
+          }}
+        />
 
         <div className="py-2">
           <label className="label" htmlFor="notes">

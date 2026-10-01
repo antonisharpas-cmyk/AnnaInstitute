@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 /**
  * The page behind the QR code.
  *
- * A visitor leaves their name and a way to reach them, and becomes an enquiry
+ * A visitor leaves their name and a way to reach them, and becomes a lead
  * in Leads at once. English only, one column, large enough to fill in on a
  * phone standing in a show flat.
  */

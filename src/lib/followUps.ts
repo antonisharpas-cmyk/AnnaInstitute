@@ -1,15 +1,16 @@
 import "server-only";
 import { and, asc, eq, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { leadFollowUps, leads, teamMembers } from "@/db/schema";
+import { agents, clients, leadFollowUps, leads, teamMembers } from "@/db/schema";
 
 /**
- * What happens next on an enquiry.
+ * What happens next, with a lead, a client, an agent or anybody else.
  *
  * A note says what happened. A follow up says what happens next, on a day, and
  * it refuses to be forgotten: from the evening before its date it sits in the
  * notifications, and it stays there until somebody marks it done. The person it
- * nags is whoever the enquiry belongs to, which is why the lead carries a name.
+ * nags is the person it was given to, or, on a lead, whoever the lead belongs
+ * to, which is why the lead carries a name.
  *
  * The office asked for this in one sentence: the next meeting, a small note,
  * and an email the night before. Everything here is that sentence.
@@ -17,14 +18,14 @@ import { leadFollowUps, leads, teamMembers } from "@/db/schema";
 
 export type FollowUpRow = {
   id: string;
-  leadId: string;
+  leadId: string | null;
   at: Date;
   note: string | null;
   status: "PENDING" | "DONE";
   doneAt: Date | null;
 };
 
-/** Every follow up on one enquiry, the soonest first. */
+/** Every follow up on one lead, the soonest first. */
 export async function followUpsForLead(leadId: string): Promise<FollowUpRow[]> {
   const rows = await db
     .select()
@@ -40,6 +41,60 @@ export async function followUpsForLead(leadId: string): Promise<FollowUpRow[]> {
     status: row.status,
     doneAt: row.doneAt,
   }));
+}
+
+/** The person in the office it is for: its own, or the lead's. */
+const whose = sql<string | null>`coalesce(${leadFollowUps.assignedToId}, ${leads.assignedToId})`;
+
+/** A follow up with whoever it is with and whoever follows it up. */
+function withWho() {
+  return db
+    .select({
+      followUp: leadFollowUps,
+      lead: leads,
+      client: { id: clients.id, firstName: clients.firstName, lastName: clients.lastName, phone: clients.phone, email: clients.email },
+      agent: { id: agents.id, name: agents.name, phone: agents.phone, email: agents.email },
+      member: teamMembers,
+    })
+    .from(leadFollowUps)
+    .leftJoin(leads, eq(leads.id, leadFollowUps.leadId))
+    .leftJoin(clients, eq(clients.id, leadFollowUps.clientId))
+    .leftJoin(agents, eq(agents.id, leadFollowUps.agentId))
+    .leftJoin(teamMembers, eq(teamMembers.id, whose));
+}
+
+export type FollowUpLine = Awaited<ReturnType<typeof listFollowUps>>[number];
+
+/** Who a follow up is with, in words, and where their record is. */
+export function followUpWho(row: {
+  followUp: typeof leadFollowUps.$inferSelect;
+  lead: { id: string; firstName: string | null; lastName: string | null; email: string | null; phone: string | null } | null;
+  client: { id: string; firstName: string | null; lastName: string | null; email: string | null; phone: string | null } | null;
+  agent: { id: string; name: string; email: string | null; phone: string | null } | null;
+}): { kind: "lead" | "client" | "agent" | "other"; name: string; href: string | null; contact: string } {
+  const both = (first: string | null, last: string | null) => `${first ?? ""} ${last ?? ""}`.trim();
+  if (row.lead)
+    return {
+      kind: "lead",
+      name: both(row.lead.firstName, row.lead.lastName) || row.lead.email || "?",
+      href: `/leads/${row.lead.id}`,
+      contact: [row.lead.phone, row.lead.email].filter(Boolean).join(" . "),
+    };
+  if (row.client)
+    return {
+      kind: "client",
+      name: both(row.client.firstName, row.client.lastName) || "?",
+      href: `/clients/${row.client.id}`,
+      contact: [row.client.phone, row.client.email].filter(Boolean).join(" . "),
+    };
+  if (row.agent)
+    return {
+      kind: "agent",
+      name: row.agent.name,
+      href: `/agents/${row.agent.id}`,
+      contact: [row.agent.phone, row.agent.email].filter(Boolean).join(" . "),
+    };
+  return { kind: "other", name: row.followUp.otherName ?? "?", href: null, contact: row.followUp.otherEmail ?? "" };
 }
 
 /** Midnight this morning, in the office's own day rather than in UTC. */
@@ -65,15 +120,7 @@ function startOfDay(offset: number): Date {
 export async function pressingFollowUps() {
   const edge = startOfDay(2); // anything due before the end of tomorrow
 
-  return db
-    .select({
-      followUp: leadFollowUps,
-      lead: leads,
-      member: teamMembers,
-    })
-    .from(leadFollowUps)
-    .innerJoin(leads, eq(leads.id, leadFollowUps.leadId))
-    .leftJoin(teamMembers, eq(teamMembers.id, leads.assignedToId))
+  return withWho()
     .where(and(eq(leadFollowUps.status, "PENDING"), lte(leadFollowUps.at, edge)))
     .orderBy(asc(leadFollowUps.at));
 }
@@ -99,15 +146,7 @@ export async function followUpsOnDay(offset: number) {
   const from = startOfDay(offset);
   const to = startOfDay(offset + 1);
 
-  return db
-    .select({
-      followUp: leadFollowUps,
-      lead: leads,
-      member: teamMembers,
-    })
-    .from(leadFollowUps)
-    .innerJoin(leads, eq(leads.id, leadFollowUps.leadId))
-    .leftJoin(teamMembers, eq(teamMembers.id, leads.assignedToId))
+  return withWho()
     .where(
       and(
         eq(leadFollowUps.status, "PENDING"),
@@ -120,10 +159,10 @@ export async function followUpsOnDay(offset: number) {
 /**
  * Every follow up in the CRM, for the section that lists them.
  *
- * A hundred enquiries with a pending follow up each is not something anybody
+ * A hundred leads with a pending follow up each is not something anybody
  * can read off a hundred cards, which is exactly what the office asked about.
  * So they are listed in one place, soonest first, with who they belong to and
- * which enquiry they are on, and they can be narrowed to one person or to what
+ * which lead they are on, and they can be narrowed to one person or to what
  * is still to be done.
  */
 export async function listFollowUps(filter: {
@@ -136,7 +175,7 @@ export async function listFollowUps(filter: {
   if (filter.status === "PENDING" || filter.status === "DONE") {
     parts.push(eq(leadFollowUps.status, filter.status));
   }
-  if (filter.assignedTo) parts.push(eq(leads.assignedToId, filter.assignedTo));
+  if (filter.assignedTo) parts.push(sql`${whose} = ${filter.assignedTo}` as SQL);
 
   /* Overdue is pending and in the past, which is the one the office wants
      first thing in the morning. */
@@ -153,11 +192,7 @@ export async function listFollowUps(filter: {
     parts.push(sql`${leadFollowUps.at} < ${startOfDay(8)}` as SQL);
   }
 
-  return db
-    .select({ followUp: leadFollowUps, lead: leads, member: teamMembers })
-    .from(leadFollowUps)
-    .innerJoin(leads, eq(leads.id, leadFollowUps.leadId))
-    .leftJoin(teamMembers, eq(teamMembers.id, leads.assignedToId))
+  return withWho()
     .where(parts.length > 0 ? and(...parts) : undefined)
     .orderBy(asc(leadFollowUps.at))
     .limit(500);

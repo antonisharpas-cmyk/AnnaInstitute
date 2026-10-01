@@ -8,6 +8,7 @@ import { appointments, teamMembers } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { letterForAppointment } from "@/lib/automaticEmails";
+import { placeFor } from "@/lib/appointments";
 import { flash } from "@/lib/flash";
 
 /*
@@ -38,7 +39,7 @@ function moment(day: string, time: string): Date | null {
   return Number.isNaN(at.getTime()) ? null : at;
 }
 
-/** One of the office's six kinds, or the catch all. */
+/** One of the office's kinds, or the catch all. */
 const KINDS = ["TIMBER", "BATHROOMS_TILES", "OFFICE", "PHONE_CALL", "BUILDING", "OTHER"] as const;
 type Kind = (typeof KINDS)[number];
 
@@ -53,51 +54,81 @@ function ownKind(raw: string): string | null {
   return choice && (KINDS as readonly string[]).includes(base) ? choice : null;
 }
 
-/** Who it is with, from one field that carries both kinds of person. */
-function whoWith(raw: string): { clientId: string | null; leadId: string | null } {
-  if (raw.startsWith("client:")) return { clientId: raw.slice(7), leadId: null };
-  if (raw.startsWith("lead:")) return { clientId: null, leadId: raw.slice(5) };
-  return { clientId: null, leadId: null };
+type Who = {
+  clientId: string | null;
+  leadId: string | null;
+  agentId: string | null;
+  otherName: string | null;
+  otherEmail: string | null;
+  otherPhone: string | null;
+};
+
+/** Who it is with, from one field that carries every kind of person, and the boxes for somebody else. */
+function whoWith(formData: FormData): Who {
+  const raw = String(formData.get("with") ?? "");
+  const none: Who = { clientId: null, leadId: null, agentId: null, otherName: null, otherEmail: null, otherPhone: null };
+  if (raw.startsWith("client:")) return { ...none, clientId: raw.slice(7) || null };
+  if (raw.startsWith("lead:")) return { ...none, leadId: raw.slice(5) || null };
+  if (raw.startsWith("agent:")) return { ...none, agentId: raw.slice(6) || null };
+  if (raw === "other") {
+    return {
+      ...none,
+      otherName: String(formData.get("otherName") ?? "").trim() || null,
+      otherEmail: String(formData.get("otherEmail") ?? "").trim() || null,
+      otherPhone: String(formData.get("otherPhone") ?? "").trim() || null,
+    };
+  }
+  return none;
+}
+
+const somebody = (who: Who) => Boolean(who.clientId || who.leadId || who.agentId || who.otherName);
+
+/** What the form says about where, before the place is written from it. */
+function whereFrom(formData: FormData) {
+  const raw = String(formData.get("type") ?? "OFFICE");
+  const type = kindOf(raw);
+  const typeChoice = ownKind(raw);
+  return {
+    type,
+    typeChoice,
+    /* What Other was, kept only when Other itself is what was chosen. */
+    typeOther: raw === "OTHER" ? String(formData.get("typeOther") ?? "").trim() || null : null,
+    projectId: type === "BUILDING" ? String(formData.get("projectId") ?? "").trim() || null : null,
+    /* Kept even when empty, which is how a record made this way is told from an older one. */
+    placeDetail: String(formData.get("place") ?? "").trim(),
+  };
 }
 
 export async function createAppointment(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
 
-  const place = String(formData.get("place") ?? "").trim();
   const at = moment(String(formData.get("day") ?? ""), String(formData.get("time") ?? ""));
-  const { clientId, leadId } = whoWith(String(formData.get("with") ?? ""));
+  const who = whoWith(formData);
+  const where = whereFrom(formData);
 
-  /* Three things are needed and the form says which is missing rather than
-     saving half an appointment nobody can act on. */
-  if (!place) {
-    await flash("said.appointmentNeedsPlace", "bad");
-    return;
-  }
+  /* What is needed, and the form says which is missing rather than saving half
+     an appointment nobody can act on. */
   if (!at) {
     await flash("said.appointmentNeedsDay", "bad");
     return;
   }
-  /* A client, specifically. An enquiry is followed up rather than met, which
-     is the office's own split: appointments for clients, follow ups for leads. */
-  if (!clientId) {
+  if (!somebody(who)) {
     await flash("said.appointmentNeedsPerson", "bad");
     return;
   }
+  if (where.type === "BUILDING" && !where.projectId) {
+    await flash("said.appointmentNeedsBuilding", "bad");
+    return;
+  }
+  const place = await placeFor(where);
 
   const [made] = await db
     .insert(appointments)
     .values({
       place,
       at,
-      clientId,
-      leadId,
-      type: kindOf(String(formData.get("type") ?? "OTHER")),
-      typeChoice: ownKind(String(formData.get("type") ?? "OTHER")),
-      /* What Other was, kept only when Other itself is what was chosen. */
-      typeOther:
-        String(formData.get("type") ?? "OTHER") === "OTHER"
-          ? String(formData.get("typeOther") ?? "").trim() || null
-          : null,
+      ...who,
+      ...where,
       assignedToId: String(formData.get("assignedToId") ?? "") || null,
       createdById: user.id,
     })
@@ -122,7 +153,7 @@ export async function createAppointment(formData: FormData) {
   await letterForAppointment(made.id, "made");
 
   await flash("said.appointmentMade");
-  await redraw(clientId, leadId);
+  await redraw(who.clientId, who.leadId);
 }
 
 /** Moved to another day or another place, which happens more than it is kept. */
@@ -136,24 +167,31 @@ export async function updateAppointment(appointmentId: string, formData: FormDat
     .limit(1);
   if (!row) return;
 
-  const place = String(formData.get("place") ?? "").trim() || row.place;
   const at =
     moment(String(formData.get("day") ?? ""), String(formData.get("time") ?? "")) ?? row.at;
-  const type = formData.has("type") ? kindOf(String(formData.get("type"))) : row.type;
-  const typeChoice = formData.has("type") ? ownKind(String(formData.get("type"))) : row.typeChoice;
-  const typeOther =
-    type === "OTHER" && !typeChoice
-      ? formData.has("typeOther")
-        ? String(formData.get("typeOther") ?? "").trim() || null
-        : row.typeOther
-      : null;
+  const where = formData.has("type")
+    ? whereFrom(formData)
+    : {
+        type: row.type,
+        typeChoice: row.typeChoice,
+        typeOther: row.typeOther,
+        projectId: row.projectId,
+        placeDetail: row.placeDetail,
+      };
+  if (where.type === "BUILDING" && !where.projectId) {
+    await flash("said.appointmentNeedsBuilding", "bad");
+    return;
+  }
+  /* Who it is with changes only when the form asks; on a person's card it cannot. */
+  const who = formData.has("with") && somebody(whoWith(formData)) ? whoWith(formData) : null;
+  const place = formData.has("type") ? await placeFor(where) : row.place;
   const assignedToId = formData.has("assignedToId")
     ? String(formData.get("assignedToId") ?? "") || null
     : row.assignedToId;
 
   await db
     .update(appointments)
-    .set({ place, at, type, typeChoice, typeOther, assignedToId, updatedAt: new Date() })
+    .set({ place, at, ...where, ...(who ?? {}), assignedToId, updatedAt: new Date() })
     .where(eq(appointments.id, appointmentId));
 
   /*
@@ -167,8 +205,8 @@ export async function updateAppointment(appointmentId: string, formData: FormDat
   const moved =
     place !== row.place ||
     at.getTime() !== new Date(row.at).getTime() ||
-    type !== row.type ||
-    typeChoice !== row.typeChoice ||
+    where.type !== row.type ||
+    where.typeChoice !== row.typeChoice ||
     assignedToId !== row.assignedToId;
   if (moved) await letterForAppointment(appointmentId, "moved");
 

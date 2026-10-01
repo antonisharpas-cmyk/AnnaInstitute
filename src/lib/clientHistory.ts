@@ -27,11 +27,11 @@ import { formatAmount, toCents } from "@/lib/money";
  * Everything that happened with one client, in order.
  *
  * Nothing new is recorded for this: every step already leaves a row behind,
- * the enquiry and its notes and follow ups, each change of status, the day
+ * the lead and its notes and follow ups, each change of status, the day
  * they became a client, the apartment, the contract, each appointment, each
  * payment with its papers, each email and why one did not go, each file. This
  * reads them all and puts them on one line of time, so the admin can follow a
- * buyer from the first enquiry to the last payment without opening ten pages.
+ * buyer from the first lead to the last payment without opening ten pages.
  */
 
 export type HistoryKind =
@@ -70,8 +70,8 @@ const LEAD_STATUS: Record<string, string> = {
 };
 
 const APPOINTMENT_KIND: Record<string, string> = {
-  TIMBER: "Timber, Ocriam",
-  BATHROOMS_TILES: "Bathrooms and tiles, Studio Bagno",
+  TIMBER: "Ocriam",
+  BATHROOMS_TILES: "Studio Bagno",
   OFFICE: "At our office",
   PHONE_CALL: "A call",
   BUILDING: "At the building",
@@ -109,7 +109,7 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
   const contractIds = theirContracts.map((one) => one.contract.id);
   const refOf = new Map(theirContracts.map((one) => [one.contract.id, one.contract.reference]));
 
-  /* 1. Before they were a client: the enquiry, its notes, follow ups and statuses. */
+  /* 1. Before they were a client: the lead, its notes, follow ups and statuses. */
   for (const lead of theirLeads) {
     /* Where it came from, said once: the form's name, or else the source. */
     const where =
@@ -124,7 +124,7 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
       id: `lead-${lead.id}`,
       at: lead.createdAt,
       kind: "lead",
-      title: `Enquiry received${where ? ` (${where})` : ""}`,
+      title: `Lead received${where ? ` (${where})` : ""}`,
       note: [lead.interest || lead.projectName, lead.message].filter(Boolean).join(". ") || null,
       href: `/leads/${lead.id}`,
     });
@@ -133,7 +133,7 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
         id: `lead-consent-${lead.id}`,
         at: lead.createdAt,
         kind: "lead",
-        title: "Marketing consent given on the enquiry",
+        title: "Marketing consent given on the lead",
         note: lead.consentText,
         status: { label: "Consent", tone: "good" },
       });
@@ -186,7 +186,7 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
         break;
       }
       case "lead.assigned":
-        push({ ...base, kind: "lead", title: `Enquiry assigned to ${row.detail ?? "nobody"}` });
+        push({ ...base, kind: "lead", title: `Lead assigned to ${row.detail ?? "nobody"}` });
         break;
       case "lead.converted":
         push({ ...base, kind: "client", title: "Became a client", status: { label: "Client", tone: "teal" } });
@@ -236,7 +236,7 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
     }
   }
 
-  /* When they became a client, if no enquiry came before it. */
+  /* When they became a client, if no lead came before it. */
   if (!logged.some((row) => row.action === "lead.converted")) {
     push({ id: `client-${client.id}`, at: client.createdAt, kind: "client", title: "Client record created", status: { label: "Client", tone: "teal" } });
   }
@@ -330,7 +330,7 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
     }
   }
 
-  /* 4. Appointments, with the client or with the enquiry before them. */
+  /* 4. Appointments, with the client or with the lead before them. */
   const meetings = await db
     .select({ meeting: appointments, member: teamMembers })
     .from(appointments)

@@ -31,3 +31,8 @@ export function appUrl(): string {
 export function unsubscribeUrl(clientId: string): string {
   return `${appUrl()}/api/unsubscribe?c=${encodeURIComponent(clientId)}&t=${unsubscribeToken(clientId)}`;
 }
+
+/** The same one click for a lead, who has no client record to mark. */
+export function leadUnsubscribeUrl(leadId: string): string {
+  return `${appUrl()}/api/unsubscribe?l=${encodeURIComponent(leadId)}&t=${unsubscribeToken(`lead:${leadId}`)}`;
+}

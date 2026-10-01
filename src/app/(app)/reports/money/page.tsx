@@ -80,6 +80,22 @@ export default async function MoneyReportPage({
         />
       </div>
 
+      {/* The cash part of the sales, with no VAT on it, beside the book rather than in it. */}
+      {totals.cashAgreedCents > 0 || totals.cashReceivedCents > 0 ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-report-cash>
+          <Figure label={t("contracts.cashAgreed")} value={money(totals.cashAgreedCents)} />
+          <Figure label={t("contracts.cashReceived")} value={money(totals.cashReceivedCents)} />
+          <Figure
+            label={t("contracts.cashOutstanding")}
+            value={money(Math.max(0, totals.cashAgreedCents - totals.cashReceivedCents))}
+          />
+          <Figure
+            label={t("contracts.receivedWithCash")}
+            value={money(totals.collectedCents + totals.cashReceivedCents)}
+          />
+        </div>
+      ) : null}
+
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
         <Card title={t("reports.cashflow")}>
           <BarSeries

@@ -62,9 +62,11 @@ export const IconAgents = (p: Props) => (
   </Svg>
 );
 
+/* The companies: a briefcase, so it is not mistaken for the team's people. */
 export const IconPartners = (p: Props) => (
   <Svg {...p}>
-    <path d="M8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6M3 20v-1a4 4 0 0 1 4-4h2M15 15h2a4 4 0 0 1 4 4v1" />
+    <rect x="3" y="7" width="18" height="13" rx="2" />
+    <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18M11 12.5v1.5h2v-1.5" />
   </Svg>
 );
 

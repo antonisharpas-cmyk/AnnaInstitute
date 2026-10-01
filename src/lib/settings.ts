@@ -34,21 +34,26 @@ export const DEFAULTS = {
   "campaigns.testPhone": "",
 
   /*
-   * The company as its invoices and receipts name it. Prefilled from the
-   * office's own printed books; the ones left empty are asked for in Settings.
+   * One Eleven as its own invoices, receipts and credit notes name it: the
+   * papers for a development no company holds, and its fees to the companies.
+   * A development a company holds is invoiced by that company, from the
+   * details on the company's own page.
    */
-  "company.name": "ONE ELEVEN INVESTMENT & DEVELOPING LTD",
-  "company.registration": "HE 476522",
+  "company.name": "ONE ELEVEN INVESTMENT AND DEVELOPING LTD",
+  "company.registration": "HE 463268",
   "company.vat": "CY60112799G",
   "company.tic": "60112799G",
-  "company.address": "4 Konstantinou Palaiologou & Zalongou, Rea Court, Shop 4, 6036 Larnaca, Cyprus",
-  "company.phone": "+357 99658784, 70003396",
-  "company.fax": "+357 24817905",
+  "company.address": "75 Ermou Street, Larnaca 6022, Cyprus",
+  "company.phone": "+357 24 342720",
+  "company.mobile": "+357 99 858784",
+  "company.fax": "",
   "company.email": "info@oneeleven-ent.cy",
-  "company.website": "",
-  "company.bankName": "",
-  "company.iban": "",
-  "company.swift": "",
+  "company.website": "www.oneeleven.com.cy",
+  "company.bankName": "Alpha Bank",
+  "company.beneficiary": "ONE ELEVEN INVESTMENT AND DEVELOPING LTD",
+  "company.bankAccount": "4341010132490",
+  "company.iban": "CY53009004340004341010132490",
+  "company.swift": "ABKLCY2N",
 
   /*
    * Where the running numbers carry on from. The printed books stopped at

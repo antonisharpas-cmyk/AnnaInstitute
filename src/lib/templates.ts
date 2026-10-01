@@ -28,6 +28,8 @@ export type TemplateSeed = {
   toClients: boolean;
   toAgents: boolean;
   toSubowners: boolean;
+  /** Goes to leads by default. */
+  toLeads?: boolean;
 };
 
 export const SYSTEM_TEMPLATES: TemplateSeed[] = [
@@ -132,7 +134,7 @@ One Eleven`,
   {
     key: "construction_update",
     name: "How the building is going",
-    description: "A progress note for buyers and partners, with photographs attached.",
+    description: "A progress note for buyers and companies, with photographs attached.",
     subject: "{{project}}, where we are",
     body: `Dear {{first_name}},
 
@@ -166,6 +168,48 @@ One Eleven`,
     toSubowners: true,
   },
   {
+    key: "projects_showcase",
+    name: "Our developments, to leads",
+    description:
+      "The developments you choose, with every apartment still available and its price. The brochures, specifications and drawings are attached and the pictures are a click away.",
+    subject: "{{project_names}}: what we have for you",
+    body: `Dear {{first_name}},
+
+Thank you for your interest in One Eleven. This is what we have available today.
+
+{{projects}}
+
+The brochures, the specifications and the architectural drawings are attached. The pictures are here: {{files_url}}
+
+The price list, always up to date: {{price_list_url}}
+
+Tell us which apartment you would like to see and we will arrange a viewing.
+
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, this is what we have available at {{project_names}}: {{price_list_url}} Pictures and brochures: {{files_url}}",
+    subjectEl: "{{project_names}}: τι έχουμε για εσάς",
+    bodyEl: `Αγαπητέ/ή {{first_name}},
+
+Σας ευχαριστούμε για το ενδιαφέρον σας στη One Eleven. Αυτά είναι τα διαθέσιμα σήμερα.
+
+{{projects}}
+
+Επισυνάπτονται τα φυλλάδια, οι προδιαγραφές και τα αρχιτεκτονικά σχέδια. Οι φωτογραφίες είναι εδώ: {{files_url}}
+
+Ο τιμοκατάλογος, πάντα ενημερωμένος: {{price_list_url}}
+
+Πείτε μας ποιο διαμέρισμα θέλετε να δείτε και κανονίζουμε επίσκεψη.
+
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, αυτά είναι τα διαθέσιμα στο {{project_names}}: {{price_list_url}} Φωτογραφίες και φυλλάδια: {{files_url}}",
+    toClients: false,
+    toAgents: false,
+    toSubowners: false,
+    toLeads: true,
+  },
+  {
     key: "viewing_invitation",
     name: "An invitation to a viewing",
     description: "For an open day or a private viewing at a development.",
@@ -175,6 +219,8 @@ One Eleven`,
 We would like to invite you to {{project}} in {{location}}.
 
 {{details}}
+
+Find it on the map: {{maps_url}}
 
 Reply to this message and we will keep a time for you.
 
@@ -187,6 +233,8 @@ One Eleven`,
 Θα θέλαμε να σας προσκαλέσουμε στο {{project}} στη {{location}}.
 
 {{details}}
+
+Στον χάρτη: {{maps_url}}
 
 Απαντήστε και κρατάμε μια ώρα για εσάς.
 
@@ -360,7 +408,7 @@ One Eleven`,
     isAutomatic: true,
     name: "An appointment is arranged",
     description:
-      "Goes the moment an appointment is written down, to the client or the enquiry it is with. It says where, when, what it is about and who from the office they are meeting.",
+      "Goes the moment an appointment is written down, to the client or the lead it is with. It says where, when, what it is about and who from the office they are meeting.",
     subject: "Your appointment on {{day}} at {{time}}",
     body: `Dear {{first_name}},
 
@@ -673,6 +721,9 @@ export async function detailsForUnit(unitId: string, locale: string) {
       month: "long",
       year: "numeric",
     }),
+    /* Only when the development has its Google Maps link, so a message that
+       asks for it without one is caught as unfilled rather than sent blank. */
+    ...(row.project.mapsUrl ? { maps_url: row.project.mapsUrl } : {}),
   };
 }
 
@@ -692,5 +743,6 @@ export async function detailsForProject(projectId: string, locale: string) {
       month: "long",
       year: "numeric",
     }),
+    ...(project.mapsUrl ? { maps_url: project.mapsUrl } : {}),
   };
 }

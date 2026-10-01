@@ -11,8 +11,9 @@ import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmButton from "@/components/ConfirmButton";
-import KindField from "@/components/KindField";
-import SearchSelect from "@/components/SearchSelect";
+import AppointmentFields from "@/components/AppointmentFields";
+import { peopleOptions, whoWhereLabels } from "@/lib/appointmentLabels";
+import { buildingChoices } from "@/lib/appointments";
 import SearchBox from "@/components/SearchBox";
 import Pick from "@/components/Pick";
 import {
@@ -72,7 +73,7 @@ export default async function AppointmentsPage({
     ? (params.show as string)
     : "all";
 
-  const [rows, people, team] = await Promise.all([
+  const [rows, people, team, buildings] = await Promise.all([
     listAppointments({
       q: params.q,
       show,
@@ -84,7 +85,10 @@ export default async function AppointmentsPage({
     }),
     whoCanBeMet(),
     whoCanGo(),
+    buildingChoices(),
   ]);
+  const options = peopleOptions(people);
+  const words = whoWhereLabels(t);
 
   const dayOf = (at: Date) =>
     new Date(at).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", {
@@ -203,51 +207,7 @@ export default async function AppointmentsPage({
               action={createAppointment}
               className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-4"
             >
-              <div className="sm:col-span-2">
-                <label className="label" htmlFor="place">
-                  {t("appointments.place")}
-                </label>
-                <input
-                  id="place"
-                  name="place"
-                  required
-                  placeholder={t("appointments.placeHint")}
-                  className="input"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="label" htmlFor="with">
-                  {t("appointments.who")}
-                </label>
-                {/*
-                  Clients only. An enquiry is followed up rather than met: the
-                  follow up already carries a day, a time and a line about what
-                  it is for, and it has its own section. Appointments already
-                  made with an enquiry stay on the list as they are.
-                */}
-                <SearchSelect
-                  id="with"
-                  name="with"
-                  required
-                  choose={t("common.choose")}
-                  searchPlaceholder={t("common.searchByName")}
-                  noMatch={t("common.noMatch")}
-                  options={people.clients.map((one) => ({
-                    value: `client:${one.id}`,
-                    label: `${one.firstName ?? ""} ${one.lastName ?? ""}`.trim(),
-                    hint: one.phone ?? one.email ?? undefined,
-                  }))}
-                />
-              </div>
-              <KindField
-                id="type"
-                kinds={activeKinds}
-                labels={{
-                  kind: t("appointments.type"),
-                  other: t("appointments.typeOther"),
-                  otherHint: t("appointments.typeOtherHint"),
-                }}
-              />
+              <AppointmentFields id="new" people={options} projects={buildings} kinds={activeKinds} labels={words} />
               <div className="sm:col-span-2">
                 <label className="label" htmlFor="assignedToId">
                   {t("appointments.assignTo")}
@@ -298,7 +258,7 @@ export default async function AppointmentsPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ appointment, client, lead, member }) => {
+                {rows.map(({ appointment, client, lead, agent, member }) => {
                   const asking = needsAnAnswer(appointment);
                   const values = fieldValues(appointment.at);
                   return (
@@ -306,12 +266,6 @@ export default async function AppointmentsPage({
                       <td className="font-semibold">{appointment.place}</td>
                       <td className="text-xs">
                         {t(`appointments.type.${shownCode(appointment.type, appointment.typeChoice)}` as MessageKey)}
-                        {shownCode(appointment.type, appointment.typeChoice) === appointment.type &&
-                        (appointment.type === "TIMBER" || appointment.type === "BATHROOMS_TILES") ? (
-                          <div className="text-brand-graphite/60">
-                            {t(`appointments.company.${appointment.type}` as MessageKey)}
-                          </div>
-                        ) : null}
                         {/* Other, in the office's own words. */}
                         {appointment.type === "OTHER" && appointment.typeOther ? (
                           <div className="text-brand-graphite/60">{appointment.typeOther}</div>
@@ -337,6 +291,25 @@ export default async function AppointmentsPage({
                             </Link>
                             <div className="text-xs text-brand-graphite/60">
                               {t("appointments.anEnquiry")}
+                            </div>
+                          </>
+                        ) : agent ? (
+                          <>
+                            <Link
+                              href={`/agents/${agent.id}`}
+                              className="text-brand-teal-dark hover:underline"
+                              prefetch={false}
+                            >
+                              {agent.name}
+                            </Link>
+                            <div className="text-xs text-brand-graphite/60">{t("appointments.anAgent")}</div>
+                          </>
+                        ) : appointment.otherName ? (
+                          <>
+                            {appointment.otherName}
+                            <div className="text-xs text-brand-graphite/60">
+                              {[appointment.otherEmail, appointment.otherPhone].filter(Boolean).join(" . ") ||
+                                t("appointments.somebodyElse")}
                             </div>
                           </>
                         ) : (
@@ -432,27 +405,33 @@ export default async function AppointmentsPage({
                               action={updateAppointment.bind(null, appointment.id)}
                               className="grid w-72 gap-2 rounded border border-brand-line bg-brand-surface p-3"
                             >
-                              <div>
-                                <label className="label">{t("appointments.place")}</label>
-                                <input
-                                  name="place"
-                                  defaultValue={appointment.place}
-                                  className="input"
-                                />
-                              </div>
-                              <KindField
-                                id={`type-${appointment.id}`}
-                                defaultKind={shownCode(appointment.type, appointment.typeChoice)}
-                                defaultOther={appointment.typeOther ?? ""}
+                              <AppointmentFields
+                                id={`edit-${appointment.id}`}
+                                people={options}
+                                projects={buildings}
                                 kinds={everyKind.filter(
                                   (one) =>
                                     activeKinds.some((active) => active.value === one.value) ||
                                     one.value === shownCode(appointment.type, appointment.typeChoice),
                                 )}
-                                labels={{
-                                  kind: t("appointments.type"),
-                                  other: t("appointments.typeOther"),
-                                  otherHint: t("appointments.typeOtherHint"),
+                                labels={words}
+                                defaults={{
+                                  with: client
+                                    ? `client:${client.id}`
+                                    : lead
+                                      ? `lead:${lead.id}`
+                                      : agent
+                                        ? `agent:${agent.id}`
+                                        : appointment.otherName
+                                          ? "other"
+                                          : "",
+                                  type: shownCode(appointment.type, appointment.typeChoice),
+                                  typeOther: appointment.typeOther,
+                                  projectId: appointment.projectId,
+                                  detail: appointment.placeDetail ?? appointment.place,
+                                  otherName: appointment.otherName,
+                                  otherEmail: appointment.otherEmail,
+                                  otherPhone: appointment.otherPhone,
                                 }}
                               />
                               <div>

@@ -1,7 +1,7 @@
 import { Card, Empty, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import DateField from "@/components/DateField";
-import KindField from "@/components/KindField";
+import AppointmentFields, { type WhoWhereLabels } from "@/components/AppointmentFields";
 import TimeField from "@/components/TimeField";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmButton from "@/components/ConfirmButton";
@@ -37,6 +37,8 @@ export type AppointmentRow = {
   /** The kind as it reads: a built in one, or the office's own from the Builder. */
   type: AppointmentKind | string;
   typeOther: string | null;
+  projectId?: string | null;
+  placeDetail?: string | null;
   assignedToId: string | null;
   assignedToName: string | null;
 };
@@ -73,6 +75,9 @@ export type AppointmentLabels = {
   assignTo: string;
   nobody: string;
   team: { id: string; name: string }[];
+  /** The who and where boxes, and the developments a building can be. */
+  whoWhere: WhoWhereLabels;
+  buildings: { id: string; name: string }[];
 };
 
 /** The day, as anybody says it: 21/09/2026. */
@@ -206,9 +211,10 @@ export default function Appointments({
                       labels={labels}
                       locale={locale}
                       values={fieldValues(row.at)}
-                      place={row.place}
+                      place={row.placeDetail ?? row.place}
                       type={row.type}
                       typeOther={row.typeOther}
+                      projectId={row.projectId ?? null}
                       assignedToId={row.assignedToId}
                     />
                   </Disclosure>
@@ -284,6 +290,7 @@ function Form({
   place,
   type,
   typeOther,
+  projectId,
   assignedToId,
   withWhom,
 }: {
@@ -294,6 +301,7 @@ function Form({
   place?: string;
   type?: string;
   typeOther?: string | null;
+  projectId?: string | null;
   assignedToId?: string | null;
   withWhom?: string;
 }) {
@@ -302,18 +310,13 @@ function Form({
       action={action}
       className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-2"
     >
-      {withWhom ? <input type="hidden" name="with" value={withWhom} /> : null}
-
-      <KindField
-        id={`type-${withWhom}-${place ?? "new"}`}
-        defaultKind={type ?? "OTHER"}
-        defaultOther={typeOther ?? ""}
+      <AppointmentFields
+        id={`appt-${withWhom ?? "edit"}-${place ?? "new"}`}
+        projects={labels.buildings}
         kinds={labels.kinds}
-        labels={{
-          kind: labels.type,
-          other: labels.typeOther,
-          otherHint: labels.typeOtherHint,
-        }}
+        labels={labels.whoWhere}
+        fixedWith={withWhom}
+        defaults={{ type: type ?? labels.kinds[0]?.value, typeOther, projectId, detail: place ?? "" }}
       />
 
       <div>
@@ -326,17 +329,6 @@ function Form({
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="sm:col-span-2">
-        <label className="label">{labels.place}</label>
-        <input
-          name="place"
-          required
-          defaultValue={place ?? ""}
-          placeholder={labels.placeHint}
-          className="input"
-        />
       </div>
 
       <div>

@@ -1,10 +1,11 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { campaignDocuments, campaigns, shareLinks } from "@/db/schema";
+import { campaigns, shareLinks } from "@/db/schema";
 import { fillPlaceholders, placeholdersLeft } from "@/lib/messaging";
 import { detailsForProject, detailsForUnit } from "@/lib/templates";
-import { filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { campaignAttachments, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { idsOf, projectsBlock } from "@/lib/campaignProjects";
 import { createPriceListLink, priceListUrl, resolvePriceListToken } from "@/lib/priceList";
 import { readSetting } from "@/lib/settings";
 
@@ -29,6 +30,17 @@ type Campaign = typeof campaigns.$inferSelect;
  */
 const ownNote = (campaign: Campaign) => `For the campaign "${campaign.title}"`;
 
+/**
+ * What a campaign's own price list shows: the developments it shows, or the
+ * apartment or the development it is about, or everything.
+ */
+function scopeOf(campaign: Campaign): { projectId: string | null; unitId: string | null; projectIds: string | null } {
+  const shown = idsOf(campaign.projectIds);
+  if (shown.length > 1) return { projectId: null, unitId: null, projectIds: JSON.stringify(shown) };
+  if (shown.length === 1) return { projectId: shown[0], unitId: null, projectIds: null };
+  return { projectId: campaign.unitId ? null : campaign.projectId, unitId: campaign.unitId, projectIds: null };
+}
+
 export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): Promise<Campaign> {
   let current = campaign;
   const words = `${campaign.subject ?? ""} ${campaign.body} ${campaign.bodyWhatsapp ?? ""}`;
@@ -43,8 +55,15 @@ export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): 
          and it shows the development. The address stays the same. A link the
          office picked from its own list is left exactly as it is. */
       const own = link && (link.campaignId === campaign.id || link.note === ownNote(campaign));
-      const scope = { projectId: campaign.unitId ? null : campaign.projectId, unitId: campaign.unitId };
-      if (usable && own && (link.projectId !== scope.projectId || link.unitId !== scope.unitId || !link.campaignId)) {
+      const scope = scopeOf(campaign);
+      if (
+        usable &&
+        own &&
+        (link.projectId !== scope.projectId ||
+          link.unitId !== scope.unitId ||
+          (link.projectIds ?? null) !== scope.projectIds ||
+          !link.campaignId)
+      ) {
         await db
           .update(shareLinks)
           .set({ ...scope, campaignId: campaign.id })
@@ -55,8 +74,7 @@ export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): 
       const made = await createPriceListLink({
         note: ownNote(campaign),
         createdByEmail: byEmail,
-        projectId: campaign.projectId,
-        unitId: campaign.unitId,
+        ...scopeOf(campaign),
         campaignId: campaign.id,
       });
       await db.update(campaigns).set({ shareLinkId: made.id }).where(eq(campaigns.id, campaign.id));
@@ -64,12 +82,8 @@ export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): 
     }
   }
 
-  const [hasFiles] = await db
-    .select({ id: campaignDocuments.documentId })
-    .from(campaignDocuments)
-    .where(eq(campaignDocuments.campaignId, campaign.id))
-    .limit(1);
-  if (hasFiles) await filesLinkFor(campaign.id, byEmail);
+  /* Its own files, or the developments' papers and pictures, get their page. */
+  if ((await campaignAttachments(campaign.id)).length > 0) await filesLinkFor(campaign.id, byEmail);
 
   return current;
 }
@@ -84,6 +98,13 @@ export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): 
  */
 export async function campaignExtras(campaign: Campaign): Promise<Record<string, string>> {
   const month = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  /* The developments it shows, each with its apartments and prices, for {{projects}}. */
+  const shown = await projectsBlock(idsOf(campaign.projectIds));
+  const showing: Record<string, string> = shown ? { projects: shown.text, project_names: shown.names } : {};
+  return { ...(await aboutExtras(campaign, month)), ...showing };
+}
+
+async function aboutExtras(campaign: Campaign, month: string): Promise<Record<string, string>> {
   if (campaign.unitId) {
     const unit = await detailsForUnit(campaign.unitId, "en");
     if (unit) return { ...unit, month };
@@ -144,11 +165,7 @@ export async function testValues(campaign: Campaign) {
 export async function whatsappTest(campaign: Campaign): Promise<{ text: string; link: string; phone: string } | null> {
   if (!campaign.viaWhatsapp) return null;
   const values = await testValues(campaign);
-  const [hasFiles] = await db
-    .select({ id: campaignDocuments.documentId })
-    .from(campaignDocuments)
-    .where(eq(campaignDocuments.campaignId, campaign.id))
-    .limit(1);
+  const hasFiles = (await campaignAttachments(campaign.id)).length > 0;
 
   /* The same steps as the real send: the files link on the end when the message
      does not place it itself, and the opt out line for clients. */
@@ -156,7 +173,7 @@ export async function whatsappTest(campaign: Campaign): Promise<{ text: string; 
   const withFiles =
     hasFiles && values.filesUrl && !words.includes("{{files_url}}") ? `${words}\n${values.filesUrl}` : words;
   let text = fillPlaceholders(withFiles, values);
-  const clientsToo = campaign.toClients || campaign.audience === "CLIENTS_CONSENTED";
+  const clientsToo = campaign.toClients || campaign.toLeads || campaign.audience === "CLIENTS_CONSENTED";
   if (clientsToo && !/reply stop/i.test(text)) text = `${text}\nReply STOP to opt out.`;
 
   const phone = (await readSetting("campaigns.testPhone")).trim();

@@ -37,7 +37,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ paym
     return new NextResponse("The file is missing from storage", { status: 410 });
   }
 
-  const filename = `${paper.kind === "INVOICE" ? "Invoice" : "Receipt"} ${paper.number}.pdf`;
+  /* The name it was filed under, "Invoice 0001 Reservation, 101 MAGNUM OPUS DUE.pdf". */
+  const filename = doc.originalName || `${paper.kind === "INVOICE" ? "Invoice" : "Receipt"} ${paper.number}.pdf`;
   const download = url.searchParams.get("download") === "1";
   return new NextResponse(new Uint8Array(content), {
     headers: {

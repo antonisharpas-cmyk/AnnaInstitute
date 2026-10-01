@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { clients } from "@/db/schema";
+import { clients, leads } from "@/db/schema";
 import { addSuppression } from "@/lib/suppression";
 import { verifyUnsubscribeToken } from "@/lib/unsubscribe";
 
@@ -37,6 +37,27 @@ async function unsubscribe(clientId: string, token: string) {
   return { ok: true as const, name: client.firstName };
 }
 
+/** A lead: their address goes on the suppression list, which every send checks. */
+async function unsubscribeLead(leadId: string, token: string) {
+  if (!leadId || !verifyUnsubscribeToken(`lead:${leadId}`, token)) return { ok: false as const };
+  const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  if (!lead) return { ok: false as const };
+  if (lead.email) {
+    await addSuppression({
+      channel: "EMAIL",
+      value: lead.email,
+      reason: "Unsubscribed from an email link",
+      source: "unsubscribe link",
+    });
+  }
+  return { ok: true as const, name: lead.firstName ?? "" };
+}
+
+const either = (url: URL) =>
+  url.searchParams.get("l")
+    ? unsubscribeLead(url.searchParams.get("l") ?? "", url.searchParams.get("t") ?? "")
+    : unsubscribe(url.searchParams.get("c") ?? "", url.searchParams.get("t") ?? "");
+
 function page(title: string, message: string) {
   return new Response(
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
@@ -51,10 +72,7 @@ function page(title: string, message: string) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const result = await unsubscribe(
-    url.searchParams.get("c") ?? "",
-    url.searchParams.get("t") ?? "",
-  );
+  const result = await either(url);
 
   return result.ok
     ? page(
@@ -70,9 +88,6 @@ export async function GET(request: Request) {
 /** Mail clients that support one click unsubscribe send a POST. */
 export async function POST(request: Request) {
   const url = new URL(request.url);
-  const result = await unsubscribe(
-    url.searchParams.get("c") ?? "",
-    url.searchParams.get("t") ?? "",
-  );
+  const result = await either(url);
   return new Response(null, { status: result.ok ? 200 : 400 });
 }

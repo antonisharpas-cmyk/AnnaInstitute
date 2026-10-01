@@ -2,7 +2,8 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { campaignDocuments, documents, shareLinks } from "@/db/schema";
+import { campaignDocuments, campaigns, documents, shareLinks } from "@/db/schema";
+import { idsOf, projectPapers } from "./campaignProjects";
 import { appUrl } from "./unsubscribe";
 
 /**
@@ -44,14 +45,36 @@ export async function resolveFilesToken(token: string) {
   return link;
 }
 
-/** The documents attached to a campaign. */
-export async function campaignAttachments(campaignId: string) {
+/** The documents uploaded with the campaign itself. */
+export async function ownAttachments(campaignId: string) {
   const rows = await db
     .select({ document: documents })
     .from(campaignDocuments)
     .innerJoin(documents, eq(documents.id, campaignDocuments.documentId))
     .where(eq(campaignDocuments.campaignId, campaignId));
   return rows.map((r) => r.document);
+}
+
+/**
+ * Everything the campaign's own page shows: the files uploaded with it, and,
+ * for a campaign that shows developments, each development's brochure,
+ * specification, drawings and pictures.
+ */
+export async function campaignAttachments(campaignId: string) {
+  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  const own = await ownAttachments(campaignId);
+  if (!campaign) return own;
+  const papers = await projectPapers(idsOf(campaign.projectIds));
+  return [...own, ...papers.attached, ...papers.gallery];
+}
+
+/** What an email of this campaign carries: its own files and the developments' papers, never the pictures. */
+export async function emailAttachments(campaignId: string) {
+  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  const own = await ownAttachments(campaignId);
+  if (!campaign) return own;
+  const papers = await projectPapers(idsOf(campaign.projectIds));
+  return [...own, ...papers.attached];
 }
 
 export function filesUrl(token: string): string {

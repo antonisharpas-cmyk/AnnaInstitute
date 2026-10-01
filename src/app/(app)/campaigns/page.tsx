@@ -2,6 +2,7 @@ import Link from "next/link";
 import { asc, desc, eq, sql, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, clients, projects, suppressions, units } from "@/db/schema";
+import { groupsOf } from "@/lib/campaignGroups";
 import { getTranslator } from "@/i18n";
 import { channelConfigured, emailConfigured } from "@/lib/messaging";
 import { activePriceListLinks, priceListUrl, scopeWords } from "@/lib/priceList";
@@ -36,7 +37,7 @@ export default async function CampaignsPage() {
   ]);
 
   /* What each price list link shows, and what a new one can show. */
-  const shows = await Promise.all(links.map((l) => scopeWords({ projectId: l.projectId, unitId: l.unitId })));
+  const shows = await Promise.all(links.map((l) => scopeWords({ projectId: l.projectId, unitId: l.unitId, projectIds: l.projectIds })));
   const [projectRows, unitRows] = await Promise.all([
     db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
     db
@@ -156,15 +157,12 @@ export default async function CampaignsPage() {
                       </td>
                       <td className="text-xs">
                         {[
-                          c.toClients || c.audience === "CLIENTS_CONSENTED"
-                            ? t("campaigns.groupClients")
-                            : null,
-                          c.toAgents || c.audience === "AGENTS" ? t("campaigns.groupAgents") : null,
-                          c.toSubowners || c.audience === "SUBOWNERS"
-                            ? t("campaigns.groupSubowners")
-                            : null,
-                        ]
-                          .filter(Boolean)
+          groupsOf(c).clients ? t("campaigns.groupClients") : null,
+          groupsOf(c).agents ? t("campaigns.groupAgents") : null,
+          groupsOf(c).subowners ? t("campaigns.groupSubowners") : null,
+          groupsOf(c).leads ? t("campaigns.groupLeads") : null,
+        ]
+          .filter(Boolean)
                           .join(", ")}
                       </td>
                       <td className="ctr text-xs">

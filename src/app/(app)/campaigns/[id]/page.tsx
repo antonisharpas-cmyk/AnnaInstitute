@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaignDocuments, campaigns, documents, projects, shareLinks, units } from "@/db/schema";
+import { groupsOf } from "@/lib/campaignGroups";
 import { getTranslator } from "@/i18n";
 import { addressFor, channelConfigured, emailConfigured, fillPlaceholders } from "@/lib/messaging";
 import { filesUrl } from "@/lib/campaignFiles";
@@ -9,7 +10,8 @@ import { priceListUrl } from "@/lib/priceList";
 import { appUrl } from "@/lib/unsubscribe";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
-import { audienceFor, messagesForCampaign, saveCampaignTester, sendCampaign, sendCampaignTest, setCampaignAbout } from "../actions";
+import { audienceFor, messagesForCampaign, saveCampaignTester, sendCampaign, sendCampaignTest, setCampaignAbout, setCampaignProjects } from "../actions";
+import { idsOf } from "@/lib/campaignProjects";
 import { campaignExtras, ensureCampaignLinks, unfilledIn, whatsappTest } from "@/lib/campaignTest";
 import { readSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/auth";
@@ -120,15 +122,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         subtitle={`${[campaign.viaEmail ? "email" : null, campaign.viaWhatsapp ? "whatsapp" : null]
           .filter(Boolean)
           .join(" and ")} . ${[
-          campaign.toClients || campaign.audience === "CLIENTS_CONSENTED"
-            ? t("campaigns.groupClients").toLowerCase()
-            : null,
-          campaign.toAgents || campaign.audience === "AGENTS"
-            ? t("campaigns.groupAgents").toLowerCase()
-            : null,
-          campaign.toSubowners || campaign.audience === "SUBOWNERS"
-            ? t("campaigns.groupSubowners").toLowerCase()
-            : null,
+          groupsOf(campaign).clients ? t("campaigns.groupClients").toLowerCase() : null,
+          groupsOf(campaign).agents ? t("campaigns.groupAgents").toLowerCase() : null,
+          groupsOf(campaign).subowners ? t("campaigns.groupSubowners").toLowerCase() : null,
+          groupsOf(campaign).leads ? t("campaigns.groupLeads").toLowerCase() : null,
         ]
           .filter(Boolean)
           .join(", ")}`}
@@ -175,6 +172,28 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             <p className="mt-1 text-xs text-brand-graphite/60">{t("campaigns.aboutNote")}</p>
           </div>
           <SubmitButton className="btn btn-secondary">{t("campaigns.aboutSave")}</SubmitButton>
+        </form>
+      ) : null}
+
+      {/* The developments it shows, for {{projects}}, changed on the draft. */}
+      {!alreadySent && (idsOf(campaign.projectIds).length > 0 || /\{\{\s*(projects|project_names)\s*\}\}/i.test(`${campaign.subject ?? ""} ${campaign.body} ${campaign.bodyWhatsapp ?? ""}`)) ? (
+        <form action={setCampaignProjects.bind(null, id)} className="card mb-4 p-4" data-campaign-projects>
+          <p className="label">{t("campaigns.showProjects")}</p>
+          <div className="flex flex-wrap gap-4">
+            {projectRows.map((one) => (
+              <label key={one.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="projectIds"
+                  value={one.id}
+                  defaultChecked={idsOf(campaign.projectIds).includes(one.id)}
+                />
+                {one.name}
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-brand-graphite/60">{t("campaigns.showProjectsNote")}</p>
+          <SubmitButton className="btn btn-secondary mt-2">{t("common.save")}</SubmitButton>
         </form>
       ) : null}
 
@@ -325,7 +344,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                           ? t("campaigns.groupClients")
                           : r.group === "AGENTS"
                             ? t("campaigns.groupAgents")
-                            : t("campaigns.groupSubowners")}
+                            : r.group === "LEADS"
+                              ? t("campaigns.groupLeads")
+                              : t("campaigns.groupSubowners")}
                       </div>
                     </td>
                     <td className="break-all text-xs">

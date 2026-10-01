@@ -47,7 +47,7 @@ export default async function AgentsPage({
       .select({
         agent: agents,
         sales: sql<number>`count(${commissions.id}) filter (where ${commissions.status} <> 'CANCELLED')::int`,
-        /* How many enquiries this agent has brought us, whatever came of them.
+        /* How many leads this agent has brought us, whatever came of them.
            A subquery rather than a join, because joining a second table to a
            grouped count would multiply the sales by the leads. */
         leads: sql<number>`(select count(*) from leads l where l.agent_id = ${agents.id} and l.deleted_at is null)::int`,

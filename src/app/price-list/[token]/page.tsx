@@ -18,12 +18,13 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
   if (!link) notFound();
 
   /* Everything, one development or one apartment, as the link was made for. */
-  const { rows, focus, gone } = await priceListRows({ projectId: link.projectId, unitId: link.unitId });
+  const { rows, focus, gone } = await priceListRows({ projectId: link.projectId, unitId: link.unitId, projectIds: link.projectIds });
   const byProject = new Map<
     string,
     {
       name: string;
       location: string | null;
+      mapsUrl: string | null;
       completionBy: string | null;
       units: typeof rows;
     }
@@ -37,6 +38,7 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
       byProject.set(row.project.id, {
         name: row.project.name,
         location: row.project.location,
+        mapsUrl: row.project.mapsUrl,
         completionBy: row.project.completionBy,
         units: [row],
       });
@@ -94,6 +96,11 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
             <h2 className="text-base font-semibold">{project.name}</h2>
             <p className="mb-2 text-sm text-brand-graphite/70">
               {[project.location, project.completionBy].filter(Boolean).join(" . ")}
+              {project.mapsUrl ? (
+                <a href={project.mapsUrl} target="_blank" rel="noreferrer" className="ml-2 text-brand-teal-dark underline">
+                  On the map
+                </a>
+              ) : null}
             </p>
             <div className="overflow-x-auto">
               <table className="data">

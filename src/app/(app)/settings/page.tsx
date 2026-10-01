@@ -1,4 +1,4 @@
-import { getTranslator } from "@/i18n";
+import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { readSettings } from "@/lib/settings";
 import { buildSummaries, summaryText } from "@/lib/appointmentSummary";
@@ -38,10 +38,13 @@ export default async function SettingsPage() {
     "company.tic",
     "company.address",
     "company.phone",
+    "company.mobile",
     "company.fax",
     "company.email",
     "company.website",
     "company.bankName",
+    "company.beneficiary",
+    "company.bankAccount",
     "company.iban",
     "company.swift",
     "numbers.nextInvoice",
@@ -58,9 +61,12 @@ export default async function SettingsPage() {
     { key: "company.email", name: "email", label: t("settings.company.email") },
     { key: "company.address", name: "address", label: t("settings.company.address"), wide: true },
     { key: "company.phone", name: "phone", label: t("settings.company.phone") },
+    { key: "company.mobile", name: "mobile", label: t("settings.company.mobile") },
     { key: "company.fax", name: "fax", label: t("settings.company.fax") },
     { key: "company.website", name: "website", label: t("settings.company.website") },
     { key: "company.bankName", name: "bankName", label: t("settings.company.bankName") },
+    { key: "company.beneficiary", name: "beneficiary", label: t("settings.company.beneficiary") },
+    { key: "company.bankAccount", name: "bankAccount", label: t("settings.company.bankAccount") },
     { key: "company.iban", name: "iban", label: t("settings.company.iban") },
     { key: "company.swift", name: "swift", label: t("settings.company.swift") },
   ];
@@ -294,6 +300,19 @@ export default async function SettingsPage() {
           <div className="mt-4">
             <Card title={t("settings.company")}>
               <p className="mb-3 max-w-prose text-xs text-brand-graphite/60">{t("settings.companyHint")}</p>
+              <div className="mb-3 flex flex-wrap gap-2">
+                {(["invoice", "receipt", "credit"] as const).map((kind) => (
+                  <a
+                    key={kind}
+                    href={`/api/companies/sample?issuer=&kind=${kind}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary !text-xs"
+                  >
+                    {t(`subowners.sample.${kind}` as MessageKey)}
+                  </a>
+                ))}
+              </div>
               <form action={saveCompanySettings} className="grid gap-3 sm:grid-cols-2">
                 {companyFields.map((field) => (
                   <div key={field.name} className={field.wide ? "sm:col-span-2" : ""}>

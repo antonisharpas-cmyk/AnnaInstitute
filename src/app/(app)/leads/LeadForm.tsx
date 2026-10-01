@@ -9,13 +9,13 @@ import type { LeadFormState } from "./actions";
 /**
  * A lead typed in by hand.
  *
- * The same fields the website sends, so an enquiry taken on the phone or passed
+ * The same fields the website sends, so a lead taken on the phone or passed
  * on by an agent sits in the list next to the ones that arrive on their own. The
  * note is where the message goes, whether it came from a form or from whoever
  * took the call.
  *
  * Two things belong here rather than being fixed up afterwards. The agent, which
- * only appears once the enquiry is said to have come from one, because the
+ * only appears once the lead is said to have come from one, because the
  * person taking the call is the one who knows who passed it on. And consent to
  * be contacted with offers: somebody who says yes on the telephone has said yes,
  * and asking the office to remember to tick a box on another screen later is how
@@ -50,13 +50,13 @@ export default function LeadForm({
     save: string;
     cancel: string;
     sources: { value: string; label: string }[];
-    /** Whose enquiry this is. */
+    /** Whose lead this is. */
     assignedTo: string;
     nobody: string;
   };
   /** Every agent who can be named, for the picker that appears on demand. */
   agents: { id: string; name: string }[];
-  /** The office, for the person the enquiry belongs to. */
+  /** The office, for the person the lead belongs to. */
   team: { id: string; name: string }[];
 }) {
   const [state, formAction] = useActionState(action, null);
@@ -145,10 +145,10 @@ export default function LeadForm({
         </div>
 
         {/*
-          What the enquiry is about, always.
+          What the lead is about, always.
 
           It used to be swapped out for "where exactly" as soon as the source
-          was Other, so the one enquiry where somebody walked in off the street
+          was Other, so the one lead where somebody walked in off the street
           and asked about Quattro 201 and 202 was the one with nowhere to write
           that down. The two questions are different: what they are asking about
           and how they reached us, so both are here and Other adds a field
@@ -184,11 +184,11 @@ export default function LeadForm({
       ) : null}
 
       {/*
-        Whose enquiry this is.
+        Whose lead this is.
         
         Beside the source rather than at the bottom, because the two questions
         are asked at the same moment: where did this come from, and who is
-        looking after it. An enquiry with nobody's name on it is the one nobody
+        looking after it. A lead with nobody's name on it is the one nobody
         follows up.
       */}
       <div className="sm:w-1/2">

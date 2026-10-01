@@ -40,11 +40,11 @@ import { bulkLeadBin, bulkLeadStatus, setLeadStatusInline } from "./actions";
 
 const PER_PAGE = 20;
 /**
- * The statuses an enquiry can be in, including the one that ends it.
+ * The statuses a lead can be in, including the one that ends it.
  *
  * Became a client is offered here because that is how somebody working down the
  * list thinks about it, but it is not stored as a state the list then has to
- * carry: choosing it creates the client record and the enquiry leaves this list
+ * carry: choosing it creates the client record and the lead leaves this list
  * for the clients list, which is the office's own rule.
  */
 
@@ -122,7 +122,7 @@ export default async function LeadsPage({
     leadCounts(),
     viewsFor(user.id, "leads"),
     hiddenColumns(user.id, "leads"),
-    /* The two people an enquiry can be filtered by: the agent who introduced
+    /* The two people a lead can be filtered by: the agent who introduced
        it, and whoever in the office is looking after it. */
     db
       .select({ id: agents.id, name: agents.name })
@@ -510,9 +510,9 @@ export default async function LeadsPage({
                       {on("note") ? (
                         <td className="max-w-80 text-xs text-brand-graphite/70">
                           {/*
-                            The last thing written about this enquiry, which is
+                            The last thing written about this lead, which is
                             what somebody scanning the list wants. The whole
-                            record, with its dates, is on the enquiry itself.
+                            record, with its dates, is on the lead itself.
                           */}
                           {latestNotes.get(r.lead.id) ?? r.lead.message ?? ""}
                         </td>
@@ -536,14 +536,13 @@ export default async function LeadsPage({
               <label className="flex items-center gap-1.5 text-xs font-semibold">
                 {t("list.setStatus")}
                 <select name="newStatus" className="select !w-auto !py-1 !text-xs">
-                  {/* A conversion is a record at a time, so it is not offered here. */}
-                  {statusOptions
-                    .filter((one) => one.value !== "CONVERTED")
-                    .map((one) => (
-                      <option key={one.value} value={one.value}>
-                        {one.label}
-                      </option>
-                    ))}
+                  {/* Every status the office has, Became a client included: that one
+                      makes each chosen lead a client, as the button on a lead does. */}
+                  {statusOptions.map((one) => (
+                    <option key={one.value} value={one.value}>
+                      {one.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <button type="submit" className="btn btn-primary !px-2.5 !py-1 !text-xs">

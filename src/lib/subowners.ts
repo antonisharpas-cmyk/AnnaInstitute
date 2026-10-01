@@ -123,7 +123,7 @@ export async function partnersByProject(): Promise<
     })
     .from(projectPartners)
     .innerJoin(subowners, eq(subowners.id, projectPartners.subownerId))
-    .orderBy(desc(projectPartners.sharePercent), asc(subowners.name));
+    .orderBy(asc(subowners.name));
 
   const held = new Map<string, { name: string; share: number | null }[]>();
   for (const row of rows) {
@@ -142,7 +142,7 @@ export async function partnersOfProject(projectId: string) {
     .from(projectPartners)
     .innerJoin(subowners, eq(subowners.id, projectPartners.subownerId))
     .where(eq(projectPartners.projectId, projectId))
-    .orderBy(desc(projectPartners.sharePercent));
+    .orderBy(asc(subowners.name));
 }
 
 /** Everyone who can be added as a partner, for the picker. */
@@ -176,12 +176,33 @@ export async function directorsOf(subownerId: string) {
  * office may only have recorded the holders it deals with. Saying what is left
  * over is more honest than quietly showing a total of sixty.
  */
+export const ONE_ELEVEN = "One Eleven";
+
+/**
+ * Every company has One Eleven among its shareholders.
+ *
+ * The line is made the first time the company is opened, or found among the
+ * lines already typed ("One Eleven", "ONE ELEVEN INVESTMENT...") and marked as
+ * ours, so it is never there twice and can never be taken off.
+ */
+export async function ensureOneEleven(subownerId: string): Promise<void> {
+  const rows = await db.select().from(subownerShares).where(eq(subownerShares.subownerId, subownerId));
+  if (rows.some((row) => row.isOneEleven)) return;
+  const typed = rows.find((row) => /^\s*one\s*eleven\b/i.test(row.holder));
+  if (typed) {
+    await db.update(subownerShares).set({ isOneEleven: true, holderKind: typed.holderKind ?? "COMPANY" }).where(eq(subownerShares.id, typed.id));
+    return;
+  }
+  await db.insert(subownerShares).values({ subownerId, holder: ONE_ELEVEN, isOneEleven: true, holderKind: "COMPANY" });
+}
+
 export async function sharesOf(subownerId: string) {
+  await ensureOneEleven(subownerId);
   const rows = await db
     .select()
     .from(subownerShares)
     .where(eq(subownerShares.subownerId, subownerId))
-    .orderBy(desc(subownerShares.sharePercent), asc(subownerShares.holder));
+    .orderBy(desc(subownerShares.isOneEleven), desc(subownerShares.sharePercent), asc(subownerShares.holder));
 
   const accounted = rows.reduce((total, row) => total + Number(row.sharePercent ?? 0), 0);
 

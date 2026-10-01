@@ -2,7 +2,9 @@ import "server-only";
 import { choiceFilter } from "@/lib/choices/filter";
 import { and, asc, desc, eq, gte, ilike, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { appointments, clients, leads, teamMembers } from "@/db/schema";
+import { agents, appointments, clients, leads, projects, teamMembers } from "@/db/schema";
+import { englishWord } from "@/lib/choices";
+import { readSetting } from "@/lib/settings";
 
 /*
  * Appointments: where the office is going, and who they are meeting.
@@ -23,8 +25,48 @@ const selection = {
   appointment: appointments,
   client: clients,
   lead: leads,
+  agent: agents,
+  project: projects,
   member: teamMembers,
 };
+
+/**
+ * The place, in words, from what the form said about where.
+ *
+ * The office picks the kind of place and the CRM writes it out: our office with
+ * its address, the development with its area, Studio Bagno, Ocriam, or what
+ * Other was. Anything the office added, a meeting room or a floor, goes on the
+ * end. This is the line the letter says after "Where".
+ */
+export async function placeFor(where: {
+  type: string;
+  typeChoice: string | null;
+  typeOther: string | null;
+  projectId: string | null;
+  placeDetail: string | null;
+}): Promise<string> {
+  let head = "";
+  if (where.typeChoice) {
+    head = await englishWord("appointmentType", where.typeChoice);
+  } else if (where.type === "OFFICE") {
+    const address = (await readSetting("company.address")).trim();
+    head = address ? `Our office, ${address}` : "Our office";
+  } else if (where.type === "BUILDING") {
+    const [project] = where.projectId
+      ? await db.select().from(projects).where(eq(projects.id, where.projectId)).limit(1)
+      : [];
+    head = project ? [project.name, project.location].filter(Boolean).join(", ") : "The building";
+  } else if (where.type === "BATHROOMS_TILES") {
+    head = "Studio Bagno";
+  } else if (where.type === "TIMBER") {
+    head = "Ocriam";
+  } else if (where.type === "PHONE_CALL") {
+    head = "By phone";
+  } else {
+    head = (where.typeOther ?? "").trim() || "Elsewhere";
+  }
+  return [head, (where.placeDetail ?? "").trim()].filter(Boolean).join(", ");
+}
 
 /** The start of today, so a meeting at four this afternoon still counts as coming up. */
 export function startOfToday(): Date {
@@ -125,6 +167,8 @@ export async function listAppointments(filter: AppointmentFilter) {
         ilike(clients.lastName, `%${query}%`),
         ilike(leads.firstName, `%${query}%`),
         ilike(leads.lastName, `%${query}%`),
+        ilike(agents.name, `%${query}%`),
+        ilike(appointments.otherName, `%${query}%`),
       ) as SQL,
     );
   }
@@ -173,6 +217,8 @@ export async function listAppointments(filter: AppointmentFilter) {
     .from(appointments)
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
+    .leftJoin(agents, eq(agents.id, appointments.agentId))
+    .leftJoin(projects, eq(projects.id, appointments.projectId))
     .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(where)
     /* What is still to happen reads soonest first, so an overdue one is at the
@@ -202,6 +248,8 @@ const withMember = {
   /* What it reads as: the office's own kind from the Builder while it still counts as the built in one. */
   type: sql<string>`case when ${appointments.typeChoice} like ${appointments.type}::text || '~%' then ${appointments.typeChoice} else ${appointments.type}::text end`,
   typeOther: appointments.typeOther,
+  projectId: appointments.projectId,
+  placeDetail: appointments.placeDetail,
   assignedToId: appointments.assignedToId,
   assignedToName: teamMembers.name,
 };
@@ -224,7 +272,12 @@ export async function appointmentsForLead(leadId: string) {
     .orderBy(desc(appointments.at));
 }
 
-/** Clients and enquiries an appointment can be made with. */
+/** The developments an appointment at a building can be at. */
+export async function buildingChoices() {
+  return db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name));
+}
+
+/** Clients and leads an appointment can be made with. */
 export async function whoCanBeMet() {
   const [people, enquiries] = await Promise.all([
     db
@@ -252,7 +305,13 @@ export async function whoCanBeMet() {
       .orderBy(asc(leads.createdAt)),
   ]);
 
-  return { clients: people, leads: enquiries };
+  const agentRows = await db
+    .select({ id: agents.id, name: agents.name, phone: agents.phone, email: agents.email })
+    .from(agents)
+    .where(eq(agents.isActive, true))
+    .orderBy(asc(agents.name));
+
+  return { clients: people, leads: enquiries, agents: agentRows };
 }
 
 /** Is this one still waiting for somebody to say whether it happened? */

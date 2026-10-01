@@ -99,7 +99,7 @@ export function safeName(name: string): string {
   return (
     name
       .replace(/[\r\n"]/g, "")
-      .replace(/[^\w. ()\-Ͱ-Ͽ]/g, "_")
+      .replace(/[^\w., ()\-Ͱ-Ͽ]/g, "_")
       .slice(0, 120) || "file"
   );
 }

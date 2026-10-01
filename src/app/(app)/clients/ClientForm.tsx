@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { clients as clientsTable } from "@/db/schema";
 import type { MessageKey } from "@/i18n";
 import SubmitButton from "@/components/SubmitButton";
+import SourceAgentFields from "@/components/SourceAgentFields";
 
 type Client = typeof clientsTable.$inferSelect;
 
@@ -12,6 +13,7 @@ export default function ClientForm({
   t,
   idTypes,
   sources,
+  agents = [],
 }: {
   action: (formData: FormData) => void | Promise<void>;
   client?: Client;
@@ -20,6 +22,8 @@ export default function ClientForm({
   /** What the two pickers offer, as the office has them in the Builder. */
   idTypes: { value: string; label: string }[];
   sources: { value: string; label: string }[];
+  /** For a client an agent brought: which agent. */
+  agents?: { value: string; label: string; hint?: string }[];
 }) {
   return (
     <form action={action} className="space-y-4">
@@ -132,22 +136,20 @@ export default function ClientForm({
             className="input"
           />
         </div>
-        <div>
-          <label className="label" htmlFor="source">
-            {t("clients.source")}
-          </label>
-          <select
-            id="source"
-            name="source"
-            className="select"
-            defaultValue={client?.source ?? "BUYER"}
-          >
-            {sources.map((one) => (
-              <option key={one.value} value={one.value}>
-                {one.label}
-              </option>
-            ))}
-          </select>
+        <div className="space-y-4">
+          <SourceAgentFields
+            sources={sources}
+            agents={agents}
+            defaultSource={client?.source ?? "BUYER"}
+            defaultAgentId={client?.agentId ?? null}
+            labels={{
+              source: t("clients.source"),
+              agent: t("clients.referralAgent"),
+              choose: t("common.choose"),
+              search: t("common.searchByName"),
+              noMatch: t("common.noMatch"),
+            }}
+          />
         </div>
         <div className="sm:col-span-2">
           <label className="label" htmlFor="notes">

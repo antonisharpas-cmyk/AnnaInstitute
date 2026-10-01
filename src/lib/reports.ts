@@ -529,6 +529,9 @@ export async function moneyTotals(only: string[] | null = null) {
       scheduledVat: sql<string>`coalesce((select sum(i.vat_amount) from installments i join contracts c on c.id = i.contract_id where ${scoped}), 0)`,
       scheduledTotal: sql<string>`coalesce((select sum(i.total_amount) from installments i join contracts c on c.id = i.contract_id where ${scoped}), 0)`,
       collected: sql<string>`coalesce((select sum(p.amount) from payments p join contracts c on c.id = p.contract_id where ${scoped}), 0)`,
+      /* The cash part of the sales, agreed and received, kept apart from the VAT book. */
+      cashAgreed: sql<string>`coalesce((select sum(c.cash_amount) from contracts c where ${scoped} and c.kind = 'SALE'), 0)`,
+      cashReceived: sql<string>`coalesce((select sum(r.amount) from cash_receipts r join contracts c on c.id = r.contract_id where ${scoped}), 0)`,
     })
     .from(contracts)
     .limit(1);
@@ -544,6 +547,8 @@ export async function moneyTotals(only: string[] | null = null) {
     scheduledTotalCents: scheduledTotal,
     collectedCents: collected,
     outstandingCents: scheduledTotal - collected,
+    cashAgreedCents: toCents(row?.cashAgreed ?? "0"),
+    cashReceivedCents: toCents(row?.cashReceived ?? "0"),
     /** VAT moves with the money, so the share collected is the share of the book. */
     vatCollectedCents:
       scheduledTotal > 0 ? Math.round((scheduledVat * collected) / scheduledTotal) : 0,
@@ -591,7 +596,7 @@ export async function leadsBySource(range: Range) {
     .orderBy(desc(sql`count(*)`));
 }
 
-/** How many enquiries become clients, and how many of those buy. */
+/** How many leads become clients, and how many of those buy. */
 export async function leadFunnel(range: Range) {
   const [row] = await db
     .select({
@@ -729,7 +734,6 @@ export async function partnerPortfolio() {
     .select({
       subowner: subowners,
       project: projects,
-      share: projectPartners.sharePercent,
       listValue: sql<string>`coalesce((
         select sum(u.net_price) from units u where u.project_id = projects.id
       ), 0)`,
@@ -756,7 +760,8 @@ export async function partnerPortfolio() {
   >();
 
   for (const row of rows) {
-    const share = Number(row.share ?? 0) / 100;
+    /* A company holds the whole of the development it is on. */
+    const share = 1;
     const listCents = toCents(row.listValue);
     const soldCents = toCents(row.soldValue);
     const found = byPartner.get(row.subowner.id) ?? {

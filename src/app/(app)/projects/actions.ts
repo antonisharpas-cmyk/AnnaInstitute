@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { companies, projects, units } from "@/db/schema";
+import { projects, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import {
@@ -33,10 +33,30 @@ const slugify = (value: string) =>
 const projectSchema = z.object({
   name: z.string().min(1),
   location: z.string().optional(),
+  mapsUrl: z.string().url().optional(),
   completionBy: z.string().optional(),
   status: z.enum(["PLANNING", "UNDER_CONSTRUCTION", "COMPLETED", "DELIVERED"]),
   description: z.string().optional(),
 });
+
+/**
+ * The Google Maps link as pasted.
+ *
+ * Maps hands out several shapes of link and all of them are fine. Only a line
+ * that is plainly not a link is refused, and it is said in words rather than
+ * with a form that will not submit.
+ */
+function mapsLink(raw: FormDataEntryValue | null): string | undefined {
+  const text = String(raw ?? "").trim();
+  if (!text) return undefined;
+  const withScheme = /^https?:\/\//i.test(text) ? text : `https://${text}`;
+  try {
+    new URL(withScheme);
+  } catch {
+    throw new Error("The Google Maps link does not look like a link. Copy it from Maps with Share, then Copy link.");
+  }
+  return withScheme;
+}
 
 /* A status may be the office's own from the Builder: the built in one it counts
    as goes in the status column, the office's own beside it. */
@@ -45,39 +65,12 @@ function readProject(formData: FormData) {
   const parsed = projectSchema.parse({
     name: formData.get("name"),
     location: formData.get("location") || undefined,
+    mapsUrl: mapsLink(formData.get("mapsUrl")),
     completionBy: formData.get("completionBy") || undefined,
     status: status.base,
     description: formData.get("description") || undefined,
   });
   return { ...parsed, statusChoice: status.choice };
-}
-
-/**
- * The company a development is built with.
- *
- * The form offers the companies already on record and a box for a new name, so
- * a partner can be added without leaving the page. A name that already exists is
- * reused rather than duplicated.
- */
-async function companyFrom(formData: FormData): Promise<string | null> {
-  const typed = String(formData.get("newCompany") ?? "").trim();
-  if (typed) {
-    const existing = await db
-      .select({ id: companies.id })
-      .from(companies)
-      .where(eq(companies.name, typed))
-      .limit(1);
-    if (existing[0]) return existing[0].id;
-
-    const inserted = await db
-      .insert(companies)
-      .values({ name: typed })
-      .returning({ id: companies.id });
-    return inserted[0].id;
-  }
-
-  const chosen = String(formData.get("companyId") ?? "").trim();
-  return chosen || null;
 }
 
 export async function createProject(formData: FormData) {
@@ -88,11 +81,10 @@ export async function createProject(formData: FormData) {
   const clash = await db.select({ id: projects.id }).from(projects).where(eq(projects.slug, slug));
   if (clash.length > 0) slug = `${slug}_${Date.now().toString(36).slice(-4)}`;
 
-  const companyId = await companyFrom(formData);
 
   const inserted = await db
     .insert(projects)
-    .values({ ...parsed, slug, companyId })
+    .values({ ...parsed, slug })
     .returning({ id: projects.id });
 
   await recordAudit({
@@ -115,11 +107,10 @@ export async function updateProject(projectId: string, formData: FormData) {
   const before = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!before[0]) throw new Error("Project not found");
 
-  const companyId = await companyFrom(formData);
 
   await db
     .update(projects)
-    .set({ ...parsed, companyId, updatedAt: new Date() })
+    .set({ ...parsed, updatedAt: new Date() })
     .where(eq(projects.id, projectId));
 
   /**
@@ -404,7 +395,7 @@ export async function letTheApartmentsDecide(projectId: string) {
    Getting rid of a record
 
    A development and an apartment can both be deleted outright, which a client
-   and an enquiry cannot: those go to the recycle bin, because a person who
+   and a lead cannot: those go to the recycle bin, because a person who
    telephoned once may telephone again. A building that was entered twice, or an
    apartment that turned out not to exist, is simply a mistake and should leave
    no trace.

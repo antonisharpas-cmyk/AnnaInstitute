@@ -329,8 +329,8 @@ export async function automaticHistory(limit = 30) {
 
 /** The six kinds in words, for a letter that carries no stylesheet. */
 const KIND_WORDS: Record<string, string> = {
-  TIMBER: "Timber, Ocriam",
-  BATHROOMS_TILES: "Bathrooms and tiles, Studio Bagno",
+  TIMBER: "Ocriam",
+  BATHROOMS_TILES: "Studio Bagno",
   OFFICE: "At our office",
   PHONE_CALL: "A call",
   BUILDING: "At the building",
@@ -342,7 +342,7 @@ const KIND_WORDS: Record<string, string> = {
  *
  * Made, moved, cancelled: the same letter three ways, because those are the
  * three moments a person needs to hear from us. It goes to the client or to the
- * enquiry, whichever the appointment is with, and it says the one thing that
+ * lead, whichever the appointment is with, and it says the one thing that
  * matters, which is where to be and when.
  *
  * Nothing here throws, for the same reason as the money letters: an appointment
@@ -354,10 +354,19 @@ export async function letterForAppointment(
   kind: "made" | "moved" | "cancelled" | "reminder",
 ): Promise<void> {
   const [row] = await db
-    .select({ appointment: appointments, client: clients, lead: leads, member: teamMembers })
+    .select({
+      appointment: appointments,
+      client: clients,
+      lead: leads,
+      agent: agents,
+      project: projects,
+      member: teamMembers,
+    })
     .from(appointments)
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
+    .leftJoin(agents, eq(agents.id, appointments.agentId))
+    .leftJoin(projects, eq(projects.id, appointments.projectId))
     .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(eq(appointments.id, appointmentId))
     .limit(1);
@@ -387,7 +396,21 @@ export async function letterForAppointment(
           name: `${row.lead.firstName ?? ""} ${row.lead.lastName ?? ""}`.trim(),
           clientId: null,
         }
-      : null;
+      : row.agent
+        ? {
+            email: row.agent.email,
+            first: row.agent.name.split(" ")[0] ?? row.agent.name,
+            name: row.agent.name,
+            clientId: null,
+          }
+        : row.appointment.otherName
+          ? {
+              email: row.appointment.otherEmail,
+              first: row.appointment.otherName.split(" ")[0] ?? row.appointment.otherName,
+              name: row.appointment.otherName,
+              clientId: null,
+            }
+          : null;
 
   const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
     await db.insert(automaticEmails).values({
@@ -418,7 +441,12 @@ export async function letterForAppointment(
   const values: Record<string, string> = {
     first_name: to.first,
     name: to.name,
-    place: row.appointment.place,
+    /* At a building, its Google Maps link goes with the place, so nobody is sent
+       to whatever the address typed from memory finds. */
+    place:
+      row.project?.mapsUrl && row.appointment.type === "BUILDING"
+        ? `${row.appointment.place}\nOn the map: ${row.project.mapsUrl}`
+        : row.appointment.place,
     /* Other says what it was, because "Other" tells the buyer nothing. */
     kind:
       shownCode(row.appointment.type, row.appointment.typeChoice) !== row.appointment.type

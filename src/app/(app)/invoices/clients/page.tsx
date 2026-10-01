@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { asc } from "drizzle-orm";
 import { db } from "@/db";
-import { projects } from "@/db/schema";
+import { projects, subowners } from "@/db/schema";
 import { dayAndTime } from "@/lib/when";
 import { getTranslator } from "@/i18n";
 import { requireUser } from "@/lib/auth";
@@ -30,6 +30,7 @@ export default async function ClientInvoicesPage({
     from?: string;
     to?: string;
     project?: string;
+    issuer?: string;
     kind?: string;
     state?: string;
     page?: string;
@@ -47,12 +48,14 @@ export default async function ClientInvoicesPage({
     project: params.project ?? "",
     kind: params.kind ?? "",
     state: params.state ?? "",
+    issuer: params.issuer ?? "",
   };
 
-  const [{ rows, total, totals }, projectList, waiting] = await Promise.all([
+  const [{ rows, total, totals }, projectList, waiting, companyList] = await Promise.all([
     listIssued({ ...filters, limit: perPage, offset }),
     db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
     paymentsWithoutPapers(15),
+    db.select({ id: subowners.id, name: subowners.name }).from(subowners).orderBy(asc(subowners.name)),
   ]);
 
   const money = (cents: number) => formatAmount(cents, locale);
@@ -110,6 +113,20 @@ export default async function ClientInvoicesPage({
             <select id="project" name="project" defaultValue={filters.project} className="select">
               <option value="">{t("common.all")}</option>
               {projectList.map((one) => (
+                <option key={one.id} value={one.id}>
+                  {one.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="w-48">
+            <label className="label" htmlFor="issuer">
+              {t("issued.issuer")}
+            </label>
+            <select id="issuer" name="issuer" defaultValue={filters.issuer} className="select">
+              <option value="">{t("common.all")}</option>
+              <option value="one">One Eleven</option>
+              {companyList.map((one) => (
                 <option key={one.id} value={one.id}>
                   {one.name}
                 </option>
@@ -192,6 +209,11 @@ export default async function ClientInvoicesPage({
                       </td>
                       <td className={`font-semibold ${voided || credited ? "line-through" : ""}`}>
                         {paper.number}
+                        {row.issuerName ? (
+                          <div className="text-xs font-normal text-brand-graphite/60" data-issuer>
+                            {row.issuerName}
+                          </div>
+                        ) : null}
                         {voided ? (
                           <div className="mt-0.5">
                             <Pill tone="warn">{t("issued.void")}</Pill>

@@ -8,6 +8,9 @@ import { projectPartners, subownerDirectors, subownerShares, subowners } from "@
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
+import { ensureOneEleven } from "@/lib/subowners";
+import { validColor } from "@/lib/issuer";
+import { saveUpload } from "@/lib/storage";
 
 export type SubownerState = { ok: true } | { error: string } | null;
 
@@ -22,17 +25,58 @@ function read(formData: FormData) {
     country: String(formData.get("country") ?? "").trim() || null,
     vatNumber: String(formData.get("vatNumber") ?? "").trim() || null,
     registryNumber: String(formData.get("registryNumber") ?? "").trim() || null,
+    /* What its own invoices, receipts and credit notes print. */
+    tic: text(formData, "tic"),
+    mobile: text(formData, "mobile"),
+    fax: text(formData, "fax"),
+    website: text(formData, "website"),
+    bankName: text(formData, "bankName"),
+    bankBeneficiary: text(formData, "bankBeneficiary"),
+    bankAccount: text(formData, "bankAccount"),
+    iban: text(formData, "iban")?.replace(/\s+/g, "").toUpperCase() ?? null,
+    bic: text(formData, "bic")?.toUpperCase() ?? null,
+    brandColor: validColor(text(formData, "brandColor")),
+    nextInvoice: whole(formData, "nextInvoice"),
+    nextReceipt: whole(formData, "nextReceipt"),
+    nextCreditNote: whole(formData, "nextCreditNote"),
     notes: String(formData.get("notes") ?? "").trim() || null,
     isActive: String(formData.get("isActive") ?? "") === "on",
   };
 }
 
+function text(formData: FormData, name: string): string | null {
+  return String(formData.get(name) ?? "").trim() || null;
+}
+
+/** A number a series carries on from: a whole number above nought, or nothing. */
+function whole(formData: FormData, name: string): number | null {
+  const n = Math.trunc(Number(String(formData.get(name) ?? "").replace(/\D/g, "")));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** A logo for the company's papers: a PNG or a JPEG, kept with the uploads. */
+async function savedLogo(formData: FormData): Promise<string | null> {
+  const file = formData.get("logo");
+  if (!(file instanceof File) || file.size === 0) return null;
+  if (!["image/png", "image/jpeg"].includes(file.type)) {
+    throw new Error("The logo has to be a PNG or a JPEG picture.");
+  }
+  const saved = await saveUpload(file);
+  return saved.relativePath;
+}
+
 export async function createSubowner(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const parsed = read(formData);
-  if (!parsed.name) throw new Error("A partner needs a name.");
+  if (!parsed.name) throw new Error("A company needs a name.");
+  const logoPath = await savedLogo(formData);
 
-  const inserted = await db.insert(subowners).values(parsed).returning({ id: subowners.id });
+  const inserted = await db
+    .insert(subowners)
+    .values({ ...parsed, logoPath })
+    .returning({ id: subowners.id });
+  /* One Eleven is a shareholder of every company from the start; the office adds the rest. */
+  await ensureOneEleven(inserted[0].id);
 
   await recordAudit({
     action: "subowner.create",
@@ -57,7 +101,7 @@ export async function updateSubowner(
 ): Promise<SubownerState> {
   const user = await requireUser(["ADMIN"]);
   const parsed = read(formData);
-  if (!parsed.name) return { error: "A partner needs a name." };
+  if (!parsed.name) return { error: "A company needs a name." };
 
   await db
     .update(subowners)
@@ -78,13 +122,17 @@ export async function updateSubowner(
   return { ok: true };
 }
 
-/** Add a partner to a development, with the share they hold of it. */
+/**
+ * Put a company on a development.
+ *
+ * A company holds the whole of the development it is on; there is no share of
+ * the development to type. The split is between the company's shareholders,
+ * One Eleven always among them, and that is set on the company's own page.
+ */
 export async function addPartner(projectId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const subownerId = String(formData.get("subownerId") ?? "").trim();
   if (!subownerId) return;
-
-  const share = String(formData.get("sharePercent") ?? "").trim();
 
   const existing = await db
     .select({ id: projectPartners.id })
@@ -94,36 +142,11 @@ export async function addPartner(projectId: string, formData: FormData) {
     )
     .limit(1);
 
-  /**
-   * The shares have to leave room for us.
-   *
-   * One Eleven never has a line of its own, our share is whatever the partners
-   * do not hold, so partners adding up to more than 100 would make our share a
-   * negative number. The line being edited is left out of the sum, otherwise
-   * changing 60 to 55 would count the 60 twice.
-   */
-  if (share) {
-    const others = await db
-      .select({ id: projectPartners.id, share: projectPartners.sharePercent })
-      .from(projectPartners)
-      .where(eq(projectPartners.projectId, projectId));
-
-    const taken = others
-      .filter((row) => row.id !== existing[0]?.id)
-      .reduce((sum, row) => sum + (row.share ? Number(row.share) : 0), 0);
-
-    if (taken + Number(share) > 100) {
-      await flash("said.shareTooMuch", "bad");
-      revalidatePath(`/projects/${projectId}`);
-      return;
-    }
-  }
-
   if (existing[0]) {
     await db
       .update(projectPartners)
       .set({
-        sharePercent: share ? Number(share).toFixed(3) : null,
+        sharePercent: null,
         role: String(formData.get("role") ?? "").trim() || null,
         notes: String(formData.get("agreement") ?? "").trim() || null,
       })
@@ -132,7 +155,7 @@ export async function addPartner(projectId: string, formData: FormData) {
     await db.insert(projectPartners).values({
       projectId,
       subownerId,
-      sharePercent: share ? Number(share).toFixed(3) : null,
+      sharePercent: null,
       role: String(formData.get("role") ?? "").trim() || null,
       notes: String(formData.get("agreement") ?? "").trim() || null,
     });
@@ -142,7 +165,7 @@ export async function addPartner(projectId: string, formData: FormData) {
     action: "project.partner.add",
     entity: "project",
     entityId: projectId,
-    detail: `${subownerId} at ${share || "no"} percent`,
+    detail: subownerId,
     userId: user.id,
     userEmail: user.email,
   });
@@ -224,8 +247,30 @@ export async function removeDirector(directorId: string, subownerId: string) {
   revalidatePath(`/subowners/${subownerId}`);
 }
 
+/** The boxes of a shareholder, as the form sends them. */
+function holderFrom(formData: FormData) {
+  const text = (name: string) => String(formData.get(name) ?? "").trim() || null;
+  const share = String(formData.get("sharePercent") ?? "").trim().replace(",", ".");
+  const kind = String(formData.get("holderKind") ?? "");
+  return {
+    sharePercent: share && Number.isFinite(Number(share)) ? Number(share).toFixed(3) : null,
+    holderKind: kind === "PERSON" || kind === "COMPANY" ? kind : null,
+    idNumber: text("idNumber"),
+    email: text("email"),
+    phone: text("phone"),
+    address: text("address"),
+    notes: text("notes"),
+  };
+}
+
+/** The shareholders' percentages, without one of them, so a change can be checked against 100. */
+async function othersHold(subownerId: string, leaveOut: string | null): Promise<number> {
+  const rows = await db.select().from(subownerShares).where(eq(subownerShares.subownerId, subownerId));
+  return rows.filter((row) => row.id !== leaveOut).reduce((sum, row) => sum + Number(row.sharePercent ?? 0), 0);
+}
+
 /**
- * Add a shareholder of the partner company.
+ * Add a shareholder of the company.
  *
  * The shares are not forced to add up to a hundred. Every company here was set
  * up with different investors and the office may know only the holders it deals
@@ -235,21 +280,20 @@ export async function addShareholder(subownerId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const holder = String(formData.get("holder") ?? "").trim();
   if (!holder) return;
+  const details = holderFrom(formData);
+  if ((await othersHold(subownerId, null)) + Number(details.sharePercent ?? 0) > 100.0001) {
+    await flash("said.shareTooMuch", "bad");
+    revalidatePath(`/subowners/${subownerId}`);
+    return;
+  }
 
-  const share = String(formData.get("sharePercent") ?? "").trim();
-
-  await db.insert(subownerShares).values({
-    subownerId,
-    holder,
-    sharePercent: share ? Number(share).toFixed(3) : null,
-    notes: String(formData.get("notes") ?? "").trim() || null,
-  });
+  await db.insert(subownerShares).values({ subownerId, holder, ...details });
 
   await recordAudit({
     action: "subowner.share.add",
     entity: "subowner",
     entityId: subownerId,
-    detail: `${holder} at ${share || "no"} percent`,
+    detail: `${holder} at ${details.sharePercent ?? "no"} percent`,
     userId: user.id,
     userEmail: user.email,
   });
@@ -257,15 +301,49 @@ export async function addShareholder(subownerId: string, formData: FormData) {
   revalidatePath(`/subowners/${subownerId}`);
 }
 
+/** Change a shareholder's share or details. One Eleven's line keeps its name. */
+export async function updateShareholder(shareId: string, subownerId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const [row] = await db.select().from(subownerShares).where(eq(subownerShares.id, shareId)).limit(1);
+  if (!row) return;
+  const holder = row.isOneEleven ? row.holder : String(formData.get("holder") ?? "").trim() || row.holder;
+  const details = holderFrom(formData);
+  if ((await othersHold(subownerId, shareId)) + Number(details.sharePercent ?? 0) > 100.0001) {
+    await flash("said.shareTooMuch", "bad");
+    revalidatePath(`/subowners/${subownerId}`);
+    return;
+  }
+
+  await db
+    .update(subownerShares)
+    .set({ holder, ...details, updatedAt: new Date() })
+    .where(eq(subownerShares.id, shareId));
+
+  await recordAudit({
+    action: "subowner.share.update",
+    entity: "subowner",
+    entityId: subownerId,
+    detail: `${holder} at ${details.sharePercent ?? "no"} percent`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.saved");
+  revalidatePath(`/subowners/${subownerId}`);
+}
+
 export async function removeShareholder(shareId: string, subownerId: string) {
   const user = await requireUser(["ADMIN"]);
+  const [row] = await db.select().from(subownerShares).where(eq(subownerShares.id, shareId)).limit(1);
+  /* One Eleven is always a shareholder; its line can be changed but not taken off. */
+  if (!row || row.isOneEleven) return;
   await db.delete(subownerShares).where(eq(subownerShares.id, shareId));
 
   await recordAudit({
     action: "subowner.share.remove",
     entity: "subowner",
     entityId: subownerId,
-    detail: shareId,
+    detail: row.holder,
     userId: user.id,
     userEmail: user.email,
   });
@@ -308,4 +386,33 @@ export async function deleteSubowner(subownerId: string) {
   revalidatePath("/projects");
   revalidatePath("/subowners");
   redirect("/subowners");
+}
+
+/** Put a new logo on the company's papers, or take it off. */
+export async function setCompanyLogo(subownerId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const remove = String(formData.get("remove") ?? "") === "yes";
+  let logoPath: string | null = null;
+  if (!remove) {
+    try {
+      logoPath = await savedLogo(formData);
+    } catch (error) {
+      await flash("said.logoType", "bad");
+      void error;
+      revalidatePath(`/subowners/${subownerId}`);
+      return;
+    }
+    if (!logoPath) return;
+  }
+  await db.update(subowners).set({ logoPath, updatedAt: new Date() }).where(eq(subowners.id, subownerId));
+  await recordAudit({
+    action: "subowner.logo",
+    entity: "subowner",
+    entityId: subownerId,
+    detail: remove ? "removed" : "uploaded",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
+  revalidatePath(`/subowners/${subownerId}`);
 }

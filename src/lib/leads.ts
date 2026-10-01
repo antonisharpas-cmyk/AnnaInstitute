@@ -73,11 +73,11 @@ function splitName(full: string): { firstName: string; lastName: string | null }
 }
 
 /**
- * Where an enquiry came from, offered in the order the office thinks of them.
+ * Where a lead came from, offered in the order the office thinks of them.
  *
  * ENQUIRY is not here. It was the word for "somebody got in touch", which is
  * what every one of these is, so it says nothing; the leads that carry it keep
- * it and read as Enquiry, and nobody is offered it again.
+ * it and read as Lead, and nobody is offered it again.
  */
 export const LEAD_SOURCES = [
   "WEBSITE",
@@ -96,10 +96,10 @@ export const LEAD_SOURCES = [
 export const OLD_LEAD_SOURCES = ["ENQUIRY"] as const;
 
 /**
- * Every status an enquiry can hold, in the order the board reads.
+ * Every status a lead can hold, in the order the board reads.
  *
- * NEW is written by the CRM when the enquiry arrives and is never chosen by
- * hand. CONVERTED is written when the enquiry becomes a client and is not
+ * NEW is written by the CRM when the lead arrives and is never chosen by
+ * hand. CONVERTED is written when the lead becomes a client and is not
  * chosen by hand either, which is why neither is offered in the picker.
  */
 export const LEAD_STATUSES = [
@@ -147,7 +147,7 @@ function sourceKindFrom(source: string | null): LeadSource {
 export type ReadLead = ReturnType<typeof readLeadPayload>;
 
 /**
- * The same enquiry can arrive under many names. Contact Form 7 sends
+ * The same lead can arrive under many names. Contact Form 7 sends
  * your-name, a hand written form sends fullName, WordPress plugins send
  * first_name. All of them are read here so the website developer does not have
  * to rewrite their form to match us.
@@ -203,7 +203,7 @@ export async function matchProject(name: string | null) {
 }
 
 /**
- * The same form submitted twice in a minute is one enquiry, not two. A retry
+ * The same form submitted twice in a minute is one lead, not two. A retry
  * from the website after a timeout lands here too, which is why the endpoint can
  * be retried safely.
  */
@@ -224,11 +224,11 @@ export async function recentDuplicate(email: string | null, phone: string | null
 }
 
 /**
- * How the enquiries list can be ordered, as SQL for each column.
+ * How the leads list can be ordered, as SQL for each column.
  *
- * Newest first is the default and stays the default, because an enquiries list
+ * Newest first is the default and stays the default, because an leads list
  * is a queue before it is a table. The rest are here for the moments when it is
- * a table: every enquiry from one development together, or the oldest thing
+ * a table: every lead from one development together, or the oldest thing
  * nobody has touched at the top.
  */
 export const LEAD_ORDER: Record<string, SQL> = {
@@ -256,11 +256,11 @@ export async function listLeads({
   query?: string;
   status?: string;
   source?: string;
-  /** The agent who introduced the enquiry. */
+  /** The agent who introduced the lead. */
   agent?: string;
-  /** Whose enquiry it is, from Our Team. */
+  /** Whose lead it is, from Our Team. */
   assignedTo?: string;
-  /** "due": only the enquiries with a follow up that is pressing. */
+  /** "due": only the leads with a follow up that is pressing. */
   followUps?: string;
   sort?: string;
   dir?: "asc" | "desc";
@@ -268,18 +268,18 @@ export async function listLeads({
   offset?: number;
 }) {
   /**
-   * Two things are out of every enquiries list.
+   * Two things are out of every leads list.
    *
    * Anything in the recycle bin, and anything that has become a client. The
-   * second is the office's own rule: the moment an enquiry becomes a buyer it
-   * is a client record, and leaving it in the enquiries list as well means two
-   * places to look and two places to keep up to date. Everything the enquiry
-   * said, its notes included, is on the client profile, and the enquiry itself
+   * second is the office's own rule: the moment a lead becomes a buyer it
+   * is a client record, and leaving it in the leads list as well means two
+   * places to look and two places to keep up to date. Everything the lead
+   * said, its notes included, is on the client profile, and the lead itself
    * is still at its own address for anybody who wants the original.
    */
   /*
    * Except in Handled. The office asked for the ones that became clients to
-   * be there too, as the end of the road an enquiry was handled down, read
+   * be there too, as the end of the road a lead was handled down, read
    * only, with the client record one click away for anything that changes.
    */
   const handledView = many(status).includes("HANDLED");
@@ -304,7 +304,7 @@ export async function listLeads({
   const wanted = choiceFilter(leads.status, leads.statusChoice, many(status), LEAD_STATUSES);
   if (wanted) filters.push(wanted);
   /**
-   * Handled is the office's own word for the rest of the board: an enquiry
+   * Handled is the office's own word for the rest of the board: a lead
    * somebody has already picked up, whatever happened to it afterwards. It is
    * not a status on the record, it is every status except the first one, which
    * is why it is worked out here rather than stored.
@@ -315,7 +315,7 @@ export async function listLeads({
   const from = choiceFilter(leads.sourceKind, leads.sourceChoice, many(source), [...LEAD_SOURCES, "ENQUIRY"]);
   if (from) filters.push(from);
 
-  /* Whose enquiries these are, and who introduced them: two different people,
+  /* Whose leads these are, and who introduced them: two different people,
      two different questions, so two filters. */
   const byAgent = many(agent).filter(Boolean);
   if (byAgent.length === 1) filters.push(eq(leads.agentId, byAgent[0]));
@@ -326,7 +326,7 @@ export async function listLeads({
   if (byPerson.length > 1) filters.push(inArray(leads.assignedToId, byPerson));
 
   /*
-   * The enquiries somebody is going back to.
+   * The leads somebody is going back to.
    *
    * Pressing means the same here as it does in the bell: pending, and due
    * before the end of tomorrow. The bell links straight to this list, so the
@@ -412,7 +412,7 @@ export const leadStatusTone = (status: string) =>
       : "neutral";
 
 /**
- * The ids of every enquiry the current filters match, in the order they show.
+ * The ids of every lead the current filters match, in the order they show.
  *
  * The side panel needs this to say "eleven of forty two" and to walk to the
  * next record without going back to the list, and it is only ids, so it stays
@@ -432,20 +432,20 @@ export async function leadIdsFor({
 }
 
 /* ---------------------------------------------------------------------------
-   The running record on an enquiry
+   The running record on a lead
    --------------------------------------------------------------------------- */
 
 /** Ten to a page, which is about what fits without the card becoming a list. */
 export const NOTES_PER_PAGE = 10;
 
 /**
- * The notes on an enquiry, newest first.
+ * The notes on a lead, newest first.
  *
  * All of them, not a page of them, and the paging happens in the browser. Two
- * reasons: an enquiry has tens of notes rather than thousands, so there is
+ * reasons: a lead has tens of notes rather than thousands, so there is
  * nothing to save by asking the database twice, and the arrows then turn the
  * page instantly instead of reloading the record around them. It also keeps the
- * address clean, so a link to an enquiry is a link to the enquiry rather than
+ * address clean, so a link to a lead is a link to the lead rather than
  * to page three of its notes.
  */
 export async function notesForLead(leadId: string) {
@@ -467,7 +467,7 @@ export async function notesForLead(leadId: string) {
   );
 }
 
-/** The latest note on each of these enquiries, for the list column. */
+/** The latest note on each of these leads, for the list column. */
 export async function latestNoteByLead(leadIds: string[]): Promise<Map<string, string>> {
   const found = new Map<string, string>();
   if (leadIds.length === 0) return found;
@@ -485,7 +485,7 @@ export async function latestNoteByLead(leadIds: string[]): Promise<Map<string, s
 }
 
 /* ---------------------------------------------------------------------------
-   The history of an enquiry
+   The history of a lead
    --------------------------------------------------------------------------- */
 
 export type HistoryLine = {
@@ -501,7 +501,7 @@ export type HistoryLine = {
 };
 
 /**
- * Everything that has happened to one enquiry, newest first.
+ * Everything that has happened to one lead, newest first.
  *
  * Read out of the audit trail rather than kept a second time, which matters
  * more than it sounds: a history written alongside the records drifts from them
@@ -509,7 +509,7 @@ export type HistoryLine = {
  * trusts either. The audit trail is written by the actions themselves, so this
  * cannot disagree with what was done.
  *
- * Appointments arranged with this enquiry are in here too, by their own ids,
+ * Appointments arranged with this lead are in here too, by their own ids,
  * because "who moved the viewing" is exactly the question this card exists to
  * answer.
  */
@@ -529,8 +529,8 @@ export async function historyForLead(leadId: string): Promise<HistoryLine[]> {
     .limit(200);
 
   const WORDS: Record<string, string> = {
-    "lead.create": "The enquiry was written down",
-    "lead.update": "The enquiry was edited",
+    "lead.create": "The lead was written down",
+    "lead.update": "The lead was edited",
     "lead.status": "The status was moved",
     "lead.status.bulk": "The status was moved",
     "lead.assigned": "It was given to somebody",

@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 
 /**
- * The running record on an enquiry, ten at a time.
+ * The running record on a lead, ten at a time.
  *
  * Notes are a history, so they are read newest first and walked backwards. The
  * arrows page in the browser rather than in the address, which keeps a link to
- * an enquiry a link to the enquiry, and turns the page without the record
+ * a lead a link to the lead, and turns the page without the record
  * reloading around it.
  *
  * Each note carries its own small form for taking it back off the record. The
@@ -32,7 +32,7 @@ export default function NoteList({
 }: {
   notes: Note[];
   labels: { none: string; by: string; older: string; newer: string; of: string; delete: string };
-  /** The action that takes a note off the record, bound to this enquiry. */
+  /** The action that takes a note off the record, bound to this lead. */
   remove: (formData: FormData) => void | Promise<void>;
 }) {
   const [page, setPage] = useState(1);

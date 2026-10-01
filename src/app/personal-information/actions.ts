@@ -14,7 +14,7 @@ import { QR_CONSENT_TEXT as CONSENT_TEXT } from "@/lib/qrLead";
  * No login, so everything here is treated as a stranger's input: every field is
  * trimmed and cut to length, nothing in it is followed, a hidden field catches
  * the robots that fill in every box, and one address can send only a few in an
- * hour. What arrives is an enquiry like any other, in Leads, marked as coming
+ * hour. What arrives is a lead like any other, in Leads, marked as coming
  * from the QR code. Marketing consent is recorded only when the person ticked
  * the box themselves, with the words they agreed to, which is what makes it
  * consent.

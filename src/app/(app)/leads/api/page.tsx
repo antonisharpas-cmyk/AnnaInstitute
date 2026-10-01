@@ -266,7 +266,7 @@ export default async function LeadsApiPage({
             </li>
             <li>
               Always include the page address and the utm values when the visit carried them, so the
-              office knows which campaign brought the enquiry.
+              office knows which campaign brought the lead.
             </li>
             <li>
               Send the consent box as consent true or false, with its exact wording in consentText.
@@ -281,7 +281,7 @@ export default async function LeadsApiPage({
               visitor because the CRM was down.
             </li>
             <li>
-              Prove it with the test call above before go live, then send one real enquiry and tell
+              Prove it with the test call above before go live, then send one real lead and tell
               the office to look for it in this section.
             </li>
           </ol>

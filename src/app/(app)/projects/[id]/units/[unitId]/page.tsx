@@ -224,6 +224,14 @@ export default async function EditUnitPage({
                           </dd>
                         </div>
                       ) : null}
+                      {s.contract.cashAmount ? (
+                        <div>
+                          <dt className="label">{t("contracts.priceWithCash")}</dt>
+                          <dd className="font-semibold tabular-nums" data-price-with-cash>
+                            {formatAmount(toCents(s.contract.netPrice) + toCents(s.contract.cashAmount), locale)}
+                          </dd>
+                        </div>
+                      ) : null}
                       <div>
                         <dt className="label">{t("contracts.paid")}</dt>
                         <dd className="font-semibold tabular-nums">

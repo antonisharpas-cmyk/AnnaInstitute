@@ -67,12 +67,18 @@ function readClient(formData: FormData) {
     notes: formData.get("notes") || undefined,
     idType: idType.base || undefined,
   });
-  return { ...parsed, sourceChoice: source.choice, idTypeChoice: parsed.idType ? idType.choice : null };
+  /* The agent is kept only for a client an agent brought. */
+  const agentId = source.base === "AGENT_REFERRAL" ? String(formData.get("agentId") ?? "").trim() || null : null;
+  return { ...parsed, sourceChoice: source.choice, idTypeChoice: parsed.idType ? idType.choice : null, agentId };
 }
 
 export async function createClient(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const parsed = readClient(formData);
+  if (parsed.source === "AGENT_REFERRAL" && !parsed.agentId) {
+    await flash("said.referralNeedsAgent", "bad");
+    redirect("/clients/new");
+  }
 
   const inserted = await db
     .insert(clients)

@@ -103,8 +103,8 @@ export default async function ClientsPage({
         client: clients,
         contractCount: sql<number>`count(${contracts.id})::int`,
         /**
-         * The enquiry they were converted from, if any, as a subquery rather
-         * than a join: a client can have more than one enquiry against them and
+         * The lead they were converted from, if any, as a subquery rather
+         * than a join: a client can have more than one lead against them and
          * a join would count their contracts twice over.
          */
         leadSource: sql<
@@ -246,8 +246,8 @@ export default async function ClientsPage({
             chosen={many(source)}
             anything={t("common.all")}
             /*
-              One list, not two. The enquiry sources were offered a second time
-              with "from an enquiry" after each of them, which read as ten
+              One list, not two. The lead sources were offered a second time
+              with "from a lead" after each of them, which read as ten
               choices where there are five, and the two sets overlapped. The
               client's own source is the one the office sets and the one the
               column shows, so that is the one to filter by.
@@ -549,12 +549,12 @@ export default async function ClientsPage({
                               The client's own source, and nothing else.
 
                               This column used to prefer the source of the
-                              enquiry behind the client, so the list said
+                              lead behind the client, so the list said
                               WhatsApp while the client's own record said
-                              Enquiry, and editing the client showed the second
+                              Lead, and editing the client showed the second
                               one. The conversion now carries the source over,
                               so there is one answer and this is it. Whatever
-                              the enquiry said in its own words is kept
+                              the lead said in its own words is kept
                               underneath.
                             */}
                             {t(`clients.source.${shownCode(r.client.source, r.client.sourceChoice)}` as MessageKey)}

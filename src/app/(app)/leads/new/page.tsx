@@ -11,7 +11,7 @@ import { createLead } from "../actions";
 export default async function NewLeadPage() {
   const { t } = await getTranslator();
 
-  // Named on the enquiry when it came from one of them, so the commission has
+  // Named on the lead when it came from one of them, so the commission has
   // an owner from the first day rather than from the day of the contract.
   const [theAgents, team] = await Promise.all([
     db
@@ -19,7 +19,7 @@ export default async function NewLeadPage() {
       .from(agents)
       .where(eq(agents.isActive, true))
       .orderBy(asc(agents.name)),
-    /* The office, for the person whose enquiry this is. */
+    /* The office, for the person whose lead this is. */
     whoCanGo(),
   ]);
 
@@ -42,7 +42,7 @@ export default async function NewLeadPage() {
               source: t("leads.camefrom"),
               sourceOther: t("leads.sourceOther"),
               sourceOtherHint: t("leads.sourceOtherHint"),
-              /* What the enquiry is about, in the office's word for it. It was
+              /* What the lead is about, in the office's word for it. It was
                  labelled Development, which asked for something narrower than
                  what people actually write in it. */
               project: t("leads.about"),

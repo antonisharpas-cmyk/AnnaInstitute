@@ -66,13 +66,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
   const notes = await notesForLead(id);
 
-  /* The office, for whoever this enquiry belongs to, and what is next on it. */
+  /* The office, for whoever this lead belongs to, and what is next on it. */
   const [team, followUps, history] = await Promise.all([
     whoCanGo(),
-    /* What happens next on this enquiry, which is the one thing a list of
+    /* What happens next on this lead, which is the one thing a list of
        notes never tells anybody. */
     followUpsForLead(id),
-    /* Everything that has happened to this enquiry, read from the audit trail
+    /* Everything that has happened to this lead, read from the audit trail
        so it cannot disagree with what was actually done. */
     historyForLead(id),
   ]);
@@ -80,7 +80,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?";
 
   /*
-   * Once a client, the enquiry is the record of how they arrived and nothing
+   * Once a client, the lead is the record of how they arrived and nothing
    * more. It reads exactly as it did, and every change is made on the client,
    * so there is one place to keep up to date rather than two.
    */
@@ -98,9 +98,22 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         title={name}
         subtitle={`${t("leads.received")} ${when(lead.createdAt, locale)}`}
         action={
-          <Pill tone={leadStatusTone(lead.status) as "good" | "warn" | "neutral"}>
-            {t(`leads.status.${shownCode(lead.status, lead.statusChoice)}` as MessageKey)}
-          </Pill>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* What we have, sent to this enquiry, with the development they asked about already ticked. */}
+            {!locked && lead.email ? (
+              <Link
+                href={`/campaigns/new?template=projects_showcase&audience=LEADS&leads=${lead.id}${lead.projectId ? `&project=${lead.projectId}` : ""}`}
+                className="btn btn-secondary !px-3 !py-1 !text-xs"
+                data-send-developments
+                prefetch={false}
+              >
+                {t("leads.sendDevelopments")}
+              </Link>
+            ) : null}
+            <Pill tone={leadStatusTone(lead.status) as "good" | "warn" | "neutral"}>
+              {t(`leads.status.${shownCode(lead.status, lead.statusChoice)}` as MessageKey)}
+            </Pill>
+          </div>
         }
       />
 
@@ -120,12 +133,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           {/*
             No appointments card here.
 
-            An enquiry is followed up, and a follow up is the thing with the
+            A lead is followed up, and a follow up is the thing with the
             date on it and the nagging attached. Two cards asking for the next
             contact, one of them without the nagging, is how an office ends up
             keeping the same thing in two places and trusting neither. Meetings
-            with somebody who is still only an enquiry are arranged from the
-            appointments section itself, which lists enquiries as well as
+            with somebody who is still only a lead are arranged from the
+            appointments section itself, which lists leads as well as
             clients.
           */}
           <Card title={t("leads.theEnquiry")}>
@@ -349,7 +362,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           </Card>
 
           {/*
-            What has happened to this enquiry, in order.
+            What has happened to this lead, in order.
 
             The status moves, who it was given to, the follow ups made and
             answered, the notes, the appointments, the conversion. It is read
@@ -417,8 +430,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             <form action={setLeadStatus.bind(null, id)} className="flex flex-wrap gap-2">
               <select name="status" defaultValue={shownCode(lead.status, lead.statusChoice)} className="select">
                 {/*
-                  New is written by the CRM when the enquiry arrives, so it is
-                  only in the list while the enquiry still holds it: nobody
+                  New is written by the CRM when the lead arrives, so it is
+                  only in the list while the lead still holds it: nobody
                   moves a lead back to new.
                 */}
                 {lead.status === "NEW" ? (

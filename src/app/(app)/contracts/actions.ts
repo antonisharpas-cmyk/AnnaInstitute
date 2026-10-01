@@ -8,12 +8,14 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   automaticEmails,
+  clients,
   changeRequests,
   contracts,
   contractUnits,
   documents,
   installments,
   payments,
+  projects,
   units,
   vatChanges,
 } from "@/db/schema";
@@ -24,6 +26,8 @@ import { removeDocument, storeChosenDocuments, storeDocuments } from "@/lib/uplo
 import { distributeCents, fromCents, normalizeAmount, parseAmount, toCents } from "@/lib/money";
 import { isSplit, modelOf, vatForNet } from "@/lib/vatModel";
 import { looksGenerated, nextReceiptNumber, receiptNumberTaken } from "@/lib/receipts";
+import { issuerIdOfContract } from "@/lib/issuer";
+import { standardContractName } from "@/lib/contractName";
 import { letterForCommission, letterForPayment, sendWaitingFor } from "@/lib/automaticEmails";
 import { issueForPayment, voidForPayment } from "@/lib/issued";
 import {
@@ -226,6 +230,24 @@ function datesFrom(start: string, everyMonths: number, count: number): (Date | n
   return Array.from({ length: count }, (_, i) => addMonths(from, i * Math.max(1, everyMonths)));
 }
 
+/** The standard name for a buyer and an apartment: MA-MOQ-401. */
+async function standardNameFor(clientId: string | null | undefined, unitId: string | null | undefined) {
+  if (!clientId || !unitId) return "";
+  const [person] = await db
+    .select({ firstName: clients.firstName, lastName: clients.lastName })
+    .from(clients)
+    .where(eq(clients.id, clientId))
+    .limit(1);
+  const [flat] = await db
+    .select({ code: units.code, building: projects.name })
+    .from(units)
+    .innerJoin(projects, eq(projects.id, units.projectId))
+    .where(eq(units.id, unitId))
+    .limit(1);
+  if (!person || !flat) return "";
+  return standardContractName({ ...person, ...flat, unit: flat.code });
+}
+
 async function referenceIsFree(reference: string, exceptId?: string) {
   const rows = await db
     .select({ id: contracts.id })
@@ -403,7 +425,17 @@ export async function createContract(
   const user = await requireUser(["ADMIN"]);
   const parsed = readDetails(formData);
 
-  const reference = parsed.reference.trim();
+  let reference = parsed.reference.trim();
+  /* The standard name taken already, by an older contract for the same buyer
+     and apartment, becomes MA-MOQ-401-2, rather than stopping the save. */
+  if (!(await referenceIsFree(reference)) && reference === (await standardNameFor(parsed.clientId, parsed.unitId))) {
+    for (let n = 2; n < 50; n++) {
+      if (await referenceIsFree(`${reference}-${n}`)) {
+        reference = `${reference}-${n}`;
+        break;
+      }
+    }
+  }
   if (!(await referenceIsFree(reference))) {
     return {
       error: `There is already a contract called ${reference}. Give this one a different name.`,
@@ -898,10 +930,12 @@ export async function recordPayment(contractId: string, formData: FormData) {
    * 0041 is what this receipt is, and the CRM is not the one to argue.
    */
   const typed = String(formData.get("receiptNumber") ?? "").trim();
+  /* Each company that holds a development has its own receipt book. */
+  const issuerId = await issuerIdOfContract(contractId);
   let receipt = typed;
-  if (!receipt) receipt = await nextReceiptNumber(when);
-  else if (looksGenerated(receipt) && (await receiptNumberTaken(receipt))) {
-    receipt = await nextReceiptNumber(when);
+  if (!receipt) receipt = await nextReceiptNumber(when, issuerId);
+  else if (looksGenerated(receipt) && (await receiptNumberTaken(receipt, issuerId))) {
+    receipt = await nextReceiptNumber(when, issuerId);
   }
 
   const inserted = await db

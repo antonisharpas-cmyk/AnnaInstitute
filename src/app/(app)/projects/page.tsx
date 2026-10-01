@@ -3,9 +3,9 @@ import { choiceFilter } from "@/lib/choices/filter";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { companies, projects, units } from "@/db/schema";
+import { projects, subowners, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { formatAmount, toCents } from "@/lib/money";
@@ -88,9 +88,13 @@ export default async function ProjectsPage({
   ]);
   if (wanted) parts.push(wanted);
 
+  /* By the companies that hold a share of the development. */
   const companies_ = many(company);
-  if (companies_.length === 1) parts.push(eq(projects.companyId, companies_[0]));
-  if (companies_.length > 1) parts.push(inArray(projects.companyId, companies_));
+  if (companies_.length > 0) {
+    parts.push(
+      sql`exists (select 1 from project_partners pp where pp.project_id = ${projects.id} and pp.subowner_id in ${companies_})` as SQL,
+    );
+  }
   const where = parts.length > 0 ? and(...parts) : undefined;
 
   /**
@@ -100,7 +104,6 @@ export default async function ProjectsPage({
    */
   const ORDER: Record<string, SQL> = {
     name: sql`${projects.name}`,
-    company: sql`coalesce((select c.name from companies c where c.id = ${projects.companyId}), '')`,
     partner: sql`(select min(s.name) from project_partners pp join subowners s on s.id = pp.subowner_id where pp.project_id = ${projects.id})`,
     location: sql`coalesce(${projects.location}, '')`,
     completion: sql`coalesce(${projects.completionBy}, '')`,
@@ -125,7 +128,6 @@ export default async function ProjectsPage({
     reservedCount: sql<number>`count(${units.id}) filter (where ${units.status} = 'RESERVED')::int`,
     totalValue: sql<string>`coalesce(sum(${units.netPrice}), 0)`,
     soldValue: sql<string>`coalesce(sum(${units.netPrice}) filter (where ${units.status} in ('SOLD','DELIVERED')), 0)`,
-    company: companies,
   };
 
   const [[counted], rows, companyList, views, hidden, held] = await Promise.all([
@@ -137,13 +139,12 @@ export default async function ProjectsPage({
       .select(selection)
       .from(projects)
       .leftJoin(units, eq(units.projectId, projects.id))
-      .leftJoin(companies, eq(companies.id, projects.companyId))
       .where(where)
-      .groupBy(projects.id, companies.id)
+      .groupBy(projects.id)
       .orderBy(sort.dir === "asc" ? asc(ORDER[sort.key]) : desc(ORDER[sort.key]))
       .limit(perPage)
       .offset(offset),
-    db.select().from(companies).orderBy(asc(companies.name)),
+    db.select({ id: subowners.id, name: subowners.name }).from(subowners).orderBy(asc(subowners.name)),
     viewsFor(user.id, "projects"),
     hiddenColumns(user.id, "projects"),
     partnersByProject(),
@@ -156,9 +157,6 @@ export default async function ProjectsPage({
   const total = counted?.total ?? 0;
   const { on, hidden: away } = shownColumns("projects", hidden);
 
-  /** Our own share of a development: whatever its partners do not hold. */
-  const ourShare = (projectId: string) =>
-    Math.max(0, 100 - (held.get(projectId) ?? []).reduce((sum, p) => sum + (p.share ?? 0), 0));
   const currentView = views.find((view) => view.id === params.view) ?? null;
 
   return (
@@ -223,7 +221,7 @@ export default async function ProjectsPage({
 
           <Pick
             name="company"
-            label={t("projects.company")}
+            label={t("clients.partner")}
             chosen={many(company)}
             anything={t("common.all")}
             choices={companyList.map((c) => ({ value: c.id, label: c.name }))}
@@ -268,14 +266,6 @@ export default async function ProjectsPage({
                         by="name"
                         current={sort}
                         href={link("name")}
-                      />
-                    ) : null}
-                    {on("company") ? (
-                      <SortTh
-                        label={t("projects.company")}
-                        by="company"
-                        current={sort}
-                        href={link("company")}
                       />
                     ) : null}
                     {on("partner") ? (
@@ -357,29 +347,15 @@ export default async function ProjectsPage({
                         </td>
                       ) : null}
 
-                      {on("company") ? (
-                        <td>
-                          {r.company ? (
-                            r.company.name
-                          ) : (
-                            <span className="text-xs text-brand-graphite/50">
-                              {t("projects.noCompany")}
-                            </span>
-                          )}
-                        </td>
-                      ) : null}
-
                       {on("partner") ? (
                         <td className="text-xs">
+                          {/* The company that holds the development, or One Eleven when none does. */}
                           {(held.get(r.project.id) ?? []).map((p) => (
-                            <div key={p.name}>
-                              {p.name}
-                              {p.share === null ? "" : ` ${p.share}%`}
-                            </div>
+                            <div key={p.name}>{p.name}</div>
                           ))}
-                          <div className="text-brand-graphite/60">
-                            {t("subowners.ourselves")} {ourShare(r.project.id)}%
-                          </div>
+                          {(held.get(r.project.id) ?? []).length === 0 ? (
+                            <div className="text-brand-graphite/60">{t("subowners.ourselves")}</div>
+                          ) : null}
                         </td>
                       ) : null}
 

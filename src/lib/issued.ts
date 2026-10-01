@@ -15,8 +15,8 @@ import {
   users,
 } from "@/db/schema";
 import { toCents, fromCents } from "@/lib/money";
-import { readSettings } from "@/lib/settings";
 import { nextCreditNoteNumber, nextInvoiceNumber } from "@/lib/receipts";
+import { issuerForProject } from "@/lib/issuer";
 import { creditNotePdf, invoicePdf, receiptPdfFrom, type IssuedSnapshot } from "@/lib/paymentPdf";
 import { modelOf, splitGross } from "@/lib/vatModel";
 import { saveUpload, resolveStored } from "@/lib/storage";
@@ -41,38 +41,8 @@ export type IssuedPair = {
   receipt: typeof issuedDocuments.$inferSelect | null;
 };
 
-const COMPANY_KEYS = [
-  "company.name",
-  "company.registration",
-  "company.vat",
-  "company.tic",
-  "company.address",
-  "company.phone",
-  "company.fax",
-  "company.email",
-  "company.website",
-  "company.bankName",
-  "company.iban",
-  "company.swift",
-] as const;
-
-export async function companyDetails(): Promise<IssuedSnapshot["company"]> {
-  const c = await readSettings([...COMPANY_KEYS]);
-  return {
-    name: c["company.name"],
-    registration: c["company.registration"],
-    vat: c["company.vat"],
-    tic: c["company.tic"],
-    address: c["company.address"],
-    phone: c["company.phone"],
-    fax: c["company.fax"],
-    email: c["company.email"],
-    website: c["company.website"],
-    bankName: c["company.bankName"],
-    iban: c["company.iban"],
-    swift: c["company.swift"],
-  };
-}
+/* One Eleven's own details, and the company that issues each paper, live in issuer.ts. */
+export { companyDetails } from "@/lib/issuer";
 
 /** What was already issued for one payment: the standing invoice and the receipt. */
 export async function issuedFor(paymentId: string): Promise<IssuedPair> {
@@ -91,6 +61,28 @@ export async function issuedFor(paymentId: string): Promise<IssuedPair> {
 type Category = "INVOICE" | "RECEIPT" | "CREDIT_NOTE" | "REFUND_ACK";
 
 /** Save a drawn PDF as a document on the contract. */
+/**
+ * The name a paper is filed and sent under.
+ *
+ * "Invoice 0001 Reservation, 101 MAGNUM OPUS DUE" rather than "Invoice 0001",
+ * so a folder or an email full of them can be read without opening any: which
+ * paper, which stage of the payments, and which apartment. The same words are
+ * the file name, with the characters a file name cannot hold taken out.
+ */
+export function paperName(kind: string, number: string, what?: string | null, place?: string | null): string {
+  const head = [`${kind} ${number}`.trim(), (what ?? "").trim()].filter(Boolean).join(" ");
+  const full = place && place.trim() ? `${head}, ${place.trim()}` : head;
+  return full.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** "MAGNUM OPUS DUE, 101", the way a snapshot holds it, turned into "101 MAGNUM OPUS DUE". */
+export function placeFromProperty(property: string | null | undefined): string {
+  const text = (property ?? "").trim();
+  const cut = text.lastIndexOf(", ");
+  if (cut < 0) return text;
+  return `${text.slice(cut + 2)} ${text.slice(0, cut)}`.trim();
+}
+
 export async function keepPdf(
   buffer: Buffer,
   filename: string,
@@ -146,7 +138,9 @@ async function partiesOf(contractId: string) {
   if (!row) return null;
   return {
     row,
-    company: await companyDetails(),
+    /* The company that holds the development issues its papers; a development
+       no company holds is One Eleven's. */
+    company: await issuerForProject(row.project?.id ?? null),
     client: {
       name: row.client ? `${row.client.firstName} ${row.client.lastName}`.trim() : "",
       address: row.client?.address ?? "",
@@ -157,6 +151,8 @@ async function partiesOf(contractId: string) {
       phone: row.client?.phone ?? "",
     },
     property: [row.project?.name, row.unit?.code].filter(Boolean).join(", "),
+    /** The apartment and its development, the way a paper's name says it: "101 MAGNUM OPUS DUE". */
+    place: [row.unit?.code, row.project?.name].filter(Boolean).join(" "),
   };
 }
 
@@ -249,7 +245,7 @@ export async function issueForPayment(
   const rate = split.netCents > 0 ? Math.round((split.vatCents / split.netCents) * 100 * 1000) / 1000 : model.rate;
 
   const stage = row.installment?.label ?? "Payment";
-  const invoiceNumber = sale ? (already.invoice?.number ?? (await nextInvoiceNumber())) : "";
+  const invoiceNumber = sale ? (already.invoice?.number ?? (await nextInvoiceNumber(parties.company.issuerId ?? ""))) : "";
   const receiptNumber = row.payment.receiptNumber ?? "";
 
   const snapshot: IssuedSnapshot = {
@@ -281,6 +277,7 @@ export async function issueForPayment(
   };
 
   const base = {
+    issuerId: parties.company.issuerId ?? "",
     paymentId,
     contractId: row.contract.id,
     clientId: row.contract.clientId ?? null,
@@ -291,7 +288,7 @@ export async function issueForPayment(
   let invoice = already.invoice;
   if (sale && !invoice) {
     const pdf = await invoicePdf(snapshot);
-    const documentId = await keepPdf(pdf, `Invoice ${invoiceNumber}.pdf`, `Invoice ${invoiceNumber}`, "INVOICE", row.contract.id, who?.id ?? row.payment.recordedById ?? null);
+    const documentId = await keepPdf(pdf, `${paperName("Invoice", invoiceNumber, stage, parties.place)}.pdf`, paperName("Invoice", invoiceNumber, stage, parties.place), "INVOICE", row.contract.id, who?.id ?? row.payment.recordedById ?? null);
     [invoice] = await db
       .insert(issuedDocuments)
       .values({
@@ -322,7 +319,13 @@ export async function issueForPayment(
       const [taken] = await db
         .select({ id: issuedDocuments.id })
         .from(issuedDocuments)
-        .where(and(eq(issuedDocuments.kind, "RECEIPT"), eq(issuedDocuments.number, number)))
+        .where(
+          and(
+            eq(issuedDocuments.kind, "RECEIPT"),
+            eq(issuedDocuments.issuerId, parties.company.issuerId ?? ""),
+            eq(issuedDocuments.number, number),
+          ),
+        )
         .limit(1);
       if (!taken) break;
       number = `${receiptNumber}${String.fromCharCode(65 + n)}`;
@@ -337,7 +340,7 @@ export async function issueForPayment(
       vatCents: cashCents - cashNet,
     };
     const pdf = await receiptPdfFrom(receiptSnapshot);
-    const documentId = await keepPdf(pdf, `Receipt ${number}.pdf`, `Receipt ${number}`, "RECEIPT", row.contract.id, who?.id ?? row.payment.recordedById ?? null);
+    const documentId = await keepPdf(pdf, `${paperName("Receipt", number, stage, parties.place)}.pdf`, paperName("Receipt", number, stage, parties.place), "RECEIPT", row.contract.id, who?.id ?? row.payment.recordedById ?? null);
     [receipt] = await db
       .insert(issuedDocuments)
       .values({
@@ -390,7 +393,7 @@ export async function issueForCreditCover(
   const model = modelOf(contract);
   const split = splitGross(grossCents, { netCents: toCents(line.netAmount), vatCents: toCents(line.vatAmount) }, model);
   const rate = split.netCents > 0 ? Math.round((split.vatCents / split.netCents) * 100 * 1000) / 1000 : model.rate;
-  const number = await nextInvoiceNumber();
+  const number = await nextInvoiceNumber(parties.company.issuerId ?? "");
   const standing = await standingOf(contract.id);
 
   const snapshot: IssuedSnapshot = {
@@ -417,10 +420,11 @@ export async function issueForCreditCover(
     recordedBy: who?.name ?? "",
   };
   const pdf = await invoicePdf(snapshot);
-  const documentId = await keepPdf(pdf, `Invoice ${number}.pdf`, `Invoice ${number}`, "INVOICE", contract.id, who?.id ?? null);
+  const documentId = await keepPdf(pdf, `${paperName("Invoice", number, line.label, parties.place)}.pdf`, paperName("Invoice", number, line.label, parties.place), "INVOICE", contract.id, who?.id ?? null);
   const [invoice] = await db
     .insert(issuedDocuments)
     .values({
+      issuerId: parties.company.issuerId ?? "",
       kind: "INVOICE",
       number,
       issuedOn: when,
@@ -442,6 +446,12 @@ export async function issueForCreditCover(
   return invoice;
 }
 
+const CREDIT_WHAT: Record<"VAT_CHANGE" | "REFUND" | "PENALTY", string> = {
+  VAT_CHANGE: "Reduced VAT",
+  REFUND: "Refund",
+  PENALTY: "Penalty",
+};
+
 /**
  * A credit note, on its own series.
  *
@@ -462,7 +472,17 @@ export async function issueCreditNote(options: {
 }): Promise<typeof issuedDocuments.$inferSelect> {
   const parties = await partiesOf(options.contractId);
   if (!parties) throw new Error("The contract is not there.");
-  const number = await nextCreditNoteNumber();
+  /* A credit note reverses an invoice, so it comes from whoever issued that
+     invoice, even if the development has changed hands since. */
+  if (options.relatesTo) {
+    try {
+      const was = (JSON.parse(options.relatesTo.snapshot) as IssuedSnapshot).company;
+      parties.company = { ...was, issuerId: options.relatesTo.issuerId ?? "" };
+    } catch {
+      /* An unreadable old snapshot: the development's issuer today. */
+    }
+  }
+  const number = await nextCreditNoteNumber(parties.company.issuerId ?? "");
   const totalCents = options.netCents + options.vatCents;
   const rate = options.netCents > 0 ? Math.round((options.vatCents / options.netCents) * 100 * 1000) / 1000 : 0;
   const standing = await standingOf(options.contractId);
@@ -493,10 +513,11 @@ export async function issueCreditNote(options: {
     reason: options.reason,
   };
   const pdf = await creditNotePdf(snapshot);
-  const documentId = await keepPdf(pdf, `Credit note ${number}.pdf`, `Credit note ${number}`, "CREDIT_NOTE", options.contractId, options.who?.id ?? null);
+  const documentId = await keepPdf(pdf, `${paperName("Credit note", number, CREDIT_WHAT[options.purpose], parties.place)}.pdf`, paperName("Credit note", number, CREDIT_WHAT[options.purpose], parties.place), "CREDIT_NOTE", options.contractId, options.who?.id ?? null);
   const [note] = await db
     .insert(issuedDocuments)
     .values({
+      issuerId: parties.company.issuerId ?? "",
       kind: "CREDIT_NOTE",
       number,
       issuedOn: options.when,
@@ -538,8 +559,10 @@ export async function paperAttachment(paper: typeof issuedDocuments.$inferSelect
   const content = await readDocument(id);
   if (!content || !id) return null;
   const name = paper.kind === "INVOICE" ? "Invoice" : paper.kind === "RECEIPT" ? "Receipt" : "Credit note";
+  /* The name it was filed under, which says the stage and the apartment. */
+  const [filed] = await db.select({ name: documents.originalName }).from(documents).where(eq(documents.id, id)).limit(1);
   return {
-    filename: `${name} ${paper.number}${paper.stampedDocumentId ? " CANCELLED" : ""}.pdf`,
+    filename: filed?.name || `${name} ${paper.number}${paper.stampedDocumentId ? " CANCELLED" : ""}.pdf`,
     content,
     contentType: "application/pdf",
     documentId: id,
@@ -569,6 +592,8 @@ export type IssuedFilters = {
   project?: string;
   kind?: string;
   state?: string;
+  /** "one" for One Eleven's own papers, or a company's id. */
+  issuer?: string;
   limit?: number;
   offset?: number;
 };
@@ -596,6 +621,7 @@ export async function listIssued(filters: IssuedFilters) {
   if (filters.from) parts.push(gte(issuedDocuments.issuedOn, new Date(`${filters.from}T00:00:00`)));
   if (filters.to) parts.push(lte(issuedDocuments.issuedOn, new Date(`${filters.to}T23:59:59`)));
   if (filters.project) parts.push(eq(units.projectId, filters.project));
+  if (filters.issuer) parts.push(eq(issuedDocuments.issuerId, filters.issuer === "one" ? "" : filters.issuer));
   if (filters.kind === "INVOICE" || filters.kind === "RECEIPT" || filters.kind === "CREDIT_NOTE") {
     parts.push(eq(issuedDocuments.kind, filters.kind));
   }
@@ -642,6 +668,7 @@ export async function listIssued(filters: IssuedFilters) {
       creditNoteNumber: row.paper.creditedById ? (byId.get(row.paper.creditedById) ?? "") : "",
       replacedByNumber: row.paper.replacedById ? (byId.get(row.paper.replacedById) ?? "") : "",
       creditApplied: snap.creditAppliedCents ?? 0,
+      issuerName: snap.company?.name ?? "",
     };
   });
 

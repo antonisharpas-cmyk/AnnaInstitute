@@ -6,7 +6,7 @@ import { matchProject, readLeadPayload, recentDuplicate } from "@/lib/leads";
 import { recordAudit } from "@/lib/audit";
 
 /**
- * Where the website posts an enquiry.
+ * Where the website posts a lead.
  *
  *   POST {APP_URL}/api/leads
  *   X-Api-Key: the key made in the CRM, under Leads, API access

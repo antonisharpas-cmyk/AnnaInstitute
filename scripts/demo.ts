@@ -216,7 +216,7 @@ async function main() {
     sold += 1;
   }
 
-  // Enquiries, spread over the year and over the ways they arrive.
+  // Leads, spread over the year and over the ways they arrive.
   const sources = ["WEBSITE", "ENQUIRY", "AGENT", "WHATSAPP", "OTHER"] as const;
   for (let index = 0; index < 40; index += 1) {
     const monthsBack = index % 12;
@@ -227,7 +227,7 @@ async function main() {
       lastName: `${LAST[index % LAST.length]} (sample)`,
       email: `lead${index}@example.com`,
       phone: `+357 99 4000${String(index).padStart(2, "0")}`,
-      message: "Sample enquiry. Delete before going live.",
+      message: "Sample lead. Delete before going live.",
       sourceKind: source,
       source: source.toLowerCase(),
       status: converted ? "CONVERTED" : index % 3 === 0 ? "CONTACTED" : "NEW",
@@ -266,7 +266,7 @@ async function main() {
     }
   }
 
-  console.log(`Sample data written: ${sold} sales, 40 enquiries, a year of invoices.`);
+  console.log(`Sample data written: ${sold} sales, 40 leads, a year of invoices.`);
   console.log("Everything it wrote is marked SAMPLE or (sample), so it can be found and removed.");
   process.exit(0);
 }

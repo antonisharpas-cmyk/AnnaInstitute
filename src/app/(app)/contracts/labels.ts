@@ -4,6 +4,8 @@ import type { MessageKey } from "@/i18n";
 export function formLabels(t: (key: MessageKey) => string): Record<string, string> {
   return {
     name: t("contracts.name"),
+    nameHint: t("contracts.nameHint"),
+    useStandard: t("contracts.useStandard"),
     client: t("contracts.client"),
     apartment: t("contracts.unit"),
     agent: t("contracts.agent"),

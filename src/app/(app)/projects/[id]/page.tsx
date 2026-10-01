@@ -3,12 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { companies, projects, units } from "@/db/schema";
+import { projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { documentsForProjectWithUnits, floorPlansByUnit } from "@/lib/documents";
 import { categoryLabel, fileLabel, isImage } from "@/lib/fileLabels";
 import { partnersOfProject, subownerChoices } from "@/lib/subowners";
+import { holdings, shareOf } from "@/lib/ownership";
 import { projectChecklist } from "@/lib/projectHealth";
 import { whatGoesWithProject } from "@/lib/deletes";
 import { buyersByUnit } from "@/lib/contracts";
@@ -96,13 +97,11 @@ export default async function ProjectPage({
   const { page, perPage, offset } = paginate(query, PER_PAGE);
 
   const found = await db
-    .select({ project: projects, company: companies })
+    .select({ project: projects })
     .from(projects)
-    .leftJoin(companies, eq(companies.id, projects.companyId))
     .where(eq(projects.id, id))
     .limit(1);
   const project = found[0]?.project;
-  const company = found[0]?.company;
   if (!project) notFound();
 
   const goes = await whatGoesWithProject(id);
@@ -133,18 +132,9 @@ export default async function ProjectPage({
     projectChecklist(id),
   ]);
 
-  /**
-   * What One Eleven holds of this development: whatever the partners do not.
-   *
-   * A development of ours alone therefore reads 100 without anybody having to
-   * type a partner line for us, and a development held with Trivest at 60 reads
-   * 40 here the moment their line is saved.
-   */
-  const partnerShare = partners.reduce(
-    (sum, row) => sum + (row.partner.sharePercent ? Number(row.partner.sharePercent) : 0),
-    0,
-  );
-  const ourShare = Math.max(0, 100 - partnerShare);
+  /* One Eleven's share: its part of the company that holds the development, or all of it when none does. */
+  const holding = (await holdings()).find((one) => one.projectId === id);
+  const ours = holding ? shareOf(holding, { kind: "oneEleven" }) : null;
 
   /* Who has each of the apartments on this page, so the list can say it. */
   const buyers = await buyersByUnit(rows.map((u) => u.id));
@@ -157,7 +147,7 @@ export default async function ProjectPage({
       />
       <PageHeader
         title={project.name}
-        subtitle={[company?.name, project.location, project.completionBy]
+        subtitle={[partners.map((row) => row.subowner.name).join(", ") || null, project.location, project.completionBy]
           .filter(Boolean)
           .join(" . ")}
         action={
@@ -231,7 +221,6 @@ export default async function ProjectPage({
               <thead>
                 <tr>
                   <th>{t("common.name")}</th>
-                  <th className="ctr">{t("subowners.share")}</th>
                   <th>{t("subowners.role")}</th>
                   <th className="ctr">{t("common.actions")}</th>
                 </tr>
@@ -252,11 +241,6 @@ export default async function ProjectPage({
                         <div className="text-xs text-brand-graphite/60">{row.subowner.company}</div>
                       ) : null}
                     </td>
-                    <td className="ctr">
-                      {row.partner.sharePercent
-                        ? formatPercent(Number(row.partner.sharePercent), locale)
-                        : ""}
-                    </td>
                     <td className="text-xs">
                       {row.partner.role ?? ""}
                       {row.partner.notes ? (
@@ -273,18 +257,29 @@ export default async function ProjectPage({
                   </tr>
                 ))}
               </tbody>
-              <tfoot>
-                <tr>
-                  {/* Our own share is never a line of its own, it is the rest. */}
-                  <td className="font-semibold">{t("subowners.ourselves")}</td>
-                  <td className="ctr font-semibold">{formatPercent(ourShare, locale)}</td>
-                  <td colSpan={2} className="text-xs text-brand-graphite/60">
-                    {t("subowners.theRest")}
-                  </td>
-                </tr>
-              </tfoot>
             </table>
           )}
+
+          {ours ? (
+            <div className="mt-3 rounded border border-brand-line bg-brand-surface p-3" data-one-eleven-share>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-semibold">{t("subowners.oneElevenShare")}</span>
+                <span className="text-lg font-semibold text-brand-teal-dark">
+                  {formatPercent(Math.round(ours.share * 100000) / 1000, locale)}
+                </span>
+              </div>
+              <ul className="mt-1 text-xs text-brand-graphite/70">
+                {ours.lines.map((line) => (
+                  <li key={line.via ?? "direct"}>
+                    {line.via
+                      ? `${formatPercent(Math.round(line.share * 100000) / 1000, locale)} ${t("subowners.throughCompany")} ${line.via}`
+                      : `${formatPercent(Math.round(line.share * 100000) / 1000, locale)} ${t("subowners.directly")}`}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-xs text-brand-graphite/60">{t("subowners.oneElevenHow")}</p>
+            </div>
+          ) : null}
 
           <div className="mt-3">
             <Disclosure showLabel={t("subowners.addPartner")} hideLabel={t("common.cancel")}>
@@ -303,6 +298,14 @@ export default async function ProjectPage({
                     <label className="label" htmlFor="subownerId">
                       {t("subowners.title")}
                     </label>
+                    <Link
+                      href="/subowners/new"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="float-right text-xs text-brand-teal-dark hover:underline"
+                    >
+                      {t("subowners.new")}
+                    </Link>
                     <select id="subownerId" name="subownerId" required className="select">
                       {choices.map((choice) => (
                         <option key={choice.id} value={choice.id}>
@@ -311,18 +314,6 @@ export default async function ProjectPage({
                         </option>
                       ))}
                     </select>
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="sharePercent">
-                      {t("subowners.share")}
-                    </label>
-                    <input
-                      id="sharePercent"
-                      name="sharePercent"
-                      inputMode="decimal"
-                      defaultValue="60"
-                      className="input !w-24"
-                    />
                   </div>
                   <div>
                     <label className="label" htmlFor="role">
@@ -645,7 +636,20 @@ export default async function ProjectPage({
             <dl className="space-y-2 text-sm">
               <div>
                 <dt className="label">{t("projects.location")}</dt>
-                <dd>{project.location ?? ""}</dd>
+                <dd>
+                  {project.location ?? ""}
+                  {project.mapsUrl ? (
+                    <a
+                      href={project.mapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-2 text-xs text-brand-teal-dark hover:underline"
+                      data-maps-link
+                    >
+                      {t("projects.onTheMap")}
+                    </a>
+                  ) : null}
+                </dd>
               </div>
               <div>
                 <dt className="label">{t("projects.completion")}</dt>

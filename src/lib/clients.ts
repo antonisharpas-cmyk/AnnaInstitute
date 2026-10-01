@@ -115,7 +115,7 @@ export function clientFilters({
   partner?: string;
   /** Where they came from: "lead:WEBSITE" or "own:BUYER". */
   source?: string;
-  /** An agent: they introduced the enquiry, or they are named on a contract. */
+  /** An agent: they introduced the lead, or they are named on a contract. */
   agent?: string;
   /** "closed" for the ones who walked away; anything else is the working list. */
   state?: string;
@@ -167,8 +167,8 @@ export function clientFilters({
    * Where the client came from.
    *
    * Two things can answer that, so the filter says which it means. A client
-   * converted from an enquiry carries the enquiry's own source, which is the
-   * truthful answer and the one the enquiries list shows; a client typed in by
+   * converted from a lead carries the lead's own source, which is the
+   * truthful answer and the one the leads list shows; a client typed in by
    * the office carries the source on their own record. The prefix keeps the two
    * enumerations apart, since both of them have a value called OTHER.
    */
@@ -194,7 +194,7 @@ export function clientFilters({
   /**
    * The agent behind a client.
    *
-   * Two ways an agent is attached to somebody: they introduced the enquiry, or
+   * Two ways an agent is attached to somebody: they introduced the lead, or
    * they are named on the contract that was written. Either one counts, because
    * the question the office asks is "which of these are Andreas's", and they do
    * not mean one half of Andreas's.
@@ -271,7 +271,7 @@ export const CLIENT_ORDER: Record<string, SQL> = {
   /*
    * The day they became a client.
    *
-   * For somebody converted from an enquiry that is the day the conversion was
+   * For somebody converted from a lead that is the day the conversion was
    * made, which is the day this record was created; for somebody the office
    * typed in directly it is the day they were typed in. Either way it is the
    * first day they were a client of ours, which is what the column says.

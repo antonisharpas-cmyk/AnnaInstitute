@@ -20,6 +20,8 @@ import { apartmentsByClient, assignableUnits } from "@/lib/clients";
 import { landExchangesForClient } from "@/lib/contracts";
 import { appointmentsForClient } from "@/lib/appointments";
 import { whoCanGo } from "@/lib/team";
+import { whoWhereLabels } from "@/lib/appointmentLabels";
+import { buildingChoices } from "@/lib/appointments";
 import Appointments from "@/components/Appointments";
 import { documentsForClientWithUnits } from "@/lib/documents";
 import { notesForLead } from "@/lib/leads";
@@ -75,7 +77,7 @@ export default async function ClientPage({
   const client = found[0];
   if (!client) notFound();
 
-  // The enquiry this client was made from, when there was one. It is what makes
+  // The lead this client was made from, when there was one. It is what makes
   // undoing a conversion possible.
   const leadRows = await db.select().from(leads).where(eq(leads.clientId, id)).limit(1);
   /* The whole story, only when it is the part being read. */
@@ -104,7 +106,7 @@ export default async function ClientPage({
     apartmentsByClient([id]),
     assignableUnits(id),
     documentsForClientWithUnits(id),
-    // The record the office kept while this was still an enquiry.
+    // The record the office kept while this was still a lead.
     fromLead ? notesForLead(fromLead.id) : Promise.resolve([]),
   ]);
 
@@ -325,8 +327,12 @@ export default async function ClientPage({
             country: client.country,
             address: client.address,
             source: shownCode(client.source, client.sourceChoice),
+            agentId: client.agentId,
             notes: client.notes,
           }}
+          agents={(await db.select().from(agents).orderBy(asc(agents.name)))
+            .filter((one) => one.isActive || one.id === client.agentId)
+            .map((one) => ({ value: one.id, label: one.name, hint: one.email ?? one.phone ?? undefined }))}
           idTypes={await optionsFor("idType", t, {
             current: client.idType ? shownCode(client.idType, client.idTypeChoice) : null,
           })}
@@ -346,6 +352,10 @@ export default async function ClientPage({
             country: t("clients.country"),
             address: t("clients.address"),
             source: t("clients.source"),
+            agent: t("clients.referralAgent"),
+            choose: t("common.choose"),
+            search: t("common.searchByName"),
+            noMatch: t("common.noMatch"),
             notes: t("common.notes"),
             notRecorded: t("clients.notRecorded"),
           }}
@@ -853,6 +863,8 @@ export default async function ClientPage({
             assignTo: t("appointments.assignTo"),
             nobody: t("appointments.nobody"),
             team,
+            whoWhere: whoWhereLabels(t),
+            buildings: await buildingChoices(),
           }}
         />
           </>
@@ -921,8 +933,8 @@ export default async function ClientPage({
             </p>
 
             {/*
-              What the enquiry said, and everything the office wrote about it,
-              here rather than only on the enquiry: the client profile is where
+              What the lead said, and everything the office wrote about it,
+              here rather than only on the lead: the client profile is where
               the work happens now, and the history of how this buyer arrived is
               part of the work.
             */}

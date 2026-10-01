@@ -62,10 +62,13 @@ const COMPANY_FIELDS = [
   "tic",
   "address",
   "phone",
+  "mobile",
   "fax",
   "email",
   "website",
   "bankName",
+  "beneficiary",
+  "bankAccount",
   "iban",
   "swift",
 ] as const;

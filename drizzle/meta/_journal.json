@@ -274,6 +274,20 @@
       "when": 1791066547383,
       "tag": "0039_price_list_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791166547383,
+      "tag": "0040_companies_leads_cash",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791266547383,
+      "tag": "0041_company_papers_followups",
+      "breakpoints": true
     }
   ]
 }

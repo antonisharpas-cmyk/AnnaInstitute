@@ -1,10 +1,7 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { campaignDocuments, documents } from "@/db/schema";
-import { resolveFilesToken } from "@/lib/campaignFiles";
+import { campaignAttachments, resolveFilesToken } from "@/lib/campaignFiles";
 import { resolveStored } from "@/lib/storage";
 
 /**
@@ -21,13 +18,8 @@ export async function GET(
   const link = await resolveFilesToken(token);
   if (!link?.campaignId) return new Response("Not found", { status: 404 });
 
-  const rows = await db
-    .select({ document: documents })
-    .from(campaignDocuments)
-    .innerJoin(documents, eq(documents.id, campaignDocuments.documentId))
-    .where(eq(campaignDocuments.campaignId, link.campaignId));
-
-  const file = rows.map((r) => r.document).find((d) => d.id === documentId);
+  /* Only what the campaign's page lists: its own files and its developments' papers. */
+  const file = (await campaignAttachments(link.campaignId)).find((d) => d.id === documentId);
   if (!file) return new Response("Not found", { status: 404 });
 
   /* A file whose copy on disk has gone answers plainly rather than breaking half way. */

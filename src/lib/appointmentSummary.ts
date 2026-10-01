@@ -2,11 +2,11 @@ import "server-only";
 import { listEntries, shownCode } from "@/lib/choices";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { appointments, clients, leads, teamMembers } from "@/db/schema";
+import { agents, appointments, clients, leads, teamMembers } from "@/db/schema";
 import { sendAndRecord } from "@/lib/messaging";
 import { readSettings, writeSetting } from "@/lib/settings";
 import { recordAudit } from "@/lib/audit";
-import { followUpsOnDay } from "@/lib/followUps";
+import { followUpsOnDay, followUpWho } from "@/lib/followUps";
 
 /*
  * The day's summary, one email per person.
@@ -26,7 +26,7 @@ export type SummaryLine = {
   status: "PLANNED" | "DONE" | "MISSED";
 };
 
-/** One follow up on one enquiry, as the email prints it. */
+/** One follow up on one lead, as the email prints it. */
 export type FollowUpLine = {
   time: string;
   who: string;
@@ -40,7 +40,7 @@ export type MemberSummary = {
   today: SummaryLine[];
   tomorrow: SummaryLine[];
   /**
-   * The enquiries this person is going back to tomorrow.
+   * The leads this person is going back to tomorrow.
    *
    * In the same letter as the appointments rather than in one of its own, which
    * is what the office asked for: one message a night, one place to look before
@@ -63,8 +63,8 @@ const dateOf = (at: Date) =>
 
 /** The six kinds, in English, for an email that carries no stylesheet. */
 const KIND: Record<string, string> = {
-  TIMBER: "Timber, Ocriam",
-  BATHROOMS_TILES: "Bathrooms and tiles, Studio Bagno",
+  TIMBER: "Ocriam",
+  BATHROOMS_TILES: "Studio Bagno",
   OFFICE: "In the office",
   PHONE_CALL: "A call",
   BUILDING: "In the building",
@@ -80,10 +80,11 @@ const STATUS: Record<string, string> = {
 /** Everything on one day, with the person it is with named. */
 async function linesFor(from: Date, to: Date) {
   const rows = await db
-    .select({ appointment: appointments, client: clients, lead: leads })
+    .select({ appointment: appointments, client: clients, lead: leads, agent: agents })
     .from(appointments)
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
+    .leftJoin(agents, eq(agents.id, appointments.agentId))
     .where(and(gte(appointments.at, from), lt(appointments.at, to)))
     .orderBy(asc(appointments.at));
 
@@ -92,15 +93,17 @@ async function linesFor(from: Date, to: Date) {
     (await listEntries("appointmentType")).filter((one) => !one.builtin).map((one) => [one.code, one.labelEn || one.defaultEn]),
   );
 
-  return rows.map(({ appointment, client, lead }) => ({
+  return rows.map(({ appointment, client, lead, agent }) => ({
     assignedToId: appointment.assignedToId,
     line: {
       time: clock(appointment.at),
       who: client
         ? `${client.firstName} ${client.lastName}`.trim()
         : lead
-          ? `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "an enquiry"
-          : "nobody named",
+          ? `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "a lead"
+          : agent
+            ? `${agent.name} (agent)`
+            : appointment.otherName || "nobody named",
       place: appointment.place,
       kind:
         (appointment.typeChoice && shownCode(appointment.type, appointment.typeChoice) === appointment.typeChoice
@@ -143,15 +146,16 @@ export async function buildSummaries(offsetDays = 0): Promise<MemberSummary[]> {
     today: todayLines.filter((row) => row.assignedToId === member.id).map((row) => row.line),
     tomorrow: tomorrowLines.filter((row) => row.assignedToId === member.id).map((row) => row.line),
     followUps: followUps
-      .filter((row) => row.lead.assignedToId === member.id)
-      .map((row) => ({
-        time: clock(row.followUp.at),
-        who:
-          `${row.lead.firstName ?? ""} ${row.lead.lastName ?? ""}`.trim() ||
-          row.lead.email ||
-          "an enquiry",
-        note: row.followUp.note ?? "",
-      })),
+      .filter((row) => row.member?.id === member.id)
+      .map((row) => {
+        const who = followUpWho(row);
+        const kind = { lead: "lead", client: "client", agent: "agent", other: "" }[who.kind];
+        return {
+          time: clock(row.followUp.at),
+          who: kind ? `${who.name} (${kind})` : who.name,
+          note: row.followUp.note ?? "",
+        };
+      }),
   }));
 }
 
@@ -186,7 +190,7 @@ export function summaryText(summary: MemberSummary, offsetDays = 0): string {
     "",
     block(summary.tomorrow),
     "",
-    `Enquiries to follow up tomorrow, ${next}`,
+    `Leads to follow up tomorrow, ${next}`,
     "",
     follow,
     "",

@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { documents, expenses, issuedDocuments, projects, subownerDirectors, subowners } from "@/db/schema";
 import { fromCents, toCents } from "@/lib/money";
 import { nextInvoiceNumber } from "@/lib/receipts";
-import { companyDetails, keepPdf, readDocument } from "@/lib/issued";
+import { companyDetails, keepPdf, paperName, readDocument } from "@/lib/issued";
 import { invoicePdf, type IssuedSnapshot } from "@/lib/paymentPdf";
 import { sendAndRecord } from "@/lib/messaging";
 import { sendEmail, type EmailAttachment } from "@/lib/messaging/email";
@@ -142,7 +142,7 @@ export async function issuePartnerInvoice(
   };
 
   const pdf = await invoicePdf(snapshot);
-  const documentId = await keepPdf(pdf, `Invoice ${number}.pdf`, `Invoice ${number}`, "INVOICE", null, who?.id ?? null, expense.id);
+  const documentId = await keepPdf(pdf, `${paperName("Invoice", number, label, project?.name)}.pdf`, paperName("Invoice", number, label, project?.name), "INVOICE", null, who?.id ?? null, expense.id);
   const [paper] = await db
     .insert(issuedDocuments)
     .values({
@@ -250,7 +250,7 @@ export async function emailCompanyInvoice(expenseId: string): Promise<Emailed> {
   let to: string | null;
 
   if (expense.direction === "OUT") {
-    if (!partner) return { status: "SKIPPED", to: null, detail: "No partner is chosen on this invoice." };
+    if (!partner) return { status: "SKIPPED", to: null, detail: "No company is chosen on this invoice." };
     to = await partnerEmail(partner.id, partner.email);
     if (!to) return { status: "SKIPPED", to: null, detail: `${partner.name} has no email address on their record.` };
     const paper = files.filter((one) => one.filename.startsWith("Invoice "));

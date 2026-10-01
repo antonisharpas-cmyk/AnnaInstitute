@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { groupsOf } from "@/lib/campaignGroups";
 import { getTranslator } from "@/i18n";
 import { campaignRows, consentTotals, messageTotals, rangeFrom } from "@/lib/reports";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
@@ -143,17 +144,12 @@ export default async function MarketingReportPage({
                     </td>
                     <td className="text-xs">
                       {[
-                        row.campaign.toClients || row.campaign.audience === "CLIENTS_CONSENTED"
-                          ? t("campaigns.groupClients")
-                          : null,
-                        row.campaign.toAgents || row.campaign.audience === "AGENTS"
-                          ? t("campaigns.groupAgents")
-                          : null,
-                        row.campaign.toSubowners || row.campaign.audience === "SUBOWNERS"
-                          ? t("campaigns.groupSubowners")
-                          : null,
-                      ]
-                        .filter(Boolean)
+          groupsOf(row.campaign).clients ? t("campaigns.groupClients") : null,
+          groupsOf(row.campaign).agents ? t("campaigns.groupAgents") : null,
+          groupsOf(row.campaign).subowners ? t("campaigns.groupSubowners") : null,
+          groupsOf(row.campaign).leads ? t("campaigns.groupLeads") : null,
+        ]
+          .filter(Boolean)
                         .join(", ")}
                     </td>
                     <td className="ctr text-xs">

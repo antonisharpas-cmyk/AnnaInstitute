@@ -27,6 +27,7 @@ import {
   units,
 } from "@/db/schema";
 import { formatAmount, toCents } from "./money";
+import { companySeriesStart, issuerOfProjects, ONE_ELEVEN } from "./issuer";
 
 const METHODS: Record<string, string> = {
   CASH: "cash",
@@ -77,67 +78,95 @@ async function seriesStart(
   return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
 }
 
-export async function nextReceiptNumber(_when: Date = new Date()): Promise<string> {
-  void _when;
-  const used = await db
-    .select({ number: payments.receiptNumber })
-    .from(payments)
-    .where(sql`${payments.receiptNumber} ~ '^[0-9]{1,8}$'`);
+/**
+ * The plain receipt numbers already on payments, for one issuer.
+ *
+ * A payment's receipt belongs to the company that holds the contract's
+ * development, so each company's receipts are counted apart from the others.
+ */
+async function receiptNumbersOnPayments(issuerId: string): Promise<string[]> {
+  const [rows, holders] = await Promise.all([
+    db
+      .select({ number: payments.receiptNumber, projectId: units.projectId })
+      .from(payments)
+      .innerJoin(contracts, eq(contracts.id, payments.contractId))
+      .leftJoin(units, eq(units.id, contracts.unitId))
+      .where(sql`${payments.receiptNumber} is not null`),
+    issuerOfProjects(),
+  ]);
+  return rows
+    .filter((row) => (row.projectId ? (holders.get(row.projectId) ?? ONE_ELEVEN) : ONE_ELEVEN) === issuerId)
+    .map((row) => row.number ?? "");
+}
 
+async function highestIssued(kind: "INVOICE" | "RECEIPT" | "CREDIT_NOTE", issuerId: string) {
+  const used = await db
+    .select({ number: issuedDocuments.number })
+    .from(issuedDocuments)
+    .where(
+      and(
+        eq(issuedDocuments.kind, kind),
+        eq(issuedDocuments.issuerId, issuerId),
+        sql`${issuedDocuments.number} ~ '^[0-9]{1,8}$'`,
+      ),
+    );
+  let highest = 0;
+  for (const row of used) highest = Math.max(highest, Number(row.number ?? 0));
+  return highest;
+}
+
+/**
+ * The next receipt number for one issuer: One Eleven when the id is empty,
+ * or the company that holds the development.
+ */
+export async function nextReceiptNumber(_when: Date = new Date(), issuerId: string = ONE_ELEVEN): Promise<string> {
+  void _when;
+  let highest = await highestIssued("RECEIPT", issuerId);
   /* Receipts already issued count too, so a number stays used even after the
      payment it was for was taken off again. */
-  const issued = await db
-    .select({ number: issuedDocuments.number })
-    .from(issuedDocuments)
-    .where(and(eq(issuedDocuments.kind, "RECEIPT"), sql`${issuedDocuments.number} ~ '^[0-9]{1,8}$'`));
-
-  let highest = 0;
-  for (const row of [...used, ...issued]) highest = Math.max(highest, Number(row.number ?? 0));
-
-  const start = await seriesStart("numbers.nextReceipt", 14);
+  for (const number of await receiptNumbersOnPayments(issuerId)) {
+    if (GENERATED.test(number)) highest = Math.max(highest, Number(number));
+  }
+  const start = issuerId
+    ? ((await companySeriesStart(issuerId, "nextReceipt")) ?? 1)
+    : await seriesStart("numbers.nextReceipt", 14);
   return inSeries(Math.max(start, highest + 1));
 }
 
-/** The next invoice number, in the invoice book's own series. */
-export async function nextInvoiceNumber(): Promise<string> {
-  const used = await db
-    .select({ number: issuedDocuments.number })
-    .from(issuedDocuments)
-    .where(and(eq(issuedDocuments.kind, "INVOICE"), sql`${issuedDocuments.number} ~ '^[0-9]{1,8}$'`));
-
-  let highest = 0;
-  for (const row of used) highest = Math.max(highest, Number(row.number));
-
-  const start = await seriesStart("numbers.nextInvoice", 16);
+/** The next invoice number, in the issuer's own series. */
+export async function nextInvoiceNumber(issuerId: string = ONE_ELEVEN): Promise<string> {
+  const highest = await highestIssued("INVOICE", issuerId);
+  const start = issuerId
+    ? ((await companySeriesStart(issuerId, "nextInvoice")) ?? 1)
+    : await seriesStart("numbers.nextInvoice", 16);
   return inSeries(Math.max(start, highest + 1));
 }
 
-/** The next credit note number, in its own series from 0001. */
-export async function nextCreditNoteNumber(): Promise<string> {
-  const used = await db
-    .select({ number: issuedDocuments.number })
-    .from(issuedDocuments)
-    .where(and(eq(issuedDocuments.kind, "CREDIT_NOTE"), sql`${issuedDocuments.number} ~ '^[0-9]{1,8}$'`));
-  let highest = 0;
-  for (const row of used) highest = Math.max(highest, Number(row.number));
-  const start = await seriesStart("numbers.nextCreditNote", 1);
+/** The next credit note number, in the issuer's own series from 0001. */
+export async function nextCreditNoteNumber(issuerId: string = ONE_ELEVEN): Promise<string> {
+  const highest = await highestIssued("CREDIT_NOTE", issuerId);
+  const start = issuerId
+    ? ((await companySeriesStart(issuerId, "nextCreditNote")) ?? 1)
+    : await seriesStart("numbers.nextCreditNote", 1);
   return inSeries(Math.max(start, highest + 1));
 }
 
-/** Is this number already on another receipt? */
-export async function receiptNumberTaken(value: string): Promise<boolean> {
-  const wanted = value.trim();
+/** Is this number already on another receipt of the same issuer? */
+export async function receiptNumberTaken(value: string, issuerId: string = ONE_ELEVEN): Promise<boolean> {
+  const wanted = value.trim().toUpperCase();
   if (!wanted) return false;
-  const [row] = await db
-    .select({ id: payments.id })
-    .from(payments)
-    .where(sql`upper(${payments.receiptNumber}) = ${wanted.toUpperCase()}`)
-    .limit(1);
-  if (row) return true;
+  const onPayments = await receiptNumbersOnPayments(issuerId);
+  if (onPayments.some((number) => number.trim().toUpperCase() === wanted)) return true;
   const [issued] = await db
     .select({ id: issuedDocuments.id })
     .from(issuedDocuments)
-    .where(and(eq(issuedDocuments.kind, "RECEIPT"), sql`upper(${issuedDocuments.number}) = ${wanted.toUpperCase()}`))
+    .where(
+      and(
+        eq(issuedDocuments.kind, "RECEIPT"),
+        eq(issuedDocuments.issuerId, issuerId),
+        sql`upper(${issuedDocuments.number}) = ${wanted}`,
+      ),
+    )
     .limit(1);
   return Boolean(issued);
 }

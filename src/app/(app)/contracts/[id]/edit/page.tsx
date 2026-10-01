@@ -71,13 +71,20 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
             rows={rows}
             units={free.map((u) => ({
               id: u.unit.id,
+              building: u.project.name,
+              code: u.unit.code,
               label: `${u.project.name} ${u.unit.code} . ${formatAmount(
                 Number(u.unit.netPrice) * 100,
                 locale,
               )}`,
             }))}
             chosenUnitIds={theirs.map((row) => row.unit.id)}
-            clients={clientList.map((c) => ({ id: c.id, label: `${c.lastName} ${c.firstName}` }))}
+            clients={clientList.map((c) => ({
+              id: c.id,
+              label: `${c.lastName} ${c.firstName}`,
+              firstName: c.firstName,
+              lastName: c.lastName,
+            }))}
             agents={agentList.map((a) => ({
               id: a.id,
               label: `${a.name} (${Number(a.commissionRate)}%)`,

@@ -6,6 +6,7 @@ import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
 import { contractStatusTone, getContract, landExchangeUnits } from "@/lib/contracts";
 import { nextReceiptNumber } from "@/lib/receipts";
+import { issuerIdOfContract } from "@/lib/issuer";
 import { STAGE_CHOICES } from "@/lib/vat";
 import { documentsByPayment, documentsForContract } from "@/lib/documents";
 import { titleWithExtension } from "@/lib/fileLabels";
@@ -17,6 +18,10 @@ import DocumentUpload from "@/components/DocumentUpload";
 import DeleteRecord from "@/components/DeleteRecord";
 import { PaymentForm } from "@/components/MoneyForms";
 import DateField from "@/components/DateField";
+import SubmitButton from "@/components/SubmitButton";
+import ConfirmButton from "@/components/ConfirmButton";
+import { cashLinesOf, cashStanding } from "@/lib/cash";
+import { recordCash, removeCash } from "../cashActions";
 import {
   addLine,
   deleteContract,
@@ -56,11 +61,12 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const theirApartments =
     detail.contract.kind === "LAND_EXCHANGE" ? await landExchangeUnits(id) : [];
 
-  const [contractDocuments, paymentFiles, nextReceipt] = await Promise.all([
+  const [contractDocuments, paymentFiles, nextReceipt, cashLines] = await Promise.all([
     documentsForContract(id),
     documentsByPayment(id),
     /* The number the next receipt will carry, so the form opens with it in. */
-    nextReceiptNumber(),
+    issuerIdOfContract(id).then((issuerId) => nextReceiptNumber(new Date(), issuerId)),
+    cashLinesOf(id),
   ]);
 
   const { contract, unit, project, client, agent, installments: lines, totals, payments } = detail;
@@ -75,6 +81,15 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
     schedule, and every list that shows the money says it too.
   */
   const paidInFull = totals.scheduleTotalCents > 0 && totals.outstandingCents <= 0;
+
+  /*
+    The cash part, when there is one: agreed, received, still to come, and the
+    price with the cash put back in. The VAT is only ever on the contract price,
+    so the cash is added to the figures before VAT and to what has come in.
+  */
+  const cash = cashStanding(contract.cashAmount, cashLines.map((one) => one.line));
+  const hasCash = contract.kind === "SALE" && (cash.agreedCents > 0 || cash.receivedCents > 0);
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <>
@@ -137,6 +152,22 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         <Stat label={t("contracts.paid")} value={formatAmount(totals.paidTotalCents, locale)} />
         <Stat label={t("dash.outstanding")} value={formatAmount(totals.outstandingCents, locale)} />
       </div>
+
+      {hasCash ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5" data-cash-figures>
+          <Stat label={t("contracts.cashAgreed")} value={formatAmount(cash.agreedCents, locale)} />
+          <Stat label={t("contracts.cashReceived")} value={formatAmount(cash.receivedCents, locale)} />
+          <Stat label={t("contracts.cashOutstanding")} value={formatAmount(cash.outstandingCents, locale)} />
+          <Stat
+            label={t("contracts.priceWithCash")}
+            value={formatAmount(totals.netCents + cash.agreedCents, locale)}
+          />
+          <Stat
+            label={t("contracts.receivedWithCash")}
+            value={formatAmount(totals.paidTotalCents + cash.receivedCents, locale)}
+          />
+        </div>
+      ) : null}
 
       <div className="space-y-4">
         {/* 1. Who and what this contract is for. */}
@@ -534,6 +565,81 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </div>
           <p className="mt-3 text-xs text-brand-graphite/60">{t("contracts.scheduleNote")}</p>
         </Card>
+
+        {/* The cash part, received a line at a time, with no invoice and no VAT. */}
+        {hasCash ? (
+          <Card title={t("contracts.cashTitle")}>
+            <p className="mb-3 text-xs text-brand-graphite/60">{t("contracts.cashNote")}</p>
+            {cashLines.length === 0 ? (
+              <Empty message={t("contracts.cashNone")} />
+            ) : (
+              <table className="data mb-3" data-cash-lines>
+                <thead>
+                  <tr>
+                    <th>{t("common.date")}</th>
+                    <th className="num">{t("common.amount")}</th>
+                    <th>{t("common.notes")}</th>
+                    <th>{t("contracts.recordedBy")}</th>
+                    <th className="ctr">{t("common.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashLines.map(({ line, by }) => (
+                    <tr key={line.id}>
+                      <td className="nowrap">{new Date(line.receivedOn).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB")}</td>
+                      <td className="num font-semibold">{formatAmount(toCents(line.amount), locale)}</td>
+                      <td className="text-xs">{line.note ?? ""}</td>
+                      <td className="text-xs">{by ?? ""}</td>
+                      <td className="ctr">
+                        <ConfirmButton
+                          action={removeCash.bind(null, line.id, id)}
+                          label={t("common.delete")}
+                          confirm={t("remove.sure")}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <Disclosure showLabel={t("contracts.cashAdd")} hideLabel={t("common.cancel")}>
+              <form
+                action={recordCash.bind(null, id)}
+                className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-4"
+                data-cash-form
+              >
+                <div>
+                  <label className="label" htmlFor="cashAmountIn">
+                    {t("common.amount")}
+                  </label>
+                  <input
+                    id="cashAmountIn"
+                    name="amount"
+                    inputMode="decimal"
+                    required
+                    defaultValue={cash.outstandingCents > 0 ? String(cash.outstandingCents / 100) : ""}
+                    className="input"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="cashOn">
+                    {t("common.date")}
+                  </label>
+                  <DateField id="cashOn" name="receivedOn" defaultValue={today} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="cashNote">
+                    {t("common.notes")}
+                  </label>
+                  <input id="cashNote" name="note" className="input" />
+                </div>
+                <div className="flex items-end">
+                  <SubmitButton>{t("common.save")}</SubmitButton>
+                </div>
+              </form>
+            </Disclosure>
+          </Card>
+        ) : null}
 
         {/* 3. Money received. */}
         <Card title={t("contracts.recordPayment")}>

@@ -4,9 +4,10 @@ import { db } from "@/db";
 import { contracts, installments, issuedDocuments, payments, vatChanges } from "@/db/schema";
 import { fromCents, toCents } from "@/lib/money";
 import { blendedRate, modelOf, vatForNet, type VatModel } from "@/lib/vatModel";
-import { issueCreditNote, issueForCreditCover, keepPdf, readDocument } from "@/lib/issued";
+import { issueCreditNote, issueForCreditCover, keepPdf, paperName, placeFromProperty, readDocument } from "@/lib/issued";
 import { invoicePdf, longDay, stampCancelled, type IssuedSnapshot } from "@/lib/paymentPdf";
 import { nextInvoiceNumber } from "@/lib/receipts";
+import { issuerDetails } from "@/lib/issuer";
 import { lockPaidInstallments } from "@/lib/contracts";
 import { followTheMoney } from "@/lib/statuses";
 import { recordAudit } from "@/lib/audit";
@@ -206,10 +207,13 @@ export async function finishReducedVat(
           who,
         });
 
-        const number = await nextInvoiceNumber();
+        /* The new invoice comes from the same company as the one it replaces. */
+        const number = await nextInvoiceNumber(old.issuerId ?? "");
         const newTotal = net + fresh.vatCents;
         const snapshot: IssuedSnapshot = {
           ...snap,
+          /* Today's details of the company that issued the original. */
+          company: await issuerDetails(old.issuerId ?? ""),
           invoiceNumber: number,
           issuedOn: approval.approvedOn.toISOString(),
           vatCents: fresh.vatCents,
@@ -224,8 +228,8 @@ export async function finishReducedVat(
         const pdf = await invoicePdf(snapshot);
         const documentId = await keepPdf(
           pdf,
-          `Invoice ${number}.pdf`,
-          `Invoice ${number}`,
+          `${paperName("Invoice", number, snapshot.stage, placeFromProperty(snapshot.property))}.pdf`,
+          paperName("Invoice", number, snapshot.stage, placeFromProperty(snapshot.property)),
           "INVOICE",
           contract.id,
           who?.id ?? null,
@@ -233,6 +237,7 @@ export async function finishReducedVat(
         const [replacement] = await db
           .insert(issuedDocuments)
           .values({
+            issuerId: old.issuerId ?? "",
             kind: "INVOICE",
             number,
             issuedOn: approval.approvedOn,
@@ -258,8 +263,8 @@ export async function finishReducedVat(
           ]);
           stampedDocumentId = await keepPdf(
             stamped,
-            `Invoice ${old.number} CANCELLED.pdf`,
-            `Invoice ${old.number} cancelled`,
+            `${paperName("Invoice", old.number, `${snapshot.stage} CANCELLED`.trim(), placeFromProperty(snapshot.property))}.pdf`,
+            paperName("Invoice", old.number, `${snapshot.stage} cancelled`.trim(), placeFromProperty(snapshot.property)),
             "INVOICE",
             contract.id,
             who?.id ?? null,

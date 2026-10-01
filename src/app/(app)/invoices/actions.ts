@@ -85,7 +85,7 @@ async function sayWhatWasSent(expenseId: string, issued: string | null) {
 export async function createExpense(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const parsed = await read(formData);
-  if (parsed.direction === "OUT" && !parsed.subownerId) throw new Error("Choose the partner the invoice is to.");
+  if (parsed.direction === "OUT" && !parsed.subownerId) throw new Error("Choose the company the invoice is to.");
   if (!parsed.supplier) throw new Error("Say who the invoice is from.");
 
   const inserted = await db

@@ -158,7 +158,7 @@ export async function GET(request: Request) {
     {
       key: "leads",
       items: leadRows.map((row) => ({
-        title: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Enquiry",
+        title: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Lead",
         subtitle: [row.email, row.phone].filter(Boolean).join(" . "),
         href: `/leads/${row.id}`,
       })),

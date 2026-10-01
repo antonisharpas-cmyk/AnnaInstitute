@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { campaignAttachments, resolveFilesToken } from "@/lib/campaignFiles";
 import { extensionOf, titleWithExtension } from "@/lib/fileLabels";
 import Logo from "@/components/Logo";
+import { isPicture } from "@/lib/campaignProjects";
 
 /**
  * The files of one campaign, for somebody who received it on WhatsApp.
@@ -30,6 +31,23 @@ export default async function CampaignFilesPage({
       <p className="mb-6 text-sm text-brand-graphite/70">
         The documents from our message. Tap one to open it.
       </p>
+
+      {/* The pictures as pictures, so the page is worth opening on a phone. */}
+      {files.some(isPicture) ? (
+        <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3" data-gallery>
+          {files.filter(isPicture).map((file) => (
+            <a key={file.id} href={`/files/${token}/${file.id}`} target="_blank" rel="noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/files/${token}/${file.id}`}
+                alt={titleWithExtension(file)}
+                className="aspect-[4/3] w-full rounded border border-brand-line object-cover"
+                loading="lazy"
+              />
+            </a>
+          ))}
+        </div>
+      ) : null}
 
       {files.length === 0 ? (
         <p className="text-sm text-brand-graphite/60">There is nothing attached to this link.</p>

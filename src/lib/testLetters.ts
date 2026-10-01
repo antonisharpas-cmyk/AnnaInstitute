@@ -103,7 +103,7 @@ async function examplePapers(place: { unit: string; project: string }, stage: st
 /** What a test is called, for the first line of it. */
 const NAMES: Record<(typeof OTHER_TESTS)[number], string> = {
   day_summary: "The day's summary",
-  partner_invoice: "Invoice to a partner",
+  partner_invoice: "Invoice to a company",
   invoice_received: "Copy of an invoice we received",
 };
 
@@ -196,7 +196,7 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
     const due = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB");
     const letter = partnerLetter({
       number: "TEST",
-      dear: "Example Partner Ltd",
+      dear: "Example Company Ltd",
       what: "Management fees, an example",
       project: place.project,
       net: money(net),
@@ -209,7 +209,7 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
     const today = new Date().toISOString();
     const pdf = await invoicePdf({
       company: await companyDetails(),
-      client: { name: "Example Partner Ltd", address: "1 Example Street, 6000 Larnaca", country: "Cyprus", idNumber: "", vatNumber: "CY00000000X", email: "", phone: "", registration: "HE000000" },
+      client: { name: "Example Company Ltd", address: "1 Example Street, 6000 Larnaca", country: "Cyprus", idNumber: "", vatNumber: "CY00000000X", email: "", phone: "", registration: "HE000000" },
       contractReference: "",
       property: place.project,
       stage: "Management fees",

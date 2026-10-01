@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/db";
 import { messages } from "@/db/schema";
 import { isSuppressed } from "../suppression";
-import { unsubscribeUrl } from "../unsubscribe";
+import { leadUnsubscribeUrl, unsubscribeUrl } from "../unsubscribe";
 import { emailConfigured, sendEmail, type EmailAttachment } from "./email";
 import { channelConfigured, sendViaSmsTo, smsConfigured } from "./smsto";
 export { fillPlaceholders, looksLikeStop, normalisePhone, placeholdersLeft } from "./text";
@@ -18,6 +18,7 @@ export type Recipient = {
   clientId?: string | null;
   agentId?: string | null;
   subownerId?: string | null;
+  leadId?: string | null;
 };
 
 export function addressFor(channel: Channel, recipient: Recipient): string | null {
@@ -75,6 +76,7 @@ export async function sendAndRecord(options: {
         clientId: recipient.clientId ?? null,
         agentId: recipient.agentId ?? null,
         subownerId: recipient.subownerId ?? null,
+        leadId: recipient.leadId ?? null,
         subject: options.subject ?? null,
         body,
         status,
@@ -106,9 +108,9 @@ export async function sendAndRecord(options: {
   let body = options.body;
   let html = letterHtml(body);
 
-  if (options.withOptOut && recipient.clientId) {
+  if (options.withOptOut && (recipient.clientId || recipient.leadId)) {
     if (channel === "EMAIL") {
-      const url = unsubscribeUrl(recipient.clientId);
+      const url = recipient.clientId ? unsubscribeUrl(recipient.clientId) : leadUnsubscribeUrl(recipient.leadId as string);
       html += `<hr style="margin:24px 0 12px;border:none;border-top:1px solid #e3e5e8"><p style="font-family:system-ui,Arial,sans-serif;font-size:12px;color:#6b7280">If you would rather not receive these, <a href="${url}" style="color:#3d8397">unsubscribe here</a>.</p>`;
       body = `${body}\n\nIf you would rather not receive these, unsubscribe here: ${url}`;
     } else if (!/reply stop/i.test(body)) {
