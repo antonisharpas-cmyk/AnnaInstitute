@@ -35,6 +35,7 @@ export const COLUMNS: Record<ListKey, Column[]> = {
     { key: "building", label: "clients.building" },
     { key: "partner", label: "clients.partner" },
     { key: "source", label: "clients.source" },
+    { key: "member", label: "clients.member" },
     { key: "since", label: "clients.since" },
     { key: "status", label: "common.status" },
     { key: "contracts", label: "contracts.title" },

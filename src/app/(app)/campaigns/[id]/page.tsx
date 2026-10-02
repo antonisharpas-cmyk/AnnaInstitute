@@ -1,3 +1,5 @@
+import AboutPicker from "@/components/AboutPicker";
+import { aboutOf } from "@/lib/campaignAbout";
 import { agentWay } from "@/lib/agentWay";
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
@@ -97,7 +99,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
           .innerJoin(projects, eq(projects.id, units.projectId))
           .orderBy(asc(projects.name), asc(units.code)),
       ]);
-  const aboutNow = campaign.unitId ? `unit:${campaign.unitId}` : campaign.projectId ? `project:${campaign.projectId}` : "";
+  const aboutNow = aboutOf(campaign);
   const tryWhatsapp = await whatsappTest(campaign);
 
   // The files of a campaign also live behind a link of their own, because a
@@ -153,26 +155,15 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       {!alreadySent ? (
         <form action={setCampaignAbout.bind(null, id)} className="card mb-4 flex flex-wrap items-end gap-2 p-4" data-campaign-about>
           <div className="min-w-64 flex-1">
-            <label className="label" htmlFor="about">
-              {t("campaigns.about")}
-            </label>
-            <select id="about" name="about" defaultValue={aboutNow} className="select">
-              <option value="">{t("campaigns.aboutNothing")}</option>
-              <optgroup label={t("campaigns.aboutProjects")}>
-                {projectRows.map((one) => (
-                  <option key={one.id} value={`project:${one.id}`}>
-                    {one.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label={t("campaigns.aboutUnits")}>
-                {unitRows.map((one) => (
-                  <option key={one.id} value={`unit:${one.id}`}>
-                    {one.project} {one.code}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+            <p className="label">{t("campaigns.about")}</p>
+            <AboutPicker
+              initial={aboutNow}
+              choices={[
+                ...projectRows.map((one) => ({ value: `project:${one.id}`, label: one.name, group: t("campaigns.aboutProjects") })),
+                ...unitRows.map((one) => ({ value: `unit:${one.id}`, label: `${one.project} ${one.code}`, group: t("campaigns.aboutUnits") })),
+              ]}
+              labels={{ search: t("campaigns.aboutSearch"), nothing: t("campaigns.aboutNothing"), remove: t("campaigns.aboutRemove") }}
+            />
             <p className="mt-1 text-xs text-brand-graphite/60">{t("campaigns.aboutNote")}</p>
           </div>
           <SubmitButton className="btn btn-secondary">{t("campaigns.aboutSave")}</SubmitButton>

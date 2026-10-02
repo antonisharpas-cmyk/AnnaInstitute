@@ -425,6 +425,8 @@ async function makeClient(
       sourceChoice: await clientSourceChoiceFor(lead),
       /* The agent who brought the lead brought the client. */
       agentId: lead.agentId ?? null,
+      /* Whoever was looking after the lead goes on looking after the client. */
+      assignedToId: lead.assignedToId ?? null,
       marketingOptIn: optIn,
       marketingOptInAt: optIn ? new Date() : null,
       marketingOptInSource: optIn ? (lead.consentText ?? "the lead") : null,
@@ -991,4 +993,64 @@ export async function assignLead(leadId: string, formData: FormData) {
   await flash("said.saved");
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
+}
+
+export type LeadDetailsState = { ok: true } | { error: string } | null;
+
+/**
+ * The lead's own details, corrected in place.
+ *
+ * A name taken down wrong on the phone, an email with a typo, a second number:
+ * all of it can be put right on the lead. A lead that has become a client is
+ * changed on the client instead, so the two never disagree.
+ */
+export async function saveLeadDetails(
+  leadId: string,
+  _previous: LeadDetailsState,
+  formData: FormData,
+): Promise<LeadDetailsState> {
+  const user = await requireUser(["ADMIN"]);
+  const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  if (!lead) return { error: "This lead is not there any more." };
+  if (lead.status === "CONVERTED") return { error: "This lead is a client now. Change the details on the client." };
+
+  const text = (name: string) => String(formData.get(name) ?? "").trim() || null;
+  const email = text("email");
+  const phone = text("phone");
+  if (!email && !phone) return { error: "Keep an email address or a telephone number, or there is no way to reply." };
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "That email address does not look right." };
+
+  await db
+    .update(leads)
+    .set({
+      firstName: text("firstName"),
+      lastName: text("lastName"),
+      email,
+      phone,
+      interest: text("interest"),
+      projectName: text("projectName"),
+      unitCode: text("unitCode"),
+      budget: text("budget"),
+      country: text("country"),
+      message: text("message"),
+      updatedAt: new Date(),
+    })
+    .where(eq(leads.id, leadId));
+
+  const changed = (["firstName", "lastName", "email", "phone", "interest", "projectName", "unitCode", "budget", "country", "message"] as const)
+    .filter((key) => (lead[key] ?? null) !== text(key))
+    .join(", ");
+  await recordAudit({
+    action: "lead.update",
+    entity: "lead",
+    entityId: leadId,
+    detail: changed ? `changed ${changed}` : "saved with no change",
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.saved");
+  revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/leads");
+  return { ok: true };
 }

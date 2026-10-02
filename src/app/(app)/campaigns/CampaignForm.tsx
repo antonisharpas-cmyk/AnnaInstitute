@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import AboutPicker from "@/components/AboutPicker";
 import Link from "next/link";
 import SubmitButton from "@/components/SubmitButton";
 
@@ -37,7 +38,7 @@ export default function CampaignForm({
   groups,
   priceLists,
   about = [],
-  aboutDefault = "",
+  aboutDefault = [],
   leadChoices = [],
   projectChoices = [],
   projectsDefault = [],
@@ -53,7 +54,7 @@ export default function CampaignForm({
   projectsDefault?: string[];
   /** The developments and apartments a campaign can be about, as "project:<id>" and "unit:<id>". */
   about?: { value: string; label: string; group: string }[];
-  aboutDefault?: string;
+  aboutDefault?: string[];
   action: (formData: FormData) => void | Promise<void>;
   templates: TemplateChoice[];
   chosenTemplate?: string;
@@ -83,7 +84,7 @@ export default function CampaignForm({
   const [viaEmail, setViaEmail] = useState(true);
   const [viaWhatsapp, setViaWhatsapp] = useState(Boolean(picked?.bodyWhatsapp));
   const [bothVia, setBothVia] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
-  const [aboutValue, setAboutValue] = useState(aboutDefault);
+  const [aboutValues, setAboutValues] = useState<string[]>(aboutDefault);
 
   /*
    * The placeholders that need the development or the apartment. Said on the
@@ -93,9 +94,9 @@ export default function CampaignForm({
   const needsProject = /\{\{\s*(project|location|details|completion)\s*\}\}/i.test(words);
   const needsUnit = /\{\{\s*(unit|price)\s*\}\}/i.test(words);
   const aboutWarning =
-    needsUnit && !aboutValue.startsWith("unit:")
+    needsUnit && !aboutValues.some((one) => one.startsWith("unit:"))
       ? labels.aboutNeedsUnit
-      : needsProject && !aboutValue
+      : needsProject && aboutValues.length === 0
         ? labels.aboutNeedsProject
         : "";
 
@@ -157,29 +158,13 @@ export default function CampaignForm({
 
       {about.length > 0 ? (
         <div>
-          <label className="label" htmlFor="about">
-            {labels.about}
-          </label>
-          <select
-            id="about"
-            name="about"
-            value={aboutValue}
-            onChange={(event) => setAboutValue(event.target.value)}
-            className="select"
-          >
-            <option value="">{labels.aboutNothing}</option>
-            {[...new Set(about.map((one) => one.group))].map((group) => (
-              <optgroup key={group} label={group}>
-                {about
-                  .filter((one) => one.group === group)
-                  .map((one) => (
-                    <option key={one.value} value={one.value}>
-                      {one.label}
-                    </option>
-                  ))}
-              </optgroup>
-            ))}
-          </select>
+          <p className="label">{labels.about}</p>
+          <AboutPicker
+            choices={about}
+            chosen={aboutValues}
+            onChange={setAboutValues}
+            labels={{ search: labels.aboutSearch, nothing: labels.aboutNothing, remove: labels.aboutRemove }}
+          />
           <p className="mt-1 text-xs text-brand-graphite/60">{labels.aboutNote}</p>
           {aboutWarning ? (
             <p className="mt-1 text-xs font-semibold text-[color:var(--color-negative)]" data-about-warning>

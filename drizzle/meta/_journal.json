@@ -323,6 +323,13 @@
       "when": 1791666647383,
       "tag": "0046_signing_papers_agent_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791666747383,
+      "tag": "0047_client_member_campaign_about",
+      "breakpoints": true
     }
   ]
 }

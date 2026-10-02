@@ -16,6 +16,7 @@ export default function ClientForm({
   idTypes,
   sources,
   agents = [],
+  team = [],
   extras,
 }: {
   action: (formData: FormData) => void | Promise<void>;
@@ -29,6 +30,8 @@ export default function ClientForm({
   agents?: { value: string; label: string; hint?: string }[];
   /** The second buyer and the bank, on a new client. */
   extras?: ExtrasLabels;
+  /** The office, for the team member who looks after the client. */
+  team?: { id: string; name: string }[];
 }) {
   return (
     <form action={action} className="space-y-4">
@@ -162,6 +165,19 @@ export default function ClientForm({
               noMatch: t("common.noMatch"),
             }}
           />
+        </div>
+        <div>
+          <label className="label" htmlFor="assignedToId">
+            {t("appointments.assignedTo")}
+          </label>
+          <select id="assignedToId" name="assignedToId" defaultValue={client?.assignedToId ?? ""} className="select">
+            <option value="">{t("appointments.nobody")}</option>
+            {team.map((one) => (
+              <option key={one.id} value={one.id}>
+                {one.name}
+              </option>
+            ))}
+          </select>
         </div>
         {extras ? <NewClientExtras idTypes={idTypes} labels={extras} /> : null}
         <div className="sm:col-span-2">

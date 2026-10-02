@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, clients, contracts, projects, subowners } from "@/db/schema";
+import { agents, clients, contracts, projects, subowners, teamMembers } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { apartmentsByClient, clientFilters, CLIENT_ORDER } from "@/lib/clients";
@@ -47,6 +47,7 @@ export default async function ClientsPage({
     partner?: string;
     source?: string;
     agent?: string;
+    member?: string;
     state?: string;
     sort?: string;
     dir?: string;
@@ -71,6 +72,7 @@ export default async function ClientsPage({
   const partner = params.partner ?? "";
   const source = params.source ?? "";
   const agent = params.agent ?? "";
+  const member = params.member ?? "";
   const state = params.state === "closed" ? "closed" : "";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
   const sort = readSort(params as Record<string, string | undefined>, Object.keys(CLIENT_ORDER), {
@@ -79,7 +81,7 @@ export default async function ClientsPage({
   });
   const order = sort.dir === "asc" ? asc(CLIENT_ORDER[sort.key]) : desc(CLIENT_ORDER[sort.key]);
   const filters = filterQuery(params as Record<string, string | undefined>);
-  const where = clientFilters({ query, project, partner, source, agent, state });
+  const where = clientFilters({ query, project, partner, source, agent, member, state });
 
   /* How many are on each list, for the two tabs. */
   const [[openCount], [closedCount]] = await Promise.all([
@@ -132,6 +134,9 @@ export default async function ClientsPage({
     /* Every agent, for the filter: "which of these are Andreas's". */
     db.select({ id: agents.id, name: agents.name }).from(agents).orderBy(asc(agents.name)),
   ]);
+  /* The office, for the filter and the column: who looks after whom. */
+  const team = await db.select({ id: teamMembers.id, name: teamMembers.name }).from(teamMembers).orderBy(asc(teamMembers.name));
+  const memberName = new Map(team.map((one) => [one.id, one.name]));
 
   const apartments = await apartmentsByClient(rows.map((r) => r.client.id));
   const total = counted?.total ?? 0;
@@ -264,6 +269,13 @@ export default async function ClientsPage({
             anything={t("common.all")}
             choices={agentList.map((one) => ({ value: one.id, label: one.name }))}
           />
+          <Pick
+            name="member"
+            label={t("appointments.assignedTo")}
+            chosen={many(member)}
+            anything={t("common.all")}
+            choices={[{ value: "none", label: t("appointments.nobody") }, ...team.map((one) => ({ value: one.id, label: one.name }))]}
+          />
         </SearchBox>
 
         {rows.length === 0 ? (
@@ -301,6 +313,8 @@ export default async function ClientsPage({
             <input type="hidden" name="project" value={project} />
             <input type="hidden" name="partner" value={partner} />
             <input type="hidden" name="source" value={source} />
+            <input type="hidden" name="agent" value={agent} />
+            <input type="hidden" name="member" value={member} />
 
             <RowKeys />
 
@@ -375,6 +389,7 @@ export default async function ClientsPage({
                         href={link("source")}
                       />
                     ) : null}
+                    {on("member") ? <th>{t("clients.member")}</th> : null}
                     {on("since") ? (
                       <SortTh
                         label={t("clients.since")}
@@ -569,6 +584,11 @@ export default async function ClientsPage({
                           </td>
                         ) : null}
 
+                        {on("member") ? (
+                          <td className="text-xs whitespace-nowrap" data-client-member>
+                            {r.client.assignedToId ? (memberName.get(r.client.assignedToId) ?? "") : ""}
+                          </td>
+                        ) : null}
                         {on("since") ? (
                           <td className="text-xs whitespace-nowrap">
                             {/* The day they became a client of ours. */}

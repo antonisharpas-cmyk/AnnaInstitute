@@ -42,6 +42,7 @@ import DocumentUpload from "@/components/DocumentUpload";
 import { undoConversion } from "../../leads/actions";
 import {
   assignApartment,
+  assignClient,
   closeClient,
   deleteClientDocument,
   reopenClient,
@@ -387,6 +388,22 @@ export default async function ClientPage({
             birthDateHint: t("clients.birthDateHint"),
           }}
         />
+
+        {/* Who in the office looks after this client. */}
+        <Card title={t("appointments.assignedTo")}>
+          <form action={assignClient.bind(null, client.id)} className="flex flex-wrap items-center gap-2" data-client-assigned>
+            <select name="assignedToId" defaultValue={client.assignedToId ?? ""} className="select sm:max-w-xs">
+              <option value="">{t("appointments.nobody")}</option>
+              {team.map((one) => (
+                <option key={one.id} value={one.id}>
+                  {one.name}
+                </option>
+              ))}
+            </select>
+            <SubmitButton className="btn btn-secondary">{t("common.save")}</SubmitButton>
+          </form>
+          <p className="mt-2 text-xs text-brand-graphite/60">{t("clients.assignedNote")}</p>
+        </Card>
 
         {/* The second buyer, when the apartment is in two names, and the bank, when a loan pays. */}
         <div className="grid gap-4 lg:grid-cols-2">
@@ -933,7 +950,7 @@ export default async function ClientPage({
         ) : null}
 
         {tab === "followups" ? (
-          <ClientFollowUps clientId={id} rows={theirFollowUps} team={team} locale={locale} t={t} />
+          <ClientFollowUps clientId={id} rows={theirFollowUps} team={team} defaultMember={client.assignedToId ?? ""} locale={locale} t={t} />
         ) : null}
 
         {tab === "documents" ? (

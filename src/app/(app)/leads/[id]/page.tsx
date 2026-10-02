@@ -7,6 +7,7 @@ import { getTranslator, type MessageKey } from "@/i18n";
 import { leadStatusTone, notesForLead } from "@/lib/leads";
 import { BackLink, Card, PageHeader, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
+import ProfileCard from "@/components/ProfileCard";
 import NoteList from "@/components/NoteList";
 import { whoCanGo } from "@/lib/team";
 import { followUpsForLead } from "@/lib/followUps";
@@ -23,6 +24,7 @@ import {
   deleteFollowUp,
   deleteLead,
   removeLeadNote,
+  saveLeadDetails,
   setFollowUpStatus,
   setLeadStatus,
 } from "../actions";
@@ -141,14 +143,40 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             appointments section itself, which lists leads as well as
             clients.
           */}
+          {/* Their details, put right in place while they are still a lead. */}
+          {locked ? null : (
+            <ProfileCard
+              title={t("leads.details")}
+              action={saveLeadDetails.bind(null, id)}
+              labels={{ edit: t("common.edit"), save: t("common.save"), cancel: t("common.cancel") }}
+              fields={[
+                { name: "firstName", label: t("common.name"), value: lead.firstName ?? "" },
+                { name: "lastName", label: t("common.surname"), value: lead.lastName ?? "" },
+                { name: "email", label: t("leads.email"), value: lead.email ?? "", kind: "email" },
+                { name: "phone", label: t("leads.phone"), value: lead.phone ?? "", kind: "tel" },
+                { name: "interest", label: t("leads.about"), value: lead.interest ?? "" },
+                { name: "projectName", label: t("leads.project"), value: lead.projectName ?? project?.name ?? "" },
+                { name: "unitCode", label: t("leads.unitCode"), value: lead.unitCode ?? "" },
+                { name: "budget", label: t("leads.budget"), value: lead.budget ?? "" },
+                { name: "country", label: t("clients.country"), value: lead.country ?? "" },
+                { name: "message", label: t("leads.theirWords"), value: lead.message ?? "", kind: "textarea" },
+              ]}
+            />
+          )}
+
           <Card title={t("leads.theEnquiry")}>
-            <Line label={t("leads.email")}>
-              {lead.email ? <a href={`mailto:${lead.email}`}>{lead.email}</a> : ""}
-            </Line>
-            <Line label={t("leads.phone")}>
-              {lead.phone ? <a href={`tel:${lead.phone}`}>{lead.phone}</a> : ""}
-            </Line>
-            {lead.interest ? <Line label={t("leads.about")}>{lead.interest}</Line> : null}
+            {/* While it is still a lead, these are on the card above, where they can be changed. */}
+            {locked ? (
+              <>
+                <Line label={t("leads.email")}>
+                  {lead.email ? <a href={`mailto:${lead.email}`}>{lead.email}</a> : ""}
+                </Line>
+                <Line label={t("leads.phone")}>
+                  {lead.phone ? <a href={`tel:${lead.phone}`}>{lead.phone}</a> : ""}
+                </Line>
+                {lead.interest ? <Line label={t("leads.about")}>{lead.interest}</Line> : null}
+              </>
+            ) : null}
             {project || lead.projectName ? (
               <Line label={t("leads.project")}>
                 {project ? (
@@ -161,9 +189,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 {lead.unitCode ? ` . ${lead.unitCode}` : ""}
               </Line>
             ) : null}
-            {lead.budget ? <Line label={t("leads.budget")}>{lead.budget}</Line> : null}
-            {lead.country ? <Line label={t("clients.country")}>{lead.country}</Line> : null}
-            {lead.message ? (
+            {locked && lead.budget ? <Line label={t("leads.budget")}>{lead.budget}</Line> : null}
+            {locked && lead.country ? <Line label={t("clients.country")}>{lead.country}</Line> : null}
+            {locked && lead.message ? (
               <div className="mt-3 border-t border-brand-line pt-3">
                 <p className="label">{t("leads.theirWords")}</p>
                 <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">

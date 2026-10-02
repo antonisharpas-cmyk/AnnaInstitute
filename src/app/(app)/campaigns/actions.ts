@@ -1,5 +1,6 @@
 "use server";
 
+import { aboutFromChoices } from "@/lib/campaignAbout";
 import { agentWay } from "@/lib/agentWay";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
@@ -16,7 +17,6 @@ import {
   messages,
   shareLinks,
   subowners,
-  units,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
@@ -36,14 +36,10 @@ import { idsOf } from "@/lib/campaignProjects";
  * What the campaign is about, from the form: "project:<id>", "unit:<id>" or nothing.
  * An apartment brings its development with it.
  */
-async function aboutFrom(formData: FormData): Promise<{ projectId: string | null; unitId: string | null }> {
-  const raw = String(formData.get("about") ?? "");
-  if (raw.startsWith("unit:")) {
-    const [unit] = await db.select().from(units).where(eq(units.id, raw.slice(5))).limit(1);
-    if (unit) return { projectId: unit.projectId, unitId: unit.id };
-  }
-  if (raw.startsWith("project:")) return { projectId: raw.slice(8) || null, unitId: null };
-  return { projectId: null, unitId: null };
+async function aboutFrom(formData: FormData): Promise<{ projectId: string | null; unitId: string | null; aboutIds: string | null }> {
+  /* Any number of developments and apartments, each its own "about" value. */
+  const { projectId, unitId, aboutIds } = await aboutFromChoices(formData.getAll("about").map(String));
+  return { projectId, unitId, aboutIds };
 }
 
 /** Change what a draft is about, so its placeholders can be filled. */
@@ -57,7 +53,7 @@ export async function setCampaignAbout(campaignId: string, formData: FormData) {
     action: "campaign.about",
     entity: "campaign",
     entityId: campaignId,
-    detail: about.unitId ? `unit ${about.unitId}` : about.projectId ? `project ${about.projectId}` : "nothing in particular",
+    detail: about.aboutIds ?? (about.unitId ? `unit ${about.unitId}` : about.projectId ? `project ${about.projectId}` : "nothing in particular"),
     userId: user.id,
     userEmail: user.email,
   });

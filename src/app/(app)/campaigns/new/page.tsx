@@ -42,7 +42,7 @@ export default async function NewCampaignPage({
     ...projectRows.map((one) => ({ value: `project:${one.id}`, label: one.name, group: t("campaigns.aboutProjects") })),
     ...unitRows.map((one) => ({ value: `unit:${one.id}`, label: `${one.project} ${one.code}`, group: t("campaigns.aboutUnits") })),
   ];
-  const aboutDefault = params.unit ? `unit:${params.unit}` : params.project ? `project:${params.project}` : "";
+  const aboutDefault = params.unit ? [`unit:${params.unit}`] : params.project ? [`project:${params.project}`] : [];
 
   const counts = {
     clients: everyone.filter((r) => r.group === "CLIENTS").length,
@@ -142,6 +142,8 @@ export default async function NewCampaignPage({
               template: t("campaigns.template"),
               about: t("campaigns.about"),
               aboutNothing: t("campaigns.aboutNothing"),
+              aboutSearch: t("campaigns.aboutSearch"),
+              aboutRemove: t("campaigns.aboutRemove"),
               aboutNote: t("campaigns.aboutNote"),
               aboutNeedsProject: t("campaigns.aboutNeedsProject"),
               aboutNeedsUnit: t("campaigns.aboutNeedsUnit"),

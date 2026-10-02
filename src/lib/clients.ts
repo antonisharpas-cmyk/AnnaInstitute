@@ -105,6 +105,7 @@ export function clientFilters({
   partner = "",
   source = "",
   agent = "",
+  member = "",
   state = "",
 }: {
   query?: string;
@@ -117,6 +118,8 @@ export function clientFilters({
   source?: string;
   /** An agent: they introduced the lead, or they are named on a contract. */
   agent?: string;
+  /** The team member who looks after them, or "none" for nobody yet. */
+  member?: string;
   /** "closed" for the ones who walked away; anything else is the working list. */
   state?: string;
 }) {
@@ -212,6 +215,16 @@ export function clientFilters({
     );
   }
 
+  /* Who looks after them: one or more team members, or nobody yet. */
+  const members = many(member).filter(Boolean);
+  if (members.length > 0) {
+    const named = members.filter((one) => one !== "none");
+    const reasons: SQL[] = [];
+    if (named.length > 0) reasons.push(sql`${clients.assignedToId} in ${named}`);
+    if (members.includes("none")) reasons.push(sql`${clients.assignedToId} is null`);
+    parts.push(or(...reasons) as SQL);
+  }
+
   const partners = many(partner);
   const namedPartners = partners.filter((one) => one !== "ours");
 
@@ -289,6 +302,7 @@ export async function matchingClientIds(input: {
   partner?: string;
   source?: string;
   agent?: string;
+  member?: string;
   state?: string;
 }) {
   const rows = await db

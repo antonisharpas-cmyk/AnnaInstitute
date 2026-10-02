@@ -22,12 +22,15 @@ export default function ClientFollowUps({
   clientId,
   rows,
   team,
+  defaultMember = "",
   locale,
   t,
 }: {
   clientId: string;
   rows: FollowUpLine[];
   team: { id: string; name: string }[];
+  /** The team member who looks after the client, ready chosen. */
+  defaultMember?: string;
   locale: string;
   t: Translator;
 }) {
@@ -63,7 +66,7 @@ export default function ClientFollowUps({
               <label className="label" htmlFor="clientFollowUpAssigned">
                 {t("appointments.assignTo")}
               </label>
-              <select id="clientFollowUpAssigned" name="assignedToId" className="select" defaultValue="">
+              <select id="clientFollowUpAssigned" name="assignedToId" className="select" defaultValue={defaultMember}>
                 <option value="">{t("appointments.nobody")}</option>
                 {team.map((member) => (
                   <option key={member.id} value={member.id}>

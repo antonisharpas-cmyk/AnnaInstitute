@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, shareLinks } from "@/db/schema";
 import { fillPlaceholders, placeholdersLeft } from "@/lib/messaging";
-import { detailsForProject, detailsForUnit } from "@/lib/templates";
+import { aboutFromChoices, aboutOf, aboutValues } from "@/lib/campaignAbout";
 import { campaignAttachments, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
 import { idsOf, projectsBlock } from "@/lib/campaignProjects";
 import { createPriceListLink, priceListUrl, resolvePriceListToken } from "@/lib/priceList";
@@ -34,10 +34,17 @@ const ownNote = (campaign: Campaign) => `For the campaign "${campaign.title}"`;
  * What a campaign's own price list shows: the developments it shows, or the
  * apartment or the development it is about, or everything.
  */
-function scopeOf(campaign: Campaign): { projectId: string | null; unitId: string | null; projectIds: string | null } {
+async function scopeOf(campaign: Campaign): Promise<{ projectId: string | null; unitId: string | null; projectIds: string | null }> {
   const shown = idsOf(campaign.projectIds);
   if (shown.length > 1) return { projectId: null, unitId: null, projectIds: JSON.stringify(shown) };
   if (shown.length === 1) return { projectId: shown[0], unitId: null, projectIds: null };
+  /* About several: the price list shows every development they are in. */
+  const about = aboutOf(campaign);
+  if (about.length > 1) {
+    const { projects } = await aboutFromChoices(about);
+    if (projects.length > 1) return { projectId: null, unitId: null, projectIds: JSON.stringify(projects) };
+    return { projectId: projects[0] ?? null, unitId: null, projectIds: null };
+  }
   return { projectId: campaign.unitId ? null : campaign.projectId, unitId: campaign.unitId, projectIds: null };
 }
 
@@ -55,7 +62,7 @@ export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): 
          and it shows the development. The address stays the same. A link the
          office picked from its own list is left exactly as it is. */
       const own = link && (link.campaignId === campaign.id || link.note === ownNote(campaign));
-      const scope = scopeOf(campaign);
+      const scope = await scopeOf(campaign);
       if (
         usable &&
         own &&
@@ -74,7 +81,7 @@ export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): 
       const made = await createPriceListLink({
         note: ownNote(campaign),
         createdByEmail: byEmail,
-        ...scopeOf(campaign),
+        ...(await scopeOf(campaign)),
         campaignId: campaign.id,
       });
       await db.update(campaigns).set({ shareLinkId: made.id }).where(eq(campaigns.id, campaign.id));
@@ -105,20 +112,7 @@ export async function campaignExtras(campaign: Campaign): Promise<Record<string,
 }
 
 async function aboutExtras(campaign: Campaign, month: string): Promise<Record<string, string>> {
-  if (campaign.unitId) {
-    const unit = await detailsForUnit(campaign.unitId, "en");
-    if (unit) return { ...unit, month };
-  }
-  if (campaign.projectId) {
-    const project = await detailsForProject(campaign.projectId, "en");
-    if (project) {
-      const { unit: _unit, price: _price, ...rest } = project;
-      void _unit;
-      void _price;
-      return { ...rest, month };
-    }
-  }
-  return { month };
+  return { ...(await aboutValues(campaign, "en")), month };
 }
 
 /**

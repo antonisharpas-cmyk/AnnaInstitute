@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { clients, contractUnits, contracts, units } from "@/db/schema";
+import { clients, contractUnits, contracts, teamMembers, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { followTheApartments, markUnitByHand } from "@/lib/statuses";
@@ -148,7 +148,14 @@ export async function createClient(formData: FormData) {
 
   const inserted = await db
     .insert(clients)
-    .values({ ...parsed, ...second, ...loan, email: parsed.email || null })
+    .values({
+      ...parsed,
+      ...second,
+      ...loan,
+      email: parsed.email || null,
+      /* Who in the office looks after them, from the start. */
+      assignedToId: String(formData.get("assignedToId") ?? "") || null,
+    })
     .returning({ id: clients.id });
 
   await recordAudit({
@@ -517,6 +524,8 @@ async function chosenClientIds(formData: FormData): Promise<string[]> {
       project: String(formData.get("project") ?? ""),
       partner: String(formData.get("partner") ?? ""),
       source: String(formData.get("source") ?? ""),
+      agent: String(formData.get("agent") ?? ""),
+      member: String(formData.get("member") ?? ""),
     });
     return rows;
   }
@@ -875,6 +884,27 @@ export async function reopenClient(clientId: string) {
   });
 
   await flash("said.clientReopened");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/clients");
+}
+
+/** The team member who looks after a client. */
+export async function assignClient(clientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const assignedToId = String(formData.get("assignedToId") ?? "") || null;
+  await db.update(clients).set({ assignedToId, updatedAt: new Date() }).where(eq(clients.id, clientId));
+  const [member] = assignedToId
+    ? await db.select({ name: teamMembers.name }).from(teamMembers).where(eq(teamMembers.id, assignedToId)).limit(1)
+    : [];
+  await recordAudit({
+    action: "client.assigned",
+    entity: "client",
+    entityId: clientId,
+    detail: member?.name ?? "nobody",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/clients");
 }

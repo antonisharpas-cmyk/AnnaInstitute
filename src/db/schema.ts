@@ -285,6 +285,11 @@ export const clients = pgTable("clients", {
   sourceChoice: text("source_choice"),
   /** The agent who brought them, when they came by an agent's referral. */
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  /**
+   * The team member who looks after this client: who calls them back, who
+   * their follow ups go to first. Carried over from the lead they came from.
+   */
+  assignedToId: text("assigned_to_id").references(() => teamMembers.id, { onDelete: "set null" }),
   // Marketing consent. The campaign module may never send to anyone without it.
   marketingOptIn: boolean("marketing_opt_in").default(false).notNull(),
   marketingOptInAt: timestamp("marketing_opt_in_at", { withTimezone: true }),
@@ -1046,6 +1051,12 @@ export const campaigns = pgTable("campaigns", {
    */
   projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
   unitId: text("unit_id").references(() => units.id, { onDelete: "set null" }),
+  /**
+   * Everything the campaign is about, when it is more than one: a JSON list of
+   * "project:<id>" and "unit:<id>". The two columns above keep the first of
+   * each, for what reads only one.
+   */
+  aboutIds: text("about_ids"),
   createdByEmail: text("created_by_email"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: created(),
