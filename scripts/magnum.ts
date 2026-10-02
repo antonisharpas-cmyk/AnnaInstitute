@@ -919,6 +919,7 @@ async function main() {
 
   const clearing: [string, string][] = [
     ["refunds", "refunds and penalties"],
+    ["signing_papers", "reservations and contracts being signed"],
     ["issued_documents", "issued invoices and receipts"],
     ["automatic_emails", "automatic email records"],
     ["documents", "files"],

@@ -9,6 +9,7 @@ type AgentRecord = {
   email: string | null;
   phone: string | null;
   commissionRate: string;
+  campaignChannel?: string | null;
   isActive: boolean;
   notes: string | null;
 };
@@ -82,6 +83,19 @@ export default function AgentForm({
             defaultValue={agent ? Number(agent.commissionRate) : 3}
             className="input"
           />
+        </div>
+
+        {/* How campaigns reach them. One campaign never goes to them both ways. */}
+        <div>
+          <label className="label" htmlFor="campaignChannel">
+            {t("agents.campaignChannel")}
+          </label>
+          <select id="campaignChannel" name="campaignChannel" defaultValue={agent?.campaignChannel ?? "EMAIL"} className="select">
+            <option value="EMAIL">{t("agents.channel.EMAIL")}</option>
+            <option value="WHATSAPP">{t("agents.channel.WHATSAPP")}</option>
+            <option value="BOTH">{t("agents.channel.BOTH")}</option>
+          </select>
+          <p className="mt-1 text-xs text-brand-graphite/60">{t("agents.campaignChannelHint")}</p>
         </div>
 
         <div className="flex items-end">

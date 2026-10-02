@@ -32,6 +32,7 @@ const CLEARED: { table: string; what: string; where?: string }[] = [
   { table: "campaign_documents", what: "campaign attachments" },
   { table: "campaigns", what: "campaigns" },
   { table: "suppressions", what: "unsubscribe list" },
+  { table: "signing_papers", what: "Reservations and Contracts of Sale being signed" },
   { table: "issued_documents", what: "invoices and receipts issued" },
   {
     table: "documents",

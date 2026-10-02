@@ -53,6 +53,12 @@ function read(formData: FormData) {
   });
 }
 
+/** How the agent wants campaigns, from the form: EMAIL, WHATSAPP or BOTH. */
+const channelFrom = (formData: FormData) => {
+  const value = String(formData.get("campaignChannel") ?? "EMAIL");
+  return value === "WHATSAPP" || value === "BOTH" ? value : "EMAIL";
+};
+
 export async function createAgent(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const parsed = read(formData);
@@ -71,6 +77,7 @@ export async function createAgent(formData: FormData) {
       licenceNumber: parsed.licenceNumber,
       website: parsed.website,
       isActive: String(formData.get("isActive") ?? "") === "on",
+      ...(formData.has("campaignChannel") ? { campaignChannel: channelFrom(formData) } : {}),
       notes: parsed.notes,
     })
     .returning({ id: agents.id });
@@ -125,6 +132,7 @@ export async function saveAgentProfile(
       licenceNumber: String(formData.get("licenceNumber") ?? "").trim() || null,
       website: String(formData.get("website") ?? "").trim() || null,
       isActive: String(formData.get("isActive") ?? "") === "on",
+      ...(formData.has("campaignChannel") ? { campaignChannel: channelFrom(formData) } : {}),
       notes: String(formData.get("notes") ?? "").trim() || null,
       updatedAt: new Date(),
     })
@@ -172,6 +180,7 @@ export async function updateAgent(agentId: string, formData: FormData) {
       licenceNumber: parsed.licenceNumber ?? null,
       website: parsed.website ?? null,
       isActive: String(formData.get("isActive") ?? "") === "on",
+      ...(formData.has("campaignChannel") ? { campaignChannel: channelFrom(formData) } : {}),
       notes: parsed.notes ?? null,
       updatedAt: new Date(),
     })

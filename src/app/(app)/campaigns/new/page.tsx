@@ -50,6 +50,12 @@ export default async function NewCampaignPage({
     subowners: everyone.filter((r) => r.group === "SUBOWNERS").length,
     leads: everyone.filter((r) => r.group === "LEADS").length,
   };
+  /* How the agents want campaigns, so the form can say who gets what. */
+  const agentWays = {
+    email: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel !== "WHATSAPP" && r.agentChannel !== "BOTH").length,
+    whatsapp: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel === "WHATSAPP").length,
+    both: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel === "BOTH").length,
+  };
   /* The leads, to choose from one by one. */
   const leadChoices = everyone
     .filter((r) => r.group === "LEADS" && r.leadId)
@@ -120,6 +126,7 @@ export default async function NewCampaignPage({
             templates={choices}
             chosenTemplate={params.template}
             counts={counts}
+            agentWays={agentWays}
             groups={groups}
             about={about}
             aboutDefault={aboutDefault}
@@ -161,6 +168,12 @@ export default async function NewCampaignPage({
               email: t("campaigns.email"),
               whatsapp: t("campaigns.whatsapp"),
               bothNote: t("campaigns.bothNote"),
+              agentsWays: t("campaigns.agentsWays"),
+              agentsByEmail: t("campaigns.agentsByEmail"),
+              agentsByWhatsapp: t("campaigns.agentsByWhatsapp"),
+              agentsBoth: t("campaigns.agentsBoth"),
+              agentsBothVia: t("campaigns.agentsBothVia"),
+              agentsFallback: t("campaigns.agentsFallback"),
               theEmail: t("campaigns.theEmail"),
               theWhatsapp: t("campaigns.theWhatsapp"),
               subject: t("campaigns.subject"),

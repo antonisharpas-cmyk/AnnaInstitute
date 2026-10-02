@@ -163,6 +163,11 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
       values.name = "Maria Georgiou";
       values.interest = `${place.project}, apartment ${place.unit}`;
     }
+    if (key === "paper_review" || key === "paper_invoice" || key === "paper_signed") {
+      values.paper = "Reservation";
+      values.invoice_number = "0001";
+      values.amount = money(5000);
+    }
     if (key === "agent_commission") {
       values.first_name = "Andreas";
       values.name = "Andreas Agent";
@@ -172,6 +177,18 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
     subject = fill(template.subject ?? "", values);
     body = fill(template.body, values);
 
+    if (key.startsWith("paper_")) {
+      attachments = [
+        {
+          filename: key === "paper_invoice" ? "Invoice 0001 EXAMPLE.pdf" : key === "paper_signed" ? "Reservation signed EXAMPLE.pdf" : "Reservation draft EXAMPLE.pdf",
+          content: await stand_in(key === "paper_invoice" ? "The invoice goes here" : "The Reservation goes here", [
+            "The real letter carries the paper on the contract.",
+            "This page only stands in for it in the test.",
+          ]),
+          contentType: "application/pdf",
+        },
+      ];
+    }
     if (key.startsWith("paid_")) {
       attachments = await examplePapers(place, values.stage, Number(values.amount.replace(/[^0-9.]/g, "")) || 25000);
       if (key === "paid_signing") {

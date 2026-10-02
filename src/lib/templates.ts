@@ -665,6 +665,97 @@ One Eleven`,
     toAgents: true,
     toSubowners: false,
   },
+  /* -------------------------------------------------------------------------
+     The Reservation and the Contract of Sale, before they are signed.
+
+     The office presses the button for each: the draft to check, then the
+     invoice to pay on the day. The signed copy then goes with the letter for
+     the money, or on its own when the money was written about already.
+     ------------------------------------------------------------------------- */
+  {
+    key: "paper_review",
+    isAutomatic: true,
+    name: "Reservation or contract to check",
+    description:
+      "Goes to the buyer when the office presses Send to check on the Reservation or the Contract of Sale, with the draft attached. Sent again each time a changed draft is sent.",
+    subject: "Your {{paper}} for {{unit}} at {{project}}, to check",
+    body: `Dear {{first_name}},
+
+Attached is the {{paper}} for {{unit}} at {{project}}.
+
+Please read it and tell us if you would like anything changed. When it is as you want it, reply to let us know and we will send you the invoice, so you have it with you when you come to sign.
+
+One Eleven`,
+    bodyWhatsapp: "Hello {{first_name}}, we have emailed you the {{paper}} for {{unit}} at {{project}} to check. Tell us if you would like anything changed.",
+    subjectEl: "Το {{paper}} σας για το {{unit}} στο {{project}}, για έλεγχο",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Επισυνάπτεται το {{paper}} για το {{unit}} στο {{project}}.
+
+Παρακαλούμε διαβάστε το και πείτε μας αν θέλετε κάποια αλλαγή. Όταν είναι όπως το θέλετε, απαντήστε μας και θα σας στείλουμε το τιμολόγιο, ώστε να το έχετε μαζί σας όταν έρθετε να υπογράψετε.
+
+One Eleven`,
+    bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το {{paper}} για το {{unit}} στο {{project}} για έλεγχο.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "paper_invoice",
+    isAutomatic: true,
+    name: "Invoice before signing",
+    description:
+      "Goes to the buyer when the office marks that they want to go ahead with the Reservation or the Contract of Sale. The invoice for the stage is issued then and attached, so they can pay it on the day they sign. The receipt follows when the money comes in.",
+    subject: "Invoice {{invoice_number}} for your {{paper}}, {{unit}} at {{project}}",
+    body: `Dear {{first_name}},
+
+Thank you for confirming the {{paper}} for {{unit}} at {{project}}.
+
+Attached is invoice {{invoice_number}} for {{stage}}, {{amount}}, to pay when you come to sign. Your receipt and the signed {{paper}} will follow once it is signed and paid.
+
+One Eleven`,
+    bodyWhatsapp: "Hello {{first_name}}, we have emailed you invoice {{invoice_number}} of {{amount}} for {{stage}}, to pay when you come to sign the {{paper}}.",
+    subjectEl: "Τιμολόγιο {{invoice_number}} για το {{paper}} σας, {{unit}} στο {{project}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Σας ευχαριστούμε που επιβεβαιώσατε το {{paper}} για το {{unit}} στο {{project}}.
+
+Επισυνάπτεται το τιμολόγιο {{invoice_number}} για {{stage}}, {{amount}}, για να το πληρώσετε όταν έρθετε να υπογράψετε. Η απόδειξη και το υπογεγραμμένο {{paper}} θα ακολουθήσουν μόλις υπογραφεί και πληρωθεί.
+
+One Eleven`,
+    bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το τιμολόγιο {{invoice_number}} των {{amount}} για {{stage}}, για να το πληρώσετε όταν έρθετε να υπογράψετε.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "paper_signed",
+    isAutomatic: true,
+    name: "The signed copy",
+    description:
+      "Goes to the buyer with their signed Reservation or Contract of Sale when it is uploaded after the letter for the money already went. When the signed copy is there first, it goes with that letter instead and this one is not needed.",
+    subject: "Your signed {{paper}}, {{unit}} at {{project}}",
+    body: `Dear {{first_name}},
+
+Attached is your signed {{paper}} for {{unit}} at {{project}}, with the receipt for your payment.
+
+Thank you.
+
+One Eleven`,
+    bodyWhatsapp: "Hello {{first_name}}, we have emailed you your signed {{paper}} for {{unit}} at {{project}}.",
+    subjectEl: "Το υπογεγραμμένο {{paper}} σας, {{unit}} στο {{project}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Επισυνάπτεται το υπογεγραμμένο {{paper}} σας για το {{unit}} στο {{project}}, μαζί με την απόδειξη της πληρωμής σας.
+
+Σας ευχαριστούμε.
+
+One Eleven`,
+    bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το υπογεγραμμένο {{paper}} σας για το {{unit}} στο {{project}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
   {
     key: "birthday",
     isAutomatic: true,
@@ -719,6 +810,9 @@ export const AUTOMATIC_KEYS = [
   "agent_commission",
   "agent_new_lead",
   "agent_new_client",
+  "paper_review",
+  "paper_invoice",
+  "paper_signed",
   "birthday",
 ] as const;
 

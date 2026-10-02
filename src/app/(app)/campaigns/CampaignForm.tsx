@@ -33,6 +33,7 @@ export default function CampaignForm({
   templates,
   chosenTemplate,
   counts,
+  agentWays = { email: 0, whatsapp: 0, both: 0 },
   groups,
   priceLists,
   about = [],
@@ -57,6 +58,8 @@ export default function CampaignForm({
   templates: TemplateChoice[];
   chosenTemplate?: string;
   counts: GroupCounts;
+  /** How many agents want campaigns by email, by WhatsApp, or both ways. */
+  agentWays?: { email: number; whatsapp: number; both: number };
   groups: { clients: boolean; agents: boolean; subowners: boolean; leads?: boolean };
   priceLists: { id: string; label: string }[];
   labels: Record<string, string>;
@@ -79,6 +82,7 @@ export default function CampaignForm({
 
   const [viaEmail, setViaEmail] = useState(true);
   const [viaWhatsapp, setViaWhatsapp] = useState(Boolean(picked?.bodyWhatsapp));
+  const [bothVia, setBothVia] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
   const [aboutValue, setAboutValue] = useState(aboutDefault);
 
   /*
@@ -376,6 +380,36 @@ export default function CampaignForm({
         </div>
         <p className="mt-2 text-xs text-brand-graphite/60">{labels.bothNote}</p>
       </fieldset>
+
+      {/*
+        The agents, each the way they chose. An agent who wants both is never
+        sent both: the office picks the one way for this campaign.
+      */}
+      {toAgents ? (
+        <fieldset className="rounded border border-brand-line p-3" data-agent-ways>
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
+            {labels.agentsWays}
+          </legend>
+          <p className="text-sm">
+            {labels.agentsByEmail} <strong>{agentWays.email}</strong> . {labels.agentsByWhatsapp}{" "}
+            <strong>{agentWays.whatsapp}</strong> . {labels.agentsBoth} <strong>{agentWays.both}</strong>
+          </p>
+          {agentWays.both > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+              <span>{labels.agentsBothVia}</span>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="agentsBothVia" value="EMAIL" checked={bothVia === "EMAIL"} onChange={() => setBothVia("EMAIL")} />
+                {labels.email}
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="agentsBothVia" value="WHATSAPP" checked={bothVia === "WHATSAPP"} onChange={() => setBothVia("WHATSAPP")} />
+                {labels.whatsapp}
+              </label>
+            </div>
+          ) : null}
+          <p className="mt-2 text-xs text-brand-graphite/60">{labels.agentsFallback}</p>
+        </fieldset>
+      ) : null}
 
       {viaEmail ? (
         <fieldset className="rounded border border-brand-line p-3">

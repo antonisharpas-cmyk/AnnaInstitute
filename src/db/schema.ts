@@ -120,6 +120,10 @@ export const documentCategoryEnum = pgEnum("document_category", [
   /** A credit note the CRM issues, and the refund acknowledgement a buyer signs. */
   "CREDIT_NOTE",
   "REFUND_ACK",
+  /** The signed Reservation agreement. The signed Contract of Sale is a CONTRACT. */
+  "RESERVATION",
+  /** A Reservation or Contract of Sale sent to the buyer to check, before it is signed. */
+  "DRAFT",
   "OTHER",
 ]);
 export const changeRequestStatusEnum = pgEnum("change_request_status", [
@@ -145,6 +149,11 @@ export const agents = pgTable("agents", {
   email: text("email"),
   phone: text("phone"),
   commissionRate: rate("commission_rate").default("0").notNull(),
+  /**
+   * How the agent wants campaigns: EMAIL, WHATSAPP or BOTH. One campaign never
+   * reaches them twice: for an agent with both, the campaign says which.
+   */
+  campaignChannel: text("campaign_channel").default("EMAIL").notNull(),
   /** The rest of the card: what the office needs to write them a cheque. */
   address: text("address"),
   country: text("country"),
@@ -694,6 +703,11 @@ export const issuedDocuments = pgTable(
     paymentId: text("payment_id").references(() => payments.id, { onDelete: "set null" }),
     contractId: text("contract_id").references(() => contracts.id, { onDelete: "set null" }),
     clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+    /**
+     * On an invoice issued for a stage before the money came in, the stage. The
+     * receipts for the money then name this invoice rather than issuing another.
+     */
+    installmentId: text("installment_id"),
     /** On a receipt, the invoice it settles. */
     invoiceId: text("invoice_id"),
     netAmount: money("net_amount").notNull(),
@@ -1003,6 +1017,8 @@ export const campaigns = pgTable("campaigns", {
   channel: messageChannelEnum("channel").notNull(),
   viaEmail: boolean("via_email").default(true).notNull(),
   viaWhatsapp: boolean("via_whatsapp").default(false).notNull(),
+  /** For the agents who want campaigns both ways, the one way this campaign reaches them. */
+  agentsBothVia: text("agents_both_via"),
   /** Kept for older campaigns; the three flags below are what the send reads. */
   audience: campaignAudienceEnum("audience").notNull(),
   toClients: boolean("to_clients").default(false).notNull(),
@@ -1666,3 +1682,42 @@ export const constructorPayments = pgTable("constructor_payments", {
   createdAt: created(),
   updatedAt: updated(),
 });
+
+/**
+ * The two papers a buyer signs: the Reservation and the Contract of Sale.
+ *
+ * Each goes the same way. The draft is uploaded and sent to the buyer to check;
+ * if they want a change the draft is replaced and sent again. When they are
+ * happy and want to go ahead, the invoice for the stage it is paid with is
+ * issued and sent, so they come to sign with it in hand. The signed copy then
+ * takes the draft's place, and the letter with the receipt for the money goes
+ * with the signed copy attached.
+ */
+export const signingPapers = pgTable(
+  "signing_papers",
+  {
+    id: id(),
+    contractId: text("contract_id")
+      .notNull()
+      .references(() => contracts.id, { onDelete: "cascade" }),
+    /** RESERVATION or SALE. */
+    kind: text("kind").notNull(),
+    /** The stage of the schedule this paper is paid with, chosen when its invoice is issued. */
+    installmentId: text("installment_id"),
+    draftDocumentId: text("draft_document_id").references(() => documents.id, { onDelete: "set null" }),
+    signedDocumentId: text("signed_document_id").references(() => documents.id, { onDelete: "set null" }),
+    /** The invoice issued for the stage before the money came in. */
+    invoiceId: text("invoice_id"),
+    sentForReviewAt: timestamp("sent_for_review_at", { withTimezone: true }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    invoiceSentAt: timestamp("invoice_sent_at", { withTimezone: true }),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    /** When the signed copy went to the buyer, with the letter for the money or on its own. */
+    signedSentAt: timestamp("signed_sent_at", { withTimezone: true }),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => ({
+    paperOnce: uniqueIndex("signing_papers_contract_kind").on(t.contractId, t.kind),
+  }),
+);

@@ -1,5 +1,6 @@
 "use server";
 
+import { agentWay } from "@/lib/agentWay";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -108,6 +109,9 @@ export async function createCampaign(formData: FormData) {
 
   const viaEmail = String(formData.get("viaEmail") ?? "") === "on";
   const viaWhatsapp = String(formData.get("viaWhatsapp") ?? "") === "on";
+  /* For the agents who want both, the one way this campaign reaches them. */
+  const bothRaw = String(formData.get("agentsBothVia") ?? "");
+  const agentsBothVia = toAgents && (bothRaw === "EMAIL" || bothRaw === "WHATSAPP") ? bothRaw : null;
   if (!viaEmail && !viaWhatsapp) {
     throw new Error("Choose at least one way to send it, email or WhatsApp.");
   }
@@ -125,6 +129,7 @@ export async function createCampaign(formData: FormData) {
       channel: viaEmail ? "EMAIL" : "WHATSAPP",
       viaEmail,
       viaWhatsapp,
+      agentsBothVia,
       audience,
       toClients,
       toAgents,
@@ -213,6 +218,8 @@ export async function audienceFor(groups: CampaignGroups) {
     subownerId: string | null;
     leadId?: string | null;
     group: "CLIENTS" | "AGENTS" | "SUBOWNERS" | "LEADS";
+    /** An agent's own choice of how campaigns reach them: EMAIL, WHATSAPP or BOTH. */
+    agentChannel?: string;
   }[] = [];
 
   if (wantsClients) {
@@ -259,6 +266,7 @@ export async function audienceFor(groups: CampaignGroups) {
         agentId: a.id,
         subownerId: null,
         group: "AGENTS",
+        agentChannel: a.campaignChannel,
       });
     }
   }
@@ -380,8 +388,10 @@ export async function sendCampaign(campaignId: string) {
 
   for (const recipient of recipients) {
     const values = { ...recipient, priceListUrl: url, filesUrl: files, extras };
+    /* An agent hears once, the way they chose; everybody else on every way ticked. */
+    const way = recipient.group === "AGENTS" ? agentWay(recipient.agentChannel, campaign) : null;
 
-    if (campaign.viaEmail) {
+    if (campaign.viaEmail && (way === null || way === "EMAIL")) {
       const result = await sendAndRecord({
         campaignId,
         channel: "EMAIL",
@@ -395,7 +405,7 @@ export async function sendCampaign(campaignId: string) {
       else failed += 1;
     }
 
-    if (campaign.viaWhatsapp) {
+    if (campaign.viaWhatsapp && (way === null || way === "WHATSAPP")) {
       const result = await sendAndRecord({
         campaignId,
         channel: "WHATSAPP",

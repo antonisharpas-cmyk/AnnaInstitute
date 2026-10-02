@@ -316,6 +316,13 @@
       "when": 1791666547383,
       "tag": "0045_agent_letters_constructors",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791666647383,
+      "tag": "0046_signing_papers_agent_channel",
+      "breakpoints": true
     }
   ]
 }

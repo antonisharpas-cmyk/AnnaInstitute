@@ -298,6 +298,21 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "letters to agents about their potential clients",
     migration: "0045",
   },
+  {
+    probe: "select kind, signed_document_id from signing_papers limit 1",
+    what: "the Reservation and Contract of Sale, from draft to signed",
+    migration: "0046",
+  },
+  {
+    probe: "select campaign_channel from agents limit 1",
+    what: "how each agent wants campaigns",
+    migration: "0046",
+  },
+  {
+    probe: "select installment_id from issued_documents limit 1",
+    what: "invoices issued for a stage before the money comes in",
+    migration: "0046",
+  },
 ];
 
 let answer: Missing[] | null = null;

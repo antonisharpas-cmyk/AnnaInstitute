@@ -90,6 +90,8 @@ export type IssuedSnapshot = {
   creditAppliedCents?: number;
   /** What was paid in money for it, when a credit covered the rest. */
   payableCents?: number;
+  /** An invoice issued for a stage before the money, sent with the Reservation or the Contract of Sale. */
+  advance?: boolean;
   /**
    * A receipt for one part of a stage paid in parts: the invoice for the
    * whole stage it is against, what has come in on it so far and what remains.
@@ -631,7 +633,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   /* A credit from the reduced VAT that settled part of it. */
   if (!credit && s.creditAppliedCents) {
     total("Less credit (reduced VAT)", `−${eur(s.creditAppliedCents)}`);
-    total("Paid", eur(s.payableCents ?? 0), true);
+    total(s.advance ? "To pay" : "Paid", eur(s.payableCents ?? 0), true);
     y -= 4;
   }
 
@@ -648,7 +650,10 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
     text(page, f.bold, words, L + 12, ly - 17.5, size, sh.accent);
     ly -= 50;
   };
-  if (!credit && s.billTo === "partner") {
+  if (!credit && s.advance) {
+    /* Issued before the money, to be paid on the day of signing. */
+    stamp(s.payableCents === 0 && s.creditAppliedCents ? `SETTLED BY CREDIT ${longDay(s.issuedOn)}` : "PAYMENT DUE ON SIGNING");
+  } else if (!credit && s.billTo === "partner") {
     /* Issued before the money: it says when it is due, not that it was paid. */
     stamp(s.dueOn ? `PAYMENT DUE BY ${longDay(s.dueOn)}` : "PAYMENT DUE ON RECEIPT");
   } else if (!credit) {

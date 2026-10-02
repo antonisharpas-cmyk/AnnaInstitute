@@ -23,6 +23,7 @@ import { sendAndRecord } from "@/lib/messaging";
 import { resolveStored } from "@/lib/storage";
 import { templateByKey, type AutomaticKey } from "@/lib/templates";
 import { issuedAttachments, issueForPayment } from "@/lib/issued";
+import { markSignedSent, PAPER_NAME, paperForPayment } from "@/lib/signingPapers";
 import type { EmailAttachment } from "@/lib/messaging/email";
 import { buyersFirstNames, buyersName, emailList, hasSecondBuyer, isBirthday } from "@/lib/buyers";
 
@@ -65,6 +66,19 @@ function letterFor(options: {
   if (stage === "reservation" || stage === "κρατηση") return "paid_reservation";
   if (SIGNING.includes(stage)) return "paid_signing";
   return "paid_installment";
+}
+
+/** The letter says the signed copy is attached, after the line about the receipt. */
+function sayAttached(body: string, paper: string): string {
+  const sentence = `Your signed ${paper} is attached as well.`;
+  const lines = body.split("\n");
+  const at = lines.findIndex((line) => /attached/i.test(line));
+  if (at >= 0) {
+    lines[at] = `${lines[at].trimEnd()} ${sentence}`;
+    return lines.join("\n");
+  }
+  const end = body.lastIndexOf("\n\n");
+  return end > 0 ? `${body.slice(0, end)}\n\n${sentence}${body.slice(end)}` : `${body}\n\n${sentence}`;
 }
 
 /** What the braces in a letter are filled with. */
@@ -161,8 +175,9 @@ export async function letterForPayment(paymentId: string): Promise<void> {
   const paidCents = toCents(got?.paid ?? "0");
   const outstandingCents = dueCents - paidCents;
 
+  const counted = stageFrom(await stageNames(), row.installment?.label, row.installment?.labelEl);
   const key = letterFor({
-    counted: stageFrom(await stageNames(), row.installment?.label, row.installment?.labelEl),
+    counted,
     stage: row.installment?.label ?? null,
     outstandingCents: dueCents > 0 ? outstandingCents : 1,
   });
@@ -218,6 +233,17 @@ export async function letterForPayment(paymentId: string): Promise<void> {
    * is kept and the letter waits here, in plain sight in the automatic emails
    * section, and goes by itself the moment the contract is filed.
    */
+  /*
+   * The Reservation or the Contract of Sale paid with this stage, when it went
+   * through the steps on the contract: the letter carries the signed copy, so
+   * it waits for it, and goes the moment it is uploaded.
+   */
+  const signing = await paperForPayment(row.contract.id, row.payment.installmentId, counted);
+  if (signing && !signing.signed) {
+    await note("WAITING", `Waiting for the signed ${PAPER_NAME[signing.kind]} to be uploaded on the contract.`);
+    return;
+  }
+
   const papers: Papers[] = [];
   if (key === "paid_signing") {
     const theContract = await contractPaper(row.contract.id);
@@ -246,6 +272,9 @@ export async function letterForPayment(paymentId: string): Promise<void> {
     /* Carry on without them. */
   }
   papers.push(...(await filedWith(paymentId)));
+  /* The signed Reservation; a signed Contract of Sale is the contract above. */
+  const signedReservation = signing?.signed && signing.kind === "RESERVATION" ? signing.signed : null;
+  if (signing?.signed && (signing.kind === "RESERVATION" || key !== "paid_signing")) papers.push(signing.signed);
 
   /* Every letter goes in English, as the office asked. */
   const locale: string = "en";
@@ -269,7 +298,8 @@ export async function letterForPayment(paymentId: string): Promise<void> {
     (locale === "el" ? template.subjectEl : template.subject) || template.subject || "",
     values,
   );
-  const body = fill((locale === "el" ? template.bodyEl : template.body) || template.body, values);
+  let body = fill((locale === "el" ? template.bodyEl : template.body) || template.body, values);
+  if (signing?.signed && (signedReservation || key !== "paid_signing")) body = sayAttached(body, PAPER_NAME[signing.kind]);
 
   const result = await sendAndRecord({
     channel: "EMAIL",
@@ -288,6 +318,7 @@ export async function letterForPayment(paymentId: string): Promise<void> {
     cc: emailList(hasSecondBuyer(row.client) ? row.client.secondEmail : null, row.payment.ccEmails),
   });
 
+  if (signing && (result.status === "SENT" || result.status === "SIMULATED")) await markSignedSent(signing.paperId);
   if (result.status === "SENT") await note("SENT", "Sent.");
   else if (result.status === "SIMULATED")
     await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");

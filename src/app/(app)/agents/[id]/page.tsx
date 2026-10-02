@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, commissionPayments } from "@/db/schema";
-import { getTranslator } from "@/i18n";
+import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { amountForInput } from "@/lib/money";
 import { commissionTotals, papersFor, salesOfAgent, salesWithoutAnAgent } from "@/lib/commissions";
@@ -111,6 +111,18 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               { name: "company", label: t("subowners.company"), value: agent.company ?? "" },
               { name: "email", label: t("leads.email"), value: agent.email ?? "", kind: "email" },
               { name: "phone", label: t("leads.phone"), value: agent.phone ?? "" },
+              {
+                name: "campaignChannel",
+                label: t("agents.campaignChannel"),
+                value: agent.campaignChannel,
+                display: t(`agents.channel.${agent.campaignChannel === "WHATSAPP" || agent.campaignChannel === "BOTH" ? agent.campaignChannel : "EMAIL"}` as MessageKey),
+                kind: "select",
+                options: [
+                  { value: "EMAIL", label: t("agents.channel.EMAIL") },
+                  { value: "WHATSAPP", label: t("agents.channel.WHATSAPP") },
+                  { value: "BOTH", label: t("agents.channel.BOTH") },
+                ],
+              },
               {
                 name: "commissionRate",
                 label: t("agents.rate"),

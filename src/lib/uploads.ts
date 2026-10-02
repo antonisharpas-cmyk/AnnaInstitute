@@ -23,6 +23,8 @@ export type DocumentCategory =
   | "INVOICE"
   | "CREDIT_NOTE"
   | "REFUND_ACK"
+  | "RESERVATION"
+  | "DRAFT"
   | "OTHER";
 
 export type AttachTo = {

@@ -1,3 +1,4 @@
+import { agentWay } from "@/lib/agentWay";
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -59,10 +60,13 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   // checked on its own and the page says who will actually receive what.
   const checked = [];
   for (const recipient of recipients) {
-    const emailAddress = campaign.viaEmail ? addressFor("EMAIL", recipient) : null;
-    const phoneAddress = campaign.viaWhatsapp ? addressFor("WHATSAPP", recipient) : null;
+    /* An agent is sent one way only, the way they chose. */
+    const way = recipient.group === "AGENTS" ? agentWay(recipient.agentChannel, campaign) : null;
+    const emailAddress = campaign.viaEmail && (way === null || way === "EMAIL") ? addressFor("EMAIL", recipient) : null;
+    const phoneAddress = campaign.viaWhatsapp && (way === null || way === "WHATSAPP") ? addressFor("WHATSAPP", recipient) : null;
     checked.push({
       ...recipient,
+      way,
       emailAddress,
       phoneAddress,
       emailSuppressed: emailAddress ? await isSuppressed("EMAIL", emailAddress) : false,
@@ -352,6 +356,8 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                     <td className="break-all text-xs">
                       {!campaign.viaEmail ? (
                         <span className="text-brand-graphite/40">not on this campaign</span>
+                      ) : r.way === "WHATSAPP" ? (
+                        <span className="text-brand-graphite/40" data-not-their-way>{t("campaigns.theirWayWhatsapp")}</span>
                       ) : r.emailSuppressed ? (
                         <Pill tone="bad">suppressed</Pill>
                       ) : r.emailAddress ? (
@@ -363,6 +369,8 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                     <td className="break-all text-xs">
                       {!campaign.viaWhatsapp ? (
                         <span className="text-brand-graphite/40">not on this campaign</span>
+                      ) : r.way === "EMAIL" ? (
+                        <span className="text-brand-graphite/40" data-not-their-way>{t("campaigns.theirWayEmail")}</span>
                       ) : r.phoneSuppressed ? (
                         <Pill tone="bad">suppressed</Pill>
                       ) : r.phoneAddress ? (

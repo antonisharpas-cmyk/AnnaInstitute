@@ -24,6 +24,8 @@ export const CATEGORY_LABELS: Record<string, string> = {
   INVOICE: "Invoice",
   CREDIT_NOTE: "Credit note",
   REFUND_ACK: "Refund acknowledgement",
+  RESERVATION: "Reservation Agreement",
+  DRAFT: "Draft to check",
   OTHER: "Other",
 };
 

@@ -61,7 +61,7 @@ export default async function AutomaticEmailsPage() {
   const nameOf = (key: string) =>
     letters.find((one) => one.key === key)?.name ?? t(`emails.test.${key}` as MessageKey);
   const testGroups: { title: string; keys: string[] }[] = [
-    { title: t("emails.test.buyer"), keys: ["paid_reservation", "paid_signing", "paid_installment", "paid_final"] },
+    { title: t("emails.test.buyer"), keys: ["paid_reservation", "paid_signing", "paid_installment", "paid_final", "paper_review", "paper_invoice", "paper_signed"] },
     {
       title: t("emails.test.appointments"),
       keys: ["appointment_made", "appointment_moved", "appointment_cancelled", "appointment_reminder"],

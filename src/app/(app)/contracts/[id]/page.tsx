@@ -2,6 +2,7 @@ import { isCustom, optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CreditsSection from "./CreditsSection";
+import SigningPapers from "./SigningPapers";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
 import { contractStatusTone, getContract, landExchangeUnits } from "@/lib/contracts";
@@ -325,6 +326,11 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             ) : null}
           </dl>
         </Card>
+
+        {/* 1b. The Reservation and the Contract of Sale, from draft to signed. */}
+        {contract.kind !== "LAND_EXCHANGE" && contract.status !== "CANCELLED" ? (
+          <SigningPapers contractId={id} hasEmail={Boolean(client?.email)} />
+        ) : null}
 
         {contract.kind === "LAND_EXCHANGE" ? (
           <Card title={t("contracts.theirApartments")}>
