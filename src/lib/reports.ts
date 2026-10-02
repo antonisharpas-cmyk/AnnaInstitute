@@ -128,10 +128,21 @@ const paymentsIn = (ids: string[] | null): SQL | undefined =>
         where u.project_id in ${ids.length > 0 ? ids : [""]}
       )` as SQL);
 
+/* An invoice for several developments counts for each of them, by its lines. */
 const expensesIn = (ids: string[] | null): SQL | undefined =>
   ids === null
     ? undefined
-    : (sql`${expenses.projectId} in ${ids.length > 0 ? ids : [""]}` as SQL);
+    : (sql`(${expenses.projectId} in ${ids.length > 0 ? ids : [""]} or exists (select 1 from expense_lines l where l.expense_id = ${expenses.id} and l.project_id in ${ids.length > 0 ? ids : [""]}))` as SQL);
+
+/**
+ * How much of an invoice belongs to the developments asked about: all of it,
+ * or, for an invoice split between developments, the share of its lines that
+ * are theirs.
+ */
+const shareIn = (ids: string[] | null): SQL =>
+  ids === null
+    ? sql`1`
+    : sql`(case when exists (select 1 from expense_lines l where l.expense_id = ${expenses.id}) then coalesce((select sum(l.total_amount) from expense_lines l where l.expense_id = ${expenses.id} and l.project_id in ${ids.length > 0 ? ids : [""]}), 0) / nullif(${expenses.totalAmount}, 0) else 1 end)`;
 
 /** A period, named the way the office asks for one. */
 export function rangeFrom(params: { period?: string; from?: string; to?: string }): {
@@ -676,6 +687,7 @@ export async function costsByMonth(range: Range, only: string[] | null = null) {
       createdAt: expenses.createdAt,
       total: expenses.totalAmount,
       paid: expenses.paidAmount,
+      share: sql<string>`coalesce(${shareIn(only)}, 0)`,
     })
     .from(expenses)
     .where(expensesIn(only));
@@ -687,8 +699,9 @@ export async function costsByMonth(range: Range, only: string[] | null = null) {
   for (const row of rows) {
     const key = monthKey(row.issueDate ?? row.createdAt);
     if (!billed.has(key)) continue;
-    billed.set(key, (billed.get(key) ?? 0) + toCents(row.total));
-    paid.set(key, (paid.get(key) ?? 0) + toCents(row.paid));
+    const share = Number(row.share) || 0;
+    billed.set(key, (billed.get(key) ?? 0) + Math.round(toCents(row.total) * share));
+    paid.set(key, (paid.get(key) ?? 0) + Math.round(toCents(row.paid) * share));
   }
 
   return months.map((month) => ({
@@ -702,8 +715,8 @@ export async function costsByCategory(range: Range, only: string[] | null = null
   const rows = await db
     .select({
       category: expenses.category,
-      billed: sql<string>`coalesce(sum(${expenses.totalAmount}), 0)`,
-      owed: sql<string>`coalesce(sum(${expenses.totalAmount} - ${expenses.paidAmount}), 0)`,
+      billed: sql<string>`coalesce(round(sum(${expenses.totalAmount} * ${shareIn(only)}), 2), 0)`,
+      owed: sql<string>`coalesce(round(sum((${expenses.totalAmount} - ${expenses.paidAmount}) * ${shareIn(only)}), 2), 0)`,
       count: sql<number>`count(*)::int`,
     })
     .from(expenses)
@@ -715,7 +728,7 @@ export async function costsByCategory(range: Range, only: string[] | null = null
       ) as SQL,
     )
     .groupBy(expenses.category)
-    .orderBy(desc(sql`sum(${expenses.totalAmount})`));
+    .orderBy(desc(sql`sum(${expenses.totalAmount} * ${shareIn(only)})`));
 
   return rows.map((row) => ({
     ...row,
@@ -802,7 +815,7 @@ export async function headline(range: Range, only: string[] | null = null) {
       .where(onlyProjects(only)),
     db
       .select({
-        owed: sql<string>`coalesce(sum(${expenses.totalAmount} - ${expenses.paidAmount}), 0)`,
+        owed: sql<string>`coalesce(round(sum((${expenses.totalAmount} - ${expenses.paidAmount}) * ${shareIn(only)}), 2), 0)`,
       })
       .from(expenses)
       .where(expensesIn(only)),

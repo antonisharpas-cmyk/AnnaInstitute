@@ -64,6 +64,9 @@ export const DEFAULTS = {
   "numbers.nextReceipt": "14",
   /** Credit notes have their own series, new with the CRM. */
   "numbers.nextCreditNote": "1",
+
+  /** Where the month's papers go: the accountant, and anybody copied, commas between. */
+  "accountant.email": "",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

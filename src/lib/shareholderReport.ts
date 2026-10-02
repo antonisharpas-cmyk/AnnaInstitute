@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { cashReceipts, commissions, contracts, expenses, payments, units } from "@/db/schema";
+import { cashReceipts, commissions, contracts, expenseLines, expenses, payments, units } from "@/db/schema";
 import { toCents } from "@/lib/money";
 import { holdings, shareOf, type Who } from "@/lib/ownership";
 import type { Range } from "@/lib/reports";
@@ -62,12 +62,17 @@ export async function shareholderReport(who: Who, range: Range) {
         .where(within(cashReceipts.receivedOn, range))
         .groupBy(units.projectId),
     ),
+    /* An invoice split between developments counts each line for its own. */
     byProject(
       db
-        .select({ projectId: expenses.projectId, total: sql<string>`coalesce(sum(${expenses.totalAmount}), 0)` })
+        .select({
+          projectId: sql<string | null>`coalesce(${expenseLines.projectId}, ${expenses.projectId})`,
+          total: sql<string>`coalesce(sum(coalesce(${expenseLines.totalAmount}, ${expenses.totalAmount})), 0)`,
+        })
         .from(expenses)
+        .leftJoin(expenseLines, eq(expenseLines.expenseId, expenses.id))
         .where(and(eq(expenses.direction, "IN"), within(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range)))
-        .groupBy(expenses.projectId),
+        .groupBy(sql`coalesce(${expenseLines.projectId}, ${expenses.projectId})`),
     ),
     byProject(
       db

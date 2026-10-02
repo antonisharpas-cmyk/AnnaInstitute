@@ -20,7 +20,7 @@ import {
   uploadPaymentReceipt,
 } from "../actions";
 import { invoiceLabels } from "../labels";
-import { ownCategoryWords, whatFor } from "@/lib/partnerInvoices";
+import { linesOf, ownCategoryWords, whatFor } from "@/lib/partnerInvoices";
 import { optionsFor, shownCode } from "@/lib/choices";
 import { dayAndTime } from "@/lib/when";
 
@@ -42,13 +42,14 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   if (!row) notFound();
   const { expense, project } = row;
 
-  const [files, projectList, partnerRows] = await Promise.all([
+  const [files, projectList, partnerRows, lines] = await Promise.all([
     db.select().from(documents).where(eq(documents.expenseId, id)),
     db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
     db
       .select({ id: subowners.id, name: subowners.name, company: subowners.company, email: subowners.email })
       .from(subowners)
       .orderBy(asc(subowners.name)),
+    linesOf(id),
   ]);
   const out = expense.direction === "OUT";
   const ourPdf = files.find((file) => file.category === "INVOICE");
@@ -93,6 +94,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             <ExpenseForm
               action={updateExpense.bind(null, id)}
               expense={expense}
+              lines={lines}
               projects={projectList}
               cancelHref="/invoices"
               categories={await optionsFor("expenseCategory", t, {
@@ -166,7 +168,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               <div className="flex justify-between gap-3">
                 <dt className="text-brand-graphite/60">{t("invoices.project")}</dt>
                 <dd>
-                  {project ? (
+                  {lines.length > 0 && !project ? (
+                    lines.map((one) => one.project).filter(Boolean).join(", ")
+                  ) : project ? (
                     <Link href={`/projects/${project.id}`} className="hover:underline">
                       {project.name}
                     </Link>
@@ -176,6 +180,32 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 </dd>
               </div>
             </dl>
+
+            {lines.length > 0 ? (
+              <table className="data mb-3" data-expense-lines>
+                <thead>
+                  <tr>
+                    <th>{t("invoices.project")}</th>
+                    <th className="ctr">{t("invoices.net")}</th>
+                    <th className="ctr">{t("invoices.vat")}</th>
+                    <th className="ctr">{t("invoices.total")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((one) => (
+                    <tr key={one.id}>
+                      <td>
+                        {one.project ?? ""}
+                        {one.description ? <div className="text-xs text-brand-graphite/60">{one.description}</div> : null}
+                      </td>
+                      <td className="ctr">{formatAmount(toCents(one.netAmount), locale)}</td>
+                      <td className="ctr">{formatAmount(toCents(one.vatAmount), locale)}</td>
+                      <td className="ctr">{formatAmount(toCents(one.totalAmount), locale)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
 
             {out ? (
               <div className="mb-3 space-y-2">

@@ -283,6 +283,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "a stage paid in parts, and email copies",
     migration: "0043",
   },
+  {
+    probe: "select project_id, net_amount from expense_lines limit 1",
+    what: "an invoice for several developments",
+    migration: "0044",
+  },
 ];
 
 let answer: Missing[] | null = null;

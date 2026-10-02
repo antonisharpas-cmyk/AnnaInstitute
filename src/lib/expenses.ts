@@ -62,7 +62,12 @@ export async function listExpenses({
 
   const [rows, [counted], [sums]] = await Promise.all([
     db
-      .select({ expense: expenses, project: projects })
+      .select({
+        expense: expenses,
+        project: projects,
+        /* An invoice for several developments names them all. */
+        developments: sql<string | null>`(select string_agg(p.name, ', ' order by l.seq) from expense_lines l join projects p on p.id = l.project_id where l.expense_id = ${expenses.id})`,
+      })
       .from(expenses)
       .leftJoin(projects, eq(projects.id, expenses.projectId))
       .where(where)

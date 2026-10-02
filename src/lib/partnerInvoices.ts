@@ -1,7 +1,7 @@
 import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { documents, expenses, issuedDocuments, projects, subownerDirectors, subowners } from "@/db/schema";
+import { documents, expenseLines, expenses, issuedDocuments, projects, subownerDirectors, subowners } from "@/db/schema";
 import { fromCents, toCents } from "@/lib/money";
 import { nextInvoiceNumber } from "@/lib/receipts";
 import { companyDetails, keepPdf, paperName, readDocument } from "@/lib/issued";
@@ -68,6 +68,24 @@ async function load(expenseId: string) {
   return row ?? null;
 }
 
+/** The lines of an invoice for several developments, in order, with each development's name. */
+export async function linesOf(expenseId: string) {
+  return db
+    .select({
+      id: expenseLines.id,
+      projectId: expenseLines.projectId,
+      project: projects.name,
+      description: expenseLines.description,
+      netAmount: expenseLines.netAmount,
+      vatAmount: expenseLines.vatAmount,
+      totalAmount: expenseLines.totalAmount,
+    })
+    .from(expenseLines)
+    .leftJoin(projects, eq(projects.id, expenseLines.projectId))
+    .where(eq(expenseLines.expenseId, expenseId))
+    .orderBy(asc(expenseLines.seq));
+}
+
 /** The address a partner is written to: their own, or their first director's. */
 async function partnerEmail(subownerId: string, own: string | null): Promise<string | null> {
   if (own?.trim()) return own.trim();
@@ -107,6 +125,10 @@ export async function issuePartnerInvoice(
   const number = await nextInvoiceNumber();
   const label = whatFor(expense, await ownCategoryWords());
 
+  /* Several developments: a line each, named, with its own amount. */
+  const lines = await linesOf(expense.id);
+  const developments = lines.length > 0 ? [...new Set(lines.map((one) => one.project).filter(Boolean))].join(", ") : project?.name ?? "";
+
   const snapshot: IssuedSnapshot = {
     company: await companyDetails(),
     client: {
@@ -120,7 +142,7 @@ export async function issuePartnerInvoice(
       registration: partner.registryNumber ?? "",
     },
     contractReference: "",
-    property: project?.name ?? "",
+    property: developments,
     stage: label,
     description: expense.description?.trim() || label,
     paidOn: issuedOn.toISOString(),
@@ -139,10 +161,18 @@ export async function issuePartnerInvoice(
     recordedBy: who?.name ?? "",
     billTo: "partner",
     dueOn: expense.dueDate ? expense.dueDate.toISOString() : undefined,
+    lines:
+      lines.length > 0
+        ? lines.map((one) => ({
+            description: [label, one.project, one.description].filter(Boolean).join(", "),
+            netCents: toCents(one.netAmount),
+            vatCents: toCents(one.vatAmount),
+          }))
+        : undefined,
   };
 
   const pdf = await invoicePdf(snapshot);
-  const documentId = await keepPdf(pdf, `${paperName("Invoice", number, label, project?.name)}.pdf`, paperName("Invoice", number, label, project?.name), "INVOICE", null, who?.id ?? null, expense.id);
+  const documentId = await keepPdf(pdf, `${paperName("Invoice", number, label, developments)}.pdf`, paperName("Invoice", number, label, developments), "INVOICE", null, who?.id ?? null, expense.id);
   const [paper] = await db
     .insert(issuedDocuments)
     .values({

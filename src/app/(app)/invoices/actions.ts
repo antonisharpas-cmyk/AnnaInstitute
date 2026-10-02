@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { documents, expenses, issuedDocuments, subowners } from "@/db/schema";
+import { documents, expenseLines, expenses, issuedDocuments, subowners } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
@@ -25,11 +25,33 @@ async function read(formData: FormData) {
   /* The office's own category from the Builder counts as a built in one. */
   const picked = splitChoice(String(formData.get("category") ?? "OTHER"));
   const category = picked.base;
-  const netCents = parseAmount(String(formData.get("netAmount") ?? "0"));
   const rateText = String(formData.get("vatRate") ?? "").replace(",", ".").trim();
   const vatRate = rateText === "" ? 0 : Math.max(0, Number(rateText) || 0);
-  const vatCents = Math.round((netCents * vatRate) / 100);
+
+  /*
+   * One development, or several. Split between developments, each line has
+   * its own development and its own amount before VAT, and the invoice is the
+   * sum of them, with the VAT worked out on each line so the printed lines and
+   * the totals add up to the cent.
+   */
+  const split = String(formData.get("split") ?? "") === "on";
+  const projectsTyped = formData.getAll("lineProject").map((one) => String(one).trim());
+  const netsTyped = formData.getAll("lineNet").map((one) => parseAmount(String(one)));
+  const wordsTyped = formData.getAll("lineDescription").map((one) => String(one).trim());
+  const lines = split
+    ? projectsTyped
+        .map((projectId, i) => ({ projectId: projectId || null, netCents: netsTyped[i] ?? 0, description: wordsTyped[i] || null }))
+        .filter((one) => one.netCents > 0)
+        .map((one, seq) => {
+          const vat = Math.round((one.netCents * vatRate) / 100);
+          return { ...one, vatCents: vat, totalCents: one.netCents + vat, seq };
+        })
+    : [];
+
+  const netCents = lines.length > 0 ? lines.reduce((a, one) => a + one.netCents, 0) : parseAmount(String(formData.get("netAmount") ?? "0"));
+  const vatCents = lines.length > 0 ? lines.reduce((a, one) => a + one.vatCents, 0) : Math.round((netCents * vatRate) / 100);
   const totalCents = netCents + vatCents;
+  const linesProjects = [...new Set(lines.map((one) => one.projectId))];
   const paidCents = Math.min(parseAmount(String(formData.get("paidAmount") ?? "0")), totalCents);
 
   const issue = String(formData.get("issueDate") ?? "");
@@ -66,9 +88,35 @@ async function read(formData: FormData) {
     paidAmount: fromCents(paidCents),
     status: statusFor(totalCents, paidCents),
     paidOn: paidCents > 0 ? new Date() : null,
-    projectId: String(formData.get("projectId") ?? "").trim() || null,
+    /* Lines for one development only still say which: the invoice's own. */
+    projectId:
+      lines.length > 0
+        ? linesProjects.length === 1
+          ? linesProjects[0]
+          : null
+        : String(formData.get("projectId") ?? "").trim() || null,
     notes: String(formData.get("notes") ?? "").trim() || null,
+    lines,
   };
+}
+
+type Lines = Awaited<ReturnType<typeof read>>["lines"];
+
+/** The lines of an invoice, written again whole. An invoice for one development keeps none. */
+async function saveLines(expenseId: string, lines: Lines) {
+  await db.delete(expenseLines).where(eq(expenseLines.expenseId, expenseId));
+  if (lines.length < 2 && !lines.some((one) => one.description)) return;
+  await db.insert(expenseLines).values(
+    lines.map((one) => ({
+      expenseId,
+      projectId: one.projectId,
+      description: one.description,
+      netAmount: fromCents(one.netCents),
+      vatAmount: fromCents(one.vatCents),
+      totalAmount: fromCents(one.totalCents),
+      seq: one.seq,
+    })),
+  );
 }
 
 /** What became of the email, for the line at the bottom of the screen. */
@@ -84,7 +132,7 @@ async function sayWhatWasSent(expenseId: string, issued: string | null) {
 /** An invoice the company received, or one it issues to a partner. */
 export async function createExpense(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
-  const parsed = await read(formData);
+  const { lines, ...parsed } = await read(formData);
   if (parsed.direction === "OUT" && !parsed.subownerId) throw new Error("Choose the company the invoice is to.");
   if (!parsed.supplier) throw new Error("Say who the invoice is from.");
 
@@ -92,6 +140,7 @@ export async function createExpense(formData: FormData) {
     .insert(expenses)
     .values({ ...parsed, reference: parsed.reference ?? null, recordedByEmail: user.email })
     .returning({ id: expenses.id });
+  await saveLines(inserted[0].id, lines);
 
   const files = formData
     .getAll("files")
@@ -148,11 +197,12 @@ export async function updateExpense(expenseId: string, formData: FormData) {
       })
       .where(eq(expenses.id, expenseId));
   } else {
-    const parsed = await read(formData);
+    const { lines, ...parsed } = await read(formData);
     await db
       .update(expenses)
       .set({ ...parsed, updatedAt: new Date() })
       .where(eq(expenses.id, expenseId));
+    await saveLines(expenseId, lines);
   }
 
   const files = formData

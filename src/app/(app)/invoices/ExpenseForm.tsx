@@ -58,9 +58,12 @@ export default function ExpenseForm({
   categories,
   cancelHref,
   labels,
+  lines: savedLines = [],
 }: {
   action: (formData: FormData) => void | Promise<void>;
   expense?: ExpenseRecord;
+  /** An invoice for several developments: its lines as saved. */
+  lines?: { projectId: string | null; netAmount: string; description: string | null }[];
   projects: { id: string; name: string }[];
   partners: { id: string; name: string; email: string | null }[];
   categories: { value: string; label: string }[];
@@ -78,8 +81,24 @@ export default function ExpenseForm({
   );
   const [partnerId, setPartnerId] = useState(expense?.subownerId ?? "");
 
-  const netCents = parseAmount(net);
-  const vatCents = Math.round((netCents * (Number(rate.replace(",", ".")) || 0)) / 100);
+  /* Several developments on one invoice: a line each, with its own amount. */
+  const [split, setSplit] = useState(savedLines.length > 1 || savedLines.some((one) => one.description));
+  const [rows, setRows] = useState(
+    savedLines.length > 0
+      ? savedLines.map((one) => ({ projectId: one.projectId ?? "", net: plain(one.netAmount), description: one.description ?? "" }))
+      : [
+          { projectId: expense?.projectId ?? "", net: plain(expense?.netAmount), description: "" },
+          { projectId: "", net: "", description: "" },
+        ],
+  );
+  const setRow = (i: number, change: Partial<(typeof rows)[number]>) =>
+    setRows((was) => was.map((one, n) => (n === i ? { ...one, ...change } : one)));
+  const rateNumber = Number(rate.replace(",", ".")) || 0;
+  const linesNet = rows.reduce((a, one) => a + parseAmount(one.net), 0);
+  const linesVat = rows.reduce((a, one) => a + Math.round((parseAmount(one.net) * rateNumber) / 100), 0);
+
+  const netCents = split ? linesNet : parseAmount(net);
+  const vatCents = split ? linesVat : Math.round((netCents * rateNumber) / 100);
   const out = direction === "OUT";
   const partner = partners.find((one) => one.id === partnerId);
 
@@ -241,20 +260,104 @@ export default function ExpenseForm({
           )}
         </div>
 
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="split"
+            checked={split}
+            onChange={(event) => setSplit(event.target.checked)}
+            className="mt-0.5"
+            data-split
+          />
+          <span>
+            <span className="font-semibold">{labels.splitToggle}</span>
+            <span className="block text-xs text-brand-graphite/60">{labels.splitHint}</span>
+          </span>
+        </label>
+
+        {split ? (
+          <div className="space-y-2 rounded border border-brand-line bg-brand-surface p-3" data-lines>
+            {rows.map((row, i) => (
+              <div key={i} className="grid items-end gap-2 sm:grid-cols-[1.2fr_0.8fr_1.4fr_auto]" data-line-row>
+                <div>
+                  <label className="label">{labels.project}</label>
+                  <select
+                    name="lineProject"
+                    value={row.projectId}
+                    onChange={(event) => setRow(i, { projectId: event.target.value })}
+                    className="select"
+                    required
+                  >
+                    <option value="">{labels.chooseProject}</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">{labels.net}</label>
+                  <input
+                    name="lineNet"
+                    inputMode="decimal"
+                    required
+                    value={row.net}
+                    onChange={(event) => setRow(i, { net: event.target.value })}
+                    className="input"
+                  />
+                </div>
+                <div>
+                  <label className="label">{labels.lineWords}</label>
+                  <input
+                    name="lineDescription"
+                    value={row.description}
+                    onChange={(event) => setRow(i, { description: event.target.value })}
+                    placeholder={labels.lineWordsHint}
+                    className="input"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary !px-3 !py-2 !text-xs"
+                  disabled={rows.length <= 1}
+                  onClick={() => setRows((was) => was.filter((_, n) => n !== i))}
+                >
+                  {labels.removeLine}
+                </button>
+              </div>
+            ))}
+            {rows.length < 8 ? (
+              <button
+                type="button"
+                className="btn btn-secondary !px-3 !py-1 !text-xs"
+                onClick={() => setRows((was) => [...was, { projectId: "", net: "", description: "" }])}
+                data-add-line
+              >
+                {labels.addLine}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="grid gap-3 sm:grid-cols-4">
           <div>
             <label className="label" htmlFor="netAmount">
               {labels.net}
             </label>
-            <input
-              id="netAmount"
-              name="netAmount"
-              inputMode="decimal"
-              required
-              value={net}
-              onChange={(event) => setNet(event.target.value)}
-              className="input"
-            />
+            {split ? (
+              <div className="input bg-brand-surface" id="netAmount">{euros(netCents)}</div>
+            ) : (
+              <input
+                id="netAmount"
+                name="netAmount"
+                inputMode="decimal"
+                required
+                value={net}
+                onChange={(event) => setNet(event.target.value)}
+                className="input"
+              />
+            )}
           </div>
           <div>
             <label className="label" htmlFor="vatRate">
@@ -293,19 +396,21 @@ export default function ExpenseForm({
               className="input"
             />
           </div>
-          <div>
-            <label className="label" htmlFor="projectId">
-              {labels.project}
-            </label>
-            <select id="projectId" name="projectId" defaultValue={expense?.projectId ?? ""} className="select">
-              <option value="">{labels.noProject}</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {split ? null : (
+            <div>
+              <label className="label" htmlFor="projectId">
+                {labels.project}
+              </label>
+              <select id="projectId" name="projectId" defaultValue={expense?.projectId ?? ""} className="select">
+                <option value="">{labels.noProject}</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </fieldset>
 

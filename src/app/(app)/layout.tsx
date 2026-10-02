@@ -128,6 +128,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       children: [
         { href: "/invoices/clients", label: t("nav.invoicesClients") },
         { href: "/invoices", label: t("nav.invoicesCompany"), count: bills?.total ?? 0 },
+        { href: "/invoices/accountant", label: t("nav.invoicesAccountant") },
       ],
     },
     { href: "/reports", label: t("nav.reports"), group: "insights" },

@@ -94,6 +94,8 @@ export type IssuedSnapshot = {
    * A receipt for one part of a stage paid in parts: the invoice for the
    * whole stage it is against, what has come in on it so far and what remains.
    */
+  /** An invoice with several lines: one development each, for instance. */
+  lines?: { description: string; netCents: number; vatCents: number }[];
   againstInvoice?: {
     number: string;
     totalCents: number;
@@ -575,13 +577,28 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   right(page, f.bold, "Amount", cols.amount, headY, 8.5, WHITE);
   y -= headH + 22;
 
-  const descLines = wrap(f.plain, s.description, 9.5, cols.qty - cols.desc - 40);
-  for (const [i, line] of descLines.entries()) text(page, i === 0 ? f.bold : f.plain, line, cols.desc, y - i * 14, 9.5);
-  right(page, f.plain, "1", cols.qty, y, 9.5);
-  right(page, f.plain, money(s.netCents), cols.price, y, 9.5);
-  right(page, f.plain, parts.map((part) => pc(part.rate)).join(", "), cols.vat, y, 9.5);
-  right(page, f.plain, money(s.netCents), cols.amount, y, 9.5);
-  y -= 14 * (descLines.length - 1) + 18;
+  /* One line, or a line for each part of it: each development of a fee, say. */
+  const rows = s.lines && s.lines.length > 0 ? s.lines : [{ description: s.description, netCents: s.netCents, vatCents: s.vatCents }];
+  if (s.lines && s.lines.length > 0 && s.description && s.description !== rows[0].description) {
+    for (const line of wrap(f.plain, s.description, 9.5, R - L - 24)) {
+      text(page, f.plain, line, cols.desc, y, 9.5, QUIET);
+      y -= 14;
+    }
+    y -= 4;
+  }
+  for (const [n, row] of rows.entries()) {
+    const descLines = wrap(f.plain, row.description, 9.5, cols.qty - cols.desc - 40);
+    for (const [i, line] of descLines.entries()) text(page, i === 0 ? f.bold : f.plain, line, cols.desc, y - i * 14, 9.5);
+    right(page, f.plain, "1", cols.qty, y, 9.5);
+    right(page, f.plain, money(row.netCents), cols.price, y, 9.5);
+    right(page, f.plain, parts.map((part) => pc(part.rate)).join(", "), cols.vat, y, 9.5);
+    right(page, f.plain, money(row.netCents), cols.amount, y, 9.5);
+    y -= 14 * (descLines.length - 1) + 18;
+    if (n < rows.length - 1) {
+      page.drawLine({ start: { x: L, y: y + 6 }, end: { x: R, y: y + 6 }, thickness: 0.4, color: LINE });
+      y -= 8;
+    }
+  }
   page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: LINE });
 
   /* The totals, on the right, the way the book adds them up. */

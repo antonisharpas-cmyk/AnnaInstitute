@@ -205,7 +205,9 @@ export default async function InvoicesPage({
                           </Pill>
                         </td>
                         <td className="text-xs">
-                          {r.project ? (
+                          {r.developments && !r.project ? (
+                            <span data-developments>{r.developments}</span>
+                          ) : r.project ? (
                             <Link
                               href={`/projects/${r.project.id}`}
                               target="_blank"

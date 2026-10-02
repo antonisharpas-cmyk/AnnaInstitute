@@ -1431,6 +1431,26 @@ export const expenses = pgTable("expenses", {
   updatedAt: updated(),
 });
 
+/**
+ * A line of an invoice under Company that covers more than one development:
+ * management fees for Uno and for Due, say, each with its own amount. The
+ * invoice prints one line each, and the reports count each amount against
+ * its own development. An invoice for one development has no lines.
+ */
+export const expenseLines = pgTable("expense_lines", {
+  id: id(),
+  expenseId: text("expense_id")
+    .notNull()
+    .references(() => expenses.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+  description: text("description"),
+  netAmount: money("net_amount").default("0").notNull(),
+  vatAmount: money("vat_amount").default("0").notNull(),
+  totalAmount: money("total_amount").default("0").notNull(),
+  seq: integer("seq").default(0).notNull(),
+  createdAt: created(),
+});
+
 /* ---------------------------------------------------------------------------
    APPOINTMENTS
 
