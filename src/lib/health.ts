@@ -288,6 +288,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "an invoice for several developments",
     migration: "0044",
   },
+  {
+    probe: "select agreed_amount from constructor_projects limit 1",
+    what: "constructors and their payments",
+    migration: "0045",
+  },
+  {
+    probe: "select lead_id from automatic_emails limit 1",
+    what: "letters to agents about their potential clients",
+    migration: "0045",
+  },
 ];
 
 let answer: Missing[] | null = null;

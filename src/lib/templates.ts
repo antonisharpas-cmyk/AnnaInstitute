@@ -600,6 +600,72 @@ One Eleven`,
     toSubowners: false,
   },
   {
+    key: "agent_new_lead",
+    isAutomatic: true,
+    name: "A potential client, to the agent",
+    description:
+      "Goes to the agent when a lead is written down with them as the agent who brought it. Once for each agent and lead. It names the person and what they are interested in, and nothing more, since the agent brought them.",
+    subject: "Your potential client {{name}} is with us",
+    body: `Dear {{first_name}},
+
+Thank you. We have recorded {{name}} as a potential client you brought to us.
+
+Interested in: {{interest}}
+Looked after by: {{who}}
+
+We will keep you up to date as things move.
+
+One Eleven`,
+    bodyWhatsapp: "Hello {{first_name}}, we have recorded {{name}} as your potential client, interested in {{interest}}. Thank you.",
+    subjectEl: "Ο πιθανός πελάτης σας {{name}} είναι μαζί μας",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Σας ευχαριστούμε. Καταγράψαμε τον/την {{name}} ως πιθανό πελάτη που μας φέρατε.
+
+Ενδιαφέρεται για: {{interest}}
+Υπεύθυνος: {{who}}
+
+Θα σας ενημερώνουμε για την πορεία.
+
+One Eleven`,
+    bodyWhatsappEl: "Γεια σας {{first_name}}, καταγράψαμε τον/την {{name}} ως πιθανό πελάτη σας, με ενδιαφέρον για {{interest}}. Ευχαριστούμε.",
+    toClients: false,
+    toAgents: true,
+    toSubowners: false,
+  },
+  {
+    key: "agent_new_client",
+    isAutomatic: true,
+    name: "A client, to the agent",
+    description:
+      "Goes to the agent when a client is recorded with them as the agent who referred them, when a lead of theirs becomes a client, or when they are named on a client later. Once for each agent and client.",
+    subject: "Your client {{name}} is now a client of One Eleven",
+    body: `Dear {{first_name}},
+
+Good news: {{name}}, who came to us through you, is now recorded as a client of One Eleven.
+
+Interested in: {{interest}}
+
+Thank you for the referral. We will let you know about the sale and your commission as it moves.
+
+One Eleven`,
+    bodyWhatsapp: "Hello {{first_name}}, {{name}}, who came through you, is now a client of One Eleven. Thank you.",
+    subjectEl: "Ο πελάτης σας {{name}} είναι πλέον πελάτης της One Eleven",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Καλά νέα: ο/η {{name}}, που ήρθε σε εμάς μέσω εσάς, καταγράφηκε ως πελάτης της One Eleven.
+
+Ενδιαφέρεται για: {{interest}}
+
+Σας ευχαριστούμε για τη σύσταση. Θα σας ενημερώνουμε για την πώληση και την προμήθειά σας.
+
+One Eleven`,
+    bodyWhatsappEl: "Γεια σας {{first_name}}, ο/η {{name}}, που ήρθε μέσω εσάς, είναι πλέον πελάτης της One Eleven. Ευχαριστούμε.",
+    toClients: false,
+    toAgents: true,
+    toSubowners: false,
+  },
+  {
     key: "birthday",
     isAutomatic: true,
     name: "Birthday wishes",
@@ -651,6 +717,8 @@ export const AUTOMATIC_KEYS = [
   "appointment_cancelled",
   "appointment_reminder",
   "agent_commission",
+  "agent_new_lead",
+  "agent_new_client",
   "birthday",
 ] as const;
 

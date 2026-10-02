@@ -752,3 +752,115 @@ export async function sendBirthdayWishes(options?: { byHand?: boolean; hour?: nu
   }
   return { sent, looked };
 }
+
+/* ---------------------------------------------------------------------------
+   The agent hears about the person they brought
+   --------------------------------------------------------------------------- */
+
+/**
+ * Tell an agent that their potential client, or their client, is on our books.
+ *
+ * Called whenever a lead or a client is saved with an agent on it: when it is
+ * first written down, when an agent is named on it later, and when a lead of
+ * theirs becomes a client. It looks before it writes, so each agent hears
+ * about each lead once and about each client once, however many times the
+ * record is saved.
+ */
+export async function letterToAgent(kind: "lead" | "client", id: string): Promise<void> {
+  try {
+    const key = kind === "lead" ? "agent_new_lead" : "agent_new_client";
+    let agentId: string | null = null;
+    let name = "";
+    let interest = "";
+    let who = "our office";
+    let clientId: string | null = null;
+    let leadId: string | null = null;
+
+    if (kind === "lead") {
+      const [row] = await db
+        .select({ lead: leads, member: teamMembers, project: projects })
+        .from(leads)
+        .leftJoin(teamMembers, eq(teamMembers.id, leads.assignedToId))
+        .leftJoin(projects, eq(projects.id, leads.projectId))
+        .where(eq(leads.id, id))
+        .limit(1);
+      if (!row) return;
+      agentId = row.lead.agentId;
+      name = `${row.lead.firstName ?? ""} ${row.lead.lastName ?? ""}`.trim() || row.lead.email || "";
+      interest = row.lead.interest || row.lead.projectName || row.project?.name || "";
+      if (row.member?.name) who = row.member.name;
+      leadId = id;
+    } else {
+      const [row] = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
+      if (!row) return;
+      agentId = row.agentId;
+      name = buyersName(row);
+      clientId = id;
+      /* What they are interested in: the apartments they hold, or what the lead asked about. */
+      const held = await db
+        .select({ code: units.code, project: projects.name })
+        .from(units)
+        .innerJoin(projects, eq(projects.id, units.projectId))
+        .where(eq(units.clientId, id));
+      if (held.length > 0) interest = held.map((one) => `${one.project} ${one.code}`).join(", ");
+      else {
+        const [lead] = await db.select().from(leads).where(eq(leads.clientId, id)).limit(1);
+        interest = lead?.interest || lead?.projectName || "";
+      }
+    }
+    if (!agentId) return;
+    if (!interest) interest = "to be confirmed";
+
+    const [already] = await db
+      .select({ id: automaticEmails.id })
+      .from(automaticEmails)
+      .where(
+        and(
+          eq(automaticEmails.templateKey, key),
+          eq(automaticEmails.agentId, agentId),
+          kind === "lead" ? eq(automaticEmails.leadId, id) : eq(automaticEmails.clientId, id),
+        ),
+      )
+      .limit(1);
+    if (already) return;
+
+    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
+    if (!agent) return;
+
+    const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
+      await db.insert(automaticEmails).values({
+        templateKey: key,
+        agentId,
+        clientId,
+        leadId,
+        status,
+        reason: `${name}: ${reason}`,
+        sentAt: status === "SENT" ? new Date() : null,
+      });
+    };
+
+    const template = await templateByKey(key);
+    if (!template) return;
+    if (!template.isActive) return note("SKIPPED", "This letter is switched off in the automatic emails section.");
+    if (!agent.email) return note("SKIPPED", "The agent has no email address on their record.");
+
+    const values = {
+      first_name: agent.name.split(" ")[0] ?? agent.name,
+      name,
+      interest,
+      who,
+    };
+    const result = await sendAndRecord({
+      channel: "EMAIL",
+      recipient: { name: agent.name, email: agent.email, agentId: agent.id },
+      subject: fill(template.subject ?? "", values),
+      body: fill(template.body, values),
+      withOptOut: false,
+    });
+    if (result.status === "SENT") await note("SENT", "Sent.");
+    else if (result.status === "SIMULATED") await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
+    else await note("FAILED", result.error ?? "It did not go.");
+  } catch (error) {
+    console.error("[agent letter]", error);
+  }
+}

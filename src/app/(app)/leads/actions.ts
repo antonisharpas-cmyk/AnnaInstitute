@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { letterToAgent } from "@/lib/automaticEmails";
 import { redirect } from "next/navigation";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -232,6 +233,9 @@ export async function createLead(
     userEmail: user.email,
   });
 
+  /* The agent who brought them hears that they are with us. */
+  if (sourceKind === "AGENT" && agentId) await letterToAgent("lead", inserted[0].id);
+
   await flash("said.leadCreated");
   revalidatePath("/leads");
   redirect(`/leads/${inserted[0].id}`);
@@ -441,6 +445,9 @@ async function makeClient(
     userId: who.id,
     userEmail: who.email,
   });
+
+  /* Their agent hears that the potential client is now a client. */
+  if (lead.agentId) await letterToAgent("client", inserted[0].id);
 
   revalidatePath("/leads");
   revalidatePath("/clients");

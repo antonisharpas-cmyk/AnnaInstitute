@@ -815,6 +815,8 @@ export const documents = pgTable("documents", {
   visibleToBuyer: boolean("visible_to_buyer").default(false).notNull(),
   /** The second buyer's paper, their ID say, rather than the main buyer's. */
   secondBuyer: boolean("second_buyer").default(false).notNull(),
+  /** The constructor's invoice or receipt for one of their payments. */
+  constructorPaymentId: text("constructor_payment_id"),
   createdAt: created(),
 });
 
@@ -1365,6 +1367,8 @@ export const automaticEmails = pgTable("automatic_emails", {
   status: automaticEmailStatusEnum("status").default("SENT").notNull(),
   /** Why it is waiting, or why it did not go, in plain words. */
   reason: text("reason"),
+  /** The letter to an agent about a potential client: which lead. */
+  leadId: text("lead_id"),
   /** A birthday wish: the year it was for, so it goes once a year. */
   forYear: integer("for_year"),
   /** It went to the second buyer rather than the main one. */
@@ -1598,3 +1602,67 @@ export const choices = pgTable(
   },
   (table) => ({ listCode: uniqueIndex("choices_list_code_idx").on(table.list, table.code) }),
 );
+
+/* ---------------------------------------------------------------------------
+   Constructors
+   --------------------------------------------------------------------------- */
+
+/** Who builds a development: their details, kept like an agent's or a company's. */
+export const constructors = pgTable("constructors", {
+  id: id(),
+  name: text("name").notNull(),
+  company: text("company"),
+  contactName: text("contact_name"),
+  email: text("email"),
+  phone: text("phone"),
+  address: text("address"),
+  vatNumber: text("vat_number"),
+  registryNumber: text("registry_number"),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/** A development a constructor builds, and the amount agreed for building it. One constructor a development. */
+export const constructorProjects = pgTable(
+  "constructor_projects",
+  {
+    id: id(),
+    constructorId: text("constructor_id")
+      .notNull()
+      .references(() => constructors.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    agreedAmount: money("agreed_amount").default("0").notNull(),
+    notes: text("notes"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => ({
+    projectOnce: unique("constructor_projects_project_once").on(t.projectId),
+  }),
+);
+
+/**
+ * A payment to the constructor for a development: Pending when it is written
+ * down, then Paid once the constructor's invoice and receipt are in, or
+ * Cancelled. What kind of payment it is, the office writes in its own words.
+ */
+export const constructorPayments = pgTable("constructor_payments", {
+  id: id(),
+  constructorProjectId: text("constructor_project_id")
+    .notNull()
+    .references(() => constructorProjects.id, { onDelete: "cascade" }),
+  paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
+  kind: text("kind"),
+  amount: money("amount").default("0").notNull(),
+  /** PENDING, PAID or CANCELLED. */
+  status: text("status").default("PENDING").notNull(),
+  notes: text("notes"),
+  recordedByEmail: text("recorded_by_email"),
+  statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
+  createdAt: created(),
+  updatedAt: updated(),
+});

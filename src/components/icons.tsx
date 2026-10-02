@@ -230,6 +230,13 @@ export const IconMonth = (p: Props) => (
   </Svg>
 );
 
+/** A building going up, with its crane. */
+export const IconConstructor = (p: Props) => (
+  <Svg {...p}>
+    <path d="M4 21h16M6 21V11h7v10M9 14h1M9 17h1M13 4h7M16 4v6M20 4v3M16 10l-3 1" />
+  </Svg>
+);
+
 export const IconFollowUp = (p: Props) => (
   <Svg {...p}>
     <path d="M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16M12 9v4l2.5 2M9 2h6" />
@@ -267,6 +274,7 @@ export const SECTION_ICONS: Record<string, (p: Props) => React.ReactElement> = {
   "/contracts": IconContracts,
   "/agents": IconAgents,
   "/subowners": IconPartners,
+  "/constructors": IconConstructor,
   "/commissions": IconCommissions,
   "/campaigns": IconCampaigns,
   "/invoices": IconInvoices,

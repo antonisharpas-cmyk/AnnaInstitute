@@ -13,6 +13,7 @@ import { holdings, shareOf } from "@/lib/ownership";
 import { projectChecklist } from "@/lib/projectHealth";
 import { whatGoesWithProject } from "@/lib/deletes";
 import { buyersByUnit } from "@/lib/contracts";
+import { constructorOfProject } from "@/lib/constructors";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import { LightboxGrid, LightboxLink } from "@/components/Lightbox";
 import UploadForm from "@/components/UploadForm";
@@ -106,6 +107,7 @@ export default async function ProjectPage({
 
   const goes = await whatGoesWithProject(id);
 
+  const builder = await constructorOfProject(project.id);
   const [rows, [totals], allFiles, plansByUnit, partners, choices, check] = await Promise.all([
     db
       .select()
@@ -632,6 +634,27 @@ export default async function ProjectPage({
         </div>
 
         <div className="space-y-4">
+          {/* Who builds it, and where the money to them stands. */}
+          <Card title={t("constructors.ofProject")}>
+            {builder ? (
+              <div className="space-y-1 text-sm" data-project-constructor>
+                <Link href={`/constructors/${builder.constructor.id}`} className="font-semibold hover:underline">
+                  {builder.constructor.name}
+                </Link>
+                <p className="text-xs text-brand-graphite/70">
+                  {t("constructors.agreed")} {formatAmount(builder.agreedCents, locale)} . {t("constructors.paid")}{" "}
+                  {formatAmount(builder.paidCents, locale)} . {t("constructors.remaining")} {formatAmount(builder.remainingCents, locale)}
+                </p>
+              </div>
+            ) : (
+              <Link href="/constructors" className="text-sm text-brand-teal-dark hover:underline">
+                {t("constructors.addProject")}
+              </Link>
+            )}
+            <Link href={`/reports/project?project=${project.id}`} className="mt-2 block text-xs text-brand-teal-dark hover:underline">
+              {t("projectReport.title")}
+            </Link>
+          </Card>
           <Card title={t("projects.details")}>
             <dl className="space-y-2 text-sm">
               <div>

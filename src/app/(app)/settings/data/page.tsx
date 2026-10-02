@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/auth";
 import { importFolder, importState } from "@/lib/dataImport";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import DataUpload from "./DataUpload";
+import FreshStart from "./FreshStart";
+import { KEPT, freshPreview } from "@/lib/startFresh";
 
 /*
  * Bring the data from the office's own computer onto the server.
@@ -16,6 +18,7 @@ export default async function DataPage() {
   const { t } = await getTranslator();
   const state = importState();
   const possible = Boolean(importFolder());
+  const preview = await freshPreview();
 
   return (
     <>
@@ -60,6 +63,51 @@ export default async function DataPage() {
           ) : (
             <p className="text-sm">{t("data.notHere")}</p>
           )}
+        </Card>
+
+        {/* Clearing the trial data while keeping what was set up. */}
+        <Card title={t("fresh.title")}>
+          <div className="space-y-3 text-sm" data-fresh>
+            <p>{t("fresh.intro")}</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="label">{t("fresh.cleared")}</p>
+                <ul className="space-y-0.5 text-xs" data-fresh-counts>
+                  {preview.parts
+                    .filter((one) => one.count > 0)
+                    .map((one) => (
+                      <li key={one.what} className="flex justify-between gap-3 border-b border-brand-line py-0.5">
+                        <span>{one.what}</span>
+                        <span className="font-semibold">{one.count}</span>
+                      </li>
+                    ))}
+                  <li className="flex justify-between gap-3 border-b border-brand-line py-0.5">
+                    <span>{t("fresh.apartments")}</span>
+                    <span className="font-semibold">{preview.apartmentsReset}</span>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="label">{t("fresh.kept")}</p>
+                <ul className="list-disc space-y-0.5 pl-4 text-xs">
+                  {KEPT.map((one) => (
+                    <li key={one}>{one}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <p className="text-xs text-brand-graphite/70">{t("fresh.copy")}</p>
+            <FreshStart
+              labels={{
+                type: t("fresh.type"),
+                button: t("fresh.button"),
+                working: t("fresh.working"),
+                wrongWord: t("fresh.wrongWord"),
+                done: t("fresh.done"),
+                failed: t("fresh.failed"),
+              }}
+            />
+          </div>
         </Card>
       </div>
     </>

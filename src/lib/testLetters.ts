@@ -158,6 +158,11 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
       values.amount = money(25000);
       values.outstanding = money(0);
     }
+    if (key === "agent_new_lead" || key === "agent_new_client") {
+      values.first_name = "Andreas";
+      values.name = "Maria Georgiou";
+      values.interest = `${place.project}, apartment ${place.unit}`;
+    }
     if (key === "agent_commission") {
       values.first_name = "Andreas";
       values.name = "Andreas Agent";

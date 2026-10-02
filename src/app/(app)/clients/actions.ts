@@ -16,6 +16,7 @@ import { offerUndo } from "@/lib/undo";
 import { matchingClientIds } from "@/lib/clients";
 import { splitChoice } from "@/lib/choices/lists";
 import { cleanBirthDate, emailList } from "@/lib/buyers";
+import { letterToAgent } from "@/lib/automaticEmails";
 
 const clientSchema = z.object({
   firstName: z.string().min(1),
@@ -159,6 +160,9 @@ export async function createClient(formData: FormData) {
     userEmail: user.email,
   });
 
+  /* The agent who referred them hears that they are a client. */
+  if (parsed.agentId) await letterToAgent("client", inserted[0].id);
+
   revalidatePath("/clients");
   redirect(`/clients/${inserted[0].id}`);
 }
@@ -199,6 +203,10 @@ export async function updateClient(
     userId: user.id,
     userEmail: user.email,
   });
+
+  /* An agent newly named on them hears about them, once. Saving a client
+     whose agent was already there sends nothing. */
+  if (parsed.agentId && parsed.agentId !== before[0].agentId) await letterToAgent("client", clientId);
 
   revalidatePath("/clients");
   revalidatePath(`/clients/${clientId}`);
