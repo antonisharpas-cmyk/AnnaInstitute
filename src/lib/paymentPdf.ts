@@ -90,6 +90,18 @@ export type IssuedSnapshot = {
   creditAppliedCents?: number;
   /** What was paid in money for it, when a credit covered the rest. */
   payableCents?: number;
+  /**
+   * A receipt for one part of a stage paid in parts: the invoice for the
+   * whole stage it is against, what has come in on it so far and what remains.
+   */
+  againstInvoice?: {
+    number: string;
+    totalCents: number;
+    paidCents: number;
+    remainingCents: number;
+    part?: number;
+    parts?: number;
+  };
   /** On a replacement invoice: the invoice and credit note it replaces. */
   replacesNumber?: string;
   replacedByCreditNote?: string;
@@ -793,7 +805,15 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
   y -= Math.max(boxH + 4, words.length * 14.5 + 10) + 16;
 
   row("For", s.description);
-  row("Invoice", s.invoiceNumber ? `No. ${s.invoiceNumber}` : "");
+  if (s.againstInvoice) {
+    const a = s.againstInvoice;
+    row(
+      "Invoice",
+      `No. ${a.number} for ${eur(a.totalCents)}${a.part && a.parts ? `, part ${a.part} of ${a.parts}` : ""}`,
+    );
+  } else {
+    row("Invoice", s.invoiceNumber ? `No. ${s.invoiceNumber}` : "");
+  }
 
   /* How it was paid: the book's boxes, with the one that applies ticked. */
   text(page, f.plain, "Paid by", L, y, 8.5, QUIET);
@@ -823,6 +843,18 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
     y -= 16;
   }
   y -= 16;
+
+  /* A part of a stage: where its invoice stands after this money. */
+  if (s.againstInvoice) {
+    const a = s.againstInvoice;
+    const gap = 12;
+    const w3 = (R - L - gap * 2) / 3;
+    const h = 62;
+    figureBox(sh, { x: L, top: y, w: w3, h, fill: sh.soft }, `Invoice ${a.number}`, eur(a.totalCents), 14, GRAPHITE);
+    figureBox(sh, { x: L + w3 + gap, top: y, w: w3, h, fill: sh.soft }, "Received on it so far", eur(a.paidCents), 14, GRAPHITE);
+    figureBox(sh, { x: L + 2 * (w3 + gap), top: y, w: w3, h, fill: sh.soft, border: sh.accent }, "Remaining on this invoice", eur(a.remainingCents), 15, sh.accent);
+    y -= h + 20;
+  }
 
   /* Where the contract stands after this money, in three boxes that fit their figures. */
   if (s.contractTotalCents > 0) {

@@ -10,7 +10,7 @@ import type { HistoryEvent, HistoryKind } from "@/lib/clientHistory";
  * status. The chips at the top narrow it to one kind of thing, the emails or
  * the money, say, without losing the order.
  */
-const KINDS: HistoryKind[] = ["lead", "client", "apartment", "contract", "appointment", "payment", "paper", "email", "document"];
+const KINDS: HistoryKind[] = ["lead", "client", "apartment", "contract", "appointment", "followUp", "payment", "paper", "email", "document"];
 
 const DOT: Record<HistoryKind, string> = {
   lead: "#86888b",
@@ -18,6 +18,7 @@ const DOT: Record<HistoryKind, string> = {
   apartment: "#4da1b9",
   contract: "#3d8397",
   appointment: "#b7791f",
+  followUp: "#d08a2c",
   payment: "#2f8f5b",
   paper: "#4da1b9",
   email: "#6b5bb5",

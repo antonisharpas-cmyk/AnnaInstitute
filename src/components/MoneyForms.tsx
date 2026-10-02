@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 
@@ -31,16 +31,31 @@ export type ScheduleLine = {
   amount: string;
   /** What this line still owes, as a plain number for the amount box. */
   owing?: string;
+  /** The whole of the line, as a plain number. */
+  total?: string;
+  /** Paid in parts already: how many parts it was split into, and how many have come. */
+  partsTotal?: number | null;
+  partsPaid?: number;
+};
+
+/** Who the letter about a payment can be copied to. */
+export type PaymentCopies = {
+  /** The second buyer, always copied when they have an email. */
+  second?: { name: string; email: string } | null;
+  /** The bank paying the loan, ticked from the start. */
+  bank?: { name: string; emails: string } | null;
 };
 
 export function PaymentForm({
   action,
   lines,
   nextReceipt,
+  copies,
   labels,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   lines: ScheduleLine[];
+  copies?: PaymentCopies;
   /**
    * The next number in this year's run, worked out on the server. It arrives in
    * the box already typed so the ordinary receipt is numbered without anybody
@@ -65,6 +80,17 @@ export function PaymentForm({
     fileTitle: string;
     fileTitlePlaceholder: string;
     save: string;
+    howMuch?: string;
+    whole?: string;
+    part?: string;
+    parts?: string;
+    partOf?: string;
+    partsNote?: string;
+    copies?: string;
+    copySecond?: string;
+    copyBank?: string;
+    copyOther?: string;
+    copyOtherHint?: string;
   };
   /** Ties the field ids apart when two of these are on one page. */
 }) {
@@ -88,15 +114,35 @@ export function PaymentForm({
     quite reaches paid. The office can still change it: a part payment is just
     a smaller number over the top of the one offered.
   */
-  const offerTheAmount = (id: string) => {
+  const [lineId, setLineId] = useState("");
+  const [howMuch, setHowMuch] = useState<"full" | "part">("full");
+  const [parts, setParts] = useState(2);
+  const [other, setOther] = useState(false);
+  const line = lines.find((one) => one.id === lineId) ?? null;
+  /* A stage already being paid in parts carries on in parts. */
+  const inParts = Boolean(line?.partsTotal);
+
+  const offer = (value: string) => {
     const box = amount.current;
     if (!box) return;
-    const line = lines.find((one) => one.id === id);
-    if (!line?.owing) return;
     if (box.value.trim() === "" || box.dataset.offered === "yes") {
-      box.value = line.owing;
+      box.value = value;
       box.dataset.offered = "yes";
     }
+  };
+  /* What one part comes to: the stage split evenly, never more than is still owed. */
+  const partAmount = (one: ScheduleLine, count: number) => {
+    const owing = Number(one.owing ?? 0);
+    const total = Number(one.total ?? one.owing ?? 0);
+    const share = Math.round((total / Math.max(1, count)) * 100) / 100;
+    return String(Math.min(owing, share));
+  };
+
+  const offerTheAmount = (id: string, mode = howMuch, count = parts) => {
+    const one = lines.find((l) => l.id === id);
+    if (!one?.owing) return;
+    if (mode === "part" && !one.partsTotal) offer(partAmount(one, count));
+    else offer(one.owing);
   };
 
   return (
@@ -109,7 +155,13 @@ export function PaymentForm({
         <select
           name="installmentId"
           className="select"
-          onChange={(event) => offerTheAmount(event.target.value)}
+          value={lineId}
+          onChange={(event) => {
+            setLineId(event.target.value);
+            const box = amount.current;
+            if (box) box.dataset.offered = box.value.trim() === "" || box.dataset.offered === "yes" ? "yes" : "no";
+            offerTheAmount(event.target.value);
+          }}
         >
           <option value="">{labels.notAgainstOne}</option>
           {owing.map((line) => (
@@ -119,6 +171,73 @@ export function PaymentForm({
           ))}
         </select>
       </div>
+      {line && labels.howMuch ? (
+        <div className="sm:col-span-3 rounded border border-brand-line bg-white p-2" data-how-much>
+          {inParts ? (
+            <p className="text-sm" data-part-note>
+              {(labels.partOf ?? "")
+                .replace("{part}", String((line.partsPaid ?? 0) + 1))
+                .replace("{parts}", String(Math.max(line.partsTotal ?? 2, (line.partsPaid ?? 0) + 1)))}
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-end gap-4">
+              <span className="label !mb-0">{labels.howMuch}</span>
+              <label className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="radio"
+                  name="howMuch"
+                  value="full"
+                  checked={howMuch === "full"}
+                  onChange={() => {
+                    setHowMuch("full");
+                    offerTheAmount(line.id, "full");
+                  }}
+                />
+                {labels.whole}
+              </label>
+              <label className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="radio"
+                  name="howMuch"
+                  value="part"
+                  checked={howMuch === "part"}
+                  onChange={() => {
+                    setHowMuch("part");
+                    offerTheAmount(line.id, "part");
+                  }}
+                  data-pay-part
+                />
+                {labels.part}
+              </label>
+              {howMuch === "part" ? (
+                <label className="flex items-center gap-2 text-sm">
+                  {labels.parts}
+                  <select
+                    name="parts"
+                    value={parts}
+                    onChange={(event) => {
+                      const count = Number(event.target.value);
+                      setParts(count);
+                      offerTheAmount(line.id, "part", count);
+                    }}
+                    className="select !w-20 !py-1"
+                    data-parts
+                  >
+                    {[2, 3, 4, 5, 6, 8, 10, 12].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          )}
+          {howMuch === "part" || inParts ? (
+            <p className="mt-1 text-xs text-brand-graphite/60">{labels.partsNote}</p>
+          ) : null}
+        </div>
+      ) : null}
       <div>
         <label className="label">{labels.amount}</label>
         <input
@@ -154,6 +273,31 @@ export function PaymentForm({
         and filed under Receipts and invoices, and both go to the client by
         email, so there is nothing to type or attach here.
       */}
+      {labels.copies ? (
+        <div className="space-y-1.5 sm:col-span-3" data-copies>
+          <span className="label">{labels.copies}</span>
+          {copies?.second ? (
+            <p className="text-sm" data-copy-second>
+              {labels.copySecond}: <span className="font-semibold">{copies.second.name}</span>, {copies.second.email}
+            </p>
+          ) : null}
+          {copies?.bank ? (
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" name="ccBank" defaultChecked className="mt-0.5" data-copy-bank />
+              <span>
+                {labels.copyBank}: <span className="font-semibold">{copies.bank.name}</span>, {copies.bank.emails}
+              </span>
+            </label>
+          ) : null}
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="ccOther" checked={other} onChange={(event) => setOther(event.target.checked)} className="mt-0.5" data-copy-other />
+            <span>{labels.copyOther}</span>
+          </label>
+          {other ? (
+            <input name="ccOtherEmails" className="input sm:max-w-lg" placeholder={labels.copyOtherHint} data-copy-other-emails />
+          ) : null}
+        </div>
+      ) : null}
       {nextReceipt ? (
         <p className="self-end text-xs text-brand-graphite/60 sm:col-span-2">
           {labels.receiptNote.replace("{number}", nextReceipt)}

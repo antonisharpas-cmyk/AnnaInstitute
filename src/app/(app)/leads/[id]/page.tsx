@@ -277,11 +277,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                       ) : null}
                     </span>
                     <span className="flex flex-wrap items-center gap-2">
-                      <Pill tone={one.status === "DONE" ? "good" : "warn"}>
+                      <Pill tone={one.status === "DONE" ? "good" : one.status === "CANCELLED" ? "bad" : "warn"}>
                         {t(
                           one.status === "DONE"
                             ? "leads.followUpDone"
-                            : "leads.followUpPending",
+                            : one.status === "CANCELLED"
+                              ? "appointments.cancelled"
+                              : "leads.followUpPending",
                         )}
                       </Pill>
                       {locked ? null : (
@@ -291,17 +293,24 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                           null,
                           one.id,
                           id,
-                          one.status === "DONE" ? "PENDING" : "DONE",
+                          one.status === "PENDING" ? "DONE" : "PENDING",
                         )}
                       >
                         <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
                           {t(
-                            one.status === "DONE"
-                              ? "leads.followUpReopen"
-                              : "leads.followUpMarkDone",
+                            one.status === "PENDING"
+                              ? "leads.followUpMarkDone"
+                              : "leads.followUpReopen",
                           )}
                         </SubmitButton>
                       </form>
+                      {one.status === "PENDING" ? (
+                        <form action={setFollowUpStatus.bind(null, one.id, id, "CANCELLED")}>
+                          <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                            {t("followUps.cancel")}
+                          </SubmitButton>
+                        </form>
+                      ) : null}
                       <ConfirmButton
                         action={deleteFollowUp.bind(null, one.id, id)}
                         label={t("common.delete")}

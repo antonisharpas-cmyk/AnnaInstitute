@@ -6,6 +6,7 @@ import { getTranslator } from "@/i18n";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import ClientForm from "../ClientForm";
 import { createClient } from "../actions";
+import { extrasLabels } from "@/lib/buyerLabels";
 
 export default async function NewClientPage() {
   const { t } = await getTranslator();
@@ -24,6 +25,7 @@ export default async function NewClientPage() {
             cancelHref="/clients"
             t={t}
             idTypes={await optionsFor("idType", t)}
+            extras={extrasLabels(t)}
             sources={await optionsFor("clientSource", t)}
             agents={(await db.select().from(agents).where(eq(agents.isActive, true)).orderBy(asc(agents.name))).map((one) => ({
               value: one.id,

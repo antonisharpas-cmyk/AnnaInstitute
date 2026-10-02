@@ -15,6 +15,7 @@ import { flash } from "@/lib/flash";
 import { offerUndo } from "@/lib/undo";
 import { matchingClientIds } from "@/lib/clients";
 import { splitChoice } from "@/lib/choices/lists";
+import { cleanBirthDate, emailList } from "@/lib/buyers";
 
 const clientSchema = z.object({
   firstName: z.string().min(1),
@@ -69,7 +70,66 @@ function readClient(formData: FormData) {
   });
   /* The agent is kept only for a client an agent brought. */
   const agentId = source.base === "AGENT_REFERRAL" ? String(formData.get("agentId") ?? "").trim() || null : null;
-  return { ...parsed, sourceChoice: source.choice, idTypeChoice: parsed.idType ? idType.choice : null, agentId };
+  return {
+    ...parsed,
+    sourceChoice: source.choice,
+    idTypeChoice: parsed.idType ? idType.choice : null,
+    agentId,
+    birthDate: cleanBirthDate(String(formData.get("birthDate") ?? "")),
+  };
+}
+
+const typed = (formData: FormData, name: string) => String(formData.get(name) ?? "").trim() || null;
+
+/**
+ * The second buyer as typed: an apartment in two names. Nothing is kept
+ * without a name and a surname, because a second buyer nobody can call by
+ * name is not one.
+ */
+function readSecondBuyer(formData: FormData) {
+  const idType = splitChoice(String(formData.get("secondIdType") || ""));
+  const base = ["ID_CARD", "PASSPORT", "YELLOW_SLIP"].includes(idType.base) ? (idType.base as "ID_CARD" | "PASSPORT" | "YELLOW_SLIP") : null;
+  const email = typed(formData, "secondEmail");
+  return {
+    secondFirstName: typed(formData, "secondFirstName"),
+    secondLastName: typed(formData, "secondLastName"),
+    secondEmail: email && emailList(email)[0] ? emailList(email)[0] : null,
+    secondPhone: typed(formData, "secondPhone"),
+    secondIdType: base,
+    secondIdTypeChoice: base ? idType.choice : null,
+    secondIdNumber: typed(formData, "secondIdNumber"),
+    secondAddress: typed(formData, "secondAddress"),
+    secondCountry: typed(formData, "secondCountry"),
+    secondBirthDate: cleanBirthDate(String(formData.get("secondBirthDate") ?? "")),
+    secondRelation: typed(formData, "secondRelation"),
+  };
+}
+
+const NO_SECOND_BUYER = {
+  secondFirstName: null,
+  secondLastName: null,
+  secondEmail: null,
+  secondPhone: null,
+  secondIdType: null,
+  secondIdTypeChoice: null,
+  secondIdNumber: null,
+  secondAddress: null,
+  secondCountry: null,
+  secondBirthDate: null,
+  secondRelation: null,
+};
+
+/** Paying with a bank loan, and who at the bank is copied on the payment letters. */
+function readLoan(formData: FormData) {
+  const loan = String(formData.get("loan") ?? "") === "on";
+  return {
+    loan,
+    loanBank: typed(formData, "loanBank"),
+    loanContact: typed(formData, "loanContact"),
+    loanEmail: emailList(typed(formData, "loanEmail")).join(", ") || null,
+    loanPhone: typed(formData, "loanPhone"),
+    loanNotes: typed(formData, "loanNotes"),
+  };
 }
 
 export async function createClient(formData: FormData) {
@@ -80,9 +140,14 @@ export async function createClient(formData: FormData) {
     redirect("/clients/new");
   }
 
+  /* The second buyer and the bank only when the form says so. */
+  const second = String(formData.get("hasSecondBuyer") ?? "") === "on" ? readSecondBuyer(formData) : NO_SECOND_BUYER;
+  if (second.secondFirstName === null || second.secondLastName === null) Object.assign(second, NO_SECOND_BUYER);
+  const loan = readLoan(formData);
+
   const inserted = await db
     .insert(clients)
-    .values({ ...parsed, email: parsed.email || null })
+    .values({ ...parsed, ...second, ...loan, email: parsed.email || null })
     .returning({ id: clients.id });
 
   await recordAudit({
@@ -144,6 +209,76 @@ export async function updateClient(
  * Marketing consent. The campaign module may never send to a client without it,
  * and an unsubscribe is permanent until the client asks to come back.
  */
+type CardState = { ok: true } | { error: string } | null;
+
+/** The second buyer, added or changed from the client's page. */
+export async function updateSecondBuyer(
+  clientId: string,
+  _previous: CardState,
+  formData: FormData,
+): Promise<{ ok: true } | { error: string }> {
+  const user = await requireUser(["ADMIN"]);
+  const second = readSecondBuyer(formData);
+  if (!second.secondFirstName || !second.secondLastName) {
+    return { error: "The second buyer needs a name and a surname." };
+  }
+  if (typed(formData, "secondEmail") && !second.secondEmail) {
+    return { error: "Check the second buyer's email address." };
+  }
+  await db.update(clients).set({ ...second, updatedAt: new Date() }).where(eq(clients.id, clientId));
+  await recordAudit({
+    action: "client.secondBuyer",
+    entity: "client",
+    entityId: clientId,
+    detail: `${second.secondFirstName} ${second.secondLastName}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/clients");
+  return { ok: true };
+}
+
+/** The apartment is in one name again. Their documents stay, marked as the second buyer's. */
+export async function removeSecondBuyer(clientId: string) {
+  const user = await requireUser(["ADMIN"]);
+  await db.update(clients).set({ ...NO_SECOND_BUYER, updatedAt: new Date() }).where(eq(clients.id, clientId));
+  await recordAudit({
+    action: "client.secondBuyer.remove",
+    entity: "client",
+    entityId: clientId,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/clients");
+}
+
+/** Paying with a bank loan: the bank and the people there to copy. */
+export async function updateLoan(
+  clientId: string,
+  _previous: CardState,
+  formData: FormData,
+): Promise<{ ok: true } | { error: string }> {
+  const user = await requireUser(["ADMIN"]);
+  const loan = readLoan(formData);
+  if (typed(formData, "loanEmail") && !loan.loanEmail) {
+    return { error: "Check the bank's email address." };
+  }
+  await db.update(clients).set({ ...loan, updatedAt: new Date() }).where(eq(clients.id, clientId));
+  await recordAudit({
+    action: "client.loan",
+    entity: "client",
+    entityId: clientId,
+    detail: loan.loan ? `${loan.loanBank ?? "a bank"}${loan.loanEmail ? `, ${loan.loanEmail}` : ""}` : "no loan",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true };
+}
+
 export async function setMarketingConsent(clientId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const optIn = String(formData.get("optIn") ?? "") === "on";
@@ -208,6 +343,8 @@ export async function uploadClientDocuments(clientId: string, formData: FormData
     user,
     attachTo: { clientId },
     clientId,
+    /* The second buyer's own paper: their ID goes on their part of the record. */
+    secondBuyer: String(formData.get("person") ?? "") === "2",
   });
 
   revalidatePath(`/clients/${clientId}`);

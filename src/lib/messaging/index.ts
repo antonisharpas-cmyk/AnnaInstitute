@@ -58,9 +58,16 @@ export async function sendAndRecord(options: {
   withOptOut: boolean;
   /** Email only. Text channels cannot carry a file. */
   attachments?: EmailAttachment[];
+  /** Email only: copied in, the second buyer or the bank say. */
+  cc?: string[];
 }): Promise<SendResult & { messageId: string }> {
   const { channel, recipient } = options;
   const to = addressFor(channel, recipient);
+  /* Nobody is copied on their own letter, and a text cannot be copied at all. */
+  const cc =
+    channel === "EMAIL"
+      ? [...new Set((options.cc ?? []).map((one) => one.trim()).filter((one) => one && one.toLowerCase() !== (to ?? "").toLowerCase()))]
+      : [];
 
   const record = async (
     status: "SENT" | "FAILED" | "SUPPRESSED" | "SIMULATED",
@@ -72,7 +79,7 @@ export async function sendAndRecord(options: {
       .values({
         campaignId: options.campaignId ?? null,
         channel: result?.usedChannel ?? channel,
-        toAddress: to ?? "no address",
+        toAddress: to ? (cc.length > 0 ? `${to}, copy to ${cc.join(", ")}` : to) : "no address",
         clientId: recipient.clientId ?? null,
         agentId: recipient.agentId ?? null,
         subownerId: recipient.subownerId ?? null,
@@ -126,6 +133,7 @@ export async function sendAndRecord(options: {
           text: body,
           html,
           attachments: options.attachments,
+          cc,
         })
       : await sendViaSmsTo({ channel, to, body });
 

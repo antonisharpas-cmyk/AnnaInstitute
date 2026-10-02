@@ -288,6 +288,20 @@
       "when": 1791266547383,
       "tag": "0041_company_papers_followups",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791366547383,
+      "tag": "0042_follow_up_cancelled",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791466547383,
+      "tag": "0043_birthdays_second_buyer",
+      "breakpoints": true
     }
   ]
 }

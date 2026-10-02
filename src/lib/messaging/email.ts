@@ -132,6 +132,8 @@ export async function sendEmail(options: {
   text: string;
   html: string;
   attachments?: EmailAttachment[];
+  /** Copied in: the second buyer, the bank, anybody else the office named. */
+  cc?: string[];
   /** Only the test email to the office itself goes past the master switch. */
   pastTheSwitch?: boolean;
 }): Promise<SendResult> {
@@ -150,6 +152,7 @@ export async function sendEmail(options: {
       from: mailFrom(),
       replyTo: mailSetting("replyTo") || undefined,
       to: options.to,
+      cc: options.cc && options.cc.length > 0 ? options.cc : undefined,
       subject: options.subject,
       text: options.text,
       html: options.html,

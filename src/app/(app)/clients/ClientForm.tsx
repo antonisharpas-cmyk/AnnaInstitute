@@ -3,6 +3,8 @@ import type { clients as clientsTable } from "@/db/schema";
 import type { MessageKey } from "@/i18n";
 import SubmitButton from "@/components/SubmitButton";
 import SourceAgentFields from "@/components/SourceAgentFields";
+import DateField from "@/components/DateField";
+import NewClientExtras, { type ExtrasLabels } from "@/components/BuyerExtras";
 
 type Client = typeof clientsTable.$inferSelect;
 
@@ -14,6 +16,7 @@ export default function ClientForm({
   idTypes,
   sources,
   agents = [],
+  extras,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   client?: Client;
@@ -24,6 +27,8 @@ export default function ClientForm({
   sources: { value: string; label: string }[];
   /** For a client an agent brought: which agent. */
   agents?: { value: string; label: string; hint?: string }[];
+  /** The second buyer and the bank, on a new client. */
+  extras?: ExtrasLabels;
 }) {
   return (
     <form action={action} className="space-y-4">
@@ -42,7 +47,7 @@ export default function ClientForm({
         </div>
         <div>
           <label className="label" htmlFor="lastName">
-            Surname
+            {t("common.surname")}
           </label>
           <input
             id="lastName"
@@ -102,6 +107,13 @@ export default function ClientForm({
           />
         </div>
         <div>
+          <label className="label" htmlFor="birthDate">
+            {t("clients.birthDate")}
+          </label>
+          <DateField id="birthDate" name="birthDate" defaultValue={client?.birthDate ?? ""} />
+          <p className="mt-1 text-xs text-brand-graphite/60">{t("clients.birthDateHint")}</p>
+        </div>
+        <div>
           <label className="label" htmlFor="vatNumber">
             {t("clients.vatNumber")}
           </label>
@@ -151,6 +163,7 @@ export default function ClientForm({
             }}
           />
         </div>
+        {extras ? <NewClientExtras idTypes={idTypes} labels={extras} /> : null}
         <div className="sm:col-span-2">
           <label className="label" htmlFor="notes">
             {t("common.notes")}

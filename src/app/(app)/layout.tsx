@@ -95,6 +95,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   /* The order the office asked for: what is done every day first, then the
      work itself, the people, the reach, the money and the figures. */
   const items: NavItem[] = [
+    { href: "/calendar", label: t("nav.calendar"), group: "main" },
     { href: "/", label: t("nav.dashboard"), group: "main" },
     { href: "/leads", label: t("nav.leads"), group: "main", count: waiting?.total ?? 0 },
     { href: "/clients", label: t("nav.clients"), group: "main" },

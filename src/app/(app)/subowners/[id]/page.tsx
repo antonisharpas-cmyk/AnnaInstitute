@@ -1,4 +1,5 @@
 import { shownCode } from "@/lib/choices";
+import LogoUpload from "./LogoUpload";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
@@ -17,7 +18,6 @@ import {
   deleteSubowner,
   removeDirector,
   removeShareholder,
-  setCompanyLogo,
   updateShareholder,
   updateSubowner,
 } from "../actions";
@@ -218,23 +218,26 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
           <Card title={t("subowners.papers")}>
             <div className="space-y-3 text-sm" data-company-papers>
               <p className="text-xs text-brand-graphite/70">{t("subowners.papersHint")}</p>
-              <div className="flex flex-wrap items-center gap-4">
-                <div
-                  className="flex h-24 w-56 items-center justify-center rounded border border-brand-line bg-white p-2"
-                  style={{ borderTop: `4px solid ${subowner.brandColor || "#3D8397"}` }}
-                >
-                  {subowner.logoPath ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/companies/logo?issuer=${id}&v=${encodeURIComponent(subowner.logoPath)}`}
-                      alt={subowner.name}
-                      className="max-h-20 max-w-full object-contain"
-                      data-company-logo
-                    />
-                  ) : (
-                    <span className="text-xs text-brand-graphite/60">{t("subowners.noLogo")}</span>
-                  )}
-                </div>
+              <div className="flex flex-wrap items-start gap-4">
+                <LogoUpload
+                  issuer={id}
+                  name={subowner.name}
+                  current={
+                    subowner.logoPath
+                      ? `/api/companies/logo?issuer=${id}&v=${encodeURIComponent(subowner.logoPath)}`
+                      : null
+                  }
+                  color={subowner.brandColor || "#3D8397"}
+                  labels={{
+                    choose: t("subowners.logo"),
+                    uploading: t("subowners.logoUploading"),
+                    hint: t("subowners.logoHint"),
+                    saved: t("subowners.logoSaved"),
+                    failed: t("subowners.logoFailed"),
+                    none: t("subowners.noLogo"),
+                    remove: t("subowners.removeLogo"),
+                  }}
+                />
                 <div className="flex flex-wrap gap-2">
                   {(["invoice", "receipt", "credit"] as const).map((kind) => (
                     <a
@@ -250,25 +253,6 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
                   ))}
                 </div>
               </div>
-              <form action={setCompanyLogo.bind(null, id)} className="flex flex-wrap items-end gap-2">
-                <div>
-                  <label className="label" htmlFor="logo">
-                    {t("subowners.logo")}
-                  </label>
-                  <input id="logo" name="logo" type="file" accept="image/png,image/jpeg" className="text-sm" />
-                </div>
-                <button type="submit" className="btn btn-primary !text-xs">
-                  {t("subowners.uploadLogo")}
-                </button>
-              </form>
-              {subowner.logoPath ? (
-                <form action={setCompanyLogo.bind(null, id)}>
-                  <input type="hidden" name="remove" value="yes" />
-                  <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
-                    {t("subowners.removeLogo")}
-                  </button>
-                </form>
-              ) : null}
             </div>
           </Card>
 

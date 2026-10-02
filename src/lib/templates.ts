@@ -599,6 +599,45 @@ One Eleven`,
     toAgents: true,
     toSubowners: false,
   },
+  {
+    key: "birthday",
+    isAutomatic: true,
+    name: "Birthday wishes",
+    description:
+      "Goes in the morning of each client's birthday, once a year, to the client and, when the apartment is in two names, to the second buyer on their own birthday. It goes to every client with a birthday and an email address, whether or not they agreed to marketing, because it is a greeting and sells nothing. The English is followed by the Greek in the same email.",
+    subject: "Happy birthday, {{first_name}} | Χρόνια πολλά",
+    body: `Dear {{first_name}},
+
+Everyone at One Eleven wishes you a very happy birthday.
+
+May the year ahead bring you health, joy and many good moments with the people you love, and in your home.
+
+With our warmest wishes,
+One Eleven
+
+Αγαπητέ/ή {{first_name}},
+
+Όλοι στη One Eleven σας ευχόμαστε χρόνια πολλά και ό,τι επιθυμείτε.
+
+Να έχετε μια χρονιά γεμάτη υγεία, χαρά και όμορφες στιγμές με τους ανθρώπους σας, στο σπίτι σας.
+
+Με τις θερμότερες ευχές,
+One Eleven`,
+    bodyWhatsapp: "Happy birthday, {{first_name}}. Everyone at One Eleven wishes you a wonderful year. Χρόνια πολλά!",
+    subjectEl: "Χρόνια πολλά, {{first_name}}",
+    bodyEl: `Αγαπητέ/ή {{first_name}},
+
+Όλοι στη One Eleven σας ευχόμαστε χρόνια πολλά και ό,τι επιθυμείτε.
+
+Να έχετε μια χρονιά γεμάτη υγεία, χαρά και όμορφες στιγμές με τους ανθρώπους σας, στο σπίτι σας.
+
+Με τις θερμότερες ευχές,
+One Eleven`,
+    bodyWhatsappEl: "Χρόνια πολλά, {{first_name}}! Όλοι στη One Eleven σας ευχόμαστε μια υπέροχη χρονιά.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
 ];
 
 /** The letters the CRM sends by itself, in the order things happen. */
@@ -612,6 +651,7 @@ export const AUTOMATIC_KEYS = [
   "appointment_cancelled",
   "appointment_reminder",
   "agent_commission",
+  "birthday",
 ] as const;
 
 export type AutomaticKey = (typeof AUTOMATIC_KEYS)[number];

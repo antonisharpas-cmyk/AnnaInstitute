@@ -30,6 +30,7 @@ import { issuerIdOfContract } from "@/lib/issuer";
 import { standardContractName } from "@/lib/contractName";
 import { letterForCommission, letterForPayment, sendWaitingFor } from "@/lib/automaticEmails";
 import { issueForPayment, voidForPayment } from "@/lib/issued";
+import { emailList } from "@/lib/buyers";
 import {
   addMonths,
   stageFromAnyLanguage,
@@ -938,11 +939,52 @@ export async function recordPayment(contractId: string, formData: FormData) {
     receipt = await nextReceiptNumber(when, issuerId);
   }
 
+  /*
+   * Whole or in parts. A stage paid in parts keeps the count: which part this
+   * is, and how many the stage was split into. Once a stage has been paid in
+   * parts, every later payment on it is the next part, even one marked whole,
+   * which is then the last.
+   */
+  let partsTotal: number | null = null;
+  let partNumber: number | null = null;
+  if (installmentId) {
+    const earlier = await db
+      .select({ partsTotal: payments.partsTotal })
+      .from(payments)
+      .where(and(eq(payments.installmentId, installmentId), eq(payments.kind, "PAYMENT")));
+    const asked =
+      String(formData.get("howMuch") ?? "full") === "part"
+        ? Math.max(2, Math.min(12, Math.trunc(Number(formData.get("parts") ?? 2)) || 2))
+        : null;
+    const before = earlier.find((one) => one.partsTotal)?.partsTotal ?? null;
+    if (asked || before) {
+      partNumber = earlier.filter((one) => one.partsTotal).length + 1;
+      partsTotal = Math.max(asked ?? 0, before ?? 0, partNumber);
+      if (!asked && before) partsTotal = Math.max(before, partNumber);
+    }
+  }
+
+  /* Who the letter is copied to: the bank paying the loan, anybody else typed. */
+  const [buyer] = await db
+    .select({ loanEmail: clients.loanEmail })
+    .from(contracts)
+    .leftJoin(clients, eq(clients.id, contracts.clientId))
+    .where(eq(contracts.id, contractId))
+    .limit(1);
+  const ccEmails =
+    emailList(
+      String(formData.get("ccBank") ?? "") === "on" ? buyer?.loanEmail : null,
+      String(formData.get("ccOther") ?? "") === "on" ? String(formData.get("ccOtherEmails") ?? "") : null,
+    ).join(", ") || null;
+
   const inserted = await db
     .insert(payments)
     .values({
       contractId,
       installmentId,
+      partsTotal,
+      partNumber,
+      ccEmails,
       amount: fromCents(amountCents),
       paidOn: when,
       method: String(formData.get("method") ?? "") || null,

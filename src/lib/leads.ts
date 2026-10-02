@@ -533,7 +533,7 @@ export async function historyForLead(leadId: string): Promise<HistoryLine[]> {
     "lead.update": "The lead was edited",
     "lead.status": "The status was moved",
     "lead.status.bulk": "The status was moved",
-    "lead.assigned": "It was given to somebody",
+    "lead.assigned": "A team member was assigned",
     "lead.note": "A note was written",
     "lead.note.remove": "A note was taken off",
     "lead.followUp.add": "A follow up was arranged",

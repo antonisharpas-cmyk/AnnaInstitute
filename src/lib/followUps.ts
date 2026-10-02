@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, clients, leadFollowUps, leads, teamMembers } from "@/db/schema";
 
@@ -21,7 +21,7 @@ export type FollowUpRow = {
   leadId: string | null;
   at: Date;
   note: string | null;
-  status: "PENDING" | "DONE";
+  status: "PENDING" | "DONE" | "CANCELLED";
   doneAt: Date | null;
 };
 
@@ -172,7 +172,7 @@ export async function listFollowUps(filter: {
 } = {}) {
   const parts: SQL[] = [];
 
-  if (filter.status === "PENDING" || filter.status === "DONE") {
+  if (filter.status === "PENDING" || filter.status === "DONE" || filter.status === "CANCELLED") {
     parts.push(eq(leadFollowUps.status, filter.status));
   }
   if (filter.assignedTo) parts.push(sql`${whose} = ${filter.assignedTo}` as SQL);
@@ -208,4 +208,20 @@ export async function followUpCounts() {
     })
     .from(leadFollowUps);
   return row ?? { pending: 0, overdue: 0, done: 0 };
+}
+
+/**
+ * Every follow up with one client, and with the lead they were before, the
+ * soonest first, for the Follow ups part of the client's page.
+ */
+export async function followUpsForClient(clientId: string) {
+  const theirLeads = await db.select({ id: leads.id }).from(leads).where(eq(leads.clientId, clientId));
+  const leadIds = theirLeads.map((one) => one.id);
+  return withWho()
+    .where(
+      leadIds.length > 0
+        ? or(eq(leadFollowUps.clientId, clientId), inArray(leadFollowUps.leadId, leadIds))
+        : eq(leadFollowUps.clientId, clientId),
+    )
+    .orderBy(asc(leadFollowUps.at));
 }

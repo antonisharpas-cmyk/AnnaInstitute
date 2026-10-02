@@ -24,6 +24,7 @@ import { resolveStored } from "@/lib/storage";
 import { templateByKey, type AutomaticKey } from "@/lib/templates";
 import { issuedAttachments, issueForPayment } from "@/lib/issued";
 import type { EmailAttachment } from "@/lib/messaging/email";
+import { buyersFirstNames, buyersName, emailList, hasSecondBuyer, isBirthday } from "@/lib/buyers";
 
 /**
  * The letters that follow the money.
@@ -250,10 +251,11 @@ export async function letterForPayment(paymentId: string): Promise<void> {
   const locale: string = "en";
   const money = (cents: number) => formatAmount(cents, locale);
 
+  /* An apartment in two names is greeted in both names: it is both of theirs. */
   const values: Record<string, string> = {
-    first_name: row.client.firstName ?? "",
+    first_name: buyersFirstNames(row.client),
     last_name: row.client.lastName ?? "",
-    name: `${row.client.firstName ?? ""} ${row.client.lastName ?? ""}`.trim(),
+    name: buyersName(row.client),
     unit: row.unit?.code ?? row.contract.reference ?? "",
     project: row.project?.name ?? "",
     amount: money(toCents(row.payment.amount)),
@@ -281,6 +283,9 @@ export async function letterForPayment(paymentId: string): Promise<void> {
     /* A receipt is not marketing: it is the record of their own money. */
     withOptOut: false,
     attachments: papers,
+    /* Copied: the second buyer always, and whoever the office ticked or typed
+       when it recorded the money, the bank paying the loan say. */
+    cc: emailList(hasSecondBuyer(row.client) ? row.client.secondEmail : null, row.payment.ccEmails),
   });
 
   if (result.status === "SENT") await note("SENT", "Sent.");
@@ -468,6 +473,8 @@ export async function letterForAppointment(
     subject,
     body,
     withOptOut: false,
+    /* An apartment in two names: the second buyer hears about it too. */
+    cc: row.client && hasSecondBuyer(row.client) ? emailList(row.client.secondEmail) : [],
   });
 
   if (result.status === "SENT") await note("SENT", "Sent.");
@@ -632,4 +639,116 @@ export async function letterForCommission(contractId: string): Promise<void> {
   else if (result.status === "SIMULATED")
     await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
   else await note("FAILED", result.error ?? "It did not go.");
+}
+
+/* ---------------------------------------------------------------------------
+   Birthday wishes
+   --------------------------------------------------------------------------- */
+
+/**
+ * Wish every client a happy birthday, on the day.
+ *
+ * Called by the same ten minute clock as the reminders, and it answers to
+ * itself: nothing before the hour the office set (nine in the morning unless
+ * changed) or after nine at night, and each person once a year, the main buyer
+ * and the second buyer each on their own birthday. A wish that could not go is
+ * written down with why, and is not tried again that year, so a client without
+ * an email address is not looked at every ten minutes all day.
+ */
+export async function sendBirthdayWishes(options?: { byHand?: boolean; hour?: number }): Promise<{ sent: number; looked: number }> {
+  const now = new Date();
+  const hour = options?.hour ?? 9;
+  if (!options?.byHand && (now.getHours() < hour || now.getHours() >= 21)) return { sent: 0, looked: 0 };
+
+  const template = await templateByKey("birthday");
+  if (!template) return { sent: 0, looked: 0 };
+
+  const year = now.getFullYear();
+  const people = await db
+    .select({
+      id: clients.id,
+      firstName: clients.firstName,
+      lastName: clients.lastName,
+      email: clients.email,
+      birthDate: clients.birthDate,
+      secondFirstName: clients.secondFirstName,
+      secondLastName: clients.secondLastName,
+      secondEmail: clients.secondEmail,
+      secondBirthDate: clients.secondBirthDate,
+    })
+    .from(clients)
+    .where(
+      and(
+        sql`${clients.deletedAt} is null`,
+        sql`${clients.closedAt} is null`,
+        sql`(${clients.birthDate} is not null or ${clients.secondBirthDate} is not null)`,
+      ),
+    );
+
+  let sent = 0;
+  let looked = 0;
+  for (const person of people) {
+    for (const second of [false, true]) {
+      const born = second ? person.secondBirthDate : person.birthDate;
+      if (!isBirthday(born, now)) continue;
+      const first = (second ? person.secondFirstName : person.firstName) ?? "";
+      const last = (second ? person.secondLastName : person.lastName) ?? "";
+      if (second && !first.trim()) continue;
+      looked += 1;
+
+      const [already] = await db
+        .select({ id: automaticEmails.id })
+        .from(automaticEmails)
+        .where(
+          and(
+            eq(automaticEmails.templateKey, "birthday"),
+            eq(automaticEmails.clientId, person.id),
+            eq(automaticEmails.forYear, year),
+            eq(automaticEmails.secondBuyer, second),
+          ),
+        )
+        .limit(1);
+      if (already) continue;
+
+      const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
+        await db.insert(automaticEmails).values({
+          templateKey: "birthday",
+          clientId: person.id,
+          forYear: year,
+          secondBuyer: second,
+          status,
+          reason,
+          sentAt: status === "SENT" ? new Date() : null,
+        });
+      };
+
+      if (!template.isActive) {
+        await note("SKIPPED", "Birthday wishes are switched off in the automatic emails section.");
+        continue;
+      }
+      const email = second ? person.secondEmail : person.email;
+      if (!email) {
+        await note("SKIPPED", `${second ? "The second buyer has" : "The client has"} no email address on the record.`);
+        continue;
+      }
+
+      const values = { first_name: first.trim(), last_name: last.trim(), name: `${first} ${last}`.trim() };
+      const result = await sendAndRecord({
+        channel: "EMAIL",
+        recipient: { name: values.name, email, clientId: person.id },
+        subject: fill(template.subject ?? "", values),
+        body: fill(template.body, values),
+        withOptOut: false,
+      });
+      if (result.status === "SENT") {
+        await note("SENT", second ? "Sent to the second buyer." : "Sent.");
+        sent += 1;
+      } else if (result.status === "SIMULATED") {
+        await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
+      } else {
+        await note("FAILED", result.error ?? "It did not go.");
+      }
+    }
+  }
+  return { sent, looked };
 }

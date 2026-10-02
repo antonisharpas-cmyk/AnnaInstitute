@@ -282,6 +282,36 @@ export const clients = pgTable("clients", {
   marketingOptInSource: text("marketing_opt_in_source"),
   unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
   notes: text("notes"),
+  /** The birthday, as the day is written: 1985-03-14. A wish goes on the day. */
+  birthDate: text("birth_date"),
+  /*
+   * A second buyer: an apartment in two names. Kept on the same client, so
+   * there is one record, one contract and one schedule, with both names on
+   * the papers and the second person copied on the letters.
+   */
+  secondFirstName: text("second_first_name"),
+  secondLastName: text("second_last_name"),
+  secondEmail: text("second_email"),
+  secondPhone: text("second_phone"),
+  secondIdType: idTypeEnum("second_id_type"),
+  secondIdTypeChoice: text("second_id_type_choice"),
+  secondIdNumber: text("second_id_number"),
+  secondAddress: text("second_address"),
+  secondCountry: text("second_country"),
+  secondBirthDate: text("second_birth_date"),
+  /** How the two are related, in the office's words: wife, son, partner. */
+  secondRelation: text("second_relation"),
+  /*
+   * Paying with a bank loan rather than their own money: the bank, and the
+   * people there who are copied on the letters about payments.
+   */
+  loan: boolean("loan").default(false).notNull(),
+  loanBank: text("loan_bank"),
+  loanContact: text("loan_contact"),
+  /** One address or several, separated by commas. */
+  loanEmail: text("loan_email"),
+  loanPhone: text("loan_phone"),
+  loanNotes: text("loan_notes"),
   /**
    * In the recycle bin rather than gone.
    *
@@ -629,6 +659,15 @@ export const payments = pgTable("payments", {
   /** On a credit put on a stage: the invoice that has billed it, once one has. */
   invoicedById: text("invoiced_by_id"),
   notes: text("notes"),
+  /*
+   * A stage paid in parts: how many parts it was split into and which one
+   * this is. The first part issues the invoice for the whole stage, and every
+   * part gets its own receipt saying what remains on that invoice.
+   */
+  partsTotal: integer("parts_total"),
+  partNumber: integer("part_number"),
+  /** Who else the letter about this payment was copied to, commas between. */
+  ccEmails: text("cc_emails"),
   recordedById: text("recorded_by_id").references(() => users.id, {
     onDelete: "set null",
   }),
@@ -774,6 +813,8 @@ export const documents = pgTable("documents", {
     onDelete: "set null",
   }),
   visibleToBuyer: boolean("visible_to_buyer").default(false).notNull(),
+  /** The second buyer's paper, their ID say, rather than the main buyer's. */
+  secondBuyer: boolean("second_buyer").default(false).notNull(),
   createdAt: created(),
 });
 
@@ -1195,7 +1236,7 @@ export const leadNotes = pgTable("lead_notes", {
 });
 
 /** A follow up is either still to be done or it has been done. */
-export const followUpStatusEnum = pgEnum("follow_up_status", ["PENDING", "DONE"]);
+export const followUpStatusEnum = pgEnum("follow_up_status", ["PENDING", "DONE", "CANCELLED"]);
 
 /**
  * The next time somebody is going back to this lead.
@@ -1324,6 +1365,10 @@ export const automaticEmails = pgTable("automatic_emails", {
   status: automaticEmailStatusEnum("status").default("SENT").notNull(),
   /** Why it is waiting, or why it did not go, in plain words. */
   reason: text("reason"),
+  /** A birthday wish: the year it was for, so it goes once a year. */
+  forYear: integer("for_year"),
+  /** It went to the second buyer rather than the main one. */
+  secondBuyer: boolean("second_buyer").default(false).notNull(),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: created(),
   updatedAt: updated(),

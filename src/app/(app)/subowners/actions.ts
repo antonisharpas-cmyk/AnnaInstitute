@@ -10,7 +10,7 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { ensureOneEleven } from "@/lib/subowners";
 import { validColor } from "@/lib/issuer";
-import { saveUpload } from "@/lib/storage";
+import { saveCompanyLogo } from "@/lib/companyLogo";
 
 export type SubownerState = { ok: true } | { error: string } | null;
 
@@ -54,15 +54,11 @@ function whole(formData: FormData, name: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** A logo for the company's papers: a PNG or a JPEG, kept with the uploads. */
+/** A logo chosen with a new company, made into a PNG for its papers. */
 async function savedLogo(formData: FormData): Promise<string | null> {
   const file = formData.get("logo");
   if (!(file instanceof File) || file.size === 0) return null;
-  if (!["image/png", "image/jpeg"].includes(file.type)) {
-    throw new Error("The logo has to be a PNG or a JPEG picture.");
-  }
-  const saved = await saveUpload(file);
-  return saved.relativePath;
+  return saveCompanyLogo(file);
 }
 
 export async function createSubowner(formData: FormData) {
@@ -388,31 +384,3 @@ export async function deleteSubowner(subownerId: string) {
   redirect("/subowners");
 }
 
-/** Put a new logo on the company's papers, or take it off. */
-export async function setCompanyLogo(subownerId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN"]);
-  const remove = String(formData.get("remove") ?? "") === "yes";
-  let logoPath: string | null = null;
-  if (!remove) {
-    try {
-      logoPath = await savedLogo(formData);
-    } catch (error) {
-      await flash("said.logoType", "bad");
-      void error;
-      revalidatePath(`/subowners/${subownerId}`);
-      return;
-    }
-    if (!logoPath) return;
-  }
-  await db.update(subowners).set({ logoPath, updatedAt: new Date() }).where(eq(subowners.id, subownerId));
-  await recordAudit({
-    action: "subowner.logo",
-    entity: "subowner",
-    entityId: subownerId,
-    detail: remove ? "removed" : "uploaded",
-    userId: user.id,
-    userEmail: user.email,
-  });
-  await flash("said.saved");
-  revalidatePath(`/subowners/${subownerId}`);
-}

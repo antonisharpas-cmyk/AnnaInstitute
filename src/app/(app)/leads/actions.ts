@@ -839,6 +839,7 @@ export async function addFollowUp(leadId: string, formData: FormData) {
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
   revalidatePath("/follow-ups");
+  revalidatePath("/calendar");
 }
 
 /**
@@ -854,10 +855,12 @@ export async function addFollowUpFromList(formData: FormData) {
   const back = async (key: "said.followUpNeedsLead" | "said.needADay") => {
     await flash(key, "bad");
     revalidatePath("/follow-ups");
+    revalidatePath("/calendar");
   };
   if (raw.startsWith("lead:") || (raw && !raw.includes(":") && raw !== "other")) {
     await addFollowUp(raw.startsWith("lead:") ? raw.slice(5) : raw, formData);
     revalidatePath("/follow-ups");
+    revalidatePath("/calendar");
     return;
   }
   const who = {
@@ -889,14 +892,15 @@ export async function addFollowUpFromList(formData: FormData) {
   });
   await flash("said.saved");
   revalidatePath("/follow-ups");
+  revalidatePath("/calendar");
   if (who.clientId) revalidatePath(`/clients/${who.clientId}`);
 }
 
-/** Done, or back to pending when somebody pressed it too early. */
+/** Done, cancelled, or back to pending when somebody pressed it too early. */
 export async function setFollowUpStatus(
   followUpId: string,
   leadId: string | null,
-  status: "PENDING" | "DONE",
+  status: "PENDING" | "DONE" | "CANCELLED",
 ) {
   const user = await requireUser(["ADMIN"]);
 
@@ -922,6 +926,8 @@ export async function setFollowUpStatus(
   if (leadId) revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
   revalidatePath("/follow-ups");
+  revalidatePath("/calendar");
+  revalidatePath("/clients/[id]", "page");
 }
 
 export async function deleteFollowUp(followUpId: string, leadId: string | null) {
@@ -942,6 +948,8 @@ export async function deleteFollowUp(followUpId: string, leadId: string | null) 
   if (leadId) revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
   revalidatePath("/follow-ups");
+  revalidatePath("/calendar");
+  revalidatePath("/clients/[id]", "page");
 }
 
 /** Whose lead this is. */

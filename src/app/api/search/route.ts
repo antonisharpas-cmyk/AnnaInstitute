@@ -57,6 +57,9 @@ export async function GET(request: Request) {
             ilike(clients.email, like),
             ilike(clients.phone, like),
             ilike(clients.idNumber, like),
+            ilike(clients.secondFirstName, like),
+            ilike(clients.secondLastName, like),
+            ilike(clients.secondIdNumber, like),
           ),
         ),
       )

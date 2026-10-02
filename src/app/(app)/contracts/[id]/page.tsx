@@ -17,6 +17,7 @@ import { dayAndTime } from "@/lib/when";
 import DocumentUpload from "@/components/DocumentUpload";
 import DeleteRecord from "@/components/DeleteRecord";
 import { PaymentForm } from "@/components/MoneyForms";
+import { hasSecondBuyer, secondName } from "@/lib/buyers";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import ConfirmButton from "@/components/ConfirmButton";
@@ -647,13 +648,29 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             <PaymentForm
               action={recordPayment.bind(null, id)}
               nextReceipt={nextReceipt}
-              lines={lines.map((l) => ({
-                id: l.id,
-                seq: l.seq,
-                label: l.label,
-                amount: formatAmount(l.totalCents, locale),
-                owing: String(Math.max(0, l.totalCents - l.paidCents) / 100),
-              }))}
+              lines={lines.map((l) => {
+                const inParts = payments.filter((one) => one.installmentId === l.id && one.partsTotal);
+                return {
+                  id: l.id,
+                  seq: l.seq,
+                  label: l.label,
+                  amount: formatAmount(l.totalCents, locale),
+                  owing: String(Math.max(0, l.totalCents - l.paidCents) / 100),
+                  total: String(l.totalCents / 100),
+                  partsTotal: inParts.length > 0 ? Math.max(...inParts.map((one) => one.partsTotal ?? 0)) : null,
+                  partsPaid: inParts.length,
+                };
+              })}
+              copies={{
+                second:
+                  client && hasSecondBuyer(client) && client.secondEmail
+                    ? { name: secondName(client), email: client.secondEmail }
+                    : null,
+                bank:
+                  client?.loan && client.loanEmail
+                    ? { name: client.loanBank || t("clients.loan.bank"), emails: client.loanEmail }
+                    : null,
+              }}
               labels={{
                 stage: t("contracts.stage"),
                 notAgainstOne: t("contracts.notAgainstOne"),
@@ -674,6 +691,17 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                 fileTitle: t("contracts.paymentFileTitle"),
                 fileTitlePlaceholder: t("contracts.paymentFileTitlePlaceholder"),
                 save: t("common.save"),
+                howMuch: t("pay.howMuch"),
+                whole: t("pay.whole"),
+                part: t("pay.part"),
+                parts: t("pay.parts"),
+                partOf: t("pay.partOf"),
+                partsNote: t("pay.partsNote"),
+                copies: t("pay.copies"),
+                copySecond: t("pay.copySecond"),
+                copyBank: t("pay.copyBank"),
+                copyOther: t("pay.copyOther"),
+                copyOtherHint: t("pay.copyOtherHint"),
               }}
             />
           </Disclosure>
@@ -699,6 +727,16 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                         {toCents(p.amount) < 0
                           ? `${t("contracts.creditOut")} ${formatAmount(Math.abs(toCents(p.amount)), locale)}`
                           : formatAmount(toCents(p.amount), locale)}
+                        {p.partsTotal ? (
+                          <div className="text-xs text-brand-graphite/60" data-part>
+                            {t("pay.partShort").replace("{part}", String(p.partNumber ?? 1)).replace("{parts}", String(p.partsTotal))}
+                          </div>
+                        ) : null}
+                        {p.ccEmails ? (
+                          <div className="max-w-[14rem] truncate text-xs text-brand-graphite/60" title={p.ccEmails}>
+                            {t("pay.copiedTo")} {p.ccEmails}
+                          </div>
+                        ) : null}
                       </td>
                       <td>{p.receiptNumber ?? ""}</td>
                       <td>

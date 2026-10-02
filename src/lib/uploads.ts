@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, documents, units } from "@/db/schema";
 import { deleteStored, saveUpload } from "./storage";
@@ -184,6 +184,8 @@ export async function storeChosenDocuments(options: {
   attachTo: AttachTo;
   /** The client whose record an identification number belongs on. */
   clientId?: string | null;
+  /** The second buyer's paper rather than the main buyer's. */
+  secondBuyer?: boolean;
 }): Promise<void> {
   const { formData, user } = options;
 
@@ -206,7 +208,11 @@ export async function storeChosenDocuments(options: {
     const idNumber = String(formData.get("idNumber") ?? "").trim();
     await db
       .update(clients)
-      .set({ idType, ...(idNumber ? { idNumber } : {}), updatedAt: new Date() })
+      .set(
+        options.secondBuyer
+          ? { secondIdType: idType, ...(idNumber ? { secondIdNumber: idNumber } : {}), updatedAt: new Date() }
+          : { idType, ...(idNumber ? { idNumber } : {}), updatedAt: new Date() },
+      )
       .where(eq(clients.id, options.clientId));
   }
 
@@ -214,11 +220,14 @@ export async function storeChosenDocuments(options: {
   // the file can name the apartment it concerns.
   const chosenUnit = String(formData.get("unitId") ?? "").trim() || null;
 
-  await storeDocuments({
+  const ids = await storeDocuments({
     files,
     title,
     category,
     attachTo: { ...options.attachTo, unitId: chosenUnit ?? options.attachTo.unitId ?? null },
     user,
   });
+  if (options.secondBuyer && ids.length > 0) {
+    await db.update(documents).set({ secondBuyer: true }).where(inArray(documents.id, ids));
+  }
 }

@@ -440,6 +440,11 @@ export default async function ClientsPage({
                             >
                               {r.client.firstName} {r.client.lastName}
                             </a>
+                            {r.client.secondFirstName ? (
+                              <div className="text-xs text-brand-graphite/60" data-second-name>
+                                &amp; {r.client.secondFirstName} {r.client.secondLastName ?? ""}
+                              </div>
+                            ) : null}
                           </td>
                         ) : null}
 

@@ -4,6 +4,7 @@ import { baseOf } from "@/lib/choices/lists";
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import SubmitButton from "@/components/SubmitButton";
+import SearchSelect from "@/components/SearchSelect";
 import type { LeadFormState } from "./actions";
 
 /**
@@ -45,6 +46,8 @@ export default function LeadForm({
     contactNote: string;
     agent: string;
     chooseAgent: string;
+    searchAgent: string;
+    noMatch: string;
     consent: string;
     consentHint: string;
     save: string;
@@ -166,22 +169,45 @@ export default function LeadForm({
             className="input"
           />
         </div>
-      </div>
 
-      {source === "OTHER" ? (
-        <div className="sm:w-1/2">
-          <label className="label" htmlFor="sourceOther">
-            {labels.sourceOther}
-          </label>
-          <input
-            id="sourceOther"
-            name="sourceOther"
-            defaultValue={was.sourceOther ?? ""}
-            placeholder={labels.sourceOtherHint}
-            className="input"
-          />
-        </div>
-      ) : null}
+        {/*
+          Straight under the source, because they answer it: which agent, or
+          where exactly. The agent box has its own search, since the list of
+          agents is long.
+        */}
+        {baseOf(source) === "AGENT" ? (
+          <div className="sm:col-start-1" data-lead-agent>
+            <label className="label" htmlFor="agentId">
+              {labels.agent}
+            </label>
+            <SearchSelect
+              id="agentId"
+              name="agentId"
+              required
+              defaultValue={was.agentId ?? ""}
+              choose={labels.chooseAgent}
+              searchPlaceholder={labels.searchAgent}
+              noMatch={labels.noMatch}
+              options={agents.map((agent) => ({ value: agent.id, label: agent.name }))}
+            />
+          </div>
+        ) : null}
+
+        {source === "OTHER" ? (
+          <div className="sm:col-start-1">
+            <label className="label" htmlFor="sourceOther">
+              {labels.sourceOther}
+            </label>
+            <input
+              id="sourceOther"
+              name="sourceOther"
+              defaultValue={was.sourceOther ?? ""}
+              placeholder={labels.sourceOtherHint}
+              className="input"
+            />
+          </div>
+        ) : null}
+      </div>
 
       {/*
         Whose lead this is.
@@ -209,29 +235,6 @@ export default function LeadForm({
           ))}
         </select>
       </div>
-
-      {/* The agent, only when there is one to name. */}
-      {baseOf(source) === "AGENT" ? (
-        <div className="sm:w-1/2">
-          <label className="label" htmlFor="agentId">
-            {labels.agent}
-          </label>
-          <select
-            id="agentId"
-            name="agentId"
-            className="select"
-            defaultValue={was.agentId ?? ""}
-            required
-          >
-            <option value="">{labels.chooseAgent}</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
 
       <label className="flex items-start gap-2 rounded border border-brand-line bg-brand-surface p-3 text-sm">
         <input

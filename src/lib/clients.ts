@@ -141,6 +141,9 @@ export function clientFilters({
         ilike(clients.email, `%${query}%`),
         ilike(clients.phone, `%${query}%`),
         sql`concat(${clients.firstName}, ' ', ${clients.lastName}) ilike ${`%${query}%`}`,
+        /* The second buyer is found by their own name too. */
+        sql`concat(${clients.secondFirstName}, ' ', ${clients.secondLastName}) ilike ${`%${query}%`}`,
+        ilike(clients.secondEmail, `%${query}%`),
       ) as SQL,
     );
   }

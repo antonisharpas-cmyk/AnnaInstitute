@@ -52,6 +52,8 @@ export default async function NewLeadPage() {
               contactNote: t("leads.contactNote"),
               agent: t("contracts.agent"),
               chooseAgent: t("leads.chooseAgent"),
+              searchAgent: t("leads.searchAgent"),
+              noMatch: t("common.noMatch"),
               consent: t("leads.consentNow"),
               consentHint: t("leads.consentNowHint"),
               save: t("common.save"),

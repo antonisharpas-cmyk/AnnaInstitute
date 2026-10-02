@@ -15,6 +15,7 @@ import {
   users,
 } from "@/db/schema";
 import { toCents, fromCents } from "@/lib/money";
+import { buyersName, hasSecondBuyer } from "@/lib/buyers";
 import { nextCreditNoteNumber, nextInvoiceNumber } from "@/lib/receipts";
 import { issuerForProject } from "@/lib/issuer";
 import { creditNotePdf, invoicePdf, receiptPdfFrom, type IssuedSnapshot } from "@/lib/paymentPdf";
@@ -142,10 +143,13 @@ async function partiesOf(contractId: string) {
        no company holds is One Eleven's. */
     company: await issuerForProject(row.project?.id ?? null),
     client: {
-      name: row.client ? `${row.client.firstName} ${row.client.lastName}`.trim() : "",
+      /* An apartment in two names carries both names and both ID numbers. */
+      name: row.client ? buyersName(row.client) : "",
       address: row.client?.address ?? "",
       country: row.client?.country ?? "",
-      idNumber: row.client?.idNumber ?? "",
+      idNumber: row.client
+        ? [row.client.idNumber, hasSecondBuyer(row.client) ? row.client.secondIdNumber : null].filter(Boolean).join(", ")
+        : "",
       vatNumber: row.client?.vatNumber ?? "",
       email: row.client?.email ?? "",
       phone: row.client?.phone ?? "",
@@ -218,6 +222,18 @@ export async function issueForPayment(
   const parties = await partiesOf(row.contract.id);
   if (!parties) return already;
   const standing = await standingOf(row.contract.id, row.payment);
+
+  /*
+   * A stage paid in parts.
+   *
+   * The first part issues the invoice for the whole stage, and every part,
+   * the first included, gets a receipt for its own money that names that
+   * invoice and says what is still to come on it: invoice 0012 of 10,000,
+   * 5,000 received, 5,000 remaining.
+   */
+  if (sale && row.installment && row.payment.partsTotal) {
+    return issueForPart(row, parties, standing, already, who);
+  }
 
   /* Credit from the reduced VAT sitting on this stage, not yet invoiced. */
   const credits =
@@ -341,6 +357,188 @@ export async function issueForPayment(
     };
     const pdf = await receiptPdfFrom(receiptSnapshot);
     const documentId = await keepPdf(pdf, `${paperName("Receipt", number, stage, parties.place)}.pdf`, paperName("Receipt", number, stage, parties.place), "RECEIPT", row.contract.id, who?.id ?? row.payment.recordedById ?? null);
+    [receipt] = await db
+      .insert(issuedDocuments)
+      .values({
+        ...base,
+        kind: "RECEIPT",
+        number,
+        invoiceId: invoice?.id ?? null,
+        documentId,
+        netAmount: fromCents(cashNet),
+        vatAmount: fromCents(cashCents - cashNet),
+        totalAmount: fromCents(cashCents),
+        snapshot: JSON.stringify(receiptSnapshot),
+      })
+      .returning();
+  }
+
+  return { invoice: invoice ?? null, receipt: receipt ?? null };
+}
+
+type PaymentRow = {
+  payment: typeof payments.$inferSelect;
+  contract: typeof contracts.$inferSelect;
+  installment: typeof installments.$inferSelect | null;
+  recorder: string | null;
+};
+
+/** The invoice already standing for a whole stage, issued with its first part. */
+async function stageInvoice(installmentId: string) {
+  const [found] = await db
+    .select({ paper: issuedDocuments })
+    .from(issuedDocuments)
+    .innerJoin(payments, eq(payments.id, issuedDocuments.paymentId))
+    .where(
+      and(
+        eq(payments.installmentId, installmentId),
+        /* Only an invoice issued for a part: one issued for an older payment covers that payment alone. */
+        sql`${payments.partsTotal} is not null`,
+        eq(issuedDocuments.kind, "INVOICE"),
+        isNull(issuedDocuments.voidedAt),
+        isNull(issuedDocuments.creditedById),
+      ),
+    )
+    .orderBy(asc(issuedDocuments.createdAt))
+    .limit(1);
+  return found?.paper ?? null;
+}
+
+async function issueForPart(
+  row: PaymentRow,
+  parties: NonNullable<Awaited<ReturnType<typeof partiesOf>>>,
+  standing: Awaited<ReturnType<typeof standingOf>>,
+  already: IssuedPair,
+  who: { id?: string | null; name?: string | null } | null,
+): Promise<IssuedPair> {
+  const installment = row.installment!;
+  const model = modelOf(row.contract);
+  const stage = installment.label ?? "Payment";
+  const userId = who?.id ?? row.payment.recordedById ?? null;
+
+  /* The whole stage, as the schedule has it, and any credit from the reduced VAT on it. */
+  const stageCents = toCents(installment.totalAmount);
+  const credits = await db
+    .select({ id: payments.id, amount: payments.amount })
+    .from(payments)
+    .where(and(eq(payments.installmentId, installment.id), eq(payments.kind, "CREDIT"), sql`${payments.amount} > 0`));
+  const creditCents = credits.reduce((sum, one) => sum + toCents(one.amount), 0);
+  const split = splitGross(stageCents, { netCents: toCents(installment.netAmount), vatCents: toCents(installment.vatAmount) }, model);
+  const rate = split.netCents > 0 ? Math.round((split.vatCents / split.netCents) * 100 * 1000) / 1000 : model.rate;
+
+  /* What has come in against the stage up to and including this part. */
+  const [came] = await db
+    .select({ paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.installmentId, installment.id),
+        eq(payments.kind, "PAYMENT"),
+        or(
+          lt(payments.createdAt, row.payment.createdAt),
+          eq(payments.id, row.payment.id),
+        ),
+      ),
+    );
+  const paidCents = toCents(came?.paid ?? "0") + creditCents;
+  const remainingCents = Math.max(0, stageCents - paidCents);
+  const cashCents = toCents(row.payment.amount);
+
+  let invoice = already.invoice ?? (await stageInvoice(installment.id));
+  const invoiceNumber = invoice?.number ?? (await nextInvoiceNumber(parties.company.issuerId ?? ""));
+
+  const snapshot: IssuedSnapshot = {
+    company: parties.company,
+    client: parties.client,
+    contractReference: row.contract.reference ?? "",
+    property: parties.property,
+    stage,
+    description: `${stage}${parties.property ? `, ${parties.property}` : ""}${
+      row.contract.reference ? `, contract ${row.contract.reference}` : ""
+    }`,
+    paidOn: new Date(row.payment.paidOn).toISOString(),
+    issuedOn: new Date(row.payment.paidOn).toISOString(),
+    method: row.payment.method ?? "",
+    methodName:
+      row.payment.method && isCustom(row.payment.method) ? await englishWord("paymentMethod", row.payment.method) : undefined,
+    reference: row.payment.reference ?? "",
+    netCents: split.netCents,
+    vatCents: split.vatCents,
+    totalCents: stageCents,
+    rate,
+    parts: split.parts,
+    creditAppliedCents: creditCents || undefined,
+    payableCents: creditCents ? stageCents - creditCents : undefined,
+    ...standing,
+    invoiceNumber,
+    receiptNumber: row.payment.receiptNumber ?? "",
+    recordedBy: row.recorder ?? who?.name ?? "",
+  };
+
+  const base = {
+    issuerId: parties.company.issuerId ?? "",
+    paymentId: row.payment.id,
+    contractId: row.contract.id,
+    clientId: row.contract.clientId ?? null,
+    vatRate: rate.toFixed(3),
+    issuedOn: new Date(row.payment.paidOn),
+  };
+
+  if (!invoice) {
+    const name = paperName("Invoice", invoiceNumber, stage, parties.place);
+    const documentId = await keepPdf(await invoicePdf(snapshot), `${name}.pdf`, name, "INVOICE", row.contract.id, userId);
+    [invoice] = await db
+      .insert(issuedDocuments)
+      .values({
+        ...base,
+        kind: "INVOICE",
+        number: invoiceNumber,
+        documentId,
+        netAmount: fromCents(split.netCents),
+        vatAmount: fromCents(split.vatCents),
+        totalAmount: fromCents(stageCents),
+        snapshot: JSON.stringify(snapshot),
+      })
+      .returning();
+    if (credits.length > 0) {
+      await db.update(payments).set({ invoicedById: invoice.id }).where(inArray(payments.id, credits.map((one) => one.id)));
+    }
+  }
+
+  let receipt = already.receipt;
+  const receiptNumber = row.payment.receiptNumber ?? "";
+  if (!receipt && receiptNumber) {
+    let number = receiptNumber;
+    for (let n = 0; n < 26; n++) {
+      const [taken] = await db
+        .select({ id: issuedDocuments.id })
+        .from(issuedDocuments)
+        .where(and(eq(issuedDocuments.kind, "RECEIPT"), eq(issuedDocuments.issuerId, parties.company.issuerId ?? ""), eq(issuedDocuments.number, number)))
+        .limit(1);
+      if (!taken) break;
+      number = `${receiptNumber}${String.fromCharCode(65 + n)}`;
+    }
+    const cashNet = stageCents > 0 ? Math.round((cashCents * split.netCents) / stageCents) : cashCents;
+    const receiptSnapshot: IssuedSnapshot = {
+      ...snapshot,
+      receiptNumber: number,
+      invoiceNumber,
+      totalCents: cashCents,
+      netCents: cashNet,
+      vatCents: cashCents - cashNet,
+      creditAppliedCents: undefined,
+      payableCents: undefined,
+      againstInvoice: {
+        number: invoiceNumber,
+        totalCents: stageCents,
+        paidCents,
+        remainingCents,
+        part: row.payment.partNumber ?? undefined,
+        parts: row.payment.partsTotal ?? undefined,
+      },
+    };
+    const name = paperName("Receipt", number, stage, parties.place);
+    const documentId = await keepPdf(await receiptPdfFrom(receiptSnapshot), `${name}.pdf`, name, "RECEIPT", row.contract.id, userId);
     [receipt] = await db
       .insert(issuedDocuments)
       .values({
@@ -572,6 +770,11 @@ export async function paperAttachment(paper: typeof issuedDocuments.$inferSelect
 /** The PDF files of one payment's papers, for a letter. */
 export async function issuedAttachments(paymentId: string): Promise<Attachment[]> {
   const pair = await issuedFor(paymentId);
+  /* A later part of a stage: its receipt is against the invoice issued with the first part. */
+  if (!pair.invoice && pair.receipt?.invoiceId) {
+    const [against] = await db.select().from(issuedDocuments).where(eq(issuedDocuments.id, pair.receipt.invoiceId)).limit(1);
+    if (against && !against.voidedAt) pair.invoice = against;
+  }
   const out: Attachment[] = [];
   for (const paper of [pair.invoice, pair.receipt]) {
     if (!paper) continue;

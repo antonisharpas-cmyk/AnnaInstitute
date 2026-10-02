@@ -4,6 +4,8 @@ import { useActionState, useEffect, useState } from "react";
 import { humanLabel } from "@/lib/fileLabels";
 import { updateClient } from "../actions";
 import SourceAgentFields from "@/components/SourceAgentFields";
+import DateField from "@/components/DateField";
+import { birthdayText } from "@/lib/buyers";
 
 export type ClientRecord = {
   id: string;
@@ -20,6 +22,7 @@ export type ClientRecord = {
   source: string;
   agentId?: string | null;
   notes: string | null;
+  birthDate?: string | null;
 };
 
 type State = { ok: true } | { error: string } | null;
@@ -103,6 +106,8 @@ export default function PersonalInfo({
     noMatch: string;
     notes: string;
     notRecorded: string;
+    birthDate: string;
+    birthDateHint: string;
   };
 }) {
   const word = (list: { value: string; label: string }[], value: string | null) =>
@@ -137,6 +142,7 @@ export default function PersonalInfo({
           <Row label={labels.phone} value={client.phone ?? ""} />
           <Row label={labels.idType} value={word(idTypes, client.idType)} />
           <Row label={labels.idNumber} value={client.idNumber ?? ""} />
+          <Row label={labels.birthDate} value={birthdayText(client.birthDate)} />
           {client.vatNumber ? <Row label={labels.vatNumber} value={client.vatNumber} /> : null}
           <Row label={labels.country} value={client.country ?? ""} />
           <Row label={labels.address} value={client.address ?? ""} />
@@ -186,6 +192,15 @@ export default function PersonalInfo({
         </div>
 
         <Field label={labels.idNumber} name="idNumber" defaultValue={client.idNumber ?? ""} />
+        <div className="flex flex-wrap items-center gap-2 border-b border-brand-line py-2">
+          <label className="label !mb-0 w-44 shrink-0" htmlFor="birthDate">
+            {labels.birthDate}
+          </label>
+          <div className="max-w-sm flex-1">
+            <DateField id="birthDate" name="birthDate" defaultValue={client.birthDate ?? ""} />
+            <p className="mt-1 text-xs text-brand-graphite/60">{labels.birthDateHint}</p>
+          </div>
+        </div>
         <Field label={labels.vatNumber} name="vatNumber" defaultValue={client.vatNumber ?? ""} />
         <Field label={labels.country} name="country" defaultValue={client.country ?? ""} />
         <Field label={labels.address} name="address" defaultValue={client.address ?? ""} />

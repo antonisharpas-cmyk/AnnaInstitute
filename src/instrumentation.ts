@@ -27,6 +27,14 @@ export async function register() {
   /* The edge runtime has no timers worth having and no database at all. */
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  /*
+    The office's own clock. Every day and time in the CRM is read in the time
+    of the server, and a server abroad, Render's for one, runs on UTC, which
+    put a ten o'clock appointment at seven and started "today" three hours
+    late. Cyprus time unless TZ is set to something else on purpose.
+  */
+  if (!process.env.TZ) process.env.TZ = "Europe/Nicosia";
+
   /* Nothing to schedule during a build. */
   if (process.env.NEXT_PHASE === "phase-production-build") return;
 

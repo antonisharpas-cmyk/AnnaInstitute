@@ -268,6 +268,21 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "follow ups with clients, agents and anybody else",
     migration: "0041",
   },
+  {
+    probe: "select 'CANCELLED'::follow_up_status",
+    what: "a follow up that was cancelled",
+    migration: "0042",
+  },
+  {
+    probe: "select birth_date, second_first_name, loan_email from clients limit 1",
+    what: "birthdays, a second buyer and a bank loan",
+    migration: "0043",
+  },
+  {
+    probe: "select parts_total, cc_emails from payments limit 1",
+    what: "a stage paid in parts, and email copies",
+    migration: "0043",
+  },
 ];
 
 let answer: Missing[] | null = null;

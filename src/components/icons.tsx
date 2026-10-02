@@ -222,6 +222,14 @@ export const IconCalendar = (p: Props) => (
   </Svg>
 );
 
+/** The month view: a page of days with the current one marked. */
+export const IconMonth = (p: Props) => (
+  <Svg {...p}>
+    <path d="M3 5h18v16H3zM3 9h18M7 2.5v4M17 2.5v4M7 13h2M11 13h2M15 13h2M7 17h2M11 17h2" />
+    <circle cx="16" cy="17" r="1.6" />
+  </Svg>
+);
+
 export const IconFollowUp = (p: Props) => (
   <Svg {...p}>
     <path d="M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16M12 9v4l2.5 2M9 2h6" />
@@ -247,6 +255,7 @@ export const IconChevron = (p: Props) => (
 );
 
 export const SECTION_ICONS: Record<string, (p: Props) => React.ReactElement> = {
+  "/calendar": IconMonth,
   "/appointments": IconCalendar,
   "/follow-ups": IconFollowUp,
   "/team": IconTeam,

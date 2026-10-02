@@ -152,7 +152,7 @@ export default async function NewSubownerPage() {
                 <label className="label" htmlFor="logo">
                   {t("subowners.logo")}
                 </label>
-                <input id="logo" name="logo" type="file" accept="image/png,image/jpeg" className="text-sm" />
+                <input id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="text-sm" />
               </div>
               </div>
             </fieldset>

@@ -29,10 +29,15 @@ import { clientFileLabel } from "@/lib/fileLabels";
 import { dayAndTime } from "@/lib/when";
 import { clientHistory } from "@/lib/clientHistory";
 import ClientHistory from "@/components/ClientHistory";
+import ClientFollowUps from "@/components/ClientFollowUps";
+import { followUpsForClient } from "@/lib/followUps";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
 import PersonalInfo from "./PersonalInfo";
+import { LoanCard, SecondBuyerCard } from "./BuyerCards";
+import { extrasLabels } from "@/lib/buyerLabels";
+import { buyersName, hasSecondBuyer, mainName, secondName } from "@/lib/buyers";
 import DocumentUpload from "@/components/DocumentUpload";
 import { undoConversion } from "../../leads/actions";
 import {
@@ -59,7 +64,7 @@ const statusTone = (status: string) =>
 /** The six kinds, in the order the office listed them. */
 
 /** The parts of a client, one at a time, apartments first. */
-const TABS = ["apartments", "contracts", "appointments", "documents", "history"] as const;
+const TABS = ["apartments", "contracts", "appointments", "followups", "documents", "history"] as const;
 
 export default async function ClientPage({
   params,
@@ -94,6 +99,7 @@ export default async function ClientPage({
       apartment: t("clients.history.apartment"),
       contract: t("clients.history.contract"),
       appointment: t("clients.history.appointment"),
+      followUp: t("clients.history.followUp"),
       payment: t("clients.history.payment"),
       paper: t("clients.history.paper"),
       email: t("clients.history.email"),
@@ -101,6 +107,20 @@ export default async function ClientPage({
     },
   };
   const fromLead = leadRows[0];
+  const buyerCardLabels = {
+    ...extrasLabels(t),
+    edit: t("clients.edit"),
+    save: t("common.save"),
+    cancel: t("common.cancel"),
+    secondTitle: t("clients.second.title"),
+    secondAdd: t("clients.second.add"),
+    secondRemove: t("clients.second.remove"),
+    secondNone: t("clients.second.none"),
+    loanTitle: t("clients.loan.title"),
+    loanNone: t("clients.loan.none"),
+    loanYes: t("clients.loan.yes"),
+    sure: t("remove.sure"),
+  };
 
   const [assigned, choices, theirDocuments, enquiryNotes] = await Promise.all([
     apartmentsByClient([id]),
@@ -135,7 +155,11 @@ export default async function ClientPage({
 
   /* Where the office is meeting them, what came of the last one, and who is
      free to be given the next one. */
-  const [meetings, team] = await Promise.all([appointmentsForClient(id), whoCanGo()]);
+  const [meetings, team, theirFollowUps] = await Promise.all([
+    appointmentsForClient(id),
+    whoCanGo(),
+    tab === "followups" ? followUpsForClient(id) : Promise.resolve([]),
+  ]);
   const everyKind = await optionsFor("appointmentType", t, { everything: true });
   const activeKinds = new Set((await optionsFor("appointmentType", t)).map((one) => one.value));
 
@@ -201,7 +225,7 @@ export default async function ClientPage({
   const PAPERS: Record<string, string[]> = { RECEIPT: ["RECEIPT", "INVOICE", "CREDIT_NOTE", "REFUND_ACK"] };
   const byCategory = (category: string) =>
     theirDocuments
-      .filter((row) => (PAPERS[category] ?? [category]).includes(row.document.category))
+      .filter((row) => category === "SECOND_BUYER" ? row.document.secondBuyer : !row.document.secondBuyer && (PAPERS[category] ?? [category]).includes(row.document.category))
       /* Newest first, by the moment it was filed. */
       .sort((a, b) => new Date(b.document.createdAt).getTime() - new Date(a.document.createdAt).getTime());
 
@@ -257,7 +281,7 @@ export default async function ClientPage({
         label={`${t("common.backTo")} ${t("clients.title").toLowerCase()}`}
       />
       <PageHeader
-        title={`${client.firstName} ${client.lastName}`}
+        title={buyersName(client)}
         subtitle={[
           client.email,
           client.phone,
@@ -329,6 +353,7 @@ export default async function ClientPage({
             source: shownCode(client.source, client.sourceChoice),
             agentId: client.agentId,
             notes: client.notes,
+            birthDate: client.birthDate,
           }}
           agents={(await db.select().from(agents).orderBy(asc(agents.name)))
             .filter((one) => one.isActive || one.id === client.agentId)
@@ -343,7 +368,7 @@ export default async function ClientPage({
             save: t("common.save"),
             cancel: t("common.cancel"),
             name: t("common.name"),
-            surname: "Surname",
+            surname: t("common.surname"),
             email: t("common.email"),
             phone: t("common.phone"),
             idType: t("clients.idType"),
@@ -358,8 +383,45 @@ export default async function ClientPage({
             noMatch: t("common.noMatch"),
             notes: t("common.notes"),
             notRecorded: t("clients.notRecorded"),
+            birthDate: t("clients.birthDate"),
+            birthDateHint: t("clients.birthDateHint"),
           }}
         />
+
+        {/* The second buyer, when the apartment is in two names, and the bank, when a loan pays. */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SecondBuyerCard
+            clientId={client.id}
+            values={{
+              secondFirstName: client.secondFirstName,
+              secondLastName: client.secondLastName,
+              secondEmail: client.secondEmail,
+              secondPhone: client.secondPhone,
+              secondIdType: client.secondIdType ? shownCode(client.secondIdType, client.secondIdTypeChoice) : null,
+              secondIdNumber: client.secondIdNumber,
+              secondAddress: client.secondAddress,
+              secondCountry: client.secondCountry,
+              secondBirthDate: client.secondBirthDate,
+              secondRelation: client.secondRelation,
+            }}
+            idTypes={await optionsFor("idType", t, {
+              current: client.secondIdType ? shownCode(client.secondIdType, client.secondIdTypeChoice) : null,
+            })}
+            labels={buyerCardLabels}
+          />
+          <LoanCard
+            clientId={client.id}
+            values={{
+              loan: client.loan,
+              loanBank: client.loanBank,
+              loanContact: client.loanContact,
+              loanEmail: client.loanEmail,
+              loanPhone: client.loanPhone,
+              loanNotes: client.loanNotes,
+            }}
+            labels={buyerCardLabels}
+          />
+        </div>
 
 
         {/* 5. Marketing consent, which is what the campaigns audience is built from. */}
@@ -870,6 +932,10 @@ export default async function ClientPage({
           </>
         ) : null}
 
+        {tab === "followups" ? (
+          <ClientFollowUps clientId={id} rows={theirFollowUps} team={team} locale={locale} t={t} />
+        ) : null}
+
         {tab === "documents" ? (
           <>
         {/* 4. Documents. The form is first, because adding is the common job. */}
@@ -881,6 +947,14 @@ export default async function ClientPage({
             <DocumentUpload
               action={uploadClientDocuments.bind(null, id)}
               idNumber={client.idNumber ?? ""}
+              people={
+                hasSecondBuyer(client)
+                  ? [
+                      { value: "1", label: mainName(client), idNumber: client.idNumber ?? "" },
+                      { value: "2", label: `${secondName(client)}, ${t("clients.second.title").toLowerCase()}`, idNumber: client.secondIdNumber ?? "" },
+                    ]
+                  : undefined
+              }
               apartments={contractSubjects.map((a) => ({
                 unitId: a.unitId,
                 code: a.code,
@@ -898,6 +972,7 @@ export default async function ClientPage({
                 choose: t("clients.chooseApartmentDoc"),
                 anyApartment: t("clients.anyApartment"),
                 search: t("clients.searchPlaceholder"),
+                whose: t("clients.second.whose"),
               }}
             />
           </div>
@@ -907,6 +982,12 @@ export default async function ClientPage({
           {documentSection(t("clients.docsReceipts"), "RECEIPT")}
           {documentSection(t("clients.docsChanges"), "CHANGE_REQUEST")}
           {documentSection(t("clients.docsOther"), "OTHER")}
+          {hasSecondBuyer(client) || theirDocuments.some((row) => row.document.secondBuyer)
+            ? documentSection(
+                `${t("clients.second.docs")}${hasSecondBuyer(client) ? `, ${secondName(client)}` : ""}`,
+                "SECOND_BUYER",
+              )
+            : null}
         </Card>
           </>
         ) : null}

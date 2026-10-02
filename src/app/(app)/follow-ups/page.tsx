@@ -40,7 +40,7 @@ export default async function FollowUpsPage({
   const when = VIEWS.includes((params.when ?? "") as (typeof VIEWS)[number])
     ? (params.when as string)
     : "all";
-  const status = params.status ?? (when === "all" ? "PENDING" : "");
+  const status = params.status ?? "";
   const assignedTo = params.assignedTo ?? "";
 
   const [rows, counts, team, people] = await Promise.all([
@@ -139,6 +139,7 @@ export default async function FollowUpsPage({
               <option value="">{t("common.all")}</option>
               <option value="PENDING">{t("leads.followUpPending")}</option>
               <option value="DONE">{t("leads.followUpDone")}</option>
+              <option value="CANCELLED">{t("appointments.cancelled")}</option>
             </select>
           </div>
           <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
@@ -171,7 +172,7 @@ export default async function FollowUpsPage({
                 {t("appointments.assignTo")}
               </label>
               <select id="followUpAssigned" name="assignedToId" className="select" defaultValue="">
-                <option value="">{t("followUps.leadsOwn")}</option>
+                <option value="">{t("appointments.nobody")}</option>
                 {team.map((member) => (
                   <option key={member.id} value={member.id}>
                     {member.name}
@@ -265,15 +266,21 @@ export default async function FollowUpsPage({
                       <td>
                         <Pill
                           tone={
-                            followUp.status === "DONE" ? "good" : late(followUp) ? "bad" : "warn"
+                            followUp.status === "DONE"
+                              ? "good"
+                              : followUp.status === "CANCELLED" || late(followUp)
+                                ? "bad"
+                                : "warn"
                           }
                         >
                           {t(
                             followUp.status === "DONE"
                               ? "leads.followUpDone"
-                              : late(followUp)
-                                ? "followUps.late"
-                                : "leads.followUpPending",
+                              : followUp.status === "CANCELLED"
+                                ? "appointments.cancelled"
+                                : late(followUp)
+                                  ? "followUps.late"
+                                  : "leads.followUpPending",
                           )}
                         </Pill>
                       </td>
@@ -284,17 +291,27 @@ export default async function FollowUpsPage({
                               null,
                               followUp.id,
                               lead?.id ?? null,
-                              followUp.status === "DONE" ? "PENDING" : "DONE",
+                              followUp.status === "PENDING" ? "DONE" : "PENDING",
                             )}
                           >
                             <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
                               {t(
-                                followUp.status === "DONE"
-                                  ? "leads.followUpReopen"
-                                  : "leads.followUpMarkDone",
+                                followUp.status === "PENDING"
+                                  ? "leads.followUpMarkDone"
+                                  : "leads.followUpReopen",
                               )}
                             </SubmitButton>
                           </form>
+                          {followUp.status === "PENDING" ? (
+                            <form
+                              action={setFollowUpStatus.bind(null, followUp.id, lead?.id ?? null, "CANCELLED")}
+                              data-follow-up-cancel
+                            >
+                              <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                                {t("followUps.cancel")}
+                              </SubmitButton>
+                            </form>
+                          ) : null}
                           <ConfirmButton
                             action={deleteFollowUp.bind(null, followUp.id, lead?.id ?? null)}
                             label={t("common.delete")}

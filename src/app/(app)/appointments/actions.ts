@@ -22,6 +22,7 @@ import { flash } from "@/lib/flash";
 /** Where everything that shows appointments has to be redrawn. */
 async function redraw(clientId: string | null, leadId: string | null) {
   revalidatePath("/appointments");
+  revalidatePath("/calendar");
   if (clientId) revalidatePath(`/clients/${clientId}`);
   if (leadId) revalidatePath(`/leads/${leadId}`);
 }
@@ -342,6 +343,7 @@ export async function addTeamMember(formData: FormData) {
   await flash("said.teamAdded");
   revalidatePath("/team");
   revalidatePath("/appointments");
+  revalidatePath("/calendar");
 }
 
 export async function updateTeamMember(memberId: string, formData: FormData) {
@@ -376,6 +378,7 @@ export async function updateTeamMember(memberId: string, formData: FormData) {
   await flash("said.saved");
   revalidatePath("/team");
   revalidatePath("/appointments");
+  revalidatePath("/calendar");
 }
 
 /**
@@ -406,4 +409,5 @@ export async function deleteTeamMember(memberId: string) {
   await flash("said.deleted");
   revalidatePath("/team");
   revalidatePath("/appointments");
+  revalidatePath("/calendar");
 }

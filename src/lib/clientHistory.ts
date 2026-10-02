@@ -40,6 +40,7 @@ export type HistoryKind =
   | "apartment"
   | "contract"
   | "appointment"
+  | "followUp"
   | "payment"
   | "paper"
   | "email"
@@ -141,25 +142,9 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
   }
 
   if (leadIds.length > 0) {
-    const [notes, followUps] = await Promise.all([
-      db.select().from(leadNotes).where(inArray(leadNotes.leadId, leadIds)),
-      db.select().from(leadFollowUps).where(inArray(leadFollowUps.leadId, leadIds)),
-    ]);
+    const notes = await db.select().from(leadNotes).where(inArray(leadNotes.leadId, leadIds));
     for (const note of notes) {
       push({ id: `note-${note.id}`, at: note.createdAt, kind: "lead", title: "Note", note: note.body });
-    }
-    for (const follow of followUps) {
-      push({
-        id: `follow-${follow.id}`,
-        at: follow.createdAt,
-        kind: "lead",
-        title: `Follow up planned for ${new Date(follow.at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}`,
-        note: follow.note,
-        status: follow.status === "DONE" ? { label: "Done", tone: "good" } : { label: "Pending", tone: "warn" },
-      });
-      if (follow.doneAt) {
-        push({ id: `follow-done-${follow.id}`, at: follow.doneAt, kind: "lead", title: "Follow up done", note: follow.note, status: { label: "Done", tone: "good" } });
-      }
     }
   }
 
@@ -186,7 +171,7 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
         break;
       }
       case "lead.assigned":
-        push({ ...base, kind: "lead", title: `Lead assigned to ${row.detail ?? "nobody"}` });
+        push({ ...base, kind: "lead", title: `Team member assigned: ${row.detail ?? "nobody yet"}` });
         break;
       case "lead.converted":
         push({ ...base, kind: "client", title: "Became a client", status: { label: "Client", tone: "teal" } });
@@ -359,6 +344,34 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
           : meeting.status === "MISSED"
             ? { label: "Cancelled", tone: "bad" }
             : { label: "Pending", tone: "warn" },
+    });
+  }
+
+  /* 4b. Follow ups, with the client or with the lead before them, on the day
+     they are for, like the appointments. */
+  const follows = await db
+    .select({ follow: leadFollowUps, member: teamMembers })
+    .from(leadFollowUps)
+    .leftJoin(teamMembers, eq(teamMembers.id, leadFollowUps.assignedToId))
+    .where(
+      leadIds.length > 0
+        ? or(eq(leadFollowUps.clientId, clientId), inArray(leadFollowUps.leadId, leadIds))
+        : eq(leadFollowUps.clientId, clientId),
+    );
+  for (const { follow, member } of follows) {
+    push({
+      id: `follow-${follow.id}`,
+      at: follow.at,
+      kind: "followUp",
+      title: `Follow up${follow.leadId ? ", while a lead" : ""}`,
+      note: [follow.note, member ? `With ${member.name}` : null].filter(Boolean).join(". ") || null,
+      status:
+        follow.status === "DONE"
+          ? { label: "Done", tone: "good" }
+          : follow.status === "CANCELLED"
+            ? { label: "Cancelled", tone: "bad" }
+            : { label: "Pending", tone: "warn" },
+      href: `/clients/${clientId}?tab=followups`,
     });
   }
 

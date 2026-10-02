@@ -58,10 +58,16 @@ export default function DocumentUpload({
   idNumber,
   apartments,
   fixed,
+  people,
   labels,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   idNumber: string;
+  /**
+   * The buyer and the second buyer, when the apartment is in two names: the
+   * file is filed as one of theirs, and an ID number goes on that person.
+   */
+  people?: { value: string; label: string; idNumber: string }[];
   apartments: ApartmentChoice[];
   /** The one apartment this block files against, when there is no choice. */
   fixed?: { unitId: string; label: string } | null;
@@ -77,9 +83,12 @@ export default function DocumentUpload({
     choose: string;
     anyApartment: string;
     search: string;
+    whose?: string;
   };
 }) {
   const [category, setCategory] = useState("");
+  const [person, setPerson] = useState(people?.[0]?.value ?? "1");
+  const numberOf = people?.find((one) => one.value === person)?.idNumber ?? idNumber;
   const [unitId, setUnitId] = useState(fixed?.unitId ?? "");
   const [picking, setPicking] = useState(false);
   const [term, setTerm] = useState("");
@@ -106,6 +115,27 @@ export default function DocumentUpload({
   return (
     <form action={action} className="grid gap-3 sm:grid-cols-2">
       <input type="hidden" name="unitId" value={kind?.needsApartment ? unitId : ""} />
+
+      {people && people.length > 1 ? (
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="docPerson">
+            {labels.whose}
+          </label>
+          <select
+            id="docPerson"
+            name="person"
+            value={person}
+            onChange={(event) => setPerson(event.target.value)}
+            className="select sm:max-w-sm"
+          >
+            {people.map((one) => (
+              <option key={one.value} value={one.value}>
+                {one.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       <div>
         <label className="label" htmlFor="docCategory">
@@ -138,9 +168,10 @@ export default function DocumentUpload({
             {labels.number}
           </label>
           <input
+            key={person}
             id="docIdNumber"
             name="idNumber"
-            defaultValue={idNumber}
+            defaultValue={numberOf}
             className="input"
             placeholder="AB1234567"
           />

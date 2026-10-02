@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { keyFromRequest, touchApiKey } from "@/lib/apiKeys";
 import { sendDailySummary, summaryIsDue } from "@/lib/appointmentSummary";
-import { sendAppointmentReminders } from "@/lib/automaticEmails";
+import { sendAppointmentReminders, sendBirthdayWishes } from "@/lib/automaticEmails";
 import { readSettings } from "@/lib/settings";
 
 /**
@@ -72,8 +72,16 @@ export async function POST(request: Request) {
     /* A reminder that fails is recorded as failed where it failed. */
   }
 
+  /* Birthday wishes ride on it too: from nine in the morning, each once a year. */
+  let birthdays = { sent: 0, looked: 0 };
+  try {
+    birthdays = await sendBirthdayWishes({ byHand: !onlyIfDue });
+  } catch {
+    /* Recorded where it failed. */
+  }
+
   if (onlyIfDue && !(await summaryIsDue())) {
-    return NextResponse.json({ ok: true, skipped: true, reminders });
+    return NextResponse.json({ ok: true, skipped: true, reminders, birthdays });
   }
 
   const outcomes = await sendDailySummary({ byHand: !onlyIfDue });
@@ -84,5 +92,6 @@ export async function POST(request: Request) {
     of: outcomes.length,
     outcomes,
     reminders,
+    birthdays,
   });
 }

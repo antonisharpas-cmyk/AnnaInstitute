@@ -101,6 +101,16 @@
   --pill-bg: #f4f7f9;
   --pill-border: #e2e7ec;
   --pill-ink: #4a5765;
+  /* The calendar: yellow still to happen, green done, red cancelled. */
+  --cal-pending-bg: #fff3bf;
+  --cal-pending-bar: #e2b203;
+  --cal-pending-ink: #6b5200;
+  --cal-done-bg: #dcf2e3;
+  --cal-done-bar: #2f8f5b;
+  --cal-done-ink: #1c5e39;
+  --cal-cancelled-bg: #fbdedd;
+  --cal-cancelled-bar: #c0392b;
+  --cal-cancelled-ink: #7f2620;
   --good-bg: #e9f6ee;
   --good-border: #c3e5d1;
   --good-ink: #1c6b40;
@@ -151,6 +161,15 @@
   --pill-bg: #1e2429;
   --pill-border: #2d343a;
   --pill-ink: #b9c2ca;
+  --cal-pending-bg: #3a3112;
+  --cal-pending-bar: #e2b203;
+  --cal-pending-ink: #f3d77a;
+  --cal-done-bg: #15301f;
+  --cal-done-bar: #3fae72;
+  --cal-done-ink: #93d9b0;
+  --cal-cancelled-bg: #3a1c1a;
+  --cal-cancelled-bar: #e0574a;
+  --cal-cancelled-ink: #f0a59d;
   --good-bg: #14271d;
   --good-border: #24503a;
   --good-ink: #86cfa6;
@@ -2948,4 +2967,114 @@ table.data thead th[data-sorted] {
 .receiptline dd {
   font-weight: 600;
   text-align: right;
+}
+
+/* ---------------------------------------------------------------------------
+   The calendar
+   --------------------------------------------------------------------------- */
+.cal-day {
+  min-height: 3.6rem;
+  padding: 0.3rem;
+  border-right: 1px solid var(--color-brand-line);
+  border-bottom: 1px solid var(--color-brand-line);
+  cursor: pointer;
+  outline: none;
+  min-width: 0;
+}
+.cal-day:nth-child(7n) {
+  border-right: 0;
+}
+@media (min-width: 640px) {
+  .cal-day {
+    min-height: 7.5rem;
+  }
+}
+.cal-day:hover {
+  background: var(--color-brand-surface);
+}
+.cal-day:focus-visible,
+.cal-chosen {
+  box-shadow: inset 0 0 0 2px var(--color-brand-teal);
+}
+.cal-outside {
+  background: var(--color-brand-surface);
+  opacity: 0.55;
+}
+.cal-number {
+  display: inline-flex;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-brand-ink);
+}
+.cal-today {
+  background: var(--color-brand-teal);
+  color: var(--on-teal);
+}
+.cal-dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--cal-bar);
+}
+.cal-chip {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-left: 3px solid var(--cal-bar);
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  background: var(--cal-bg);
+  color: var(--cal-ink);
+}
+.cal-chip:hover {
+  filter: brightness(0.96);
+}
+.cal-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-left: 4px solid var(--cal-bar);
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+  background: var(--cal-bg);
+  color: var(--cal-ink);
+}
+.cal-status {
+  border-radius: 999px;
+  border: 1px solid var(--cal-bar);
+  padding: 0.05rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.cal-key {
+  border-left: 4px solid var(--cal-bar);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  background: var(--cal-bg);
+  color: var(--cal-ink);
+  font-weight: 600;
+}
+.cal-pending {
+  --cal-bg: var(--cal-pending-bg);
+  --cal-bar: var(--cal-pending-bar);
+  --cal-ink: var(--cal-pending-ink);
+}
+.cal-done {
+  --cal-bg: var(--cal-done-bg);
+  --cal-bar: var(--cal-done-bar);
+  --cal-ink: var(--cal-done-ink);
+}
+.cal-cancelled {
+  --cal-bg: var(--cal-cancelled-bg);
+  --cal-bar: var(--cal-cancelled-bar);
+  --cal-ink: var(--cal-cancelled-ink);
 }
