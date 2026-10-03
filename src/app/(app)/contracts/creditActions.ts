@@ -64,25 +64,28 @@ export async function approveReducedVatAction(contractId: string, formData: Form
 export async function recordRefundAction(contractId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const purpose = String(formData.get("purpose") ?? "") === "PENALTY" ? "PENALTY" : "REFUND";
-  const amountCents = cents(formData.get("amount"));
-  if (amountCents <= 0) {
+  /* Nothing paid back: ticked, or a zero typed in. Then there is no date, method or reference of a payment. */
+  const typed = String(formData.get("amount") ?? "").trim();
+  const nothing = formData.get("nothingBack") === "on" || /^[\s€]*0+([.,]0*)?[\s€]*$/.test(typed);
+  const amountCents = nothing ? 0 : cents(typed);
+  if (!nothing && !(amountCents > 0)) {
     await flash("said.refundNeedsAmount", "bad");
     revalidatePath(`/contracts/${contractId}`);
     return;
   }
-  const day = String(formData.get("paidOn") ?? "").trim();
+  const day = nothing ? "" : String(formData.get("paidOn") ?? "").trim();
   await recordRefund({
     contractId,
     purpose,
     amountCents,
     paidOn: day ? new Date(`${day}T12:00:00`) : new Date(),
-    method: String(formData.get("method") ?? "") || null,
-    reference: String(formData.get("reference") ?? "").trim() || null,
+    method: nothing ? null : String(formData.get("method") ?? "") || null,
+    reference: nothing ? null : String(formData.get("reference") ?? "").trim() || null,
     note: String(formData.get("note") ?? "").trim() || null,
     cancelContract: formData.get("cancelContract") === "on",
     who: { id: user.id, name: user.name, email: user.email },
   });
-  await flash("said.refundRecorded");
+  await flash(nothing ? "said.refundNothingRecorded" : "said.refundRecorded");
   revalidatePath(`/contracts/${contractId}`);
   revalidatePath("/invoices/clients");
 }

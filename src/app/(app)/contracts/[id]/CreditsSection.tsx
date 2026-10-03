@@ -8,6 +8,7 @@ import { refundsFor } from "@/lib/refunds";
 import { dayAndTime } from "@/lib/when";
 import { Card, Empty, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
+import RefundMoneyFields from "./RefundMoneyFields";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import {
@@ -235,14 +236,14 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                       ) : null}
                       {refund.note ? <div className="text-brand-graphite/60">{refund.note}</div> : null}
                     </td>
-                    <td className="ctr">{money(amountCents)}</td>
+                    <td className="ctr">{amountCents === 0 ? <Pill tone="neutral">{t("credits.nothingShort")}</Pill> : money(amountCents)}</td>
                     <td className="text-xs">
                       {note?.documentId ? (
                         <a href={`/api/files/${note.documentId}`} target="_blank" rel="noreferrer" className="font-semibold text-brand-teal-dark hover:underline">
                           {note.number}
                         </a>
                       ) : (
-                        (note?.number ?? "")
+                        (note?.number ?? (amountCents === 0 ? <span className="text-brand-graphite/60">{t("credits.noCreditNote")}</span> : ""))
                       )}
                     </td>
                     <td className="text-xs">
@@ -292,36 +293,18 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                 <option value="REFUND">{t("issued.purpose.REFUND")}</option>
               </select>
             </div>
-            <div>
-              <label className="label" htmlFor="refundAmount">
-                {t("credits.amountWithVat")}
-              </label>
-              <input id="refundAmount" name="amount" inputMode="decimal" required className="input" placeholder="3000" />
-            </div>
-            <div>
-              <label className="label" htmlFor="refundPaidOn">
-                {t("credits.paidOn")}
-              </label>
-              <DateField id="refundPaidOn" name="paidOn" defaultValue={today} required />
-            </div>
-            <div>
-              <label className="label" htmlFor="refundMethod">
-                {t("contracts.method")}
-              </label>
-              <select id="refundMethod" name="method" className="select" defaultValue="BANK">
-                {methods.map((one) => (
-                  <option key={one.value} value={one.value}>
-                    {one.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="refundReference">
-                {t("contracts.paymentReference")}
-              </label>
-              <input id="refundReference" name="reference" className="input" />
-            </div>
+            <RefundMoneyFields
+              today={today}
+              methods={methods}
+              labels={{
+                nothing: t("credits.nothingBack"),
+                nothingHint: t("credits.nothingBackHint"),
+                amount: t("credits.amountWithVat"),
+                paidOn: t("credits.paidOn"),
+                method: t("contracts.method"),
+                reference: t("contracts.paymentReference"),
+              }}
+            />
             <div>
               <label className="label" htmlFor="refundNote">
                 {t("credits.note")}

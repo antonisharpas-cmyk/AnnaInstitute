@@ -36,16 +36,16 @@ const ownNote = (campaign: Campaign) => `For the campaign "${campaign.title}"`;
  */
 async function scopeOf(campaign: Campaign): Promise<{ projectId: string | null; unitId: string | null; projectIds: string | null }> {
   const shown = idsOf(campaign.projectIds);
-  if (shown.length > 1) return { projectId: null, unitId: null, projectIds: JSON.stringify(shown) };
-  if (shown.length === 1) return { projectId: shown[0], unitId: null, projectIds: null };
-  /* About several: the price list shows every development they are in. */
   const about = aboutOf(campaign);
-  if (about.length > 1) {
-    const { projects } = await aboutFromChoices(about);
-    if (projects.length > 1) return { projectId: null, unitId: null, projectIds: JSON.stringify(projects) };
-    return { projectId: projects[0] ?? null, unitId: null, projectIds: null };
-  }
-  return { projectId: campaign.unitId ? null : campaign.projectId, unitId: campaign.unitId, projectIds: null };
+  /* About one apartment and showing no development: the list is about that apartment. */
+  if (shown.length === 0 && about.length <= 1 && campaign.unitId) return { projectId: null, unitId: campaign.unitId, projectIds: null };
+  /* Otherwise every development it shows and every development it is about, together.
+     A campaign started from one development and then about two more shows all of them. */
+  const aboutProjects = about.length > 0 ? (await aboutFromChoices(about)).projects : campaign.projectId ? [campaign.projectId] : [];
+  const all = [...new Set([...shown, ...aboutProjects])];
+  if (all.length > 1) return { projectId: null, unitId: null, projectIds: JSON.stringify(all) };
+  if (all.length === 1) return { projectId: all[0], unitId: null, projectIds: null };
+  return { projectId: null, unitId: null, projectIds: null };
 }
 
 export async function ensureCampaignLinks(campaign: Campaign, byEmail: string): Promise<Campaign> {

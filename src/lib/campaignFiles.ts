@@ -1,5 +1,8 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
+import { stat } from "node:fs/promises";
+import path from "node:path";
+import { resolveStored } from "./storage";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaignDocuments, campaigns, documents, shareLinks } from "@/db/schema";
@@ -79,4 +82,53 @@ export async function emailAttachments(campaignId: string) {
 
 export function filesUrl(token: string): string {
   return `${appUrl()}/files/${token}`;
+}
+
+/**
+ * How much an email of a campaign can carry.
+ *
+ * Mail servers refuse a letter much over 25 MB, and files grow by a third on
+ * the way, so the files an email carries are kept to 15 MB. A brochure,
+ * a specification and the drawings of four developments easily come to a
+ * hundred, and a campaign that tried to attach them all to every recipient
+ * spent minutes uploading each letter only to have it refused. What fits is
+ * attached, in order, and the rest reach the recipient by the campaign's files
+ * link, which the email then carries.
+ */
+export const EMAIL_FILES_LIMIT = 15 * 1024 * 1024;
+
+export type EmailFiles = {
+  attached: { filename: string; path: string; contentType?: string }[];
+  /** The files left out because they would not fit, by name. */
+  linked: string[];
+  /** All of them together, in bytes. */
+  totalBytes: number;
+};
+
+export async function emailFilesWithin(campaignId: string, limit = EMAIL_FILES_LIMIT): Promise<EmailFiles> {
+  const docs = await emailAttachments(campaignId);
+  const attached: EmailFiles["attached"] = [];
+  const linked: string[] = [];
+  let used = 0;
+  let totalBytes = 0;
+  for (const doc of docs) {
+    const where = resolveStored(doc.filePath);
+    let size = doc.sizeBytes ?? 0;
+    if (!size) {
+      try {
+        size = (await stat(where)).size;
+      } catch {
+        continue; /* Not on the disk: nothing to attach. */
+      }
+    }
+    totalBytes += size;
+    const name = doc.originalName ?? path.basename(doc.filePath);
+    if (used + size <= limit) {
+      used += size;
+      attached.push({ filename: name, path: where, contentType: doc.mimeType ?? undefined });
+    } else {
+      linked.push(name);
+    }
+  }
+  return { attached, linked, totalBytes };
 }

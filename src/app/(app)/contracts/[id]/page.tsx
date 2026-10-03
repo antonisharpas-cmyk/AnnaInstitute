@@ -83,6 +83,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
     schedule, and every list that shows the money says it too.
   */
   const paidInFull = totals.scheduleTotalCents > 0 && totals.outstandingCents <= 0;
+  /* Money given back to the buyer, by credit note: shown on the figures and in the schedule. */
+  const paidBack = totals.refundedCents > 0;
+  const shortDay = (value: Date) => new Date(value).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB");
 
   /*
     The cash part, when there is one: agreed, received, still to come, and the
@@ -137,7 +140,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className={`mb-4 grid gap-3 sm:grid-cols-3 ${paidBack ? "lg:grid-cols-6" : "lg:grid-cols-5"}`} data-contract-figures>
         <Stat
           label={
             contract.kind === "LAND_EXCHANGE"
@@ -150,8 +153,37 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           label={`${t("contracts.vat")} ${formatPercent(Number(contract.vatRate), locale)}`}
           value={formatAmount(totals.scheduleVatCents, locale)}
         />
-        <Stat label={t("common.total")} value={formatAmount(totals.scheduleTotalCents, locale)} />
-        <Stat label={t("contracts.paid")} value={formatAmount(totals.paidTotalCents, locale)} />
+        {/* Money paid back comes off the total (its credit note) and off what was paid. */}
+        <Stat
+          label={t("common.total")}
+          value={formatAmount(totals.totalAfterRefundsCents, locale)}
+          hint={
+            paidBack
+              ? t("refunds.totalHint")
+                  .replace("{total}", formatAmount(totals.scheduleTotalCents, locale))
+                  .replace("{back}", formatAmount(totals.refundedCents, locale))
+              : undefined
+          }
+        />
+        <Stat
+          label={t("contracts.paid")}
+          value={formatAmount(totals.paidAfterRefundsCents, locale)}
+          hint={
+            paidBack
+              ? t("refunds.paidHint")
+                  .replace("{received}", formatAmount(totals.paidTotalCents, locale))
+                  .replace("{back}", formatAmount(totals.refundedCents, locale))
+              : undefined
+          }
+        />
+        {paidBack ? (
+          <Stat
+            label={t("refunds.paidBack")}
+            value={formatAmount(totals.refundedCents, locale)}
+            tone="bad"
+            hint={t("refunds.paidBackHint").replace("{n}", String(detail.refunds.filter((one) => one.totalCents > 0).length))}
+          />
+        ) : null}
         <Stat label={t("dash.outstanding")} value={formatAmount(totals.outstandingCents, locale)} />
       </div>
 
@@ -166,7 +198,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           />
           <Stat
             label={t("contracts.receivedWithCash")}
-            value={formatAmount(totals.paidTotalCents + cash.receivedCents, locale)}
+            value={formatAmount(totals.paidAfterRefundsCents + cash.receivedCents, locale)}
           />
         </div>
       ) : null}
@@ -548,15 +580,59 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                     </tr>
                   );
                 })}
+                {/* What was paid back, under the stages it came from: the stages stay paid, this line takes it off. */}
+                {detail.refunds.map((back) => (
+                  <tr key={back.id} data-refund-row className="bg-[color-mix(in_srgb,var(--color-negative)_8%,transparent)]">
+                    <td className="ctr text-[color:var(--color-negative)]">↩</td>
+                    <td colSpan={2} className="text-sm">
+                      <span className="font-semibold">{back.totalCents === 0 ? t("refunds.nothingBack") : t("refunds.paidBack")}</span>
+                      {": "}
+                      {t(`issued.purpose.${back.purpose}` as "issued.purpose.REFUND")}, {shortDay(back.paidOn)}
+                      {back.creditNoteNumber ? (
+                        <>
+                          {", "}
+                          {back.creditNoteDocumentId ? (
+                            <a href={`/api/files/${back.creditNoteDocumentId}`} target="_blank" rel="noreferrer" className="text-brand-teal-dark hover:underline">
+                              {t("refunds.creditNote")} {back.creditNoteNumber}
+                            </a>
+                          ) : (
+                            `${t("refunds.creditNote")} ${back.creditNoteNumber}`
+                          )}
+                        </>
+                      ) : null}
+                      {back.cancelledContract ? <span className="ml-1 text-xs">({t("credits.reservationCancelled")})</span> : null}
+                      {back.note ? <span className="block text-xs text-brand-graphite/60">{back.note}</span> : null}
+                    </td>
+                    <td />
+                    {back.totalCents === 0 ? (
+                      <>
+                        <td />
+                        <td />
+                        <td className="ctr">
+                          <Pill tone="neutral">{t("credits.nothingShort")}</Pill>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="ctr text-[color:var(--color-negative)]">−{formatAmount(back.vatCents, locale)}</td>
+                        <td className="ctr text-[color:var(--color-negative)]">−{formatAmount(back.totalCents, locale)}</td>
+                        <td className="ctr">
+                          <Pill tone="bad">−{formatAmount(back.totalCents, locale)}</Pill>
+                        </td>
+                      </>
+                    )}
+                    <td />
+                  </tr>
+                ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4}>{t("common.total")}</td>
-                  <td className="ctr">{formatAmount(totals.scheduleVatCents, locale)}</td>
+                  <td colSpan={4}>{paidBack ? t("refunds.totalAfter") : t("common.total")}</td>
+                  <td className="ctr">{formatAmount(totals.scheduleVatCents - totals.refundedVatCents, locale)}</td>
                   <td className="ctr font-semibold">
-                    {formatAmount(totals.scheduleTotalCents, locale)}
+                    {formatAmount(totals.totalAfterRefundsCents, locale)}
                   </td>
-                  <td className="ctr">{formatAmount(totals.paidTotalCents, locale)}</td>
+                  <td className="ctr" data-schedule-paid>{formatAmount(totals.paidAfterRefundsCents, locale)}</td>
                   <td />
                 </tr>
               </tfoot>

@@ -72,6 +72,8 @@ export async function sendViaSmsTo(options: {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
+      /* A provider that never answers is a failure after half a minute, not a campaign stuck sending. */
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
         to: normalisePhone(options.to),
         message: options.body,

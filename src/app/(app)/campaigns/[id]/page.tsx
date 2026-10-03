@@ -1,3 +1,6 @@
+import KeepFresh from "./KeepFresh";
+import { runOf } from "@/lib/campaignProgress";
+import { emailFilesWithin } from "@/lib/campaignFiles";
 import AboutPicker from "@/components/AboutPicker";
 import { aboutOf } from "@/lib/campaignAbout";
 import { agentWay } from "@/lib/agentWay";
@@ -13,7 +16,7 @@ import { priceListUrl } from "@/lib/priceList";
 import { appUrl } from "@/lib/unsubscribe";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
-import { audienceFor, messagesForCampaign, saveCampaignTester, sendCampaign, sendCampaignTest, setCampaignAbout, setCampaignProjects } from "../actions";
+import { audienceFor, messagesForCampaign, saveCampaignTester, resumeCampaign, sendCampaign, sendCampaignTest, setCampaignAbout, setCampaignProjects } from "../actions";
 import { idsOf } from "@/lib/campaignProjects";
 import { campaignExtras, ensureCampaignLinks, unfilledIn, whatsappTest } from "@/lib/campaignTest";
 import { readSetting } from "@/lib/settings";
@@ -84,6 +87,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     (!campaign.viaEmail || emailConfigured()) &&
     (!campaign.viaWhatsapp || channelConfigured("WHATSAPP"));
   const alreadySent = campaign.status !== "DRAFT";
+  /* Sending now in this CRM, and how far; and what an email of it carries. */
+  const running = runOf(id);
+  const emailFiles = await emailFilesWithin(id);
 
   /* Trying it on yourself: the email to your inbox, the WhatsApp opened ready to send to your own number. */
   const testTo = (await readSetting("emails.testAddress")).trim();
@@ -418,7 +424,33 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
         <div className="space-y-4">
           <Card title="Send">
-            {alreadySent ? (
+            {campaign.status === "SENDING" ? (
+              /* Sending in the background: how far it has got, or a way to carry on. */
+              <div className="space-y-2 text-sm" data-campaign-sending>
+                {running ? (
+                  <>
+                    <KeepFresh />
+                    <p className="font-semibold">
+                      {t("campaigns.sendingNow")} {running.total > 0 ? `${running.done} / ${running.total}` : ""}
+                    </p>
+                    <div className="h-2 overflow-hidden rounded bg-brand-surface">
+                      <div
+                        className="h-2 bg-brand-teal"
+                        style={{ width: `${running.total > 0 ? Math.round((running.done / running.total) * 100) : 5}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-brand-graphite/60">{t("campaigns.sendingNote")}</p>
+                  </>
+                ) : (
+                  <>
+                    <p>{t("campaigns.stopped").replace("{n}", String(log.length))}</p>
+                    <form action={resumeCampaign.bind(null, id)}>
+                      <SubmitButton className="btn btn-primary w-full">{t("campaigns.carryOn")}</SubmitButton>
+                    </form>
+                  </>
+                )}
+              </div>
+            ) : alreadySent ? (
               <p className="text-sm text-brand-graphite/70">
                 This campaign has already been sent, on{" "}
                 {campaign.sentAt
@@ -435,6 +467,13 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                   <p className="mb-3 rounded border border-[color:var(--color-warning)] bg-white p-2 text-xs text-[color:var(--color-warning)]">
                     This channel is not configured, so every message will be recorded as simulated
                     and nothing will actually leave the building. Useful for a rehearsal.
+                  </p>
+                ) : null}
+                {emailFiles.linked.length > 0 && campaign.viaEmail ? (
+                  <p className="mb-3 rounded border border-brand-line bg-brand-surface p-2 text-xs" data-files-too-big>
+                    {t("campaigns.filesTooBig")
+                      .replace("{mb}", String(Math.round(emailFiles.totalBytes / 1048576)))
+                      .replace("{files}", emailFiles.linked.join(", "))}
                   </p>
                 ) : null}
                 <SendButton campaignId={id} action={sendCampaign} count={sendable.length} />

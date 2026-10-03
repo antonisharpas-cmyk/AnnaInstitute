@@ -10,6 +10,7 @@ import {
   contracts,
   installments,
   payments,
+  refunds,
   projects,
   units,
 } from "@/db/schema";
@@ -55,7 +56,7 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
 
   const ids = rows.map((r) => r.contract.id);
 
-  const [lines, paid, asked, held] = await Promise.all([
+  const [lines, paid, asked, held, paidBack] = await Promise.all([
     ids.length > 0
       ? db
           .select()
@@ -78,6 +79,10 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
           .orderBy(asc(changeRequests.requestedOn))
       : Promise.resolve([]),
     partnersByProject(),
+    /* Money paid back by credit note, which the statement shows under the stages. */
+    ids.length > 0
+      ? db.select().from(refunds).where(inArray(refunds.contractId, ids)).orderBy(asc(refunds.paidOn))
+      : Promise.resolve([]),
   ]);
 
   const paidPerInstallment = new Map<string, number>();
@@ -89,8 +94,9 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
     );
   }
 
-  const owed = lines.reduce((sum, line) => sum + toCents(line.totalAmount), 0);
-  const received = paid.reduce((sum, one) => sum + toCents(one.amount), 0);
+  const backInAll = paidBack.reduce((sum, one) => sum + toCents(one.amount), 0);
+  const owed = lines.reduce((sum, line) => sum + toCents(line.totalAmount), 0) - backInAll;
+  const received = paid.reduce((sum, one) => sum + toCents(one.amount), 0) - backInAll;
   const outstanding = Math.max(0, owed - received);
 
   /** How a payment arrived, with older free text left exactly as it stands. */
@@ -144,10 +150,13 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
       ) : (
         rows.map((row) => {
           const mine = lines.filter((line) => line.contractId === row.contract.id);
-          const mineOwed = mine.reduce((sum, line) => sum + toCents(line.totalAmount), 0);
-          const minePaid = paid
-            .filter((one) => one.contractId === row.contract.id)
-            .reduce((sum, one) => sum + toCents(one.amount), 0);
+          const myRefunds = paidBack.filter((one) => one.contractId === row.contract.id);
+          const mineBack = myRefunds.reduce((sum, one) => sum + toCents(one.amount), 0);
+          /* A refund comes off what the contract comes to and off what was paid alike. */
+          const mineOwed = mine.reduce((sum, line) => sum + toCents(line.totalAmount), 0) - mineBack;
+          const minePaid =
+            paid.filter((one) => one.contractId === row.contract.id).reduce((sum, one) => sum + toCents(one.amount), 0) -
+            mineBack;
           const partners = held.get(row.project.id) ?? [];
 
           return (
@@ -210,11 +219,23 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
                       </tr>
                     );
                   })}
+                  {myRefunds.map((one) => (
+                    <tr key={one.id}>
+                      <td className="ctr">↩</td>
+                      <td>
+                        {toCents(one.amount) > 0 ? t("refunds.paidBack") : t("refunds.nothingBack")}: {t(`issued.purpose.${one.purpose}` as MessageKey)}
+                      </td>
+                      <td className="ctr">{day(one.paidOn, locale)}</td>
+                      <td className="ctr">{toCents(one.amount) > 0 ? `−${formatAmount(toCents(one.amount), locale)}` : ""}</td>
+                      <td className="ctr">{toCents(one.amount) > 0 ? `−${formatAmount(toCents(one.amount), locale)}` : t("credits.nothingShort")}</td>
+                      <td />
+                    </tr>
+                  ))}
                 </tbody>
                 <tfoot>
                   <tr>
                     <td colSpan={3} className="font-semibold">
-                      {t("common.total")}
+                      {mineBack > 0 ? t("refunds.totalAfter") : t("common.total")}
                     </td>
                     <td className="ctr font-semibold">{formatAmount(mineOwed, locale)}</td>
                     <td className="ctr font-semibold">{formatAmount(minePaid, locale)}</td>

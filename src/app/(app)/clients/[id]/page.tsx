@@ -11,6 +11,7 @@ import {
   installments,
   leads,
   payments,
+  refunds,
   projects,
   units,
 } from "@/db/schema";
@@ -173,7 +174,7 @@ export default async function ClientPage({
     if (row.contract.reducedVatApprovedOn) await getContract(row.contract.id);
   }
 
-  const [scheduleRows, paymentRows] = await Promise.all([
+  const [scheduleRows, paymentRows, refundRows] = await Promise.all([
     contractIds.length > 0
       ? db
           .select()
@@ -188,7 +189,15 @@ export default async function ClientPage({
           .where(inArray(payments.contractId, contractIds))
           .orderBy(desc(payments.paidOn))
       : Promise.resolve([]),
+    /* Paid back by credit note: off the total and off what was paid, as on the contract. */
+    contractIds.length > 0
+      ? db.select().from(refunds).where(inArray(refunds.contractId, contractIds))
+      : Promise.resolve([]),
   ]);
+  const refundedByContract = new Map<string, number>();
+  for (const r of refundRows) {
+    refundedByContract.set(r.contractId, (refundedByContract.get(r.contractId) ?? 0) + toCents(r.amount));
+  }
 
 
   const paidByInstallment = new Map<string, number>();
@@ -846,10 +855,12 @@ export default async function ClientPage({
                         </tr>
                       );
                     }
-                    const scheduled = scheduleRows
-                      .filter((l) => l.contractId === row.contract.id)
-                      .reduce((a, l) => a + toCents(l.totalAmount), 0);
-                    const paid = paidByContract.get(row.contract.id) ?? 0;
+                    const back = refundedByContract.get(row.contract.id) ?? 0;
+                    const scheduled =
+                      scheduleRows
+                        .filter((l) => l.contractId === row.contract.id)
+                        .reduce((a, l) => a + toCents(l.totalAmount), 0) - back;
+                    const paid = (paidByContract.get(row.contract.id) ?? 0) - back;
                     return (
                       <tr key={apartment.unitId}>
                         <td>
@@ -864,7 +875,14 @@ export default async function ClientPage({
                           {row.project.name} {row.unit.code}
                         </td>
                         <td className="ctr">{formatAmount(scheduled, locale)}</td>
-                        <td className="ctr">{formatAmount(paid, locale)}</td>
+                        <td className="ctr">
+                          {formatAmount(paid, locale)}
+                          {back > 0 ? (
+                            <span className="block text-xs text-[color:var(--color-negative)]" data-client-paid-back>
+                              {t("refunds.paidBack")} {formatAmount(back, locale)}
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="ctr font-semibold">
                           {formatAmount(Math.max(0, scheduled - paid), locale)}
                         </td>

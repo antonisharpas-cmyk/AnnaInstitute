@@ -1062,3 +1062,34 @@ export async function issueStageInvoice(
   }
   return invoice;
 }
+
+/**
+ * The parties of a contract as a paper names them, for a paper that is not an
+ * invoice: the acknowledgement of a refund where nothing was paid back, which
+ * has no credit note to borrow them from.
+ */
+export async function snapshotFor(contractId: string, when: Date): Promise<IssuedSnapshot> {
+  const parties = await partiesOf(contractId);
+  if (!parties) throw new Error("The contract is not there.");
+  const standing = await standingOf(contractId);
+  return {
+    company: parties.company,
+    client: parties.client,
+    contractReference: parties.row.contract.reference ?? "",
+    property: parties.property,
+    stage: "",
+    description: "",
+    paidOn: when.toISOString(),
+    issuedOn: when.toISOString(),
+    method: "",
+    reference: "",
+    netCents: 0,
+    vatCents: 0,
+    totalCents: 0,
+    rate: Number(parties.row.contract.vatRate),
+    ...standing,
+    invoiceNumber: "",
+    receiptNumber: "",
+    recordedBy: "",
+  };
+}

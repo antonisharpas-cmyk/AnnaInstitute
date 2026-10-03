@@ -9,6 +9,8 @@ import {
   contracts,
   contractUnits,
   installments,
+  issuedDocuments,
+  refunds,
   payments,
   projects,
   units,
@@ -56,7 +58,7 @@ async function readContract(id: string) {
   const row = rows[0];
   if (!row) return null;
 
-  const [lines, paid, history] = await Promise.all([
+  const [lines, paid, history, paidBack] = await Promise.all([
     db
       .select()
       .from(installments)
@@ -68,7 +70,44 @@ async function readContract(id: string) {
       .from(vatChanges)
       .where(eq(vatChanges.contractId, id))
       .orderBy(desc(vatChanges.createdAt)),
+    /* Money given back, a delay penalty or a goodwill refund, each with its credit note. */
+    db
+      .select({ refund: refunds, note: issuedDocuments })
+      .from(refunds)
+      .leftJoin(issuedDocuments, eq(issuedDocuments.id, refunds.creditNoteId))
+      .where(eq(refunds.contractId, id))
+      .orderBy(asc(refunds.paidOn)),
   ]);
+
+  /*
+   * What was paid back.
+   *
+   * A refund is money that left again, by a credit note against the contract.
+   * The stages it was paid on stay paid, because they were, but what the buyer
+   * has paid in the end is less by the refund, and the credit note takes the
+   * same amount off what the contract comes to. So both the total and the paid
+   * figure go down by it, and what is still owed does not change.
+   */
+  const refundRows = paidBack.map(({ refund, note }) => {
+    const totalCents = toCents(refund.amount);
+    const vatCents = note ? toCents(note.vatAmount) : 0;
+    return {
+      id: refund.id,
+      purpose: refund.purpose,
+      paidOn: refund.paidOn,
+      reference: refund.reference,
+      note: refund.note,
+      cancelledContract: refund.cancelledContract,
+      creditNoteNumber: note?.number ?? null,
+      creditNoteDocumentId: note?.stampedDocumentId ?? note?.documentId ?? null,
+      totalCents,
+      vatCents,
+      netCents: note ? toCents(note.netAmount) : totalCents,
+    };
+  });
+  const refundedCents = refundRows.reduce((a, r) => a + r.totalCents, 0);
+  const refundedVatCents = refundRows.reduce((a, r) => a + r.vatCents, 0);
+  const refundedNetCents = refundRows.reduce((a, r) => a + r.netCents, 0);
 
   const paidByInstallment = new Map<string, number>();
   let paidTotalCents = 0;
@@ -97,6 +136,7 @@ async function readContract(id: string) {
     installments: schedule,
     payments: paid,
     vatHistory: history,
+    refunds: refundRows,
     /** Nothing receipted yet, so the schedule can still be rewritten outright. */
     open: schedule.every((l) => l.paidCents === 0 && l.lockedAt === null),
     totals: {
@@ -106,6 +146,14 @@ async function readContract(id: string) {
       scheduleTotalCents,
       paidTotalCents,
       outstandingCents: scheduleTotalCents - paidTotalCents,
+      /** Paid back to the buyer by credit note, VAT included, and its two parts. */
+      refundedCents,
+      refundedNetCents,
+      refundedVatCents,
+      /** What the contract comes to once the credit notes for refunds are taken off. */
+      totalAfterRefundsCents: scheduleTotalCents - refundedCents,
+      /** What the buyer has paid in the end: received, less what was paid back. */
+      paidAfterRefundsCents: paidTotalCents - refundedCents,
     },
     vatSetup: vatSetupOf(row.contract),
   };
@@ -305,6 +353,8 @@ export async function listContracts(options?: {
     installmentCount: sql<number>`(select count(*) from installments i where i.contract_id = ${contracts.id})::int`,
     scheduledCents: sql<string>`coalesce((select sum(i.total_amount) from installments i where i.contract_id = ${contracts.id}), 0)`,
     paid: sql<string>`coalesce((select sum(p.amount) from payments p where p.contract_id = ${contracts.id}), 0)`,
+    /* Paid back by credit note: it comes off both the total and what was paid. */
+    refunded: sql<string>`coalesce((select sum(r.amount) from refunds r where r.contract_id = ${contracts.id}), 0)`,
     nextDue: sql<Date | null>`(select min(i.due_date) from installments i where i.contract_id = ${contracts.id} and coalesce((select sum(p.amount) from payments p where p.installment_id = i.id), 0) < i.total_amount)`,
   };
 
@@ -330,12 +380,14 @@ export async function listContracts(options?: {
   return {
     total: counted?.total ?? 0,
     rows: rows.map((r) => {
-      const scheduled = toCents(r.scheduledCents);
-      const paid = toCents(r.paid);
+      const refunded = toCents(r.refunded);
+      const scheduled = toCents(r.scheduledCents) - refunded;
+      const paid = toCents(r.paid) - refunded;
       return {
         ...r,
         scheduledCents: scheduled,
         paidCents: paid,
+        refundedCents: refunded,
         outstandingCents: scheduled - paid,
       };
     }),

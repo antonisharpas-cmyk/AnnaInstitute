@@ -10,7 +10,7 @@ import { fill } from "@/lib/automaticEmails";
 import { AUTOMATIC_KEYS, templateByKey, type AutomaticKey } from "@/lib/templates";
 import { companyDetails } from "@/lib/issued";
 import { invoicePdf, receiptPdfFrom, type IssuedSnapshot } from "@/lib/paymentPdf";
-import { buildSummaries, dayStart, summaryText, type MemberSummary } from "@/lib/appointmentSummary";
+import { buildSummaries, dayStart, summarySubject, summaryText, type MemberSummary } from "@/lib/appointmentSummary";
 import { partnerLetter, receivedLetter } from "@/lib/partnerInvoices";
 import { whoCanGo } from "@/lib/team";
 
@@ -208,10 +208,9 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
     const summaries = await buildSummaries(0);
     const mine: MemberSummary =
       summaries[0] ?? { id: "test", name: "The office", email: to, today: [], tomorrow: [], followUps: [] };
-    const nothingOn = mine.today.length === 0 && mine.tomorrow.length === 0 && mine.followUps.length === 0;
-    subject = `Appointments for ${dayStart(0).toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" })}`;
-    body = `${nothingOn ? "No appointments today.\n\n" : ""}${summaryText(mine, 0)}`;
-    if (summaries[0]) body = `This is ${mine.name}'s summary.\n\n${body}`;
+    subject = summarySubject(0);
+    body = summaryText(mine, 0);
+    if (summaries[0]) body = `(A test: this is the reminder ${mine.name} would get tonight.)\n\n${body}`;
   } else if (key === "partner_invoice") {
     name = NAMES.partner_invoice;
     const net = 5000;

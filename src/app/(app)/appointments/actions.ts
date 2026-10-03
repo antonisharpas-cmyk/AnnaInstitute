@@ -167,6 +167,12 @@ export async function updateAppointment(appointmentId: string, formData: FormDat
     .where(eq(appointments.id, appointmentId))
     .limit(1);
   if (!row) return;
+  /* Cancelled is final: the client has been told. It can only be deleted. */
+  if (row.status === "MISSED") {
+    await flash("said.appointmentCancelledFinal", "bad");
+    await redraw(row.clientId, row.leadId);
+    return;
+  }
 
   const at =
     moment(String(formData.get("day") ?? ""), String(formData.get("time") ?? "")) ?? row.at;
@@ -244,6 +250,12 @@ export async function answerAppointment(
     .where(eq(appointments.id, appointmentId))
     .limit(1);
   if (!row) return;
+  /* Cancelled is final: the client has been told. It can only be deleted. */
+  if (row.status === "MISSED") {
+    await flash("said.appointmentCancelledFinal", "bad");
+    await redraw(row.clientId, row.leadId);
+    return;
+  }
 
   await db
     .update(appointments)
@@ -265,9 +277,9 @@ export async function answerAppointment(
     userEmail: user.email,
   });
 
-  /* Cancelled, so nobody is left waiting outside a showroom. Only on the way
-     into cancelled, so pressing it twice does not write twice. */
-  if (answer === "MISSED" && row.status !== "MISSED") {
+  /* Cancelled, so nobody is left waiting outside a showroom. A cancelled one
+     cannot be answered again (see above), so this is written once. */
+  if (answer === "MISSED") {
     await letterForAppointment(appointmentId, "cancelled");
   }
 

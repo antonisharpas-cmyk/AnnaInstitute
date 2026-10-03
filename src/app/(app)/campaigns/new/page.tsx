@@ -73,14 +73,11 @@ export default async function NewCampaignPage({
   /* The month is known whatever the campaign was started from: the price list
      is sent without an apartment or a development, and its subject names the month. */
   const month = new Date().toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", { month: "long", year: "numeric" });
-  const fill = (text: string) => {
-    if (!extras) return text.replaceAll("{{month}}", month);
-    let filled = text;
-    for (const [key, value] of Object.entries(extras)) {
-      filled = filled.replaceAll(`{{${key}}}`, value);
-    }
-    return filled;
-  };
+  /* The words about the development or the apartment stay as placeholders,
+     {{project}}, {{details}} and the rest, and are filled from what the campaign
+     is about when it is tested and sent. Started from one development and then
+     about two, the letter then speaks of both, not only the first. */
+  const fill = (text: string) => text.replaceAll("{{month}}", month);
 
   const greek = locale === "el";
   const choices: TemplateChoice[] = templates.map((template) => ({

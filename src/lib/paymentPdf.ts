@@ -753,7 +753,19 @@ export async function acknowledgementPdf(
   const amount = eur(refund.amountCents);
   const how = refund.method ? ` by ${({ CASH: "cash", CHEQUE: "cheque", BANK: "bank transfer", CARD: "card" } as Record<string, string>)[refund.method] ?? (isCustom(refund.method) ? ({ CASH: "cash", CHEQUE: "cheque", BANK: "bank transfer", CARD: "card", OTHER: "other means" } as Record<string, string>)[baseOf(refund.method)] ?? "other means" : refund.method.toLowerCase())}${refund.reference ? ` (${refund.reference})` : ""}` : "";
 
-  para(`I, ${s.client.name}${s.client.idNumber ? `, ID ${s.client.idNumber}` : ""}, confirm that I have received from ${s.company.name} the sum of ${amount} (${amountInEnglish(refund.amountCents).toLowerCase()})${how} on ${longDay(refund.paidOn)}.`, 11, f.bold);
+  const me = `I, ${s.client.name}${s.client.idNumber ? `, ID ${s.client.idNumber}` : ""}`;
+  if (refund.amountCents === 0) {
+    /* Agreed without any money changing hands: the paper says so plainly. */
+    if (refund.purpose === "PENALTY") {
+      para(`${me}, confirm that it has been agreed with ${s.company.name} on ${longDay(refund.paidOn)} that no compensation is paid to me for the delay in the completion of the property ${s.property}, under contract ${s.contractReference}. The price in the Contract of Sale and its terms are unchanged.`, 11, f.bold);
+    } else {
+      para(`${me}, confirm that it has been agreed with ${s.company.name} on ${longDay(refund.paidOn)} that no money is paid back to me for the property ${s.property}, under contract ${s.contractReference}.${refund.cancelled ? " I confirm that my reservation of this property is cancelled." : ""}`, 11, f.bold);
+    }
+    if (refund.note) para(refund.note, 10);
+    figureBox(sh, { x: R - 200, top: y, w: 200, h: 50, fill: sh.soft, border: sh.accent }, "Amount paid", "Nothing", 17, sh.accent);
+    y -= 70;
+  } else {
+  para(`${me}, confirm that I have received from ${s.company.name} the sum of ${amount} (${amountInEnglish(refund.amountCents).toLowerCase()})${how} on ${longDay(refund.paidOn)}.`, 11, f.bold);
   if (refund.purpose === "PENALTY") {
     para(`The amount is paid to me as the agreed compensation for the delay in the completion of the property ${s.property}, under contract ${s.contractReference}. It is covered by credit note ${s.creditNoteNumber}. The price in the Contract of Sale and its terms are unchanged.`);
   } else {
@@ -763,6 +775,7 @@ export async function acknowledgementPdf(
 
   figureBox(sh, { x: R - 200, top: y, w: 200, h: 50, fill: sh.soft, border: sh.accent }, "Amount paid", amount, 17, sh.accent);
   y -= 70;
+  }
 
   /* The two signatures, at the foot of the page. */
   y = Math.min(y - 40, FOOT_TOP + 110);

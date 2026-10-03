@@ -91,6 +91,8 @@ function getTransport() {
     /* A server that never answers is reported in seconds, not left hanging. */
     connectionTimeout: 15000,
     greetingTimeout: 15000,
+    /* And one that stops answering in the middle of a letter gives up after two minutes, not ten. */
+    socketTimeout: 120000,
   });
   return transport;
 }

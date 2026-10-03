@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { contracts, issuedDocuments, refunds, units } from "@/db/schema";
 import { fromCents, toCents } from "@/lib/money";
 import { modelOf, splitGross, vatForNet } from "@/lib/vatModel";
-import { issueCreditNote, keepPdf } from "@/lib/issued";
+import { issueCreditNote, keepPdf, snapshotFor } from "@/lib/issued";
 import { acknowledgementPdf, longDay, type IssuedSnapshot } from "@/lib/paymentPdf";
 import { revertCommission } from "@/lib/commissions";
 import { followTheApartments } from "@/lib/statuses";
@@ -49,35 +49,46 @@ export async function recordRefund(input: RefundInput) {
       ? `Compensation for the delay in completion, paid ${day}`
       : `Goodwill refund paid ${day}${cancelled ? ", reservation cancelled" : ""}`;
 
-  const note = await issueCreditNote({
-    contractId: contract.id,
-    purpose: input.purpose,
-    reason,
-    when: input.paidOn,
-    netCents: split.netCents,
-    vatCents: split.vatCents,
-    parts: split.parts,
-    description: `${input.purpose === "PENALTY" ? "Delay penalty" : "Goodwill refund"}${
-      contract.reference ? `, contract ${contract.reference}` : ""
-    }${input.note ? `. ${input.note}` : ""}`,
-    who,
-  });
+  /*
+   * Nothing paid back.
+   *
+   * Sometimes the agreement is that no money goes back: a reservation cancelled
+   * with the deposit kept, or a delay settled without compensation. There is
+   * nothing to credit, so no credit note is issued, but the acknowledgement is
+   * still drawn up for the client to sign, saying what was agreed.
+   */
+  const nothing = input.amountCents === 0;
+  const note = nothing
+    ? null
+    : await issueCreditNote({
+        contractId: contract.id,
+        purpose: input.purpose,
+        reason,
+        when: input.paidOn,
+        netCents: split.netCents,
+        vatCents: split.vatCents,
+        parts: split.parts,
+        description: `${input.purpose === "PENALTY" ? "Delay penalty" : "Goodwill refund"}${
+          contract.reference ? `, contract ${contract.reference}` : ""
+        }${input.note ? `. ${input.note}` : ""}`,
+        who,
+      });
 
   /* The paper the buyer signs. */
-  const snapshot = JSON.parse(note.snapshot) as IssuedSnapshot;
+  const snapshot = note ? (JSON.parse(note.snapshot) as IssuedSnapshot) : await snapshotFor(contract.id, input.paidOn);
   const ack = await acknowledgementPdf(snapshot, {
     purpose: input.purpose,
     amountCents: input.amountCents,
     paidOn: input.paidOn.toISOString(),
-    method: input.method ?? "",
-    reference: input.reference ?? "",
+    method: nothing ? "" : (input.method ?? ""),
+    reference: nothing ? "" : (input.reference ?? ""),
     cancelled,
     note: input.note ?? "",
   });
   const ackId = await keepPdf(
     ack,
-    `Refund acknowledgement ${note.number}.pdf`,
-    `Refund acknowledgement, credit note ${note.number}`,
+    note ? `Refund acknowledgement ${note.number}.pdf` : `Acknowledgement, nothing paid back ${input.paidOn.toISOString().slice(0, 10)}.pdf`,
+    note ? `Refund acknowledgement, credit note ${note.number}` : "Acknowledgement, nothing paid back",
     "REFUND_ACK",
     contract.id,
     who.id,
@@ -91,11 +102,11 @@ export async function recordRefund(input: RefundInput) {
       purpose: input.purpose,
       amount: fromCents(input.amountCents),
       paidOn: input.paidOn,
-      method: input.method,
-      reference: input.reference,
+      method: nothing ? null : input.method,
+      reference: nothing ? null : input.reference,
       note: input.note,
       cancelledContract: cancelled,
-      creditNoteId: note.id,
+      creditNoteId: note?.id ?? null,
       acknowledgementDocumentId: ackId,
       recordedById: who.id,
     })
@@ -107,7 +118,7 @@ export async function recordRefund(input: RefundInput) {
     action: `refund.${input.purpose.toLowerCase()}`,
     entity: "contract",
     entityId: contract.id,
-    detail: `${fromCents(input.amountCents)}, credit note ${note.number}${cancelled ? ", reservation cancelled" : ""}`,
+    detail: `${fromCents(input.amountCents)}, ${note ? `credit note ${note.number}` : "nothing paid back, no credit note"}${cancelled ? ", reservation cancelled" : ""}`,
     userId: input.who.id,
     userEmail: input.who.email,
   });

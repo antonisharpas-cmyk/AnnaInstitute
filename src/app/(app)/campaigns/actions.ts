@@ -2,7 +2,6 @@
 
 import { aboutFromChoices } from "@/lib/campaignAbout";
 import { agentWay } from "@/lib/agentWay";
-import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
@@ -22,14 +21,17 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { storeDocument } from "@/lib/uploads";
-import { resolveStored } from "@/lib/storage";
 import { fillPlaceholders, letterHtml, sendAndRecord } from "@/lib/messaging";
 import { sendEmail } from "@/lib/messaging/email";
 import { normalisePhone } from "@/lib/messaging/text";
 import { readSetting, writeSetting } from "@/lib/settings";
 import { campaignExtras, ensureCampaignLinks, testValues, unfilledIn } from "@/lib/campaignTest";
 import { createPriceListLink, priceListUrl } from "@/lib/priceList";
-import { campaignAttachments, emailAttachments, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { campaignAttachments, emailFilesWithin, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { endRun, runOf, startRun, tickRun } from "@/lib/campaignProgress";
+
+/** The line that takes the files too big to attach to the recipient. */
+const FILES_LINE = "The brochures and drawings, too large to attach, are here:";
 import { idsOf } from "@/lib/campaignProjects";
 
 /**
@@ -330,8 +332,10 @@ export async function sendCampaign(campaignId: string) {
   const rows = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
   if (!rows[0]) throw new Error("Campaign not found");
   const campaign = await ensureCampaignLinks(rows[0], user.email);
-  if (campaign.status === "SENT" || campaign.status === "SENDING") {
-    throw new Error("This campaign has already been sent.");
+  if (campaign.status !== "DRAFT") {
+    await flash("said.campaignAlreadySent", "bad");
+    revalidatePath(`/campaigns/${campaignId}`);
+    return;
   }
 
   /* Nothing goes out with {{project}} in it: the office is told which placeholders have no value. */
@@ -342,99 +346,196 @@ export async function sendCampaign(campaignId: string) {
     return;
   }
 
-  await db.update(campaigns).set({ status: "SENDING" }).where(eq(campaigns.id, campaignId));
-
-  /* Its own files and the developments' brochures, specifications and
-     drawings. The pictures are on the campaign's page, behind {{files_url}}. */
-  const attachmentRows = (await emailAttachments(campaignId)).map((document) => ({ document }));
-  const pageFiles = await campaignAttachments(campaignId);
-
-  const attachments = attachmentRows.map((r) => ({
-    filename: r.document.originalName ?? path.basename(r.document.filePath),
-    path: resolveStored(r.document.filePath),
-    contentType: r.document.mimeType ?? undefined,
-  }));
-
-  let url: string | undefined;
-  if (campaign.shareLinkId) {
-    const linkRows = await db
-      .select()
-      .from(shareLinks)
-      .where(eq(shareLinks.id, campaign.shareLinkId))
-      .limit(1);
-    if (linkRows[0]) url = priceListUrl(linkRows[0].token);
-  }
-
-  // The files reach WhatsApp as a link, and the link is added to the end of the
-  // message when the office has not put {{files_url}} in it itself.
-  let files: string | undefined;
-  if (pageFiles.length > 0) {
-    const link = await filesLinkFor(campaignId, user.email);
-    files = filesUrl(link.token);
-  }
-
-  const recipients = await audienceFor(campaign);
-  const extras = await campaignExtras(campaign);
-  let sent = 0;
-  let failed = 0;
-
-  const whatsappBody = campaign.bodyWhatsapp ?? campaign.body;
-  const withFilesLink =
-    files && !whatsappBody.includes("{{files_url}}") ? `${whatsappBody}\n${files}` : whatsappBody;
-
-  for (const recipient of recipients) {
-    const values = { ...recipient, priceListUrl: url, filesUrl: files, extras };
-    /* An agent hears once, the way they chose; everybody else on every way ticked. */
-    const way = recipient.group === "AGENTS" ? agentWay(recipient.agentChannel, campaign) : null;
-
-    if (campaign.viaEmail && (way === null || way === "EMAIL")) {
-      const result = await sendAndRecord({
-        campaignId,
-        channel: "EMAIL",
-        recipient,
-        subject: campaign.subject ? fillPlaceholders(campaign.subject, values) : null,
-        body: fillPlaceholders(campaign.body, values),
-        withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
-        attachments,
-      });
-      if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
-      else failed += 1;
-    }
-
-    if (campaign.viaWhatsapp && (way === null || way === "WHATSAPP")) {
-      const result = await sendAndRecord({
-        campaignId,
-        channel: "WHATSAPP",
-        recipient,
-        body: fillPlaceholders(withFilesLink, values),
-        withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
-      });
-      if (result.status === "SENT" || result.status === "SIMULATED") sent += 1;
-      else failed += 1;
-    }
-  }
-
-  await db
-    .update(campaigns)
-    .set({
-      status: failed === 0 ? "SENT" : sent === 0 ? "FAILED" : "PARTLY_FAILED",
-      sentAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(campaigns.id, campaignId));
-
+  await db.update(campaigns).set({ status: "SENDING", updatedAt: new Date() }).where(eq(campaigns.id, campaignId));
   await recordAudit({
-    action: "campaign.send",
+    action: "campaign.send.start",
     entity: "campaign",
     entityId: campaignId,
-    detail: `${sent} handled, ${failed} not sent, ${recipients.length} in the audience`,
+    detail: campaign.title,
     userId: user.id,
     userEmail: user.email,
   });
 
-  await flash("said.campaignSent");
+  /*
+   * Sent in the background.
+   *
+   * The button answers at once and the page shows how far it has got, rather
+   * than the office watching a button say Sending for as long as the mail
+   * server takes over every letter.
+   */
+  startRun(campaignId, 0);
+  void runCampaign(campaignId, { id: user.id, email: user.email });
+
+  await flash("said.campaignSending");
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/campaigns");
+}
+
+/**
+ * Carry on with a campaign that stopped half way.
+ *
+ * When the CRM restarts in the middle of a send, the campaign is left saying
+ * Sending with nothing sending it. This picks it up again, and only the people
+ * not yet written to get it: nobody receives it twice.
+ */
+export async function resumeCampaign(campaignId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  if (!campaign || campaign.status !== "SENDING" || runOf(campaignId)) {
+    revalidatePath(`/campaigns/${campaignId}`);
+    return;
+  }
+  await recordAudit({
+    action: "campaign.send.resume",
+    entity: "campaign",
+    entityId: campaignId,
+    detail: campaign.title,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  startRun(campaignId, 0);
+  void runCampaign(campaignId, { id: user.id, email: user.email });
+  await flash("said.campaignSending");
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
+/** Who a message went to, the same way whether it is being sent or was already. */
+const whoKey = (
+  channel: string,
+  one: { clientId?: string | null; agentId?: string | null; subownerId?: string | null; leadId?: string | null; email?: string | null; phone?: string | null },
+) => `${channel === "EMAIL" ? "EMAIL" : "TEXT"}|${one.clientId ?? one.agentId ?? one.subownerId ?? one.leadId ?? one.email ?? one.phone ?? ""}`;
+
+/**
+ * The send itself, one recipient after another.
+ *
+ * Everybody already written to for this campaign is skipped, so a run that
+ * carries on after a restart never sends twice. Each letter has its own time
+ * limit in the mail and WhatsApp code, so one that hangs is recorded as failed
+ * and the rest carry on. Whatever happens, the campaign ends with a status.
+ */
+async function runCampaign(campaignId: string, who: { id: string; email: string }) {
+  try {
+    const [found] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+    if (!found) return;
+    const campaign = await ensureCampaignLinks(found, who.email);
+
+    /* What fits is attached; the rest, and the pictures, are on the campaign's files page. */
+    const emailFiles = await emailFilesWithin(campaignId);
+    const pageFiles = await campaignAttachments(campaignId);
+
+    let url: string | undefined;
+    if (campaign.shareLinkId) {
+      const [link] = await db.select().from(shareLinks).where(eq(shareLinks.id, campaign.shareLinkId)).limit(1);
+      if (link) url = priceListUrl(link.token);
+    }
+    let files: string | undefined;
+    if (pageFiles.length > 0) {
+      const link = await filesLinkFor(campaignId, who.email);
+      files = filesUrl(link.token);
+    }
+
+    const recipients = await audienceFor(campaign);
+    const extras = await campaignExtras(campaign);
+
+    const whatsappBody = campaign.bodyWhatsapp ?? campaign.body;
+    const withFilesLink = files && !whatsappBody.includes("{{files_url}}") ? `${whatsappBody}\n${files}` : whatsappBody;
+    /* Files too big to attach reach the email as the files link. */
+    const emailBody =
+      emailFiles.linked.length > 0 && files && !campaign.body.includes("{{files_url}}")
+        ? `${campaign.body}\n\n${FILES_LINE} ${files}`
+        : campaign.body;
+
+    const done = new Set(
+      (
+        await db
+          .select({
+            channel: messages.channel,
+            clientId: messages.clientId,
+            agentId: messages.agentId,
+            subownerId: messages.subownerId,
+            leadId: messages.leadId,
+          })
+          .from(messages)
+          .where(eq(messages.campaignId, campaignId))
+      ).map((one) => whoKey(one.channel, one)),
+    );
+
+    /* Every letter to go, worked out first, so the page can say how many. */
+    const plan: { recipient: (typeof recipients)[number]; channel: "EMAIL" | "WHATSAPP" }[] = [];
+    for (const recipient of recipients) {
+      /* An agent hears once, the way they chose; everybody else on every way ticked. */
+      const way = recipient.group === "AGENTS" ? agentWay(recipient.agentChannel, campaign) : null;
+      if (campaign.viaEmail && (way === null || way === "EMAIL")) plan.push({ recipient, channel: "EMAIL" });
+      if (campaign.viaWhatsapp && (way === null || way === "WHATSAPP")) plan.push({ recipient, channel: "WHATSAPP" });
+    }
+    const todo = plan.filter((one) => !done.has(whoKey(one.channel, one.recipient)));
+    startRun(campaignId, todo.length);
+
+    for (const { recipient, channel } of todo) {
+      const values = { ...recipient, priceListUrl: url, filesUrl: files, extras };
+      try {
+        if (channel === "EMAIL") {
+          await sendAndRecord({
+            campaignId,
+            channel: "EMAIL",
+            recipient,
+            subject: campaign.subject ? fillPlaceholders(campaign.subject, values) : null,
+            body: fillPlaceholders(emailBody, values),
+            withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
+            attachments: emailFiles.attached,
+          });
+        } else {
+          await sendAndRecord({
+            campaignId,
+            channel: "WHATSAPP",
+            recipient,
+            body: fillPlaceholders(withFilesLink, values),
+            withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
+          });
+        }
+      } catch (error) {
+        console.error("[campaign] one message could not be handled", campaignId, error);
+      }
+      tickRun(campaignId);
+    }
+
+    /* The status from everything recorded for the campaign, this run and any before it. */
+    const outcome = await db
+      .select({ status: messages.status })
+      .from(messages)
+      .where(eq(messages.campaignId, campaignId));
+    const sent = outcome.filter((one) => one.status === "SENT" || one.status === "SIMULATED").length;
+    const failed = outcome.length - sent;
+    await db
+      .update(campaigns)
+      .set({
+        status: failed === 0 ? "SENT" : sent === 0 ? "FAILED" : "PARTLY_FAILED",
+        sentAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(campaigns.id, campaignId));
+    await recordAudit({
+      action: "campaign.send",
+      entity: "campaign",
+      entityId: campaignId,
+      detail: `${sent} handled, ${failed} not sent, ${recipients.length} in the audience${emailFiles.linked.length ? `, ${emailFiles.linked.length} file(s) sent as a link` : ""}`,
+      userId: who.id,
+      userEmail: who.email,
+    });
+  } catch (error) {
+    /* Left Sending, so the page offers to carry on; the reason is in the log. */
+    console.error("[campaign] the send stopped", campaignId, error);
+    await recordAudit({
+      action: "campaign.send.stopped",
+      entity: "campaign",
+      entityId: campaignId,
+      detail: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+      userId: who.id,
+      userEmail: who.email,
+    }).catch(() => {});
+  } finally {
+    endRun(campaignId);
+  }
 }
 
 /** Rewrite one of the ready made messages. */
@@ -547,12 +648,9 @@ export async function sendCampaignTest(campaignId: string) {
   const campaign = await ensureCampaignLinks(found, user.email);
   const to = (await readSetting("emails.testAddress"))?.trim() || user.email;
 
-  const attachmentRows = (await emailAttachments(campaignId)).map((document) => ({ document }));
-  const attachments = attachmentRows.map((r) => ({
-    filename: r.document.originalName ?? path.basename(r.document.filePath),
-    path: resolveStored(r.document.filePath),
-    contentType: r.document.mimeType ?? undefined,
-  }));
+  /* The same files as the real letter: what fits attached, the rest by the files link. */
+  const emailFiles = await emailFilesWithin(campaignId);
+  const attachments = emailFiles.attached;
 
   const unfilled = await unfilledIn(campaign);
   if (unfilled.length > 0) {
@@ -564,6 +662,9 @@ export async function sendCampaignTest(campaignId: string) {
   const clientsToo = campaign.toClients || campaign.toLeads || campaign.audience === "CLIENTS_CONSENTED";
   const intro = `This is a test of the campaign "${campaign.title}". It is what the audience will receive, with example names.`;
   let body = `${intro}\n\n${fillPlaceholders(campaign.body, values)}`;
+  if (emailFiles.linked.length > 0 && !campaign.body.includes("{{files_url}}") && values.filesUrl) {
+    body += `\n\n${FILES_LINE} ${values.filesUrl}`;
+  }
   if (clientsToo) body += "\n\nIf you would rather not receive these, unsubscribe here: (each client gets their own link)";
 
   const result = await sendEmail({

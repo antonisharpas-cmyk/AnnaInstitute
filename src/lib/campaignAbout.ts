@@ -97,11 +97,19 @@ export async function aboutValues(campaign: AboutCampaign, locale = "en"): Promi
   ];
   const maps = [...new Map(everything.filter((one) => "maps_url" in one && one.maps_url).map((one) => [one.project, (one as { maps_url?: string }).maps_url ?? ""]))];
 
+  /* Each development says when it is ready, so two dates are never left side by side without a name. */
+  const readyBy = [
+    ...new Map(
+      everything.filter((one) => one.completion).map((one) => [one.project, `${one.project}: ${one.completion.replace(/^Ready /, "ready ")}`]),
+    ).values(),
+  ];
+
   const values: Record<string, string> = {
     project: together(projectNames),
     location: together(everything.map((one) => one.location)),
-    details: lines.join("\n"),
-    completion: [...new Set(everything.map((one) => one.completion).filter(Boolean))].join(" "),
+    /* An empty line between the buildings, so each reads as its own paragraph. */
+    details: lines.join("\n\n"),
+    completion: readyBy.length > 1 ? readyBy.join("\n") : (everything.find((one) => one.completion)?.completion ?? ""),
     month: everything[0]?.month ?? "",
   };
   if (unitRows.length > 0) {

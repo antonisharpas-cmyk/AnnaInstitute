@@ -361,6 +361,9 @@ export default async function AppointmentsPage({
                       </td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1">
+                          {/* Cancelled is final: the client was told, so all that is left is to delete it. */}
+                          {appointment.status === "MISSED" ? null : (
+                          <>
                           {appointment.status !== "DONE" ? (
                             <form action={answerAppointment.bind(null, appointment.id, "DONE")}>
                               <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">
@@ -368,13 +371,11 @@ export default async function AppointmentsPage({
                               </SubmitButton>
                             </form>
                           ) : null}
-                          {appointment.status !== "MISSED" ? (
-                            <form action={answerAppointment.bind(null, appointment.id, "MISSED")}>
-                              <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
-                                {t("appointments.cancelled")}
-                              </SubmitButton>
-                            </form>
-                          ) : null}
+                          <form action={answerAppointment.bind(null, appointment.id, "MISSED")}>
+                            <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                              {t("appointments.cancelled")}
+                            </SubmitButton>
+                          </form>
                           {appointment.status !== "PLANNED" ? (
                             <form action={answerAppointment.bind(null, appointment.id, "PLANNED")}>
                               <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
@@ -464,6 +465,8 @@ export default async function AppointmentsPage({
                               <SubmitButton>{t("common.save")}</SubmitButton>
                             </form>
                           </Disclosure>
+                          </>
+                          )}
 
                           <ConfirmButton
                             action={deleteAppointment.bind(null, appointment.id)}

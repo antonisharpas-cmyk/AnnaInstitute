@@ -242,7 +242,9 @@ export default function Appointments({
                   <Pill tone={row.status === "DONE" ? "good" : "warn"}>
                     {row.status === "DONE" ? labels.statusDone : labels.statusMissed}
                   </Pill>
-                  {/* Answered wrongly, or not over after all: it can be put right. */}
+                  {/* Answered wrongly, or not over after all: it can be put right. Cancelled is final, so it can only be deleted. */}
+                  {row.status === "MISSED" ? null : (
+                    <>
                   <form
                     action={answerAppointment.bind(
                       null,
@@ -259,6 +261,8 @@ export default function Appointments({
                       {labels.statusPlanned}
                     </SubmitButton>
                   </form>
+                    </>
+                  )}
                   <ConfirmButton
                     action={deleteAppointment.bind(null, row.id)}
                     label={labels.remove}

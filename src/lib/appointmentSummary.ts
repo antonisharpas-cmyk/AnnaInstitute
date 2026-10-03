@@ -7,6 +7,7 @@ import { sendAndRecord } from "@/lib/messaging";
 import { readSettings, writeSetting } from "@/lib/settings";
 import { recordAudit } from "@/lib/audit";
 import { followUpsOnDay, followUpWho } from "@/lib/followUps";
+import { appUrl } from "@/lib/unsubscribe";
 
 /*
  * The day's summary, one email per person.
@@ -21,6 +22,8 @@ import { followUpsOnDay, followUpWho } from "@/lib/followUps";
 export type SummaryLine = {
   time: string;
   who: string;
+  /** Their telephone and email, so the reminder is all that is needed to call them. */
+  contact: string;
   place: string;
   kind: string;
   status: "PLANNED" | "DONE" | "MISSED";
@@ -30,6 +33,7 @@ export type SummaryLine = {
 export type FollowUpLine = {
   time: string;
   who: string;
+  contact: string;
   note: string;
 };
 
@@ -71,11 +75,6 @@ const KIND: Record<string, string> = {
   OTHER: "Other",
 };
 
-const STATUS: Record<string, string> = {
-  PLANNED: "Pending",
-  DONE: "Done",
-  MISSED: "Did not happen",
-};
 
 /** Everything on one day, with the person it is with named. */
 async function linesFor(from: Date, to: Date) {
@@ -104,6 +103,12 @@ async function linesFor(from: Date, to: Date) {
           : agent
             ? `${agent.name} (agent)`
             : appointment.otherName || "nobody named",
+      contact: [
+        client?.phone ?? lead?.phone ?? agent?.phone ?? appointment.otherPhone,
+        client?.email ?? lead?.email ?? agent?.email ?? appointment.otherEmail,
+      ]
+        .filter(Boolean)
+        .join(", "),
       place: appointment.place,
       kind:
         (appointment.typeChoice && shownCode(appointment.type, appointment.typeChoice) === appointment.typeChoice
@@ -153,49 +158,110 @@ export async function buildSummaries(offsetDays = 0): Promise<MemberSummary[]> {
         return {
           time: clock(row.followUp.at),
           who: kind ? `${who.name} (${kind})` : who.name,
+          contact: who.contact.replace(/ \. /g, ", "),
           note: row.followUp.note ?? "",
         };
       }),
   }));
 }
 
-/** The email itself, in the shape the office wrote out. */
+/** "Sunday, 04/10/2026". */
+const longDay = (at: Date) =>
+  `${new Date(at).toLocaleDateString("en-GB", { weekday: "long" })}, ${dateOf(at)}`;
+
+/** The subject: a reminder for tomorrow, which is what the office reads it for. */
+export function summarySubject(offsetDays = 0): string {
+  return `Your reminder for tomorrow, ${longDay(dayStart(offsetDays + 1))}`;
+}
+
+/**
+ * The email itself, laid out like the appointment letters the clients get.
+ *
+ * Tomorrow first, because it is read in the evening to get ready for the next
+ * day: each appointment as its own small block, Where, What it is about, Time,
+ * With and how to reach them, then the follow ups. After that, anything from
+ * today still waiting for an answer, and what today came to. No dots and codes
+ * to decode: every line says what it is.
+ */
 export function summaryText(summary: MemberSummary, offsetDays = 0): string {
-  const day = dateOf(dayStart(offsetDays));
-  const next = dateOf(dayStart(offsetDays + 1));
+  const today = longDay(dayStart(offsetDays));
+  const tomorrow = longDay(dayStart(offsetDays + 1));
+  const firstName = summary.name.split(" ")[0] || summary.name;
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-  const block = (lines: SummaryLine[]) =>
-    lines.length === 0
-      ? "   Nothing."
-      : lines
-          .map(
-            (line) =>
-              `   ${line.time} . ${line.who} . ${line.place} (${line.kind}) . ${STATUS[line.status]}`,
-          )
-          .join("\n");
+  const appointmentBlock = (line: SummaryLine, i: number) =>
+    [
+      `${i + 1}. ${line.time}`,
+      `   Where: ${line.place}`,
+      `   What it is about: ${line.kind}`,
+      `   With: ${line.who}`,
+      line.contact ? `   Contact: ${line.contact}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  const followUpBlock = (one: FollowUpLine, i: number) =>
+    [
+      `${i + 1}. ${one.time}`,
+      `   With: ${one.who}`,
+      one.note ? `   What it is for: ${one.note}` : null,
+      one.contact ? `   Contact: ${one.contact}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-  const follow =
-    summary.followUps.length === 0
-      ? "   Nothing."
-      : summary.followUps
-          .map((one) => `   ${one.time} . ${one.who}${one.note ? ` . ${one.note}` : ""}`)
-          .join("\n");
+  const waiting = summary.today.filter((line) => line.status === "PLANNED");
+  const done = summary.today.filter((line) => line.status === "DONE");
+  const cancelled = summary.today.filter((line) => line.status === "MISSED");
+  const nothingTomorrow = summary.tomorrow.length === 0 && summary.followUps.length === 0;
 
-  return [
-    `Appointments for ${day}`,
+  const parts: string[] = [
+    `Dear ${firstName},`,
     "",
-    block(summary.today),
+    nothingTomorrow
+      ? `This is your reminder for tomorrow, ${tomorrow}. Nothing is booked for you.`
+      : `This is your reminder for tomorrow, ${tomorrow}: ${[
+          summary.tomorrow.length ? count(summary.tomorrow.length, "appointment", "appointments") : null,
+          summary.followUps.length ? count(summary.followUps.length, "follow up", "follow ups") : null,
+        ]
+          .filter(Boolean)
+          .join(" and ")}.`,
+  ];
+
+  if (summary.tomorrow.length > 0) {
+    parts.push("", "APPOINTMENTS TOMORROW", "", summary.tomorrow.map(appointmentBlock).join("\n\n"));
+  }
+  if (summary.followUps.length > 0) {
+    parts.push("", "FOLLOW UPS TOMORROW", "", summary.followUps.map(followUpBlock).join("\n\n"));
+  }
+  if (waiting.length > 0) {
+    parts.push(
+      "",
+      "TODAY, STILL WAITING FOR AN ANSWER",
+      "",
+      waiting.map(appointmentBlock).join("\n\n"),
+      "",
+      "Please mark each one in the CRM as Done, or as Cancelled if it did not happen.",
+    );
+  }
+  parts.push(
     "",
-    `Tomorrow, ${next}`,
+    `TODAY, ${today}`,
     "",
-    block(summary.tomorrow),
+    summary.today.length === 0
+      ? "You had no appointments today."
+      : [
+          done.length ? `Done: ${done.map((line) => `${line.time} ${line.who}`).join("; ")}` : null,
+          cancelled.length ? `Cancelled: ${cancelled.map((line) => `${line.time} ${line.who}`).join("; ")}` : null,
+          waiting.length ? `Still to answer: ${count(waiting.length, "appointment", "appointments")}, listed above.` : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
     "",
-    `Leads to follow up tomorrow, ${next}`,
+    `Your calendar: ${appUrl()}/calendar`,
     "",
-    follow,
-    "",
-    "Anything still pending needs an answer in the CRM: it happened, or it did not.",
-  ].join("\n");
+    "One Eleven CRM",
+  );
+  return parts.join("\n");
 }
 
 export type SummaryOutcome = {
@@ -263,14 +329,12 @@ export async function sendDailySummary(options?: {
       continue;
     }
 
-    const body = nothingOn
-      ? `No appointments today.\n\n${summaryText(summary, offsetDays)}`
-      : summaryText(summary, offsetDays);
+    const body = summaryText(summary, offsetDays);
 
     const result = await sendAndRecord({
       channel: "EMAIL",
       recipient: { name: summary.name, email: summary.email },
-      subject: `Appointments for ${dateOf(dayStart(offsetDays))}`,
+      subject: summarySubject(offsetDays),
       body,
       /* Staff, not a marketing list: no unsubscribe link on an internal email. */
       withOptOut: false,

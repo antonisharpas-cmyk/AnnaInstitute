@@ -352,7 +352,14 @@ export default async function ContractsPage({
                       ) : null}
 
                       {on("paid") ? (
-                        <td className="ctr">{formatAmount(r.paidCents, locale)}</td>
+                        <td className="ctr">
+                          {formatAmount(r.paidCents, locale)}
+                          {r.refundedCents > 0 ? (
+                            <span className="block text-xs text-[color:var(--color-negative)]">
+                              {t("refunds.paidBack")} {formatAmount(r.refundedCents, locale)}
+                            </span>
+                          ) : null}
+                        </td>
                       ) : null}
 
                       {on("outstanding") ? (
