@@ -68,7 +68,11 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
           </p>
         </div>
         <div className="text-right text-xs text-brand-graphite/60">
-          {link.note ? <div className="font-semibold">{link.note}</div> : null}
+          {/* The office's own note, such as "September price list", is shown. The name
+              a campaign's link is kept under is for the office only, never for the reader. */}
+          {link.note && !link.campaignId && !/^For the campaign\b/.test(link.note) ? (
+            <div className="font-semibold">{link.note}</div>
+          ) : null}
           <div>Ermou 75, 6022 Larnaca</div>
           <div>+357 24 342 720</div>
           {link.expiresAt ? (

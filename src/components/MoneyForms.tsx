@@ -257,7 +257,8 @@ export function PaymentForm({
       </div>
       <div>
         <label className="label">{labels.method}</label>
-        <select name="method" className="select" defaultValue="">
+        {/* Required: every receipt says how the money came in. */}
+        <select name="method" className="select" defaultValue="" required data-payment-method>
           <option value="">{labels.chooseMethod}</option>
           {/* The methods come in the office's order, its own ones from the Builder included. */}
           {Object.entries(labels.methods).map(([value, label]) => (

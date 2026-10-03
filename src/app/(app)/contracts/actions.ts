@@ -914,6 +914,12 @@ export async function recordPayment(contractId: string, formData: FormData) {
   const paidOn = String(formData.get("paidOn") ?? "");
 
   if (amountCents <= 0) throw new Error("The amount must be more than zero.");
+  /* How it was paid is on every receipt, so a payment is not recorded without it. */
+  const method = String(formData.get("method") ?? "").trim();
+  if (!method) {
+    await flash("said.paymentNeedsMethod", "bad");
+    return;
+  }
 
   const when = paidOn ? new Date(paidOn) : new Date();
 
@@ -987,7 +993,7 @@ export async function recordPayment(contractId: string, formData: FormData) {
       ccEmails,
       amount: fromCents(amountCents),
       paidOn: when,
-      method: String(formData.get("method") ?? "") || null,
+      method,
       receiptNumber: receipt,
       reference: String(formData.get("reference") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "") || null,
