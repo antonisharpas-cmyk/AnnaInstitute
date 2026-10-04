@@ -10,7 +10,9 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { fromCents, parseAmount } from "@/lib/money";
 import { paymentOf, jobOf, CONSTRUCTOR_STATUSES, type ConstructorStatus } from "@/lib/constructors";
-import { removeDocument, storeDocuments } from "@/lib/uploads";
+import { removeDocument, storeDocument } from "@/lib/uploads";
+import { constructorPaymentLetter } from "@/lib/constructorLetter";
+import { emailConfigured, sendAndRecord } from "@/lib/messaging";
 
 const typed = (formData: FormData, name: string) => String(formData.get(name) ?? "").trim() || null;
 
@@ -103,16 +105,43 @@ export async function removeConstructorProject(jobId: string) {
   back(job.constructorId);
 }
 
-async function filePapers(paymentId: string, formData: FormData, user: Awaited<ReturnType<typeof requireUser>>, label: string) {
+/**
+ * The invoice and the receipt, each file on its own.
+ *
+ * One file the CRM cannot keep (too large, or a kind it does not take) no
+ * longer stops the others or the payment itself: what was kept is kept, and
+ * the office is told by name which file was not and why.
+ */
+async function filePapers(
+  paymentId: string,
+  formData: FormData,
+  user: Awaited<ReturnType<typeof requireUser>>,
+  label: string,
+): Promise<{ kept: number; problems: string[] }> {
+  let kept = 0;
+  const problems: string[] = [];
   for (const [field, category, word] of [
     ["invoice", "INVOICE", "Constructor invoice"],
     ["receipt", "RECEIPT", "Constructor receipt"],
   ] as const) {
     const files = formData.getAll(field).filter((entry): entry is File => entry instanceof File && entry.size > 0);
-    if (files.length === 0) continue;
-    const ids = await storeDocuments({ files, title: `${word}, ${label}`, category, attachTo: {}, user });
-    if (ids.length > 0) await db.update(documents).set({ constructorPaymentId: paymentId }).where(inArray(documents.id, ids));
+    for (const [index, file] of files.entries()) {
+      try {
+        const id = await storeDocument({ file, title: `${word}, ${label}${files.length > 1 ? ` ${index + 1}` : ""}`, category, attachTo: {}, user });
+        await db.update(documents).set({ constructorPaymentId: paymentId }).where(eq(documents.id, id));
+        kept += 1;
+      } catch (error) {
+        problems.push(error instanceof Error ? error.message : `${file.name} could not be kept.`);
+      }
+    }
   }
+  return { kept, problems };
+}
+
+/** Saved, with a word about any file that was not kept. */
+async function sayPapers(result: { kept: number; problems: string[] }, fallback: string) {
+  if (result.problems.length > 0) await flash(`said.papersNotKept|${result.problems.join(" ")}`, "bad");
+  else await flash(fallback);
 }
 
 /** A payment to the constructor, Pending until it is marked Paid or Cancelled. */
@@ -140,9 +169,9 @@ export async function addConstructorPayment(jobId: string, formData: FormData) {
       recordedByEmail: user.email,
     })
     .returning({ id: constructorPayments.id });
-  await filePapers(row.id, formData, user, kind ?? fromCents(amount));
+  const papers = await filePapers(row.id, formData, user, kind ?? fromCents(amount));
   await recordAudit({ action: "constructor.payment", entity: "constructor", entityId: job.constructorId, detail: `${kind ?? ""} ${fromCents(amount)}`.trim(), userId: user.id, userEmail: user.email });
-  await flash("said.saved");
+  await sayPapers(papers, "said.saved");
   back(job.constructorId);
 }
 
@@ -166,8 +195,8 @@ export async function uploadConstructorPapers(paymentId: string, formData: FormD
   const user = await requireUser(["ADMIN"]);
   const found = await paymentOf(paymentId);
   if (!found) return;
-  await filePapers(paymentId, formData, user, found.payment.kind ?? found.payment.amount);
-  await flash("said.saved");
+  const papers = await filePapers(paymentId, formData, user, found.payment.kind ?? found.payment.amount);
+  await sayPapers(papers, papers.kept > 0 ? "said.saved" : "said.chooseAFile");
   back(found.job.constructorId);
 }
 
@@ -191,4 +220,59 @@ export async function deleteConstructor(id: string) {
   await recordAudit({ action: "constructor.delete", entity: "constructor", entityId: id, userId: user.id, userEmail: user.email });
   revalidatePath("/constructors");
   redirect("/constructors");
+}
+
+/**
+ * The payment confirmation to the constructor, with the papers saved on it.
+ * Only by this button, never by itself, and only for a payment marked Paid.
+ */
+export async function emailConstructorPayment(paymentId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const found = await paymentOf(paymentId);
+  if (!found) return;
+  const letter = await constructorPaymentLetter(paymentId);
+  if (!letter || letter.status !== "PAID") {
+    await flash("said.constructorNotPaid", "bad");
+    back(found.job.constructorId);
+    return;
+  }
+  const email = letter.constructor.email?.trim();
+  if (!email) {
+    await flash("said.noEmailOnRecord", "bad");
+    back(found.job.constructorId);
+    return;
+  }
+  if (!emailConfigured()) {
+    await flash("said.mailNotSetUp", "bad");
+    back(found.job.constructorId);
+    return;
+  }
+  const result = await sendAndRecord({
+    channel: "EMAIL",
+    recipient: { name: letter.constructor.contactName?.trim() || letter.constructor.name, email },
+    subject: letter.subject,
+    body: letter.body,
+    withOptOut: false,
+    attachments: letter.attachments.length ? letter.attachments : undefined,
+  });
+  await recordAudit({
+    action: "constructor.payment.emailed",
+    entity: "constructor",
+    entityId: found.job.constructorId,
+    detail: `${letter.subject} to ${email}: ${result.status}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  if (result.status === "SENT") {
+    const stamp = new Date().toLocaleDateString("en-GB");
+    await db
+      .update(constructorPayments)
+      .set({ notes: [found.payment.notes, `Emailed to the constructor ${stamp}`].filter(Boolean).join(" . "), updatedAt: new Date() })
+      .where(eq(constructorPayments.id, paymentId));
+    await flash(`said.constructorEmailed|${email}`);
+  } else {
+    const why = "error" in result && result.error ? String(result.error).slice(0, 160) : result.status;
+    await flash(`said.constructorEmailFailed|${why}`, "bad");
+  }
+  back(found.job.constructorId);
 }

@@ -26,7 +26,48 @@ const ALLOWED = new Map<string, string>([
   ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"],
   ["text/csv", "csv"],
   ["text/plain", "txt"],
+  /* What scanners and phones also send for the same kinds of file. */
+  ["image/tiff", "tif"],
+  ["image/heif", "heif"],
+  ["image/jpg", "jpg"],
+  ["image/pjpeg", "jpg"],
+  ["application/x-pdf", "pdf"],
 ]);
+
+/**
+ * The type from the file's name, for when the browser sends none.
+ *
+ * Windows often sends an empty type, or "application/octet-stream", for a scan
+ * or a file saved by another program, even when it is a plain PDF or JPG. The
+ * extension then decides, so a receipt is not refused only for that.
+ */
+const BY_EXTENSION = new Map<string, string>([
+  ["pdf", "application/pdf"],
+  ["jpg", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["jfif", "image/jpeg"],
+  ["png", "image/png"],
+  ["webp", "image/webp"],
+  ["heic", "image/heic"],
+  ["heif", "image/heif"],
+  ["gif", "image/gif"],
+  ["tif", "image/tiff"],
+  ["tiff", "image/tiff"],
+  ["doc", "application/msword"],
+  ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  ["xls", "application/vnd.ms-excel"],
+  ["xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  ["csv", "text/csv"],
+  ["txt", "text/plain"],
+]);
+
+/** The file's type, from the browser when it is one we keep, otherwise from its name. */
+export function typeOf(file: { type?: string; name?: string }): string {
+  const given = (file.type || "").toLowerCase();
+  if (ALLOWED.has(given)) return given;
+  const extension = (file.name ?? "").toLowerCase().split(".").pop() ?? "";
+  return BY_EXTENSION.get(extension) ?? (given || "application/octet-stream");
+}
 
 export function storageRoot(): string {
   return process.env.STORAGE_DIR ?? path.join(process.cwd(), "storage");
@@ -46,14 +87,14 @@ export type SavedUpload = {
 export async function saveUpload(file: File): Promise<SavedUpload> {
   if (file.size <= 0) throw new Error("The file is empty.");
   if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error(`The file is larger than ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB.`);
+    throw new Error(`${safeName(file.name)} is larger than ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB.`);
   }
 
-  const mimeType = file.type || "application/octet-stream";
+  const mimeType = typeOf(file);
   const extension = ALLOWED.get(mimeType);
   if (!extension) {
     throw new Error(
-      "That file type is not accepted. Use PDF, an image, a Word or Excel file, CSV or plain text.",
+      `${safeName(file.name)} is not a file type the CRM keeps. Use PDF, an image, a Word or Excel file, CSV or plain text.`,
     );
   }
 

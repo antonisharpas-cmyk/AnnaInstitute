@@ -20,6 +20,7 @@ import {
   updateConstructor,
   updateConstructorProject,
   uploadConstructorPapers,
+  emailConstructorPayment,
 } from "../actions";
 
 /**
@@ -255,6 +256,15 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
                                     <form action={setConstructorPaymentStatus.bind(null, pay.id, "CANCELLED")} data-mark-cancelled>
                                       <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("constructors.markCancelled")}</SubmitButton>
                                     </form>
+                                  ) : null}
+                                  {/* The confirmation to the constructor, only by this button and only once it is paid. */}
+                                  {pay.status === "PAID" && who.email ? (
+                                    <form action={emailConstructorPayment.bind(null, pay.id)} data-email-constructor>
+                                      <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">{t("constructors.emailIt")}</SubmitButton>
+                                    </form>
+                                  ) : null}
+                                  {pay.status === "PAID" && !who.email ? (
+                                    <span className="text-xs text-brand-graphite/60" data-no-constructor-email>{t("constructors.noEmail")}</span>
                                   ) : null}
                                   {pay.status !== "PENDING" ? (
                                     <form action={setConstructorPaymentStatus.bind(null, pay.id, "PENDING")}>
