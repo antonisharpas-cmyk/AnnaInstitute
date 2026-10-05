@@ -25,6 +25,9 @@ export type DocumentCategory =
   | "REFUND_ACK"
   | "RESERVATION"
   | "DRAFT"
+  | "VAT_APPROVAL"
+  | "STAGE_CERTIFICATE"
+  | "STAGE_PHOTO"
   | "OTHER";
 
 export type AttachTo = {
@@ -36,6 +39,7 @@ export type AttachTo = {
   paymentId?: string | null;
   expenseId?: string | null;
   commissionId?: string | null;
+  installmentId?: string | null;
 };
 
 /** Save one uploaded file and create its document record. */
@@ -65,6 +69,7 @@ export async function storeDocument(options: {
       paymentId: options.attachTo.paymentId ?? null,
       expenseId: options.attachTo.expenseId ?? null,
       commissionId: options.attachTo.commissionId ?? null,
+      installmentId: options.attachTo.installmentId ?? null,
       uploadedById: options.user.id,
     })
     .returning({ id: documents.id });

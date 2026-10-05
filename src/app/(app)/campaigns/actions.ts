@@ -1,5 +1,7 @@
 "use server";
 
+import { sameEmail, samePhone } from "@/lib/samePerson";
+
 import { aboutFromChoices } from "@/lib/campaignAbout";
 import { agentWay } from "@/lib/agentWay";
 import { revalidatePath } from "next/cache";
@@ -21,7 +23,7 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { storeDocument } from "@/lib/uploads";
-import { fillPlaceholders, letterHtml, sendAndRecord } from "@/lib/messaging";
+import { addressFor, fillPlaceholders, letterHtml, sendAndRecord } from "@/lib/messaging";
 import { sendEmail } from "@/lib/messaging/email";
 import { normalisePhone } from "@/lib/messaging/text";
 import { readSetting, writeSetting } from "@/lib/settings";
@@ -471,7 +473,34 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
     const todo = plan.filter((one) => !done.has(whoKey(one.channel, one.recipient)));
     startRun(campaignId, todo.length);
 
+    /*
+     * Each address once. One person can be in the audience twice, a client who
+     * is also an agent, or two records with the same email or mobile, and they
+     * get the campaign once on each way. What already went for this campaign,
+     * in an earlier run, counts too.
+     */
+    const addressKey = (channel: string, address: string | null | undefined) => {
+      const key = channel === "EMAIL" ? sameEmail(address) : samePhone(address);
+      return key ? `${channel === "EMAIL" ? "EMAIL" : "TEXT"}|${key}` : null;
+    };
+    const reached = new Set(
+      (
+        await db
+          .select({ channel: messages.channel, toAddress: messages.toAddress })
+          .from(messages)
+          .where(eq(messages.campaignId, campaignId))
+      )
+        .map((one) => addressKey(one.channel, one.toAddress))
+        .filter(Boolean) as string[],
+    );
+
     for (const { recipient, channel } of todo) {
+      const key = addressKey(channel, addressFor(channel, recipient));
+      if (key && reached.has(key)) {
+        tickRun(campaignId);
+        continue;
+      }
+      if (key) reached.add(key);
       const values = { ...recipient, priceListUrl: url, filesUrl: files, extras };
       try {
         if (channel === "EMAIL") {

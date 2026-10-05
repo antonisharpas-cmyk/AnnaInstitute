@@ -756,6 +756,102 @@ One Eleven`,
     toAgents: false,
     toSubowners: false,
   },
+  /* -------------------------------------------------------------------------
+     The invoice of each stage, sent before the money, with what proves it.
+
+     The Reservation and the Contract of Sale go with the signed paper; a stage
+     of the building, the structure, the brickwork, the tiling, the aluminium,
+     with the architect's certificate and photographs; any other stage with the
+     invoice alone. The receipt follows by itself when the money is recorded.
+     ------------------------------------------------------------------------- */
+  {
+    key: "stage_invoice_signed",
+    isAutomatic: true,
+    name: "Invoice with the signed Reservation or Contract of Sale",
+    description:
+      "Goes to the buyer when the office presses Send the invoice with the signed copy, on the Reservation or the Contract of Sale. It carries the invoice for the stage and the signed paper. The receipt follows by itself when the money is recorded.",
+    subject: "Invoice {{invoice_number}} and your signed {{paper}}, {{unit}} at {{project}}",
+    body: `Dear {{first_name}},
+
+Attached is your signed {{paper}} for {{unit}} at {{project}}, together with invoice {{invoice_number}} for {{stage}}, {{amount}}.
+
+Your receipt will follow as soon as the payment is received.
+
+One Eleven`,
+    bodyWhatsapp: "Hello {{first_name}}, we have emailed you your signed {{paper}} and invoice {{invoice_number}} of {{amount}} for {{unit}} at {{project}}.",
+    subjectEl: "Τιμολόγιο {{invoice_number}} και το υπογεγραμμένο {{paper}}, {{unit}} στο {{project}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Επισυνάπτεται το υπογεγραμμένο {{paper}} για το {{unit}} στο {{project}}, μαζί με το τιμολόγιο {{invoice_number}} για {{stage}}, {{amount}}.
+
+Η απόδειξη θα ακολουθήσει μόλις εισπραχθεί η πληρωμή.
+
+One Eleven`,
+    bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το υπογεγραμμένο {{paper}} και το τιμολόγιο {{invoice_number}} των {{amount}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "stage_invoice_works",
+    isAutomatic: true,
+    name: "Invoice for a stage of the building",
+    description:
+      "Goes to the buyer when the office presses Send the invoice on the structure, the brickwork, the tiling or the aluminium, once the architect's certificate and the photographs are uploaded. It carries the invoice, the certificate and the photographs. The receipt follows by itself when the money is recorded.",
+    subject: "{{stage}}, {{unit}} at {{project}}: invoice {{invoice_number}}",
+    body: `Dear {{first_name}},
+
+{{stage}} at {{project}} has been reached, as the architect's certificate and the photographs attached show.
+
+Attached is invoice {{invoice_number}} for {{stage}} on {{unit}}, {{amount}}.
+
+Your receipt will follow as soon as the payment is received.
+
+One Eleven`,
+    bodyWhatsapp: "Hello {{first_name}}, {{stage}} at {{project}} has been reached. We have emailed you invoice {{invoice_number}} of {{amount}}, with the architect's certificate and photographs.",
+    subjectEl: "{{stage}}, {{unit}} στο {{project}}: τιμολόγιο {{invoice_number}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Ολοκληρώθηκε το στάδιο {{stage}} στο {{project}}, όπως δείχνουν το πιστοποιητικό του αρχιτέκτονα και οι φωτογραφίες που επισυνάπτονται.
+
+Επισυνάπτεται το τιμολόγιο {{invoice_number}} για {{stage}} στο {{unit}}, {{amount}}.
+
+Η απόδειξη θα ακολουθήσει μόλις εισπραχθεί η πληρωμή.
+
+One Eleven`,
+    bodyWhatsappEl: "Γεια σας {{first_name}}, ολοκληρώθηκε το στάδιο {{stage}} στο {{project}}. Σας στείλαμε το τιμολόγιο {{invoice_number}} των {{amount}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
+  {
+    key: "stage_invoice",
+    isAutomatic: true,
+    name: "Invoice for a stage",
+    description:
+      "Goes to the buyer when the office presses Send the invoice on any other stage, the completion of the property say. It carries the invoice alone. The receipt follows by itself when the money is recorded.",
+    subject: "Invoice {{invoice_number}} for {{stage}}, {{unit}} at {{project}}",
+    body: `Dear {{first_name}},
+
+Attached is invoice {{invoice_number}} for {{stage}} on {{unit}} at {{project}}, {{amount}}.
+
+Your receipt will follow as soon as the payment is received.
+
+One Eleven`,
+    bodyWhatsapp: "Hello {{first_name}}, we have emailed you invoice {{invoice_number}} of {{amount}} for {{stage}}, {{unit}} at {{project}}.",
+    subjectEl: "Τιμολόγιο {{invoice_number}} για {{stage}}, {{unit}} στο {{project}}",
+    bodyEl: `Αγαπητέ {{first_name}},
+
+Επισυνάπτεται το τιμολόγιο {{invoice_number}} για {{stage}} στο {{unit}} στο {{project}}, {{amount}}.
+
+Η απόδειξη θα ακολουθήσει μόλις εισπραχθεί η πληρωμή.
+
+One Eleven`,
+    bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το τιμολόγιο {{invoice_number}} των {{amount}}.",
+    toClients: true,
+    toAgents: false,
+    toSubowners: false,
+  },
   {
     key: "birthday",
     isAutomatic: true,
@@ -813,6 +909,9 @@ export const AUTOMATIC_KEYS = [
   "paper_review",
   "paper_invoice",
   "paper_signed",
+  "stage_invoice_signed",
+  "stage_invoice_works",
+  "stage_invoice",
   "birthday",
 ] as const;
 

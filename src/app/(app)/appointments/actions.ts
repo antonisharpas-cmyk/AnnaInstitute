@@ -1,5 +1,7 @@
 "use server";
 
+import { cleanBirthDate } from "@/lib/buyers";
+
 import { splitChoice } from "@/lib/choices/lists";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
@@ -340,6 +342,7 @@ export async function addTeamMember(formData: FormData) {
       name,
       email: String(formData.get("email") ?? "").trim() || null,
       phone: String(formData.get("phone") ?? "").trim() || null,
+      ...(formData.has("birthDate") ? { birthDate: cleanBirthDate(String(formData.get("birthDate") ?? "")) } : {}),
     })
     .returning({ id: teamMembers.id });
 
@@ -372,6 +375,7 @@ export async function updateTeamMember(memberId: string, formData: FormData) {
       name,
       email: String(formData.get("email") ?? "").trim() || null,
       phone: String(formData.get("phone") ?? "").trim() || null,
+      ...(formData.has("birthDate") ? { birthDate: cleanBirthDate(String(formData.get("birthDate") ?? "")) } : {}),
       /* A checkbox that is not ticked sends nothing at all. */
       isActive: formData.get("isActive") === "on",
       updatedAt: new Date(),

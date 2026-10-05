@@ -195,7 +195,10 @@ export default async function ClientPage({
       : Promise.resolve([]),
   ]);
   const refundedByContract = new Map<string, number>();
+  /* A VAT credit paid back comes off what was paid only: the total already carries the new VAT. */
+  const creditedByContract = new Map<string, number>();
   for (const r of refundRows) {
+    if (r.purpose !== "VAT_CHANGE") creditedByContract.set(r.contractId, (creditedByContract.get(r.contractId) ?? 0) + toCents(r.amount));
     refundedByContract.set(r.contractId, (refundedByContract.get(r.contractId) ?? 0) + toCents(r.amount));
   }
 
@@ -859,7 +862,7 @@ export default async function ClientPage({
                     const scheduled =
                       scheduleRows
                         .filter((l) => l.contractId === row.contract.id)
-                        .reduce((a, l) => a + toCents(l.totalAmount), 0) - back;
+                        .reduce((a, l) => a + toCents(l.totalAmount), 0) - (creditedByContract.get(row.contract.id) ?? 0);
                     const paid = (paidByContract.get(row.contract.id) ?? 0) - back;
                     return (
                       <tr key={apartment.unitId}>

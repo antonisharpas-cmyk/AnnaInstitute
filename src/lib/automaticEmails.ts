@@ -15,6 +15,8 @@ import {
   leads,
   payments,
   projects,
+  subownerDirectors,
+  subownerShares,
   teamMembers,
   units,
 } from "@/db/schema";
@@ -25,7 +27,8 @@ import { templateByKey, type AutomaticKey } from "@/lib/templates";
 import { issuedAttachments, issueForPayment } from "@/lib/issued";
 import { markSignedSent, PAPER_NAME, paperForPayment } from "@/lib/signingPapers";
 import type { EmailAttachment } from "@/lib/messaging/email";
-import { buyersFirstNames, buyersName, emailList, hasSecondBuyer, isBirthday } from "@/lib/buyers";
+import { buyersFirstNames, buyersName, cleanBirthDate, emailList, hasSecondBuyer, isBirthday } from "@/lib/buyers";
+import { groupPeople, handlesOf, sameEmail } from "@/lib/samePerson";
 
 /**
  * The letters that follow the money.
@@ -176,11 +179,20 @@ export async function letterForPayment(paymentId: string): Promise<void> {
   const outstandingCents = dueCents - paidCents;
 
   const counted = stageFrom(await stageNames(), row.installment?.label, row.installment?.labelEl);
-  const key = letterFor({
+  /*
+   * The invoice of this stage went to the buyer before the money, with the
+   * signed paper or the architect's certificate. The letter for the money is
+   * then the receipt: it waits for nothing, carries nothing they have already,
+   * and the signing letter, which speaks of the contract being attached, reads
+   * as the ordinary payment letter instead.
+   */
+  const invoiceWent = Boolean(row.installment?.invoiceSentAt);
+  const chosen = letterFor({
     counted,
     stage: row.installment?.label ?? null,
     outstandingCents: dueCents > 0 ? outstandingCents : 1,
   });
+  const key = invoiceWent && chosen === "paid_signing" ? "paid_installment" : chosen;
 
   const note = async (status: "SENT" | "WAITING" | "FAILED" | "SKIPPED", reason: string) => {
     const values = {
@@ -238,7 +250,7 @@ export async function letterForPayment(paymentId: string): Promise<void> {
    * through the steps on the contract: the letter carries the signed copy, so
    * it waits for it, and goes the moment it is uploaded.
    */
-  const signing = await paperForPayment(row.contract.id, row.payment.installmentId, counted);
+  const signing = invoiceWent ? null : await paperForPayment(row.contract.id, row.payment.installmentId, counted);
   if (signing && !signing.signed) {
     await note("WAITING", `Waiting for the signed ${PAPER_NAME[signing.kind]} to be uploaded on the contract.`);
     return;
@@ -421,6 +433,7 @@ export async function letterForAppointment(
   const to = row.client
     ? {
         email: row.client.email,
+        phone: row.client.phone,
         first: row.client.firstName ?? "",
         name: `${row.client.firstName ?? ""} ${row.client.lastName ?? ""}`.trim(),
         clientId: row.client.id,
@@ -428,6 +441,7 @@ export async function letterForAppointment(
     : row.lead
       ? {
           email: row.lead.email,
+          phone: row.lead.phone,
           first: row.lead.firstName ?? "",
           name: `${row.lead.firstName ?? ""} ${row.lead.lastName ?? ""}`.trim(),
           clientId: null,
@@ -435,6 +449,7 @@ export async function letterForAppointment(
       : row.agent
         ? {
             email: row.agent.email,
+            phone: row.agent.phone,
             first: row.agent.name.split(" ")[0] ?? row.agent.name,
             name: row.agent.name,
             clientId: null,
@@ -442,6 +457,7 @@ export async function letterForAppointment(
         : row.appointment.otherName
           ? {
               email: row.appointment.otherEmail,
+              phone: row.appointment.otherPhone,
               first: row.appointment.otherName.split(" ")[0] ?? row.appointment.otherName,
               name: row.appointment.otherName,
               clientId: null,
@@ -468,8 +484,9 @@ export async function letterForAppointment(
     await note("SKIPPED", "This letter is switched off in the automatic emails section.");
     return;
   }
-  if (!to || !to.email) {
-    await note("SKIPPED", "Nobody with an email address is named on this appointment.");
+  const phone = to?.phone?.trim() || null;
+  if (!to || (!to.email && !phone)) {
+    await note("SKIPPED", "Nobody with an email address or a mobile number is named on this appointment.");
     return;
   }
 
@@ -498,20 +515,45 @@ export async function letterForAppointment(
   const subject = fill(template.subject ?? "", values);
   const body = fill(template.body, values);
 
-  const result = await sendAndRecord({
-    channel: "EMAIL",
-    recipient: { name: to.name, email: to.email, clientId: to.clientId ?? undefined },
-    subject,
-    body,
-    withOptOut: false,
-    /* An apartment in two names: the second buyer hears about it too. */
-    cc: row.client && hasSecondBuyer(row.client) ? emailList(row.client.secondEmail) : [],
-  });
+  /* The email, when there is an address. */
+  let email: Awaited<ReturnType<typeof sendAndRecord>> | null = null;
+  if (to.email) {
+    email = await sendAndRecord({
+      channel: "EMAIL",
+      recipient: { name: to.name, email: to.email, clientId: to.clientId ?? undefined },
+      subject,
+      body,
+      withOptOut: false,
+      /* An apartment in two names: the second buyer hears about it too. */
+      cc: row.client && hasSecondBuyer(row.client) ? emailList(row.client.secondEmail) : [],
+    });
+  }
 
-  if (result.status === "SENT") await note("SENT", "Sent.");
-  else if (result.status === "SIMULATED")
-    await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
-  else await note("FAILED", result.error ?? "It did not go.");
+  /* And the same news by SMS, short, to the mobile on the record. The place is
+     given without the map link, which would make the text run long. */
+  let text: Awaited<ReturnType<typeof sendAndRecord>> | null = null;
+  const short = (template.bodyWhatsapp ?? "").trim();
+  if (phone && short) {
+    text = await sendAndRecord({
+      channel: "SMS",
+      recipient: { name: to.name, phone, clientId: to.clientId ?? undefined },
+      body: fill(short, { ...values, place: row.appointment.place }),
+      withOptOut: false,
+    });
+  }
+
+  const said = (one: typeof email, what: string) =>
+    !one
+      ? null
+      : one.status === "SENT"
+        ? `${what} sent`
+        : one.status === "SIMULATED"
+          ? `${what} not set up, nothing went`
+          : `${what} did not go: ${one.error ?? one.status}`;
+  const reason = [said(email, "Email"), said(text, "SMS")].filter(Boolean).join(". ") + ".";
+  const anySent = email?.status === "SENT" || text?.status === "SENT";
+  const anyFailed = email?.status === "FAILED" || text?.status === "FAILED";
+  await note(anySent ? "SENT" : anyFailed ? "FAILED" : "SKIPPED", reason);
 }
 
 /* ---------------------------------------------------------------------------
@@ -693,92 +735,152 @@ export async function sendBirthdayWishes(options?: { byHand?: boolean; hour?: nu
 
   const template = await templateByKey("birthday");
   if (!template) return { sent: 0, looked: 0 };
-
   const year = now.getFullYear();
-  const people = await db
-    .select({
-      id: clients.id,
-      firstName: clients.firstName,
-      lastName: clients.lastName,
-      email: clients.email,
-      birthDate: clients.birthDate,
-      secondFirstName: clients.secondFirstName,
-      secondLastName: clients.secondLastName,
-      secondEmail: clients.secondEmail,
-      secondBirthDate: clients.secondBirthDate,
-    })
-    .from(clients)
-    .where(
-      and(
-        sql`${clients.deletedAt} is null`,
-        sql`${clients.closedAt} is null`,
-        sql`(${clients.birthDate} is not null or ${clients.secondBirthDate} is not null)`,
+
+  /*
+   * Everybody the office wishes, from every list at once: the clients and
+   * their second buyers, the agents, the team, the shareholders who are people
+   * and the directors. One person is often on several of them, so they are
+   * first put together into persons, by any email address or mobile number two
+   * records share, and each person is wished once a year, whichever list they
+   * were wished from and on whichever day a record says their birthday is.
+   */
+  type Candidate = {
+    /** How the wish is written down: a client (main or second buyer), or somebody else. */
+    clientId: string | null;
+    second: boolean;
+    personKey: string | null;
+    agentId: string | null;
+    what: string;
+    first: string;
+    last: string;
+    email: string | null;
+    phone: string | null;
+    born: string | null;
+  };
+  const split = (name: string) => {
+    const parts = name.trim().split(/\s+/);
+    return { first: parts[0] ?? name.trim(), last: parts.slice(1).join(" ") };
+  };
+
+  const [clientRows, agentRows, teamRows, holderRows, directorRows, wishedRows] = await Promise.all([
+    db
+      .select()
+      .from(clients)
+      .where(
+        and(
+          sql`${clients.deletedAt} is null`,
+          sql`${clients.closedAt} is null`,
+          sql`(${clients.birthDate} is not null or ${clients.secondBirthDate} is not null)`,
+        ),
       ),
+    db.select().from(agents).where(and(eq(agents.isActive, true), sql`${agents.birthDate} is not null`)),
+    db.select().from(teamMembers).where(and(eq(teamMembers.isActive, true), sql`${teamMembers.birthDate} is not null`)),
+    db.select().from(subownerShares).where(and(eq(subownerShares.isOneEleven, false), sql`${subownerShares.birthDate} is not null`)),
+    db.select().from(subownerDirectors).where(sql`${subownerDirectors.birthDate} is not null`),
+    db
+      .select({ clientId: automaticEmails.clientId, second: automaticEmails.secondBuyer, personKey: automaticEmails.personKey, status: automaticEmails.status })
+      .from(automaticEmails)
+      .where(and(eq(automaticEmails.templateKey, "birthday"), eq(automaticEmails.forYear, year))),
+  ]);
+
+  const people: Candidate[] = [];
+  for (const one of clientRows) {
+    if (one.birthDate)
+      people.push({ clientId: one.id, second: false, personKey: null, agentId: null, what: "client", first: one.firstName ?? "", last: one.lastName ?? "", email: one.email, phone: one.phone, born: one.birthDate });
+    if (one.secondBirthDate && (one.secondFirstName ?? "").trim())
+      people.push({ clientId: one.id, second: true, personKey: null, agentId: null, what: "second buyer", first: one.secondFirstName ?? "", last: one.secondLastName ?? "", email: one.secondEmail, phone: one.secondPhone, born: one.secondBirthDate });
+  }
+  for (const one of agentRows) people.push({ clientId: null, second: false, personKey: `agent:${one.id}`, agentId: one.id, what: "agent", ...split(one.name), email: one.email, phone: one.phone, born: one.birthDate });
+  for (const one of teamRows) people.push({ clientId: null, second: false, personKey: `team:${one.id}`, agentId: null, what: "team member", ...split(one.name), email: one.email, phone: one.phone, born: one.birthDate });
+  for (const one of holderRows.filter((row) => row.holderKind !== "COMPANY"))
+    people.push({ clientId: null, second: false, personKey: `holder:${one.id}`, agentId: null, what: "shareholder", ...split(one.holder), email: one.email, phone: one.phone, born: one.birthDate });
+  for (const one of directorRows)
+    people.push({ clientId: null, second: false, personKey: `director:${one.id}`, agentId: null, what: "director", ...split(one.name), email: one.email || one.emailAlternate, phone: one.phone, born: one.birthDate });
+
+  /*
+   * Who is who: one group per person. Two records are the same person when
+   * they share an email address or a mobile number and have the same birthday.
+   * The birthday is part of it on purpose: an office number or an info@ address
+   * shared by two directors does not make them one person, and they are not
+   * born on the same day.
+   */
+  const dayOf = (born: string | null) => (cleanBirthDate(born) ?? "").slice(5);
+  const group = groupPeople(
+    people.map((one, i) => {
+      const day = dayOf(one.born);
+      const handles = day ? handlesOf({ email: one.email, phone: one.phone }).map((handle) => `${day}|${handle}`) : [];
+      /* With neither an address nor a number, a record is a person of its own. */
+      return handles.length ? handles : [`only:${i}`];
+    }),
+  );
+  const rowOf = (one: Candidate) =>
+    wishedRows.find((row) =>
+      one.personKey ? row.personKey === one.personKey : row.clientId === one.clientId && row.second === one.second && !row.personKey,
     );
+  /* A person already wished this year, on any of their records. */
+  const wishedGroups = new Set<number>();
+  people.forEach((one, i) => {
+    if (rowOf(one)?.status === "SENT") wishedGroups.add(group[i]);
+  });
 
   let sent = 0;
   let looked = 0;
-  for (const person of people) {
-    for (const second of [false, true]) {
-      const born = second ? person.secondBirthDate : person.birthDate;
-      if (!isBirthday(born, now)) continue;
-      const first = (second ? person.secondFirstName : person.firstName) ?? "";
-      const last = (second ? person.secondLastName : person.lastName) ?? "";
-      if (second && !first.trim()) continue;
-      looked += 1;
+  for (const [i, person] of people.entries()) {
+    if (!isBirthday(person.born, now)) continue;
+    looked += 1;
+    /* This record has been looked at this year already, whatever came of it. */
+    if (rowOf(person)) continue;
+    const name = `${person.first} ${person.last}`.trim();
 
-      const [already] = await db
-        .select({ id: automaticEmails.id })
-        .from(automaticEmails)
-        .where(
-          and(
-            eq(automaticEmails.templateKey, "birthday"),
-            eq(automaticEmails.clientId, person.id),
-            eq(automaticEmails.forYear, year),
-            eq(automaticEmails.secondBuyer, second),
-          ),
-        )
-        .limit(1);
-      if (already) continue;
-
-      const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
-        await db.insert(automaticEmails).values({
-          templateKey: "birthday",
-          clientId: person.id,
-          forYear: year,
-          secondBuyer: second,
-          status,
-          reason,
-          sentAt: status === "SENT" ? new Date() : null,
-        });
-      };
-
-      if (!template.isActive) {
-        await note("SKIPPED", "Birthday wishes are switched off in the automatic emails section.");
-        continue;
-      }
-      const email = second ? person.secondEmail : person.email;
-      if (!email) {
-        await note("SKIPPED", `${second ? "The second buyer has" : "The client has"} no email address on the record.`);
-        continue;
-      }
-
-      const values = { first_name: first.trim(), last_name: last.trim(), name: `${first} ${last}`.trim() };
-      const result = await sendAndRecord({
-        channel: "EMAIL",
-        recipient: { name: values.name, email, clientId: person.id },
-        subject: fill(template.subject ?? "", values),
-        body: fill(template.body, values),
-        withOptOut: false,
+    const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
+      await db.insert(automaticEmails).values({
+        templateKey: "birthday",
+        clientId: person.clientId,
+        secondBuyer: person.second,
+        personKey: person.personKey,
+        agentId: person.agentId,
+        forYear: year,
+        status,
+        reason: person.personKey ? `${name}: ${reason}` : reason,
+        sentAt: status === "SENT" ? new Date() : null,
       });
-      if (result.status === "SENT") {
-        await note("SENT", second ? "Sent to the second buyer." : "Sent.");
-        sent += 1;
-      } else if (result.status === "SIMULATED") {
-        await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
-      } else {
-        await note("FAILED", result.error ?? "It did not go.");
-      }
+    };
+
+    if (wishedGroups.has(group[i])) {
+      await note("SKIPPED", "Already wished this year: the same person is on the CRM another way, with the same email or mobile.");
+      continue;
+    }
+    if (!template.isActive) {
+      await note("SKIPPED", "Birthday wishes are switched off in the automatic emails section.");
+      continue;
+    }
+    /* Their own address, or failing that, one the same person has on another record. */
+    const email =
+      sameEmail(person.email) ??
+      people.map((other, j) => (group[j] === group[i] ? sameEmail(other.email) : null)).find(Boolean) ??
+      null;
+    if (!email) {
+      await note("SKIPPED", `No email address on the record of this ${person.what}.`);
+      continue;
+    }
+
+    const values = { first_name: person.first.trim(), last_name: person.last.trim(), name };
+    const result = await sendAndRecord({
+      channel: "EMAIL",
+      recipient: { name, email, clientId: person.clientId ?? undefined, agentId: person.agentId ?? undefined },
+      subject: fill(template.subject ?? "", values),
+      body: fill(template.body, values),
+      withOptOut: false,
+    });
+    if (result.status === "SENT") {
+      wishedGroups.add(group[i]);
+      await note("SENT", person.second ? "Sent to the second buyer." : "Sent.");
+      sent += 1;
+    } else if (result.status === "SIMULATED") {
+      await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
+    } else {
+      await note("FAILED", result.error ?? "It did not go.");
     }
   }
   return { sent, looked };

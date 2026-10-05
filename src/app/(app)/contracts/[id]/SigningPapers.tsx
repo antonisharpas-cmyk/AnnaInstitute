@@ -6,8 +6,8 @@ import { formatAmount } from "@/lib/money";
 import { PAPER_NAME, papersOf } from "@/lib/signingPapers";
 import { Card, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
+import { sendPaperInvoice } from "../stageActions";
 import {
-  invoicePaper,
   removePaperDraft,
   removePaperSigned,
   sendPaperForReview,
@@ -19,8 +19,8 @@ import {
  * The Reservation and the Contract of Sale, step by step.
  *
  * One box for each paper, with its three steps in the order they happen: the
- * draft to check, the invoice once the buyer wants to go ahead, and the signed
- * copy. Each step says what was done and when, and offers only what can be
+ * draft to check, the signed copy, and the invoice sent with the signed copy.
+ * The receipt follows by itself when the money is recorded. Each step says what was done and when, and offers only what can be
  * done next.
  */
 export default async function SigningPapers({ contractId, hasEmail }: { contractId: string; hasEmail: boolean }) {
@@ -85,9 +85,29 @@ export default async function SigningPapers({ contractId, hasEmail }: { contract
                 )}
               </div>
 
-              {/* 2. The buyer wants to go ahead: the invoice, before they come. */}
+              {/* 2. Signed. */}
               <div className="border-t border-brand-line py-2">
-                <p className="label !mb-1">2. {t("papers.wantsIt")}</p>
+                <p className="label !mb-1">2. {t("papers.signedCopy")}</p>
+                {one.signed ? (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <a href={`/api/files/${one.signed.id}`} target="_blank" rel="noreferrer" className="text-brand-teal-dark hover:underline" data-paper-signed>
+                      {one.signed.title}
+                    </a>
+                    <form action={removePaperSigned.bind(null, contractId, one.kind)}>
+                      <SubmitButton className="btn btn-secondary !px-2 !py-0.5 !text-xs">{t("common.delete")}</SubmitButton>
+                    </form>
+                  </div>
+                ) : (
+                  <form action={uploadPaperSigned.bind(null, contractId, one.kind)} className="flex flex-wrap items-center gap-2" data-paper-signed-form>
+                    <input name="file" type="file" required className="text-xs" />
+                    <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("papers.uploadSigned")}</SubmitButton>
+                  </form>
+                )}
+              </div>
+
+              {/* 3. The invoice, with the signed copy. The receipt follows by itself when the money is recorded. */}
+              <div className="border-t border-brand-line py-2">
+                <p className="label !mb-1">3. {t("papers.invoiceWithSigned")}</p>
                 {one.invoice ? (
                   <p className="text-sm" data-paper-invoice>
                     {one.invoice.documentId ? (
@@ -104,10 +124,13 @@ export default async function SigningPapers({ contractId, hasEmail }: { contract
                       {one.paper?.invoiceSentAt ? `${t("papers.sentOn")} ${when(one.paper.invoiceSentAt)}` : t("papers.issuedNotSent")}
                     </span>
                   </p>
-                ) : lines.length === 0 ? (
+                ) : null}
+                {lines.length === 0 ? (
                   <p className="text-xs text-brand-graphite/60">{t("papers.noStages")}</p>
-                ) : (
-                  <form action={invoicePaper.bind(null, contractId, one.kind)} className="space-y-2" data-paper-invoice-form>
+                ) : !one.signed ? (
+                  <p className="text-xs text-brand-graphite/60">{t("papers.signedFirst")}</p>
+                ) : paidAll ? null : (
+                  <form action={sendPaperInvoice.bind(null, contractId, one.kind)} className="mt-1 space-y-2" data-paper-invoice-form>
                     <div className="flex flex-wrap items-center gap-2">
                       <label className="text-xs" htmlFor={`stage-${one.kind}`}>
                         {t("papers.paidWith")}
@@ -120,28 +143,10 @@ export default async function SigningPapers({ contractId, hasEmail }: { contract
                         ))}
                       </select>
                     </div>
-                    <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">{t("papers.issueAndSend")}</SubmitButton>
-                    <p className="text-xs text-brand-graphite/60">{t("papers.invoiceNote")}</p>
-                  </form>
-                )}
-              </div>
-
-              {/* 3. Signed and paid. */}
-              <div className="border-t border-brand-line py-2">
-                <p className="label !mb-1">3. {t("papers.signedAndPaid")}</p>
-                {one.signed ? (
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <a href={`/api/files/${one.signed.id}`} target="_blank" rel="noreferrer" className="text-brand-teal-dark hover:underline" data-paper-signed>
-                      {one.signed.title}
-                    </a>
-                    <form action={removePaperSigned.bind(null, contractId, one.kind)}>
-                      <SubmitButton className="btn btn-secondary !px-2 !py-0.5 !text-xs">{t("common.delete")}</SubmitButton>
-                    </form>
-                  </div>
-                ) : (
-                  <form action={uploadPaperSigned.bind(null, contractId, one.kind)} className="flex flex-wrap items-center gap-2" data-paper-signed-form>
-                    <input name="file" type="file" required className="text-xs" />
-                    <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("papers.uploadSigned")}</SubmitButton>
+                    <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">
+                      {(one.paper?.invoiceSentAt ? t("papers.sendInvoiceAgain") : t("papers.sendInvoiceWithSigned")).replace("{paper}", name)}
+                    </SubmitButton>
+                    <p className="text-xs text-brand-graphite/60">{t("papers.receiptFollows")}</p>
                   </form>
                 )}
                 {one.stage ? (
@@ -151,11 +156,7 @@ export default async function SigningPapers({ contractId, hasEmail }: { contract
                       ? `. ${t("papers.letterWent")} ${when(one.paper.signedSentAt)}`
                       : one.paidCents > 0 && !one.signed && (one.draft || one.invoice)
                         ? `. ${t("papers.letterWaits")}`
-                        : paidAll
-                          ? ""
-                          : one.signed
-                            ? `. ${t("papers.letterOnPayment")}`
-                            : ""}
+                        : ""}
                   </p>
                 ) : null}
               </div>

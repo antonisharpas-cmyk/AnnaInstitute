@@ -92,6 +92,8 @@ export type IssuedSnapshot = {
   payableCents?: number;
   /** An invoice issued for a stage before the money, sent with the Reservation or the Contract of Sale. */
   advance?: boolean;
+  /** What the stamp of such an invoice says: due on signing, or due on receipt for a stage of the building. */
+  dueWords?: string;
   /**
    * A receipt for one part of a stage paid in parts: the invoice for the
    * whole stage it is against, what has come in on it so far and what remains.
@@ -652,7 +654,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   };
   if (!credit && s.advance) {
     /* Issued before the money, to be paid on the day of signing. */
-    stamp(s.payableCents === 0 && s.creditAppliedCents ? `SETTLED BY CREDIT ${longDay(s.issuedOn)}` : "PAYMENT DUE ON SIGNING");
+    stamp(s.payableCents === 0 && s.creditAppliedCents ? `SETTLED BY CREDIT ${longDay(s.issuedOn)}` : (s.dueWords ?? "PAYMENT DUE ON SIGNING"));
   } else if (!credit && s.billTo === "partner") {
     /* Issued before the money: it says when it is due, not that it was paid. */
     stamp(s.dueOn ? `PAYMENT DUE BY ${longDay(s.dueOn)}` : "PAYMENT DUE ON RECEIPT");
@@ -738,7 +740,7 @@ export async function stampCancelled(original: Buffer, lines: string[]): Promise
  */
 export async function acknowledgementPdf(
   s: IssuedSnapshot,
-  refund: { purpose: "REFUND" | "PENALTY"; amountCents: number; paidOn: string; method: string; reference: string; cancelled: boolean; note: string },
+  refund: { purpose: "REFUND" | "PENALTY" | "VAT_CHANGE"; amountCents: number; paidOn: string; method: string; reference: string; cancelled: boolean; note: string },
 ): Promise<Buffer> {
   const sh = await start("Refund acknowledgement", s);
   const { page, f } = sh;
@@ -766,7 +768,9 @@ export async function acknowledgementPdf(
     y -= 70;
   } else {
   para(`${me}, confirm that I have received from ${s.company.name} the sum of ${amount} (${amountInEnglish(refund.amountCents).toLowerCase()})${how} on ${longDay(refund.paidOn)}.`, 11, f.bold);
-  if (refund.purpose === "PENALTY") {
+  if (refund.purpose === "VAT_CHANGE") {
+    para(`The amount is the VAT I paid over at the standard rate on the property ${s.property}, under contract ${s.contractReference}, before my reduced VAT was approved, which could not be set against any further payment. It is covered by credit note ${s.creditNoteNumber}. The price in the Contract of Sale before VAT is unchanged.`);
+  } else if (refund.purpose === "PENALTY") {
     para(`The amount is paid to me as the agreed compensation for the delay in the completion of the property ${s.property}, under contract ${s.contractReference}. It is covered by credit note ${s.creditNoteNumber}. The price in the Contract of Sale and its terms are unchanged.`);
   } else {
     para(`The amount is paid to me as a refund agreed as a matter of goodwill, for the property ${s.property} under contract ${s.contractReference}. It is covered by credit note ${s.creditNoteNumber}.${refund.cancelled ? " I confirm that my reservation of this property is cancelled." : ""}`);

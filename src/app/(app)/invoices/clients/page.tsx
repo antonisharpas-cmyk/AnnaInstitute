@@ -216,7 +216,10 @@ export default async function ClientInvoicesPage({
                         ) : null}
                         {voided ? (
                           <div className="mt-0.5">
-                            <Pill tone="warn">{t("issued.void")}</Pill>
+                            {/* Cancelled by the reduced VAT, and replaced: not a mistake taken back. */}
+                            <Pill tone={paper.replacedById ? "bad" : "warn"}>
+                              {paper.replacedById ? t("credits.cancelledPill") : t("issued.void")}
+                            </Pill>
                           </div>
                         ) : null}
                         {credited ? (
@@ -231,6 +234,11 @@ export default async function ClientInvoicesPage({
                           : null}
                         {creditNote && row.invoiceNumber ? `${t("issued.credits")} ${row.invoiceNumber}` : null}
                         {creditNote && !row.invoiceNumber ? t(`issued.purpose.${paper.purpose ?? "REFUND"}` as "issued.purpose.REFUND") : null}
+                        {voided && !credited && row.replacedByNumber ? (
+                          <div>
+                            {t("issued.replacedBy")} {row.replacedByNumber}
+                          </div>
+                        ) : null}
                         {credited ? (
                           <div>
                             {t("issued.creditNote")} {row.creditNoteNumber}

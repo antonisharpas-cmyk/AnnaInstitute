@@ -167,10 +167,10 @@ const fileOf = (doc: typeof documents.$inferSelect): EmailAttachment => ({
 export type LetterResult = { ok: boolean; said: string };
 
 /** One of the paper letters, to the buyer, copied to the second buyer. */
-async function writeToBuyer(
-  key: "paper_review" | "paper_invoice" | "paper_signed",
+export async function writeToBuyer(
+  key: string,
   contractId: string,
-  kind: PaperKind,
+  kind: PaperKind | null,
   extra: Record<string, string>,
   attachments: EmailAttachment[],
 ): Promise<LetterResult> {
@@ -187,7 +187,7 @@ async function writeToBuyer(
     unit: row.unit?.code ?? row.contract.reference ?? "",
     project: row.project?.name ?? "",
     reference: row.contract.reference ?? "",
-    paper: PAPER_NAME[kind],
+    paper: kind ? PAPER_NAME[kind] : "",
     ...extra,
   };
   const result = await sendAndRecord({

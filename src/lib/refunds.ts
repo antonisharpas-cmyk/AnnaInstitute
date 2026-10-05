@@ -22,7 +22,8 @@ import { recordAudit } from "@/lib/audit";
  */
 export type RefundInput = {
   contractId: string;
-  purpose: "REFUND" | "PENALTY";
+  /** VAT_CHANGE: the VAT paid over before the reduced VAT, that no stage was left to take. */
+  purpose: "REFUND" | "PENALTY" | "VAT_CHANGE";
   amountCents: number;
   paidOn: Date;
   method: string | null;
@@ -38,16 +39,23 @@ export async function recordRefund(input: RefundInput) {
   const day = longDay(input.paidOn.toISOString());
   const who = { id: input.who.id, name: input.who.name };
 
-  /* The VAT inside the agreed amount, at the rate the buyer paid. */
+  /* The VAT inside the agreed amount, at the rate the buyer paid. A VAT credit
+     paid back is VAT and nothing else: the price before VAT never changed. */
+  const vatBack = input.purpose === "VAT_CHANGE";
   const model = modelOf(contract);
   const whole = { netCents: model.totalNetCents, vatCents: vatForNet(model.totalNetCents, model).vatCents };
-  const split = splitGross(input.amountCents, whole, model);
+  const split = vatBack
+    ? { netCents: 0, vatCents: input.amountCents, parts: undefined }
+    : splitGross(input.amountCents, whole, model);
 
   const cancelled = input.purpose === "REFUND" && input.cancelContract;
+  const approvedDay = contract.reducedVatApprovedOn ? longDay(new Date(contract.reducedVatApprovedOn).toISOString()) : "";
   const reason =
     input.purpose === "PENALTY"
       ? `Compensation for the delay in completion, paid ${day}`
-      : `Goodwill refund paid ${day}${cancelled ? ", reservation cancelled" : ""}`;
+      : vatBack
+        ? `VAT paid over before the reduced VAT approved on ${approvedDay}, paid back ${day}`
+        : `Goodwill refund paid ${day}${cancelled ? ", reservation cancelled" : ""}`;
 
   /*
    * Nothing paid back.
@@ -68,7 +76,7 @@ export async function recordRefund(input: RefundInput) {
         netCents: split.netCents,
         vatCents: split.vatCents,
         parts: split.parts,
-        description: `${input.purpose === "PENALTY" ? "Delay penalty" : "Goodwill refund"}${
+        description: `${input.purpose === "PENALTY" ? "Delay penalty" : vatBack ? "VAT paid over, paid back after the reduced VAT" : "Goodwill refund"}${
           contract.reference ? `, contract ${contract.reference}` : ""
         }${input.note ? `. ${input.note}` : ""}`,
         who,
@@ -87,8 +95,8 @@ export async function recordRefund(input: RefundInput) {
   });
   const ackId = await keepPdf(
     ack,
-    note ? `Refund acknowledgement ${note.number}.pdf` : `Acknowledgement, nothing paid back ${input.paidOn.toISOString().slice(0, 10)}.pdf`,
-    note ? `Refund acknowledgement, credit note ${note.number}` : "Acknowledgement, nothing paid back",
+    note ? `${vatBack ? "VAT refund acknowledgement" : "Refund acknowledgement"} ${note.number}.pdf` : `Acknowledgement, nothing paid back ${input.paidOn.toISOString().slice(0, 10)}.pdf`,
+    note ? `${vatBack ? "VAT refund acknowledgement" : "Refund acknowledgement"}, credit note ${note.number}` : "Acknowledgement, nothing paid back",
     "REFUND_ACK",
     contract.id,
     who.id,

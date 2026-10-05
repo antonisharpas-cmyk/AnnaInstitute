@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { MessageKey } from "@/i18n";
 import SubmitButton from "@/components/SubmitButton";
+import DateField from "@/components/DateField";
 
 type AgentRecord = {
   id: string;
@@ -8,6 +9,7 @@ type AgentRecord = {
   company: string | null;
   email: string | null;
   phone: string | null;
+  birthDate?: string | null;
   commissionRate: string;
   campaignChannel?: string | null;
   isActive: boolean;
@@ -71,6 +73,14 @@ export default function AgentForm({
             {t("common.phone")}
           </label>
           <input id="phone" name="phone" defaultValue={agent?.phone ?? ""} className="input" />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="birthDate">
+            {t("people.birthDate")}
+          </label>
+          <DateField id="birthDate" name="birthDate" defaultValue={agent?.birthDate ?? ""} />
+          <p className="mt-1 text-xs text-brand-graphite/60">{t("people.birthDateHint")}</p>
         </div>
 
         <div>

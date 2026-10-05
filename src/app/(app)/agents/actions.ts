@@ -1,5 +1,7 @@
 "use server";
 
+import { cleanBirthDate } from "@/lib/buyers";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
@@ -77,6 +79,7 @@ export async function createAgent(formData: FormData) {
       licenceNumber: parsed.licenceNumber,
       website: parsed.website,
       isActive: String(formData.get("isActive") ?? "") === "on",
+      ...(formData.has("birthDate") ? { birthDate: cleanBirthDate(String(formData.get("birthDate") ?? "")) } : {}),
       ...(formData.has("campaignChannel") ? { campaignChannel: channelFrom(formData) } : {}),
       notes: parsed.notes,
     })
@@ -132,6 +135,7 @@ export async function saveAgentProfile(
       licenceNumber: String(formData.get("licenceNumber") ?? "").trim() || null,
       website: String(formData.get("website") ?? "").trim() || null,
       isActive: String(formData.get("isActive") ?? "") === "on",
+      ...(formData.has("birthDate") ? { birthDate: cleanBirthDate(String(formData.get("birthDate") ?? "")) } : {}),
       ...(formData.has("campaignChannel") ? { campaignChannel: channelFrom(formData) } : {}),
       notes: String(formData.get("notes") ?? "").trim() || null,
       updatedAt: new Date(),
@@ -180,6 +184,7 @@ export async function updateAgent(agentId: string, formData: FormData) {
       licenceNumber: parsed.licenceNumber ?? null,
       website: parsed.website ?? null,
       isActive: String(formData.get("isActive") ?? "") === "on",
+      ...(formData.has("birthDate") ? { birthDate: cleanBirthDate(String(formData.get("birthDate") ?? "")) } : {}),
       ...(formData.has("campaignChannel") ? { campaignChannel: channelFrom(formData) } : {}),
       notes: parsed.notes ?? null,
       updatedAt: new Date(),

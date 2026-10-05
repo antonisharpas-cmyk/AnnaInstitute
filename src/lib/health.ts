@@ -323,6 +323,26 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "campaigns about several developments or apartments",
     migration: "0047",
   },
+  {
+    probe: "select birth_date from team_members limit 1",
+    what: "birthdays for the team, agents, shareholders and directors",
+    migration: "0048",
+  },
+  {
+    probe: "select reduced_vat_document_id from contracts limit 1",
+    what: "the paper that approves the reduced VAT",
+    migration: "0048",
+  },
+  {
+    probe: "select invoice_sent_at from installments limit 1",
+    what: "the invoice of each stage, sent with its papers",
+    migration: "0049",
+  },
+  {
+    probe: "select installment_id from documents limit 1",
+    what: "the architect's certificate and photographs of a stage",
+    migration: "0049",
+  },
 ];
 
 let answer: Missing[] | null = null;

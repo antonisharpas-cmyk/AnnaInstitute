@@ -55,7 +55,7 @@ export type PackItem = {
   vatCents: number;
   totalCents: number;
   /** Voided or credited papers are listed, marked, and left unticked. */
-  state: "" | "voided" | "credited";
+  state: "" | "voided" | "credited" | "cancelled";
   files: number;
 };
 
@@ -128,7 +128,7 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
       netCents: toCents(paper.netAmount),
       vatCents: toCents(paper.vatAmount),
       totalCents: toCents(paper.totalAmount),
-      state: paper.voidedAt ? "voided" : paper.creditedById ? "credited" : "",
+      state: paper.voidedAt ? (paper.replacedById ? "cancelled" : "voided") : paper.creditedById ? "credited" : "",
       files: paper.documentId ? 1 : 0,
     };
   });
@@ -217,7 +217,7 @@ export async function buildPack(month: string, keys: string[]) {
       item.netCents / 100,
       item.vatCents / 100,
       item.totalCents / 100,
-      item.state === "voided" ? "Voided" : item.state === "credited" ? "Credited" : "",
+      item.state === "voided" ? "Voided" : item.state === "cancelled" ? "Cancelled, issued again at the reduced VAT" : item.state === "credited" ? "Credited" : "",
       placed.join(", ") || "No file",
     ]);
   }

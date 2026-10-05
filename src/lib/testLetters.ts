@@ -168,6 +168,12 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
       values.invoice_number = "0001";
       values.amount = money(5000);
     }
+    if (key.startsWith("stage_invoice")) {
+      values.paper = "Reservation Agreement";
+      values.invoice_number = "0001";
+      values.stage = key === "stage_invoice_works" ? "Completion of the Structure" : key === "stage_invoice" ? "Completion of the Property" : "Reservation";
+      values.amount = money(key === "stage_invoice_signed" ? 5000 : 37500);
+    }
     if (key === "agent_commission") {
       values.first_name = "Andreas";
       values.name = "Andreas Agent";
@@ -188,6 +194,27 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
           contentType: "application/pdf",
         },
       ];
+    }
+    if (key.startsWith("stage_invoice")) {
+      attachments = [
+        {
+          filename: "Invoice 0001 EXAMPLE.pdf",
+          content: await stand_in("The invoice goes here", ["The real letter carries the invoice of the stage.", "This page only stands in for it in the test."]),
+          contentType: "application/pdf",
+        },
+      ];
+      if (key === "stage_invoice_signed")
+        attachments.push({
+          filename: "Reservation signed EXAMPLE.pdf",
+          content: await stand_in("The signed Reservation goes here", ["The real letter carries the signed paper on the contract."]),
+          contentType: "application/pdf",
+        });
+      if (key === "stage_invoice_works")
+        attachments.push({
+          filename: "Architect certificate EXAMPLE.pdf",
+          content: await stand_in("The architect's certificate goes here", ["The real letter carries the certificate and the photographs of the stage."]),
+          contentType: "application/pdf",
+        });
     }
     if (key.startsWith("paid_")) {
       attachments = await examplePapers(place, values.stage, Number(values.amount.replace(/[^0-9.]/g, "")) || 25000);

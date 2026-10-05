@@ -5,6 +5,8 @@ import { listTeam } from "@/lib/team";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
+import DateField from "@/components/DateField";
+import { birthdayText } from "@/lib/buyers";
 import ConfirmButton from "@/components/ConfirmButton";
 import { addTeamMember, deleteTeamMember, updateTeamMember } from "../appointments/actions";
 
@@ -17,7 +19,7 @@ import { addTeamMember, deleteTeamMember, updateTeamMember } from "../appointmen
  */
 export default async function TeamPage() {
   await requireUser(["ADMIN"]);
-  const { t } = await getTranslator();
+  const { locale, t } = await getTranslator();
   const rows = await listTeam();
 
   return (
@@ -49,6 +51,12 @@ export default async function TeamPage() {
                 </label>
                 <input id="phone" name="phone" className="input" />
               </div>
+              <div>
+                <label className="label" htmlFor="birthDate">
+                  {t("people.birthDate")}
+                </label>
+                <DateField id="birthDate" name="birthDate" />
+              </div>
               <div className="flex items-end">
                 <SubmitButton>{t("common.save")}</SubmitButton>
               </div>
@@ -66,6 +74,7 @@ export default async function TeamPage() {
                   <th>{t("team.name")}</th>
                   <th>{t("leads.email")}</th>
                   <th>{t("team.phone")}</th>
+                  <th>{t("people.birthDate")}</th>
                   <th className="ctr">{t("team.coming")}</th>
                   <th className="ctr">{t("team.waiting")}</th>
                   <th>{t("common.status")}</th>
@@ -89,6 +98,7 @@ export default async function TeamPage() {
                       )}
                     </td>
                     <td className="text-xs">{member.phone ?? ""}</td>
+                    <td className="text-xs nowrap" data-team-birthday>{birthdayText(member.birthDate, locale)}</td>
                     <td className="ctr">
                       {coming > 0 ? (
                         <Link
@@ -158,6 +168,10 @@ export default async function TeamPage() {
                                 defaultValue={member.phone ?? ""}
                                 className="input"
                               />
+                            </div>
+                            <div>
+                              <label className="label">{t("people.birthDate")}</label>
+                              <DateField name="birthDate" defaultValue={member.birthDate ?? ""} />
                             </div>
                             <label className="flex items-center gap-2 text-sm">
                               <input

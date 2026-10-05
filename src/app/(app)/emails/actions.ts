@@ -89,6 +89,8 @@ export async function saveAutomatic(templateId: string, formData: FormData) {
       /* The Greek wording is no longer offered: kept as it was if not sent. */
       subjectEl: formData.has("subjectEl") ? subjectEl || null : undefined,
       bodyEl: formData.has("bodyEl") ? bodyEl || null : undefined,
+      /* The SMS text of the appointment letters; left empty, no SMS goes. */
+      bodyWhatsapp: formData.has("bodySms") ? String(formData.get("bodySms") ?? "").trim() || null : undefined,
       updatedAt: new Date(),
     })
     .where(eq(emailTemplates.id, templateId));

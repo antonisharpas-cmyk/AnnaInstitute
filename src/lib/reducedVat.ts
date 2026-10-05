@@ -1,10 +1,10 @@
 import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { contracts, installments, issuedDocuments, payments, vatChanges } from "@/db/schema";
+import { contracts, installments, issuedDocuments, payments, refunds, vatChanges } from "@/db/schema";
 import { fromCents, toCents } from "@/lib/money";
 import { blendedRate, modelOf, vatForNet, type VatModel } from "@/lib/vatModel";
-import { issueCreditNote, issueForCreditCover, keepPdf, paperName, placeFromProperty, readDocument } from "@/lib/issued";
+import { issueForCreditCover, keepPdf, paperName, placeFromProperty, readDocument } from "@/lib/issued";
 import { invoicePdf, longDay, stampCancelled, type IssuedSnapshot } from "@/lib/paymentPdf";
 import { nextInvoiceNumber } from "@/lib/receipts";
 import { issuerDetails } from "@/lib/issuer";
@@ -20,27 +20,33 @@ import { recordAudit } from "@/lib/audit";
  *  1. The stages of the Contract of Sale do not change: every amount before VAT
  *     stays as signed. Only the VAT on them moves, to the reduced rate on the
  *     part that qualifies and the standard rate on the rest.
- *  2. Every invoice already issued at the old VAT stays on the record. It is
- *     cancelled by a credit note that names it, and a stamped copy saying so is
- *     kept beside the original, so the buyer's file can match ours.
+ *  2. Every invoice already issued at the old VAT stays on the record, marked
+ *     cancelled, with a copy stamped CANCELLED that names the invoice that
+ *     replaces it. No credit note is issued for it: a credit note is only for
+ *     money that is paid back.
  *  3. A new invoice is issued for exactly the same payment, at the new VAT.
  *  4. The buyer has paid more VAT than they owe, which becomes a credit. It is
- *     not paid back: it is put on the next stages, in order, until it is used
- *     up. The next stage is invoiced in full and says how much the credit
- *     settled; the buyer pays the rest.
+ *     put on the next stages, in order, until it is used up. The next stage is
+ *     invoiced in full and says how much the credit settled; the buyer pays
+ *     the rest. Only what no stage is left to take, because the approval came
+ *     after the last payment or the credit is more than the last stage, is
+ *     paid back, by a credit note, when the office presses the button.
  */
 export type Approval = {
   contractId: string;
   approvedOn: Date;
   /** The part of the price before VAT that qualifies for the reduced rate. */
   reducedNetCents: number;
+  /** The approval as the buyer sent it, already filed. */
+  documentId?: string | null;
   reducedRate: number;
   standardRate: number;
   who: { id: string; name: string; email: string };
 };
 
 export type ApprovalResult = {
-  creditNotes: string[];
+  /** The invoices at the old VAT, now cancelled. */
+  cancelled: string[];
   invoices: string[];
   creditCents: number;
   appliedTo: string[];
@@ -78,6 +84,7 @@ export async function approveReducedVat(approval: Approval): Promise<ApprovalRes
       reducedVatRate: approval.reducedRate.toFixed(3),
       standardVatRate: approval.standardRate.toFixed(3),
       reducedVatApprovedOn: approval.approvedOn,
+      reducedVatDocumentId: approval.documentId ?? null,
       updatedAt: new Date(),
     })
     .where(eq(contracts.id, contract.id));
@@ -119,7 +126,7 @@ export async function approveReducedVat(approval: Approval): Promise<ApprovalRes
     action: "contract.reducedVat",
     entity: "contract",
     entityId: contract.id,
-    detail: `approved ${day}: ${approval.reducedRate}% on ${fromCents(model.reducedNetCents as number)}; credit notes ${result.creditNotes.join(", ") || "none"}; invoices ${result.invoices.join(", ") || "none"}; credit ${fromCents(result.creditCents)}${result.errors.length ? `; not finished: ${result.errors.join(" | ")}` : ""}`,
+    detail: `approved ${day}: ${approval.reducedRate}% on ${fromCents(model.reducedNetCents as number)}; cancelled ${result.cancelled.join(", ") || "none"}; invoices ${result.invoices.join(", ") || "none"}; credit ${fromCents(result.creditCents)}${result.errors.length ? `; not finished: ${result.errors.join(" | ")}` : ""}`,
     userId: approval.who.id,
     userEmail: approval.who.email,
   });
@@ -146,7 +153,7 @@ export async function finishReducedVat(
   actor: { id?: string | null; name?: string | null; email?: string | null } | null = null,
 ): Promise<ApprovalResult> {
   const result: ApprovalResult = {
-    creditNotes: [],
+    cancelled: [],
     invoices: [],
     creditCents: 0,
     appliedTo: [],
@@ -179,6 +186,7 @@ export async function finishReducedVat(
           eq(issuedDocuments.kind, "INVOICE"),
           isNull(issuedDocuments.voidedAt),
           isNull(issuedDocuments.creditedById),
+          isNull(issuedDocuments.replacedById),
         ),
       )
       .orderBy(asc(issuedDocuments.issuedOn), asc(issuedDocuments.createdAt));
@@ -194,19 +202,6 @@ export async function finishReducedVat(
       try {
         const snap = JSON.parse(old.snapshot) as IssuedSnapshot;
 
-        const note = await issueCreditNote({
-          contractId: contract.id,
-          purpose: "VAT_CHANGE",
-          reason: `Reduced VAT approved on ${day}; invoice ${old.number} is reissued at the new VAT`,
-          when: approval.approvedOn,
-          netCents: net,
-          vatCents: oldVat,
-          parts: snap.parts,
-          description: snap.description,
-          relatesTo: old,
-          who,
-        });
-
         /* The new invoice comes from the same company as the one it replaces. */
         const number = await nextInvoiceNumber(old.issuerId ?? "");
         const newTotal = net + fresh.vatCents;
@@ -221,7 +216,7 @@ export async function finishReducedVat(
           rate: net > 0 ? Math.round((fresh.vatCents / net) * 100 * 1000) / 1000 : rate,
           parts: fresh.parts,
           replacesNumber: old.number,
-          replacedByCreditNote: note.number,
+          replacedByCreditNote: undefined,
           creditAppliedCents: undefined,
           payableCents: undefined,
         };
@@ -258,7 +253,7 @@ export async function finishReducedVat(
         const original = await readDocument(old.documentId);
         if (original) {
           const stamped = await stampCancelled(original, [
-            `Credit note ${note.number} of ${day}`,
+            `Reduced VAT approved on ${day}`,
             `Replaced by invoice ${number}`,
           ]);
           stampedDocumentId = await keepPdf(
@@ -270,12 +265,18 @@ export async function finishReducedVat(
             who?.id ?? null,
           );
         }
+        /* Cancelled, not credited: it stays on the record, out of every total. */
         await db
           .update(issuedDocuments)
-          .set({ creditedById: note.id, replacedById: replacement.id, stampedDocumentId })
+          .set({
+            replacedById: replacement.id,
+            stampedDocumentId,
+            voidedAt: approval.approvedOn,
+            voidReason: `Cancelled: reduced VAT approved on ${day}, replaced by invoice ${number}`,
+          })
           .where(eq(issuedDocuments.id, old.id));
 
-        result.creditNotes.push(note.number);
+        result.cancelled.push(old.number);
         result.invoices.push(number);
         result.creditCents += oldTotal - newTotal;
       } catch (error) {
@@ -384,4 +385,39 @@ export function creditLeftOver(
     lines.some((line) => line.paidCents > line.totalCents) &&
     lines.some((line) => line.paidCents < line.totalCents)
   );
+}
+
+/**
+ * The VAT credit no stage is left to take, still to be paid back.
+ *
+ * After the approval the VAT paid over is moved onto the next stages. What is
+ * left when there is no next stage, because the approval came after the last
+ * payment or the credit is more than the last stage, is money the buyer is
+ * owed back. It is paid back by the button on the contract, which issues the
+ * credit note; what has already gone back that way is taken off.
+ */
+export async function vatCreditToPayBack(contractId: string): Promise<number> {
+  const [contract] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
+  if (!contract?.reducedVatApprovedOn || contract.kind !== "SALE") return 0;
+  const lines = await db.select().from(installments).where(eq(installments.contractId, contractId));
+  const paidRows = await db
+    .select({ installmentId: payments.installmentId, paid: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+    .from(payments)
+    .where(eq(payments.contractId, contractId))
+    .groupBy(payments.installmentId);
+  const paidBy = new Map(paidRows.map((row) => [row.installmentId, toCents(row.paid)]));
+  let over = 0;
+  let open = 0;
+  for (const line of lines) {
+    const gap = (paidBy.get(line.id) ?? 0) - toCents(line.totalAmount);
+    if (gap > 0) over += gap;
+    else open += -gap;
+  }
+  /* A stage still owing takes the credit first: finishReducedVat moves it there. */
+  if (open > 0) return 0;
+  const [back] = await db
+    .select({ total: sql<string>`coalesce(sum(${refunds.amount}), 0)` })
+    .from(refunds)
+    .where(and(eq(refunds.contractId, contractId), eq(refunds.purpose, "VAT_CHANGE")));
+  return Math.max(0, over - toCents(back?.total ?? "0"));
 }

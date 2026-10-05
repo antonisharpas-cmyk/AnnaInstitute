@@ -13,6 +13,7 @@ import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
 import DateField from "@/components/DateField";
+import { birthdayText } from "@/lib/buyers";
 import ProfileCard from "@/components/ProfileCard";
 import DeleteRecord from "@/components/DeleteRecord";
 import { whatGoesWithAgent } from "@/lib/deletes";
@@ -111,6 +112,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               { name: "company", label: t("subowners.company"), value: agent.company ?? "" },
               { name: "email", label: t("leads.email"), value: agent.email ?? "", kind: "email" },
               { name: "phone", label: t("leads.phone"), value: agent.phone ?? "" },
+              {
+                name: "birthDate",
+                label: t("people.birthDate"),
+                value: agent.birthDate ?? "",
+                display: birthdayText(agent.birthDate, locale),
+                kind: "date",
+                hint: t("people.birthDateHint"),
+              },
               {
                 name: "campaignChannel",
                 label: t("agents.campaignChannel"),

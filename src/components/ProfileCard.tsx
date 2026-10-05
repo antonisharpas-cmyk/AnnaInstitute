@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import DateField from "@/components/DateField";
 
 export type ProfileField = {
   name: string;
@@ -8,7 +9,7 @@ export type ProfileField = {
   /** What the card shows when it is not being edited. Defaults to the value. */
   display?: string;
   value?: string;
-  kind?: "text" | "email" | "tel" | "textarea" | "select" | "checkbox" | "number";
+  kind?: "text" | "email" | "tel" | "textarea" | "select" | "checkbox" | "number" | "date";
   options?: { value: string; label: string }[];
   checked?: boolean;
   required?: boolean;
@@ -126,6 +127,23 @@ export default function ProfileCard({
                   <input type="checkbox" name={field.name} defaultChecked={field.checked} />
                   <span>{field.hint ?? ""}</span>
                 </label>
+              </div>
+            );
+          }
+
+          if (field.kind === "date") {
+            return (
+              <div
+                key={field.name}
+                className="flex flex-wrap items-center gap-2 border-b border-brand-line py-2 last:border-b-0"
+              >
+                <label className="label !mb-0 w-44 shrink-0" htmlFor={field.name}>
+                  {field.label}
+                </label>
+                <div className="max-w-sm flex-1">
+                  <DateField id={field.name} name={field.name} defaultValue={field.value ?? ""} />
+                  {field.hint ? <p className="mt-1 text-xs text-brand-graphite/60">{field.hint}</p> : null}
+                </div>
               </div>
             );
           }

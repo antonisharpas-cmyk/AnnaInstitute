@@ -26,6 +26,9 @@ export const CATEGORY_LABELS: Record<string, string> = {
   REFUND_ACK: "Refund acknowledgement",
   RESERVATION: "Reservation Agreement",
   DRAFT: "Draft to check",
+  VAT_APPROVAL: "Reduced VAT approval",
+  STAGE_CERTIFICATE: "Architect's certificate",
+  STAGE_PHOTO: "Photograph of the works",
   OTHER: "Other",
 };
 

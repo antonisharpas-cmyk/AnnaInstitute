@@ -1,5 +1,7 @@
 "use server";
 
+import { cleanBirthDate } from "@/lib/buyers";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
@@ -212,6 +214,7 @@ export async function addDirector(subownerId: string, formData: FormData) {
     email: String(formData.get("email") ?? "").trim() || null,
     emailAlternate: String(formData.get("emailAlternate") ?? "").trim() || null,
     phone: String(formData.get("phone") ?? "").trim() || null,
+    birthDate: cleanBirthDate(String(formData.get("birthDate") ?? "")),
     notes: String(formData.get("notes") ?? "").trim() || null,
   });
 
@@ -224,6 +227,35 @@ export async function addDirector(subownerId: string, formData: FormData) {
     userEmail: user.email,
   });
 
+  revalidatePath(`/subowners/${subownerId}`);
+}
+
+/** Change a director's details. */
+export async function updateDirector(directorId: string, subownerId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  await db
+    .update(subownerDirectors)
+    .set({
+      name,
+      role: String(formData.get("role") ?? "").trim() || null,
+      email: String(formData.get("email") ?? "").trim() || null,
+      emailAlternate: String(formData.get("emailAlternate") ?? "").trim() || null,
+      phone: String(formData.get("phone") ?? "").trim() || null,
+      birthDate: cleanBirthDate(String(formData.get("birthDate") ?? "")),
+      updatedAt: new Date(),
+    })
+    .where(eq(subownerDirectors.id, directorId));
+  await recordAudit({
+    action: "subowner.director.update",
+    entity: "subowner",
+    entityId: subownerId,
+    detail: name,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
   revalidatePath(`/subowners/${subownerId}`);
 }
 
@@ -254,6 +286,7 @@ function holderFrom(formData: FormData) {
     idNumber: text("idNumber"),
     email: text("email"),
     phone: text("phone"),
+    birthDate: cleanBirthDate(text("birthDate")),
     address: text("address"),
     notes: text("notes"),
   };

@@ -124,6 +124,11 @@ export const documentCategoryEnum = pgEnum("document_category", [
   "RESERVATION",
   /** A Reservation or Contract of Sale sent to the buyer to check, before it is signed. */
   "DRAFT",
+  /** The paper that approves the buyer's reduced VAT. */
+  "VAT_APPROVAL",
+  /** The architect's certificate that a stage of the building is done, and its photographs. */
+  "STAGE_CERTIFICATE",
+  "STAGE_PHOTO",
   "OTHER",
 ]);
 export const changeRequestStatusEnum = pgEnum("change_request_status", [
@@ -160,6 +165,8 @@ export const agents = pgTable("agents", {
   vatNumber: text("vat_number"),
   licenceNumber: text("licence_number"),
   website: text("website"),
+  /** The birthday, as the day is written: 1985-03-14. A wish goes on the day. */
+  birthDate: text("birth_date"),
   isActive: boolean("is_active").default(true).notNull(),
   notes: text("notes"),
   createdAt: created(),
@@ -232,6 +239,8 @@ export const subownerDirectors = pgTable("subowner_directors", {
   /** A second address, for the ones who use two. */
   emailAlternate: text("email_alternate"),
   phone: text("phone"),
+  /** The birthday, as the day is written: 1985-03-14. A wish goes on the day. */
+  birthDate: text("birth_date"),
   notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
@@ -261,6 +270,8 @@ export const subownerShares = pgTable("subowner_shares", {
   idNumber: text("id_number"),
   email: text("email"),
   phone: text("phone"),
+  /** The birthday of a shareholder who is a person: 1985-03-14. A wish goes on the day. */
+  birthDate: text("birth_date"),
   address: text("address"),
   notes: text("notes"),
   createdAt: created(),
@@ -543,6 +554,8 @@ export const contracts = pgTable("contracts", {
   reducedVatRate: rate("reduced_vat_rate"),
   standardVatRate: rate("standard_vat_rate"),
   reducedVatApprovedOn: timestamp("reduced_vat_approved_on", { withTimezone: true }),
+  /** The approval itself, as the buyer sent it, uploaded with the approval. */
+  reducedVatDocumentId: text("reduced_vat_document_id"),
   /**
    * Cash changing hands alongside the apartments.
    *
@@ -641,6 +654,8 @@ export const installments = pgTable(
     trigger: text("trigger"),
     status: installmentStatusEnum("status").default("PENDING").notNull(),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
+    /** When the invoice for this stage was sent to the buyer, before the money. */
+    invoiceSentAt: timestamp("invoice_sent_at", { withTimezone: true }),
     createdAt: created(),
     updatedAt: updated(),
   },
@@ -836,6 +851,8 @@ export const documents = pgTable("documents", {
   secondBuyer: boolean("second_buyer").default(false).notNull(),
   /** The constructor's invoice or receipt for one of their payments. */
   constructorPaymentId: text("constructor_payment_id"),
+  /** A stage of the building: its architect's certificate and its photographs. */
+  installmentId: text("installment_id"),
   createdAt: created(),
 });
 
@@ -1400,6 +1417,8 @@ export const automaticEmails = pgTable("automatic_emails", {
   forYear: integer("for_year"),
   /** It went to the second buyer rather than the main one. */
   secondBuyer: boolean("second_buyer").default(false).notNull(),
+  /** A birthday wish to somebody who is not a client: "agent:<id>", "team:<id>", "holder:<id>", "director:<id>". */
+  personKey: text("person_key"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: created(),
   updatedAt: updated(),
@@ -1532,6 +1551,8 @@ export const teamMembers = pgTable("team_members", {
   name: text("name").notNull(),
   email: text("email"),
   phone: text("phone"),
+  /** The birthday, as the day is written: 1985-03-14. A wish goes on the day. */
+  birthDate: text("birth_date"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: created(),
   updatedAt: updated(),

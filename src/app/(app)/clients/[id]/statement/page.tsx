@@ -153,7 +153,8 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
           const myRefunds = paidBack.filter((one) => one.contractId === row.contract.id);
           const mineBack = myRefunds.reduce((sum, one) => sum + toCents(one.amount), 0);
           /* A refund comes off what the contract comes to and off what was paid alike. */
-          const mineOwed = mine.reduce((sum, line) => sum + toCents(line.totalAmount), 0) - mineBack;
+          const mineCredited = myRefunds.filter((one) => one.purpose !== "VAT_CHANGE").reduce((sum, one) => sum + toCents(one.amount), 0);
+          const mineOwed = mine.reduce((sum, line) => sum + toCents(line.totalAmount), 0) - mineCredited;
           const minePaid =
             paid.filter((one) => one.contractId === row.contract.id).reduce((sum, one) => sum + toCents(one.amount), 0) -
             mineBack;
@@ -235,7 +236,7 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
                 <tfoot>
                   <tr>
                     <td colSpan={3} className="font-semibold">
-                      {mineBack > 0 ? t("refunds.totalAfter") : t("common.total")}
+                      {mineCredited > 0 ? t("refunds.totalAfter") : t("common.total")}
                     </td>
                     <td className="ctr font-semibold">{formatAmount(mineOwed, locale)}</td>
                     <td className="ctr font-semibold">{formatAmount(minePaid, locale)}</td>

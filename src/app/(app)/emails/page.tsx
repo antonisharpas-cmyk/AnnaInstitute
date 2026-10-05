@@ -198,6 +198,22 @@ export default async function AutomaticEmailsPage() {
                     className="textarea font-mono text-xs"
                   />
                 </div>
+                {/* The appointment letters also go by SMS, with this shorter text. */}
+                {letter.key.startsWith("appointment_") ? (
+                  <div>
+                    <label className="label" htmlFor={`sms-${letter.id}`}>
+                      {t("emails.smsText")}
+                    </label>
+                    <textarea
+                      id={`sms-${letter.id}`}
+                      name="bodySms"
+                      rows={3}
+                      defaultValue={letter.bodyWhatsapp ?? ""}
+                      className="textarea font-mono text-xs"
+                    />
+                    <p className="mt-1 text-xs text-brand-graphite/60">{t("emails.smsHint")}</p>
+                  </div>
+                ) : null}
                 {/* English only: every letter the CRM sends goes in English. */}
                 <SubmitButton>{t("common.save")}</SubmitButton>
               </form>

@@ -952,6 +952,7 @@ export async function advanceInvoiceFor(installmentId: string) {
 export async function issueStageInvoice(
   installmentId: string,
   who: { id?: string | null; name?: string | null } | null = null,
+  options: { dueWords?: string } = {},
 ): Promise<typeof issuedDocuments.$inferSelect | null> {
   const standingInvoice = await stageInvoice(installmentId);
   if (standingInvoice) return standingInvoice;
@@ -1034,6 +1035,7 @@ export async function issueStageInvoice(
     receiptNumber: "",
     recordedBy: who?.name ?? "",
     advance: true,
+    dueWords: options.dueWords,
   };
 
   const name = paperName("Invoice", number, stage, parties.place);

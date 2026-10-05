@@ -11,12 +11,15 @@ import { directorsOf, projectsOfSubowner, sharesOf } from "@/lib/subowners";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import ProfileCard from "@/components/ProfileCard";
 import Disclosure from "@/components/Disclosure";
+import { birthdayText } from "@/lib/buyers";
+import DateField from "@/components/DateField";
 import DeleteRecord from "@/components/DeleteRecord";
 import {
   addDirector,
   addShareholder,
   deleteSubowner,
   removeDirector,
+  updateDirector,
   removeShareholder,
   updateShareholder,
   updateSubowner,
@@ -294,64 +297,27 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
                         </a>
                       </p>
                     ) : null}
+                    {person.birthDate ? (
+                      <p className="text-xs" data-director-birthday>
+                        {t("people.birthDate")}: {birthdayText(person.birthDate, locale)}
+                      </p>
+                    ) : null}
                     {person.notes ? (
                       <p className="mt-1 text-xs text-brand-graphite/60">{person.notes}</p>
                     ) : null}
+                    <div className="mt-1">
+                      <Disclosure showLabel={t("common.edit")} hideLabel={t("common.cancel")} tone="secondary">
+                        <DirectorForm action={updateDirector.bind(null, person.id, id)} t={t} row={person} />
+                      </Disclosure>
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
 
             <div className="mt-3">
-              <Disclosure showLabel={t("subowners.addDirector")} hideLabel={t("common.cancel")}>
-                <form
-                  action={addDirector.bind(null, id)}
-                  className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3"
-                >
-                  <div>
-                    <label className="label" htmlFor="directorName">
-                      {t("common.name")}
-                    </label>
-                    <input id="directorName" name="name" required className="input" />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="directorRole">
-                      {t("subowners.role")}
-                    </label>
-                    <input
-                      id="directorRole"
-                      name="role"
-                      placeholder={t("subowners.directorPlaceholder")}
-                      className="input"
-                    />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="directorEmail">
-                      {t("leads.email")}
-                    </label>
-                    <input id="directorEmail" name="email" type="email" className="input" />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="directorEmailAlternate">
-                      {t("subowners.secondEmail")}
-                    </label>
-                    <input
-                      id="directorEmailAlternate"
-                      name="emailAlternate"
-                      type="email"
-                      className="input"
-                    />
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="directorPhone">
-                      {t("leads.phone")}
-                    </label>
-                    <input id="directorPhone" name="phone" className="input" />
-                  </div>
-                  <button type="submit" className="btn btn-primary">
-                    {t("common.add")}
-                  </button>
-                </form>
+              <Disclosure key={directors.length} showLabel={t("subowners.addDirector")} hideLabel={t("common.cancel")}>
+                <DirectorForm action={addDirector.bind(null, id)} t={t} />
               </Disclosure>
             </div>
           </Card>
@@ -381,6 +347,7 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
                           row.idNumber,
                           row.email,
                           row.phone,
+                          row.birthDate ? `${t("people.birthDate")} ${birthdayText(row.birthDate, locale)}` : null,
                           row.address,
                         ]
                           .filter(Boolean)
@@ -460,6 +427,7 @@ function HolderForm({
     idNumber: string | null;
     email: string | null;
     phone: string | null;
+    birthDate?: string | null;
     address: string | null;
     notes: string | null;
   };
@@ -505,6 +473,10 @@ function HolderForm({
         <input name="phone" defaultValue={row?.phone ?? ""} className="input" />
       </div>
       <div>
+        <label className="label">{t("people.birthDate")}</label>
+        <DateField name="birthDate" defaultValue={row?.birthDate ?? ""} />
+      </div>
+      <div>
         <label className="label">{t("common.address")}</label>
         <input name="address" defaultValue={row?.address ?? ""} className="input" />
       </div>
@@ -517,6 +489,56 @@ function HolderForm({
           {t("common.save")}
         </button>
       </div>
+    </form>
+  );
+}
+
+/** A director's boxes, to add one or to change one. */
+function DirectorForm({
+  action,
+  t,
+  row,
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  t: (key: MessageKey) => string;
+  row?: {
+    name: string;
+    role: string | null;
+    email: string | null;
+    emailAlternate: string | null;
+    phone: string | null;
+    birthDate: string | null;
+  };
+}) {
+  return (
+    <form action={action} className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3" data-director-form>
+      <div>
+        <label className="label">{t("common.name")}</label>
+        <input name="name" required defaultValue={row?.name ?? ""} className="input" />
+      </div>
+      <div>
+        <label className="label">{t("subowners.role")}</label>
+        <input name="role" defaultValue={row?.role ?? ""} placeholder={t("subowners.directorPlaceholder")} className="input" />
+      </div>
+      <div>
+        <label className="label">{t("leads.email")}</label>
+        <input name="email" type="email" defaultValue={row?.email ?? ""} className="input" />
+      </div>
+      <div>
+        <label className="label">{t("subowners.secondEmail")}</label>
+        <input name="emailAlternate" type="email" defaultValue={row?.emailAlternate ?? ""} className="input" />
+      </div>
+      <div>
+        <label className="label">{t("leads.phone")}</label>
+        <input name="phone" defaultValue={row?.phone ?? ""} className="input" />
+      </div>
+      <div>
+        <label className="label">{t("people.birthDate")}</label>
+        <DateField name="birthDate" defaultValue={row?.birthDate ?? ""} />
+      </div>
+      <button type="submit" className="btn btn-primary">
+        {row ? t("common.save") : t("common.add")}
+      </button>
     </form>
   );
 }

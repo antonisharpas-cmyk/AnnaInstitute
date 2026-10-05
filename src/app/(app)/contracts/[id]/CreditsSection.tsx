@@ -5,6 +5,7 @@ import { contracts, issuedDocuments, payments } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
 import { refundsFor } from "@/lib/refunds";
+import { vatCreditToPayBack } from "@/lib/reducedVat";
 import { dayAndTime } from "@/lib/when";
 import { Card, Empty, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
@@ -13,6 +14,7 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import {
   approveReducedVatAction,
+  payBackVatCreditAction,
   recordRefundAction,
   sendCreditNote,
   sendVatPapers,
@@ -47,12 +49,18 @@ export default async function CreditsSection({ contractId }: { contractId: strin
       .from(payments)
       .where(and(eq(payments.contractId, contractId), eq(payments.kind, "CREDIT"), sql`${payments.amount} > 0`)),
   ]);
-  const vatNotes = notes.filter((note) => note.purpose === "VAT_CHANGE");
-  const invoiceIds = vatNotes.map((note) => note.invoiceId).filter(Boolean) as string[];
-  const invoices = invoiceIds.length
-    ? await db.select().from(issuedDocuments).where(eq(issuedDocuments.contractId, contractId))
+  /* The invoices the approval cancelled, each with the one that replaced it, and
+     on a contract approved the older way, the credit note that cancelled it. */
+  const invoices = contract.reducedVatApprovedOn
+    ? await db
+        .select()
+        .from(issuedDocuments)
+        .where(and(eq(issuedDocuments.contractId, contractId), eq(issuedDocuments.kind, "INVOICE")))
+        .orderBy(asc(issuedDocuments.issuedOn), asc(issuedDocuments.createdAt))
     : [];
-  const byId = new Map(invoices.map((one) => [one.id, one]));
+  const byId = new Map([...invoices, ...notes].map((one) => [one.id, one]));
+  const cancelledInvoices = invoices.filter((one) => one.replacedById);
+  const toPayBack = await vatCreditToPayBack(contractId);
 
   const money = (cents: number) => formatAmount(cents, locale);
   const day = (value: Date | null) =>
@@ -90,38 +98,49 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                   {t("credits.creditCarried")} <span className="font-semibold">{money(creditCents)}</span>
                 </p>
               ) : null}
-              {vatNotes.length > 0 ? (
+              {contract.reducedVatDocumentId ? (
+                <p className="mt-2 text-sm">
+                  <a
+                    href={`/api/files/${contract.reducedVatDocumentId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-brand-teal-dark hover:underline"
+                    data-vat-approval-paper
+                  >
+                    {t("credits.approvalPaper")}
+                  </a>
+                </p>
+              ) : null}
+              {cancelledInvoices.length > 0 ? (
                 <div className="mt-3 overflow-x-auto">
-                  <table className="data">
+                  <table className="data" data-vat-cancelled>
                     <thead>
                       <tr>
-                        <th>{t("credits.recordedOn")}</th>
-                        <th>{t("issued.type.CREDIT_NOTE")}</th>
-                        <th>{t("credits.cancels")}</th>
+                        <th>{t("credits.cancelledOn")}</th>
+                        <th>{t("credits.cancelledInvoice")}</th>
+                        <th className="ctr">{t("credits.oldTotal")}</th>
                         <th>{t("credits.replacedBy")}</th>
-                        <th className="ctr">{t("issued.total")}</th>
+                        <th className="ctr">{t("credits.newTotal")}</th>
                         <th>{t("issued.files")}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {vatNotes.map((note) => {
-                        const old = note.invoiceId ? byId.get(note.invoiceId) : undefined;
-                        const fresh = old?.replacedById ? byId.get(old.replacedById) : undefined;
+                      {cancelledInvoices.map((old) => {
+                        const fresh = old.replacedById ? byId.get(old.replacedById) : undefined;
+                        const legacyNote = old.creditedById ? byId.get(old.creditedById) : undefined;
                         return (
-                          <tr key={note.id}>
-                            <td className="nowrap text-xs">{dayAndTime(note.createdAt, locale)}</td>
-                            <td className="font-semibold">{note.number}</td>
-                            <td>{old?.number ?? ""}</td>
-                            <td>{fresh?.number ?? ""}</td>
-                            <td className="ctr">−{money(toCents(note.totalAmount))}</td>
+                          <tr key={old.id} data-cancelled-invoice={old.number}>
+                            <td className="nowrap text-xs">{day(old.voidedAt ?? contract.reducedVatApprovedOn)}</td>
+                            <td>
+                              <span className="font-semibold">{old.number}</span>{" "}
+                              <Pill tone="bad">{t("credits.cancelledPill")}</Pill>
+                            </td>
+                            <td className="ctr">{money(toCents(old.totalAmount))}</td>
+                            <td className="font-semibold">{fresh?.number ?? ""}</td>
+                            <td className="ctr">{fresh ? money(toCents(fresh.totalAmount)) : ""}</td>
                             <td className="text-xs">
                               <span className="flex flex-wrap gap-2">
-                                {note.documentId ? (
-                                  <a href={`/api/files/${note.documentId}`} target="_blank" rel="noreferrer" className="text-brand-teal-dark hover:underline">
-                                    {t("issued.pdf.CREDIT_NOTE")}
-                                  </a>
-                                ) : null}
-                                {old?.stampedDocumentId ? (
+                                {old.stampedDocumentId ? (
                                   <a href={`/api/files/${old.stampedDocumentId}`} target="_blank" rel="noreferrer" className="text-[color:var(--color-negative)] hover:underline">
                                     {t("issued.stampedPdf")}
                                   </a>
@@ -131,6 +150,11 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                                     {t("issued.pdf.INVOICE")}
                                   </a>
                                 ) : null}
+                                {legacyNote?.documentId ? (
+                                  <a href={`/api/files/${legacyNote.documentId}`} target="_blank" rel="noreferrer" className="text-brand-teal-dark hover:underline">
+                                    {t("issued.pdf.CREDIT_NOTE")} {legacyNote.number}
+                                  </a>
+                                ) : null}
                               </span>
                             </td>
                           </tr>
@@ -138,6 +162,50 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                       })}
                     </tbody>
                   </table>
+                </div>
+              ) : null}
+              {toPayBack > 0 ? (
+                <div className="mt-3 rounded border border-[color:var(--color-warning)] bg-brand-surface p-3" data-vat-pay-back>
+                  <p className="text-sm">
+                    {t("credits.toPayBack")} <span className="font-semibold" data-vat-pay-back-amount>{money(toPayBack)}</span>
+                  </p>
+                  <p className="mt-1 max-w-prose text-xs text-brand-graphite/70">{t("credits.toPayBackHint")}</p>
+                  <div className="mt-2">
+                    <Disclosure showLabel={t("credits.payBackButton")} hideLabel={t("common.cancel")}>
+                      <form
+                        action={payBackVatCreditAction.bind(null, contractId)}
+                        className="grid gap-3 rounded border border-brand-line bg-white p-3 sm:grid-cols-2"
+                        data-vat-pay-back-form
+                      >
+                        <div>
+                          <label className="label" htmlFor="vatBackOn">{t("credits.paidOn")}</label>
+                          <DateField id="vatBackOn" name="paidOn" defaultValue={today} required />
+                        </div>
+                        <div>
+                          <label className="label" htmlFor="vatBackMethod">{t("contracts.method")}</label>
+                          <select id="vatBackMethod" name="method" className="select" defaultValue="" required>
+                            <option value="">{t("contracts.chooseMethod")}</option>
+                            {methods.map((one) => (
+                              <option key={one.value} value={one.value}>
+                                {one.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label" htmlFor="vatBackRef">{t("contracts.paymentReference")}</label>
+                          <input id="vatBackRef" name="reference" className="input" />
+                        </div>
+                        <div>
+                          <label className="label" htmlFor="vatBackNote">{t("common.notes")}</label>
+                          <input id="vatBackNote" name="note" className="input" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <SubmitButton>{t("credits.payBackConfirm").replace("{amount}", money(toPayBack))}</SubmitButton>
+                        </div>
+                      </form>
+                    </Disclosure>
+                  </div>
                 </div>
               ) : null}
               <form action={sendVatPapers.bind(null, contractId)} className="mt-3">
@@ -193,6 +261,21 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                       defaultValue={String(Number(contract.vatRate) || 19)}
                       className="input"
                     />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="label" htmlFor="approvalPaper">
+                      {t("credits.approvalUpload")}
+                    </label>
+                    <input
+                      id="approvalPaper"
+                      name="approval"
+                      type="file"
+                      required
+                      accept=".pdf,image/*"
+                      className="input !py-1.5 text-xs"
+                      data-vat-approval-file
+                    />
+                    <p className="mt-1 text-xs text-brand-graphite/60">{t("credits.approvalUploadHint")}</p>
                   </div>
                   <div className="sm:col-span-2">
                     <SubmitButton>{t("credits.approveButton")}</SubmitButton>

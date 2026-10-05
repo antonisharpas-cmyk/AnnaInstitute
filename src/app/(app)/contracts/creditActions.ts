@@ -2,14 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, contracts, issuedDocuments, refunds } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { flash } from "@/lib/flash";
 import { recordAudit } from "@/lib/audit";
 import { toCents, fromCents, parseAmount } from "@/lib/money";
-import { approveReducedVat } from "@/lib/reducedVat";
+import { approveReducedVat, vatCreditToPayBack } from "@/lib/reducedVat";
 import { recordRefund } from "@/lib/refunds";
 import { paperAttachment, readDocument } from "@/lib/issued";
 import { storeDocuments } from "@/lib/uploads";
@@ -33,6 +33,29 @@ export async function approveReducedVatAction(contractId: string, formData: Form
     return;
   }
 
+  /* The approval the buyer sent us is the reason for all of it, so it is kept first. */
+  const papers = formData.getAll("approval").filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (papers.length === 0) {
+    await flash("said.reducedNeedsPaper", "bad");
+    revalidatePath(`/contracts/${contractId}`);
+    return;
+  }
+  const [owner] = await db.select({ clientId: contracts.clientId, unitId: contracts.unitId }).from(contracts).where(eq(contracts.id, contractId)).limit(1);
+  let documentId: string | null = null;
+  try {
+    [documentId] = await storeDocuments({
+      files: papers,
+      title: "Reduced VAT approval",
+      category: "VAT_APPROVAL",
+      attachTo: { contractId, clientId: owner?.clientId ?? undefined, unitId: owner?.unitId ?? undefined },
+      user,
+    });
+  } catch (error) {
+    await flash(`said.papersNotKept|${error instanceof Error ? error.message : ""}`, "bad");
+    revalidatePath(`/contracts/${contractId}`);
+    return;
+  }
+
   /*
    * The approval writes several PDFs and can take a few seconds. Whatever
    * happens, the office lands back on a freshly loaded contract with a line
@@ -46,10 +69,11 @@ export async function approveReducedVatAction(contractId: string, formData: Form
       reducedNetCents,
       reducedRate,
       standardRate,
+      documentId,
       who: { id: user.id, name: user.name, email: user.email },
     });
     await flash(
-      `said.reducedApproved|${result.creditNotes.length} credit notes, ${result.invoices.length} new invoices, credit ${fromCents(result.creditCents)}`,
+      `said.reducedApproved|${result.cancelled.length} invoices cancelled and issued again at the new VAT, credit ${fromCents(result.creditCents)}`,
     );
   } catch (error) {
     console.error("[reduced vat]", error);
@@ -86,6 +110,44 @@ export async function recordRefundAction(contractId: string, formData: FormData)
     who: { id: user.id, name: user.name, email: user.email },
   });
   await flash(nothing ? "said.refundNothingRecorded" : "said.refundRecorded");
+  revalidatePath(`/contracts/${contractId}`);
+  revalidatePath("/invoices/clients");
+}
+
+/**
+ * The VAT credit no stage is left to take, paid back to the buyer.
+ *
+ * The amount is the CRM's, not typed: what the buyer paid over and could not
+ * set against a later stage. The credit note is issued now, with the
+ * acknowledgement for the buyer to sign.
+ */
+export async function payBackVatCreditAction(contractId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const amountCents = await vatCreditToPayBack(contractId);
+  if (amountCents <= 0) {
+    await flash("said.vatNothingToPayBack", "bad");
+    revalidatePath(`/contracts/${contractId}`);
+    return;
+  }
+  const method = String(formData.get("method") ?? "").trim();
+  if (!method) {
+    await flash("said.paymentNeedsMethod", "bad");
+    revalidatePath(`/contracts/${contractId}`);
+    return;
+  }
+  const day = String(formData.get("paidOn") ?? "").trim();
+  const { note } = await recordRefund({
+    contractId,
+    purpose: "VAT_CHANGE",
+    amountCents,
+    paidOn: day ? new Date(`${day}T12:00:00`) : new Date(),
+    method,
+    reference: String(formData.get("reference") ?? "").trim() || null,
+    note: String(formData.get("note") ?? "").trim() || null,
+    cancelContract: false,
+    who: { id: user.id, name: user.name, email: user.email },
+  });
+  await flash(`said.vatPaidBack|${fromCents(amountCents)} euro${note ? `, credit note ${note.number}` : ""}`);
   revalidatePath(`/contracts/${contractId}`);
   revalidatePath("/invoices/clients");
 }
@@ -217,59 +279,48 @@ export async function sendCreditNote(noteId: string) {
 }
 
 /**
- * Everything the reduced VAT produced, in one email: the credit notes, the
- * stamped invoices they cancel, and the new invoices at the new VAT.
+ * Everything the reduced VAT produced, in one email: the invoices at the old
+ * VAT, stamped CANCELLED, and the new invoices at the new VAT that replace
+ * them, with any stage the credit settled in full. A contract approved before
+ * this way of working also has its credit notes, which go too.
  */
 export async function sendVatPapers(contractId: string) {
   const user = await requireUser(["ADMIN"]);
-  const notes = await db
+  const [contract] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
+  const papers = await db
     .select()
     .from(issuedDocuments)
-    .where(
-      and(
-        eq(issuedDocuments.contractId, contractId),
-        eq(issuedDocuments.kind, "CREDIT_NOTE"),
-        eq(issuedDocuments.purpose, "VAT_CHANGE"),
-        isNull(issuedDocuments.voidedAt),
-      ),
-    );
-  const [contract] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
-  const oldIds = notes.map((note) => note.invoiceId).filter(Boolean) as string[];
-  const olds = oldIds.length
-    ? await db.select().from(issuedDocuments).where(inArray(issuedDocuments.id, oldIds))
-    : [];
-  const newIds = olds.map((old) => old.replacedById).filter(Boolean) as string[];
-  const fresh = newIds.length
-    ? await db.select().from(issuedDocuments).where(inArray(issuedDocuments.id, newIds))
-    : [];
+    .where(eq(issuedDocuments.contractId, contractId))
+    .orderBy(asc(issuedDocuments.issuedOn), asc(issuedDocuments.createdAt));
+  const olds = papers.filter((one) => one.kind === "INVOICE" && one.replacedById);
+  const newIds = olds.map((old) => old.replacedById as string);
+  const fresh = papers.filter((one) => newIds.includes(one.id));
+  const notes = papers.filter((one) => one.kind === "CREDIT_NOTE" && one.purpose === "VAT_CHANGE" && one.invoiceId && !one.voidedAt);
   /* And any stage the credit settled in full, invoiced on the day of approval. */
-  const covered = contract?.reducedVatApprovedOn
-    ? (
-        await db
-          .select()
-          .from(issuedDocuments)
-          .where(
-            and(
-              eq(issuedDocuments.contractId, contractId),
-              eq(issuedDocuments.kind, "INVOICE"),
-              eq(issuedDocuments.issuedOn, contract.reducedVatApprovedOn),
-              isNull(issuedDocuments.creditedById),
-            ),
-          )
-      ).filter((one) => !newIds.includes(one.id))
+  const approvedOn = contract?.reducedVatApprovedOn ? new Date(contract.reducedVatApprovedOn).getTime() : null;
+  const covered = approvedOn
+    ? papers.filter(
+        (one) =>
+          one.kind === "INVOICE" &&
+          !one.voidedAt &&
+          !one.creditedById &&
+          !newIds.includes(one.id) &&
+          new Date(one.issuedOn).getTime() === approvedOn,
+      )
     : [];
 
   const files: EmailAttachment[] = [];
-  for (const paper of [...notes, ...olds, ...fresh, ...covered]) {
+  for (const paper of [...olds, ...fresh, ...notes, ...covered]) {
     const one = await paperAttachment(paper);
     if (one) files.push(one);
   }
   const credit = olds.reduce((sum, old) => sum + toCents(old.totalAmount), 0) - fresh.reduce((sum, one) => sum + toCents(one.totalAmount), 0);
+  const back = await vatCreditToPayBack(contractId);
 
   await send(
     contractId,
-    "Your reduced VAT: credit notes and new invoices",
-    `Dear {{first_name}},\n\nYour reduced VAT has been approved. The invoices issued at the standard rate are cancelled by the attached credit notes, and new invoices at the new VAT are attached for the same payments.\n\nThe VAT you paid over, ${fromCents(credit)} euro, is not paid back: it is credited against your next payments, and each invoice shows how much of it was used.\n\nOne Eleven`,
+    "Your reduced VAT: the new invoices",
+    `Dear {{first_name}},\n\nYour reduced VAT has been approved. The invoices issued at the standard rate are cancelled, and a copy of each, stamped CANCELLED, is attached together with the new invoice at the new VAT that replaces it, for the same payment.\n\nThe VAT you paid over, ${fromCents(credit)} euro, is credited against your next payments: each new invoice shows the full amount, less the credit, and what is left to pay.${back > 0 ? `\n\n${fromCents(back)} euro of it is more than the payments still to come, and we will pay it back to you.` : ""}\n\nOne Eleven`,
     files,
     user.id,
     user.email,

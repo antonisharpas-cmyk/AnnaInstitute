@@ -106,8 +106,15 @@ async function readContract(id: string) {
     };
   });
   const refundedCents = refundRows.reduce((a, r) => a + r.totalCents, 0);
-  const refundedVatCents = refundRows.reduce((a, r) => a + r.vatCents, 0);
-  const refundedNetCents = refundRows.reduce((a, r) => a + r.netCents, 0);
+  /*
+   * A VAT credit paid back after the reduced VAT is different: the schedule
+   * already carries the new VAT, so the contract's total does not move. Only
+   * what was paid comes down, by the VAT the buyer had paid over.
+   */
+  const credited = refundRows.filter((r) => r.purpose !== "VAT_CHANGE");
+  const creditedCents = credited.reduce((a, r) => a + r.totalCents, 0);
+  const refundedVatCents = credited.reduce((a, r) => a + r.vatCents, 0);
+  const refundedNetCents = credited.reduce((a, r) => a + r.netCents, 0);
 
   const paidByInstallment = new Map<string, number>();
   let paidTotalCents = 0;
@@ -145,13 +152,15 @@ async function readContract(id: string) {
       scheduleVatCents,
       scheduleTotalCents,
       paidTotalCents,
-      outstandingCents: scheduleTotalCents - paidTotalCents,
+      outstandingCents: scheduleTotalCents - creditedCents - (paidTotalCents - refundedCents),
       /** Paid back to the buyer by credit note, VAT included, and its two parts. */
       refundedCents,
+      /** The part of it that came off the contract's total: every refund but a VAT credit paid back. */
+      creditedCents,
       refundedNetCents,
       refundedVatCents,
       /** What the contract comes to once the credit notes for refunds are taken off. */
-      totalAfterRefundsCents: scheduleTotalCents - refundedCents,
+      totalAfterRefundsCents: scheduleTotalCents - creditedCents,
       /** What the buyer has paid in the end: received, less what was paid back. */
       paidAfterRefundsCents: paidTotalCents - refundedCents,
     },
@@ -355,6 +364,8 @@ export async function listContracts(options?: {
     paid: sql<string>`coalesce((select sum(p.amount) from payments p where p.contract_id = ${contracts.id}), 0)`,
     /* Paid back by credit note: it comes off both the total and what was paid. */
     refunded: sql<string>`coalesce((select sum(r.amount) from refunds r where r.contract_id = ${contracts.id}), 0)`,
+    /* A VAT credit paid back comes off what was paid only: the total already has the new VAT. */
+    credited: sql<string>`coalesce((select sum(r.amount) from refunds r where r.contract_id = ${contracts.id} and r.purpose <> 'VAT_CHANGE'), 0)`,
     nextDue: sql<Date | null>`(select min(i.due_date) from installments i where i.contract_id = ${contracts.id} and coalesce((select sum(p.amount) from payments p where p.installment_id = i.id), 0) < i.total_amount)`,
   };
 
@@ -381,7 +392,7 @@ export async function listContracts(options?: {
     total: counted?.total ?? 0,
     rows: rows.map((r) => {
       const refunded = toCents(r.refunded);
-      const scheduled = toCents(r.scheduledCents) - refunded;
+      const scheduled = toCents(r.scheduledCents) - toCents(r.credited);
       const paid = toCents(r.paid) - refunded;
       return {
         ...r,

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import CreditsSection from "./CreditsSection";
 import SigningPapers from "./SigningPapers";
+import StageInvoices from "./StageInvoices";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
 import { contractStatusTone, getContract, landExchangeUnits } from "@/lib/contracts";
@@ -158,10 +159,10 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           label={t("common.total")}
           value={formatAmount(totals.totalAfterRefundsCents, locale)}
           hint={
-            paidBack
+            totals.creditedCents > 0
               ? t("refunds.totalHint")
                   .replace("{total}", formatAmount(totals.scheduleTotalCents, locale))
-                  .replace("{back}", formatAmount(totals.refundedCents, locale))
+                  .replace("{back}", formatAmount(totals.creditedCents, locale))
               : undefined
           }
         />
@@ -362,6 +363,11 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         {/* 1b. The Reservation and the Contract of Sale, from draft to signed. */}
         {contract.kind !== "LAND_EXCHANGE" && contract.status !== "CANCELLED" ? (
           <SigningPapers contractId={id} hasEmail={Boolean(client?.email)} />
+        ) : null}
+
+        {/* 1c. The invoice of each stage, with what proves it; the receipt follows the money by itself. */}
+        {contract.kind !== "LAND_EXCHANGE" && contract.status !== "CANCELLED" ? (
+          <StageInvoices contractId={id} hasEmail={Boolean(client?.email)} />
         ) : null}
 
         {contract.kind === "LAND_EXCHANGE" ? (
@@ -627,7 +633,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4}>{paidBack ? t("refunds.totalAfter") : t("common.total")}</td>
+                  <td colSpan={4}>{totals.creditedCents > 0 ? t("refunds.totalAfter") : t("common.total")}</td>
                   <td className="ctr">{formatAmount(totals.scheduleVatCents - totals.refundedVatCents, locale)}</td>
                   <td className="ctr font-semibold">
                     {formatAmount(totals.totalAfterRefundsCents, locale)}
