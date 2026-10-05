@@ -163,6 +163,6 @@ export async function refundsFor(contractId: string) {
     .from(refunds)
     .leftJoin(issuedDocuments, eq(issuedDocuments.id, refunds.creditNoteId))
     .where(eq(refunds.contractId, contractId))
-    .orderBy(desc(refunds.paidOn));
+    .orderBy(desc(refunds.paidOn), desc(refunds.createdAt));
   return rows.map((row) => ({ ...row, amountCents: toCents(row.refund.amount) }));
 }

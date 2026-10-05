@@ -9,7 +9,6 @@ import SubmitButton from "@/components/SubmitButton";
 import { sendPaperInvoice } from "../stageActions";
 import {
   removePaperDraft,
-  removePaperSigned,
   sendPaperForReview,
   uploadPaperDraft,
   uploadPaperSigned,
@@ -93,9 +92,6 @@ export default async function SigningPapers({ contractId, hasEmail }: { contract
                     <a href={`/api/files/${one.signed.id}`} target="_blank" rel="noreferrer" className="text-brand-teal-dark hover:underline" data-paper-signed>
                       {one.signed.title}
                     </a>
-                    <form action={removePaperSigned.bind(null, contractId, one.kind)}>
-                      <SubmitButton className="btn btn-secondary !px-2 !py-0.5 !text-xs">{t("common.delete")}</SubmitButton>
-                    </form>
                   </div>
                 ) : (
                   <form action={uploadPaperSigned.bind(null, contractId, one.kind)} className="flex flex-wrap items-center gap-2" data-paper-signed-form>

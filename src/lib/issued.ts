@@ -834,7 +834,9 @@ export async function listIssued(filters: IssuedFilters) {
   }
   if (filters.state === "void") parts.push(sql`${issuedDocuments.voidedAt} is not null`);
   else if (filters.state === "credited") parts.push(sql`${issuedDocuments.creditedById} is not null`);
-  else if (filters.state !== "all") parts.push(isNull(issuedDocuments.voidedAt));
+  /* A paper taken back is hidden, but an invoice cancelled by the reduced VAT and
+     issued again stays in view, marked cancelled, beside the one that replaced it. */
+  else if (filters.state !== "all") parts.push(sql`(${issuedDocuments.voidedAt} is null or ${issuedDocuments.replacedById} is not null)`);
 
   const where = parts.length ? and(...parts) : undefined;
 

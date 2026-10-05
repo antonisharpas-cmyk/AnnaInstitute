@@ -1,8 +1,8 @@
 import "server-only";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { db } from "@/db";
-import { documents, installments, issuedDocuments, payments, signingPapers } from "@/db/schema";
+import { contracts, documents, installments, issuedDocuments, messages, payments, signingPapers } from "@/db/schema";
 import { stageFrom, stageNames } from "@/lib/choices/stages";
 import { formatAmount, toCents } from "@/lib/money";
 import { advanceInvoiceFor, issueStageInvoice, paperAttachment } from "@/lib/issued";
@@ -46,7 +46,31 @@ export type StageView = {
   paidCents: number;
   /** Why the invoice cannot go yet, or null when it can. */
   blocked: string | null;
+  /** The last try to email it, when it did not go. */
+  failed: { at: Date; error: string } | null;
 };
+
+/**
+ * What the message log says about one invoice's email: the newest message to
+ * the buyer that names it. The log is the truth of what left, whatever
+ * happened to the page that sent it.
+ */
+async function invoiceMail(clientId: string | null, number: string) {
+  if (!clientId || !number) return null;
+  const [found] = await db
+    .select({ status: messages.status, error: messages.error, at: messages.createdAt })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.clientId, clientId),
+        eq(messages.channel, "EMAIL"),
+        sql`lower(coalesce(${messages.subject}, '')) like ${`%invoice ${number.toLowerCase()}%`}`,
+      ),
+    )
+    .orderBy(desc(sql`case when ${messages.status} = 'SENT' then 1 else 0 end`), desc(messages.createdAt))
+    .limit(1);
+  return found ?? null;
+}
 
 /** Which stage is paid with which paper: the one the office chose, or the reservation and the signing. */
 async function paperStages(contractId: string, lines: Line[]): Promise<Map<string, PaperKind>> {
@@ -97,7 +121,20 @@ export async function stagesOf(contractId: string): Promise<StageView[]> {
           : kind === "WORKS" && (certificates.length === 0 || photos.length === 0)
             ? "Upload the architect's certificate and at least one photograph first."
             : null;
-    out.push({ line, kind, paperKind, signed, certificates, photos, invoice: await advanceInvoiceFor(line.id), totalCents, paidCents, blocked });
+    const invoice = await advanceInvoiceFor(line.id);
+    /* Sent, by the record on the stage, or by the message log when the page that
+       sent it never got to write it down; then it is written down now. */
+    let failed: StageView["failed"] = null;
+    if (invoice && !line.invoiceSentAt) {
+      const mail = await invoiceMail(invoice.clientId, invoice.number);
+      if (mail?.status === "SENT") {
+        line.invoiceSentAt = mail.at;
+        await db.update(installments).set({ invoiceSentAt: mail.at }).where(eq(installments.id, line.id));
+      } else if (mail) {
+        failed = { at: mail.at, error: mail.error ?? String(mail.status) };
+      }
+    }
+    out.push({ line, kind, paperKind, signed, certificates, photos, invoice, totalCents, paidCents, blocked, failed });
   }
   return out;
 }
@@ -184,9 +221,17 @@ export async function sendStageInvoice(
 export async function invoiceWentFor(installmentId: string | null | undefined): Promise<boolean> {
   if (!installmentId) return false;
   const [line] = await db
-    .select({ sent: installments.invoiceSentAt })
+    .select({ sent: installments.invoiceSentAt, clientId: contracts.clientId })
     .from(installments)
-    .where(and(eq(installments.id, installmentId)))
+    .innerJoin(contracts, eq(contracts.id, installments.contractId))
+    .where(eq(installments.id, installmentId))
     .limit(1);
-  return Boolean(line?.sent);
+  if (!line) return false;
+  if (line.sent) return true;
+  const invoice = await advanceInvoiceFor(installmentId);
+  if (!invoice) return false;
+  const mail = await invoiceMail(line.clientId, invoice.number);
+  if (mail?.status !== "SENT") return false;
+  await db.update(installments).set({ invoiceSentAt: mail.at }).where(eq(installments.id, installmentId));
+  return true;
 }

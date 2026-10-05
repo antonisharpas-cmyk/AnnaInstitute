@@ -1,11 +1,12 @@
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount } from "@/lib/money";
+import { dayAndTime } from "@/lib/when";
 import { PAPER_NAME, papersOf } from "@/lib/signingPapers";
 import { stagesOf } from "@/lib/stageInvoices";
 import { Card, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import { removeStageProof, sendStageInvoiceAction, uploadStageProof } from "../stageActions";
-import { removePaperDraft, removePaperSigned, sendPaperForReview, uploadPaperDraft, uploadPaperSigned } from "../paperActions";
+import { removePaperDraft, sendPaperForReview, uploadPaperDraft, uploadPaperSigned } from "../paperActions";
 
 /**
  * The invoice of each stage, one box each, in the order of the schedule.
@@ -58,6 +59,11 @@ export default async function StageInvoices({ contractId, hasEmail }: { contract
                 </div>
               </div>
 
+              {stage.failed ? (
+                <p className="mt-1 text-xs text-[color:var(--color-negative)]" data-stage-failed>
+                  {t("stages.lastTryFailed").replace("{when}", dayAndTime(stage.failed.at, locale))}: {stage.failed.error}
+                </p>
+              ) : null}
               {stage.invoice ? (
                 <p className="mt-1 text-xs" data-stage-invoice>
                   {stage.invoice.documentId ? link(stage.invoice.documentId, `${t("papers.invoice")} ${stage.invoice.number}`) : `${t("papers.invoice")} ${stage.invoice.number}`}
@@ -123,9 +129,11 @@ export default async function StageInvoices({ contractId, hasEmail }: { contract
                                 <a href={`/api/files/${one.signed.id}`} target="_blank" rel="noreferrer" className="text-brand-teal-dark hover:underline" data-paper-signed>
                                   {one.signed.title}
                                 </a>
-                                <form action={removePaperSigned.bind(null, contractId, one.kind)}>
-                                  <SubmitButton className="btn btn-secondary !px-2 !py-0.5 !text-xs">{t("common.delete")}</SubmitButton>
-                                </form>
+                                {/* Signed is final: it cannot be deleted or replaced. */}
+                                <span className="w-full text-brand-graphite/60" data-paper-signed-final>
+                                  {one.paper?.signedAt ? `${t("papers.signedOn")} ${when(one.paper.signedAt)}. ` : ""}
+                                  {t("papers.signedFinal")}
+                                </span>
                               </div>
                             ) : (
                               <form action={uploadPaperSigned.bind(null, contractId, one.kind)} className="space-y-1" data-paper-signed-form>

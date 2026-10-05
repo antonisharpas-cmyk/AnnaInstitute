@@ -343,6 +343,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the architect's certificate and photographs of a stage",
     migration: "0049",
   },
+  {
+    probe: "select party_kind, our_company_id from expenses limit 1",
+    what: "company invoices both ways, with who is on each side",
+    migration: "0050",
+  },
+  {
+    probe: "select receipt_document_id from expense_payments limit 1",
+    what: "the payments on company invoices, with their receipts",
+    migration: "0050",
+  },
 ];
 
 let answer: Missing[] | null = null;

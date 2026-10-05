@@ -3078,3 +3078,42 @@ table.data thead th[data-sorted] {
   --cal-bar: var(--cal-cancelled-bar);
   --cal-ink: var(--cal-cancelled-ink);
 }
+
+/*
+   Choosing a file.
+
+   The browser's own "Choose File" is a grey word that does not look like
+   something to press, so the office pressed Upload first and was told nothing
+   came. It is drawn as a proper button, in the brand's teal, with the file
+   name beside it once one is chosen. And a form that cannot go without a file
+   keeps its own Upload button quiet until one is chosen, so the order is plain:
+   choose, then upload.
+*/
+input[type="file"] {
+  font-size: 0.8rem;
+  color: var(--color-brand-graphite);
+  max-width: 100%;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 0.6rem;
+  border-radius: var(--radius-control, 999px);
+  border: 1px solid var(--color-brand-teal);
+  background: var(--color-brand-teal-soft, #e8f3f6);
+  color: var(--color-brand-teal-dark);
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+input[type="file"]::file-selector-button:hover {
+  background: var(--color-brand-teal);
+  color: var(--on-teal, #fff);
+}
+
+form:has(input[type="file"]:required:invalid) button[type="submit"]:not([data-always]) {
+  opacity: 0.45;
+  pointer-events: none;
+}

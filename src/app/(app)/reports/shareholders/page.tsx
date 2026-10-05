@@ -100,10 +100,11 @@ export default async function ShareholdersReportPage({
         </button>
       </form>
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-shareholder-totals>
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6" data-shareholder-totals>
         <Figure label={t("reports.shareSigned")} value={money(report.totals.signed)} hint={whoLabel} />
         <Figure label={t("reports.shareReceived")} value={money(report.totals.received)} />
         <Figure label={t("reports.shareCash")} value={money(report.totals.cash)} />
+        <Figure label={t("reports.shareIncome")} value={money(report.totals.income)} />
         <Figure label={t("reports.shareCosts")} value={money(report.totals.costs)} />
         <Figure label={t("reports.shareCommissions")} value={money(report.totals.commissions)} />
       </div>
@@ -121,6 +122,7 @@ export default async function ShareholdersReportPage({
                   <th className="num">{t("reports.shareSigned")}</th>
                   <th className="num">{t("reports.shareReceived")}</th>
                   <th className="num">{t("reports.shareCash")}</th>
+                  <th className="num">{t("reports.shareIncome")}</th>
                   <th className="num">{t("reports.shareCosts")}</th>
                   <th className="num">{t("reports.shareCommissions")}</th>
                 </tr>
@@ -141,7 +143,7 @@ export default async function ShareholdersReportPage({
                       </div>
                     </td>
                     <td className="num font-semibold" data-share>{percent(row.share)}</td>
-                    {(["signed", "received", "cash", "costs", "commissions"] as const).map((key) => (
+                    {(["signed", "received", "cash", "income", "costs", "commissions"] as const).map((key) => (
                       <td key={key} className="num">
                         <div className="font-semibold">{money(row.part[key])}</div>
                         <div className="text-xs text-brand-graphite/50">
@@ -159,6 +161,7 @@ export default async function ShareholdersReportPage({
                   <td className="num font-semibold">{money(report.totals.signed)}</td>
                   <td className="num font-semibold">{money(report.totals.received)}</td>
                   <td className="num font-semibold">{money(report.totals.cash)}</td>
+                  <td className="num font-semibold">{money(report.totals.income)}</td>
                   <td className="num font-semibold">{money(report.totals.costs)}</td>
                   <td className="num font-semibold">{money(report.totals.commissions)}</td>
                 </tr>

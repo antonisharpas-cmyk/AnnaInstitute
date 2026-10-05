@@ -110,15 +110,11 @@ export async function GET(request: Request) {
     }
 
     case "costs": {
-      const categories = await costsByCategory(range);
+      const [income, costs] = await Promise.all([costsByCategory(range, null, "OUT"), costsByCategory(range, null, "IN")]);
       rows = [
-        ["Category", "Invoices", "Billed", "Still owed"],
-        ...categories.map((row) => [
-          row.category,
-          row.count,
-          money(row.billedCents),
-          money(row.owedCents),
-        ]),
+        ["Which", "Category", "Lines", "Billed", "Still owed"],
+        ...income.map((row) => ["Income", row.category, row.count, money(row.billedCents), money(row.owedCents)]),
+        ...costs.map((row) => ["Expense", row.category, row.count, money(row.billedCents), money(row.owedCents)]),
       ];
       break;
     }

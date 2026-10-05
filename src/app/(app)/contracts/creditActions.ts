@@ -72,8 +72,10 @@ export async function approveReducedVatAction(contractId: string, formData: Form
       documentId,
       who: { id: user.id, name: user.name, email: user.email },
     });
+    /* The client hears straight away, with the cancelled and the new invoices. */
+    const emailed = result.cancelled.length > 0 ? await vatPapersTo(contractId, user.id, user.email, true) : "";
     await flash(
-      `said.reducedApproved|${result.cancelled.length} invoices cancelled and issued again at the new VAT, credit ${fromCents(result.creditCents)}`,
+      `said.reducedApproved|${result.cancelled.length} invoices cancelled and issued again at the new VAT, credit ${fromCents(result.creditCents)}${emailed ? `; ${emailed}` : ""}`,
     );
   } catch (error) {
     console.error("[reduced vat]", error);
@@ -192,15 +194,16 @@ async function send(
   attachments: EmailAttachment[],
   userId: string,
   userEmail: string,
-) {
+  quiet = false,
+): Promise<string> {
   const row = await buyerOf(contractId);
   if (!row?.client?.email) {
-    await flash("said.noEmailOnRecord", "bad");
-    return;
+    if (!quiet) await flash("said.noEmailOnRecord", "bad");
+    return "the client has no email address";
   }
   if (!emailConfigured()) {
-    await flash("said.mailNotSetUp", "bad");
-    return;
+    if (!quiet) await flash("said.mailNotSetUp", "bad");
+    return "email is not set up";
   }
   const result = await sendAndRecord({
     channel: "EMAIL",
@@ -222,12 +225,14 @@ async function send(
     userId,
     userEmail,
   });
+  if (quiet) return result.status === "SENT" ? `emailed to ${row.client.email}` : `the email did not go: ${result.error ?? result.status}`;
   await flash(
     result.status === "SENT"
       ? "said.papersSent"
       : `said.receiptFailed${"error" in result && result.error ? `|${String(result.error).slice(0, 160)}` : ""}`,
     result.status === "SENT" ? "good" : "bad",
   );
+  return result.status;
 }
 
 /**
@@ -286,6 +291,12 @@ export async function sendCreditNote(noteId: string) {
  */
 export async function sendVatPapers(contractId: string) {
   const user = await requireUser(["ADMIN"]);
+  await vatPapersTo(contractId, user.id, user.email, false);
+  revalidatePath(`/contracts/${contractId}`);
+}
+
+/** The letter itself: the approval sends it by itself, and the button sends it again. */
+async function vatPapersTo(contractId: string, userId: string, userEmail: string, quiet: boolean): Promise<string> {
   const [contract] = await db.select().from(contracts).where(eq(contracts.id, contractId)).limit(1);
   const papers = await db
     .select()
@@ -317,13 +328,14 @@ export async function sendVatPapers(contractId: string) {
   const credit = olds.reduce((sum, old) => sum + toCents(old.totalAmount), 0) - fresh.reduce((sum, one) => sum + toCents(one.totalAmount), 0);
   const back = await vatCreditToPayBack(contractId);
 
-  await send(
+  if (olds.length === 0) return "no invoice needed changing";
+  return send(
     contractId,
     "Your reduced VAT: the new invoices",
-    `Dear {{first_name}},\n\nYour reduced VAT has been approved. The invoices issued at the standard rate are cancelled, and a copy of each, stamped CANCELLED, is attached together with the new invoice at the new VAT that replaces it, for the same payment.\n\nThe VAT you paid over, ${fromCents(credit)} euro, is credited against your next payments: each new invoice shows the full amount, less the credit, and what is left to pay.${back > 0 ? `\n\n${fromCents(back)} euro of it is more than the payments still to come, and we will pay it back to you.` : ""}\n\nOne Eleven`,
+    `Dear {{first_name}},\n\nYour reduced VAT has been approved. The invoices issued at the standard rate are cancelled, and a copy of each, stamped CANCELLED, is attached together with the new invoice at the new VAT that replaces it, for the same payment.\n\nPlease keep the new invoices: they are the ones that count from now on, and the cancelled ones can be ignored.\n\nThe VAT you paid over, ${fromCents(credit)} euro, is credited against your next payments: each new invoice shows the full amount, less the credit, and what is left to pay.${back > 0 ? `\n\n${fromCents(back)} euro of it is more than the payments still to come, and we will pay it back to you.` : ""}\n\nOne Eleven`,
     files,
-    user.id,
-    user.email,
+    userId,
+    userEmail,
+    quiet,
   );
-  revalidatePath(`/contracts/${contractId}`);
 }

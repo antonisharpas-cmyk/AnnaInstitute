@@ -804,9 +804,19 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.map((p) => (
+                  {/* Newest first: by the day paid, and on the same day by when it was recorded. */}
+                  {[...payments]
+                    .sort(
+                      (a, b) =>
+                        new Date(b.paidOn).setHours(0, 0, 0, 0) - new Date(a.paidOn).setHours(0, 0, 0, 0) ||
+                        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+                    )
+                    .map((p) => (
                     <tr key={p.id}>
-                      <td className="nowrap">{dayAndTime(p.paidOn, locale).slice(0, 10)}</td>
+                      {/* The day it was paid, at the time it was recorded. */}
+                      <td className="nowrap" data-payment-when>
+                        {dayAndTime(p.paidOn, locale).slice(0, 10)} {dayAndTime(p.createdAt, locale).slice(11)}
+                      </td>
                       <td className="ctr nowrap">
                         {toCents(p.amount) < 0
                           ? `${t("contracts.creditOut")} ${formatAmount(Math.abs(toCents(p.amount)), locale)}`

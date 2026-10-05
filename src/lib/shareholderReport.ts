@@ -21,8 +21,8 @@ export type ShareRow = {
   share: number;
   commissionShare: number;
   via: { via: string | null; companyShare: number; holderShare: number; share: number }[];
-  full: { signed: number; received: number; cash: number; costs: number; commissions: number };
-  part: { signed: number; received: number; cash: number; costs: number; commissions: number };
+  full: { signed: number; received: number; cash: number; income: number; costs: number; commissions: number };
+  part: { signed: number; received: number; cash: number; income: number; costs: number; commissions: number };
 };
 
 const within = (column: SQL | unknown, range: Range) =>
@@ -34,7 +34,8 @@ async function byProject(query: Promise<{ projectId: string | null; total: strin
 }
 
 export async function shareholderReport(who: Who, range: Range) {
-  const [held, signed, received, cash, costs, paidOut] = await Promise.all([
+  const chargedToHolder = sql`(${expenses.direction} = 'OUT' and ${expenses.partyKind} = 'COMPANY' and ${expenses.partyId} in (select pp.subowner_id from project_partners pp where pp.project_id = ${expenseLines.projectId}))`;
+  const [held, signed, received, cash, costs, income, paidOut] = await Promise.all([
     holdings(),
     byProject(
       db
@@ -62,17 +63,28 @@ export async function shareholderReport(who: Who, range: Range) {
         .where(within(cashReceipts.receivedOn, range))
         .groupBy(units.projectId),
     ),
-    /* An invoice split between developments counts each line for its own. */
+    /*
+     * Each line of an invoice under Company counts for its own development. A
+     * cost is an invoice the company was billed, and also a fee one of our
+     * companies charged to the company that holds the development: for that
+     * development it is money going out.
+     */
     byProject(
       db
-        .select({
-          projectId: sql<string | null>`coalesce(${expenseLines.projectId}, ${expenses.projectId})`,
-          total: sql<string>`coalesce(sum(coalesce(${expenseLines.totalAmount}, ${expenses.totalAmount})), 0)`,
-        })
-        .from(expenses)
-        .leftJoin(expenseLines, eq(expenseLines.expenseId, expenses.id))
-        .where(and(eq(expenses.direction, "IN"), within(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range)))
-        .groupBy(sql`coalesce(${expenseLines.projectId}, ${expenses.projectId})`),
+        .select({ projectId: expenseLines.projectId, total: sql<string>`coalesce(sum(${expenseLines.totalAmount}), 0)` })
+        .from(expenseLines)
+        .innerJoin(expenses, eq(expenses.id, expenseLines.expenseId))
+        .where(and(sql`(${expenses.direction} = 'IN' or ${chargedToHolder})`, within(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range)))
+        .groupBy(expenseLines.projectId),
+    ),
+    /* Other income: what our companies charged anybody else for the development. */
+    byProject(
+      db
+        .select({ projectId: expenseLines.projectId, total: sql<string>`coalesce(sum(${expenseLines.totalAmount}), 0)` })
+        .from(expenseLines)
+        .innerJoin(expenses, eq(expenses.id, expenseLines.expenseId))
+        .where(and(sql`(${expenses.direction} = 'OUT' and not ${chargedToHolder})`, within(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range)))
+        .groupBy(expenseLines.projectId),
     ),
     byProject(
       db
@@ -93,6 +105,7 @@ export async function shareholderReport(who: Who, range: Range) {
       signed: signed.get(holding.projectId) ?? 0,
       received: received.get(holding.projectId) ?? 0,
       cash: cash.get(holding.projectId) ?? 0,
+      income: income.get(holding.projectId) ?? 0,
       costs: costs.get(holding.projectId) ?? 0,
       commissions: paidOut.get(holding.projectId) ?? 0,
     };
@@ -108,6 +121,7 @@ export async function shareholderReport(who: Who, range: Range) {
         signed: times(full.signed, of.share),
         received: times(full.received, of.share),
         cash: times(full.cash, of.share),
+        income: times(full.income, of.share),
         costs: times(full.costs, of.share),
         commissions: times(full.commissions, of.commissionShare),
       },
@@ -121,6 +135,7 @@ export async function shareholderReport(who: Who, range: Range) {
       signed: sum((row) => row.part.signed),
       received: sum((row) => row.part.received),
       cash: sum((row) => row.part.cash),
+      income: sum((row) => row.part.income),
       costs: sum((row) => row.part.costs),
       commissions: sum((row) => row.part.commissions),
     },

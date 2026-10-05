@@ -29,6 +29,7 @@ import { markSignedSent, PAPER_NAME, paperForPayment } from "@/lib/signingPapers
 import type { EmailAttachment } from "@/lib/messaging/email";
 import { buyersFirstNames, buyersName, cleanBirthDate, emailList, hasSecondBuyer, isBirthday } from "@/lib/buyers";
 import { groupPeople, handlesOf, sameEmail } from "@/lib/samePerson";
+import { invoiceWentFor } from "@/lib/stageInvoices";
 
 /**
  * The letters that follow the money.
@@ -186,7 +187,7 @@ export async function letterForPayment(paymentId: string): Promise<void> {
    * and the signing letter, which speaks of the contract being attached, reads
    * as the ordinary payment letter instead.
    */
-  const invoiceWent = Boolean(row.installment?.invoiceSentAt);
+  const invoiceWent = Boolean(row.installment?.invoiceSentAt) || (await invoiceWentFor(row.installment?.id));
   const chosen = letterFor({
     counted,
     stage: row.installment?.label ?? null,

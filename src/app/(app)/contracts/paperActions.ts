@@ -155,6 +155,12 @@ export async function uploadPaperSigned(contractId: string, rawKind: string, for
     return;
   }
   const paper = await paperRow(contractId, kind);
+  /* Signed is final: once the signed copy is in, it is never changed. */
+  if (paper.signedDocumentId) {
+    await flash("said.paperAlreadySigned", "bad");
+    refresh(contractId, row.contract.clientId);
+    return;
+  }
   const place = [row.unit?.code, row.project?.name].filter(Boolean).join(" ");
   const documentId = await storeDocument({
     file,
@@ -165,14 +171,12 @@ export async function uploadPaperSigned(contractId: string, rawKind: string, for
     user,
   });
   const draft = paper.draftDocumentId;
-  const before = paper.signedDocumentId;
   await db
     .update(signingPapers)
     .set({ signedDocumentId: documentId, draftDocumentId: null, signedAt: new Date(), updatedAt: new Date() })
     .where(eq(signingPapers.id, paper.id));
   /* The signed copy takes the draft's place. */
   if (draft) await removeDocument(draft, user);
-  if (before) await removeDocument(before, user);
   await recordAudit({
     action: "paper.signed",
     entity: "contract",
@@ -189,20 +193,11 @@ export async function uploadPaperSigned(contractId: string, rawKind: string, for
   refresh(contractId, row.contract.clientId);
 }
 
-/** A signed copy uploaded by mistake. */
+/** A signed copy is final: it is never deleted. Kept for any old page still open, it only says so. */
 export async function removePaperSigned(contractId: string, rawKind: string) {
-  const user = await requireUser(["ADMIN"]);
-  const kind = kindOf(rawKind);
-  const paper = await paperRow(contractId, kind);
-  if (paper.signedDocumentId) {
-    const id = paper.signedDocumentId;
-    await db
-      .update(signingPapers)
-      .set({ signedDocumentId: null, signedAt: null, signedSentAt: null, updatedAt: new Date() })
-      .where(eq(signingPapers.id, paper.id));
-    await removeDocument(id, user);
-  }
+  await requireUser(["ADMIN"]);
+  void rawKind;
   const row = await contractOf(contractId);
-  await flash("said.deleted");
+  await flash("said.paperAlreadySigned", "bad");
   refresh(contractId, row?.contract.clientId ?? null);
 }

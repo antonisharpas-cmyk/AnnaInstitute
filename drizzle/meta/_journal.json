@@ -344,6 +344,13 @@
       "when": 1791839547383,
       "tag": "0049_stage_invoices",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791925947383,
+      "tag": "0050_company_invoices_both_ways",
+      "breakpoints": true
     }
   ]
 }

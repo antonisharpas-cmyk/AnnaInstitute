@@ -110,7 +110,7 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
 
   const items: PackItem[] = issued.map((paper) => {
     const snap = read(paper.snapshot);
-    const group: PackGroup = paper.expenseId
+    const group: PackGroup = paper.expenseId && paper.kind !== "RECEIPT"
       ? "companyInvoice"
       : paper.kind === "RECEIPT"
         ? "receipt"
@@ -157,7 +157,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
     items.push({
       key: `e:${one.id}`,
       group: "received",
-      company: ownName,
+      /* Filed under the company of ours it was addressed to. */
+      company: one.ourCompanyId ? companyName(one.ourCompanyId, {}) : ownName,
       number: one.reference ?? "",
       date: new Date(one.issueDate ?? one.createdAt).toISOString(),
       party: one.supplier,

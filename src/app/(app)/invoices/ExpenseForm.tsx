@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
@@ -11,22 +11,31 @@ export type ExpenseRecord = {
   direction: string;
   supplier: string;
   subownerId: string | null;
-  category: string;
-  categoryOther: string | null;
-  categoryChoice?: string | null;
+  ourCompanyId: string | null;
+  partyKind: string | null;
+  partyId: string | null;
+  partyEmail: string | null;
+  partyAddress: string | null;
   reference: string | null;
   description: string | null;
   issueDate: Date | null;
   dueDate: Date | null;
-  netAmount: string;
-  vatRate: string | null;
-  vatAmount: string;
-  totalAmount: string;
-  paidAmount: string;
-  projectId: string | null;
   notes: string | null;
   issuedDocumentId: string | null;
 };
+
+export type SavedLine = {
+  projectId: string | null;
+  category: string | null;
+  categoryChoice: string | null;
+  categoryOther: string | null;
+  vatRate: string | null;
+  netAmount: string;
+  vatAmount: string;
+  description: string | null;
+};
+
+export type PartyChoice = { value: string; kind: string; name: string; email: string };
 
 const day = (value: Date | null) => (value ? new Date(value).toISOString().slice(0, 10) : "");
 
@@ -40,21 +49,111 @@ const plain = (value: string | null | undefined) => {
 const euros = (cents: number) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(cents / 100);
 
+const FEES = "MANAGEMENT_FEES";
+const KINDS = ["COMPANY", "CLIENT", "AGENT", "CONSTRUCTOR", "TEAM"] as const;
+
+type Row = { category: string; other: string; projectId: string; description: string; net: string; rate: string };
+
+/**
+ * The other side of an invoice: anybody the CRM knows, grouped, with a box to
+ * find them by name, or somebody typed by name and address.
+ */
+function PartyPicker({
+  id,
+  label,
+  parties,
+  value,
+  onChange,
+  expense,
+  labels,
+  sendsTo,
+}: {
+  id: string;
+  label: string;
+  parties: PartyChoice[];
+  value: string;
+  onChange: (value: string) => void;
+  expense?: ExpenseRecord;
+  labels: Record<string, string>;
+  /** On money we charge, the invoice is emailed to them: say where. */
+  sendsTo: boolean;
+}) {
+  const [find, setFind] = useState("");
+  const shown = useMemo(() => {
+    const words = find.trim().toLowerCase();
+    return words ? parties.filter((one) => one.value === value || `${one.name} ${one.email}`.toLowerCase().includes(words)) : parties;
+  }, [find, parties, value]);
+  const picked = parties.find((one) => one.value === value);
+  const other = value === "OTHER";
+
+  return (
+    <div data-party-picker>
+      <label className="label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        type="search"
+        value={find}
+        onChange={(event) => setFind(event.target.value)}
+        placeholder={labels.findParty}
+        aria-label={labels.findParty}
+        className="input mb-1 !py-1.5 text-xs"
+        data-party-find
+      />
+      <select id={id} name="party" required value={value} onChange={(event) => onChange(event.target.value)} className="select">
+        <option value="">{labels.chooseParty}</option>
+        {KINDS.map((kind) => {
+          const group = shown.filter((one) => one.kind === kind);
+          if (group.length === 0) return null;
+          return (
+            <optgroup key={kind} label={labels[`party${kind}`]}>
+              {group.map((one) => (
+                <option key={one.value} value={one.value}>
+                  {one.name}
+                </option>
+              ))}
+            </optgroup>
+          );
+        })}
+        <option value="OTHER">{labels.partyOTHER}</option>
+      </select>
+
+      {other ? (
+        <div className="mt-2 space-y-2 rounded border border-brand-line bg-brand-surface p-2" data-party-typed>
+          <input name="partyName" required defaultValue={expense?.partyKind === "OTHER" ? expense.supplier : ""} placeholder={labels.partyName} aria-label={labels.partyName} className="input" />
+          <input name="partyEmail" type="email" defaultValue={expense?.partyEmail ?? ""} placeholder={labels.partyEmail} aria-label={labels.partyEmail} className="input" />
+          <input name="partyAddress" defaultValue={expense?.partyAddress ?? ""} placeholder={labels.partyAddress} aria-label={labels.partyAddress} className="input" />
+        </div>
+      ) : null}
+
+      {sendsTo && picked ? (
+        <p className={`mt-1 text-xs ${picked.email ? "text-brand-graphite/60" : "text-[color:var(--color-negative)]"}`}>
+          {picked.email ? `${labels.sentTo} ${picked.email}` : labels.partyNoEmail}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * An invoice under Company, either way round.
  *
- * "We charge a partner": the partner, what it is for, the amount before VAT and
- * the rate. The VAT and the total are worked out as you type, the number is
- * given by the CRM, and saving draws the invoice and emails it to the partner.
+ * "We charge someone": money coming in. From one of our companies, One Eleven
+ * unless another is chosen, to anybody: a company, a client, an agent, a
+ * constructor, the team, or somebody typed by name. A line for each thing
+ * charged, each with its amount and its VAT; management fees for several
+ * developments are ticked, a line each. The number is given by the CRM, and
+ * saving draws the invoice and emails it.
  *
- * "We received an invoice": who it is from, their own number and their PDF.
- * Saving files it and sends a copy to the company's mailbox.
+ * "We received an invoice": money going out. From whoever sent it, to which of
+ * our companies, their own number and their invoice itself.
  */
 export default function ExpenseForm({
   action,
   expense,
   projects,
-  partners,
+  ourCompanies,
+  parties,
   categories,
   cancelHref,
   labels,
@@ -62,45 +161,82 @@ export default function ExpenseForm({
 }: {
   action: (formData: FormData) => void | Promise<void>;
   expense?: ExpenseRecord;
-  /** An invoice for several developments: its lines as saved. */
-  lines?: { projectId: string | null; netAmount: string; description: string | null }[];
+  lines?: SavedLine[];
   projects: { id: string; name: string }[];
-  partners: { id: string; name: string; email: string | null }[];
+  ourCompanies: { id: string; name: string }[];
+  parties: PartyChoice[];
   categories: { value: string; label: string }[];
   cancelHref: string;
   labels: Record<string, string>;
 }) {
   const locked = Boolean(expense?.issuedDocumentId && expense.direction === "OUT");
   const [direction, setDirection] = useState(expense?.direction === "OUT" ? "OUT" : expense ? "IN" : "OUT");
-  const [category, setCategory] = useState(
-    expense ? shownCode(expense.category, expense.categoryChoice) : "MANAGEMENT_FEES",
-  );
-  const [net, setNet] = useState(plain(expense?.netAmount));
-  const [rate, setRate] = useState(
-    expense?.vatRate !== null && expense?.vatRate !== undefined ? plain(expense.vatRate) : "19",
-  );
-  const [partnerId, setPartnerId] = useState(expense?.subownerId ?? "");
-
-  /* Several developments on one invoice: a line each, with its own amount. */
-  const [split, setSplit] = useState(savedLines.length > 1 || savedLines.some((one) => one.description));
-  const [rows, setRows] = useState(
-    savedLines.length > 0
-      ? savedLines.map((one) => ({ projectId: one.projectId ?? "", net: plain(one.netAmount), description: one.description ?? "" }))
-      : [
-          { projectId: expense?.projectId ?? "", net: plain(expense?.netAmount), description: "" },
-          { projectId: "", net: "", description: "" },
-        ],
-  );
-  const setRow = (i: number, change: Partial<(typeof rows)[number]>) =>
-    setRows((was) => was.map((one, n) => (n === i ? { ...one, ...change } : one)));
-  const rateNumber = Number(rate.replace(",", ".")) || 0;
-  const linesNet = rows.reduce((a, one) => a + parseAmount(one.net), 0);
-  const linesVat = rows.reduce((a, one) => a + Math.round((parseAmount(one.net) * rateNumber) / 100), 0);
-
-  const netCents = split ? linesNet : parseAmount(net);
-  const vatCents = split ? linesVat : Math.round((netCents * rateNumber) / 100);
   const out = direction === "OUT";
-  const partner = partners.find((one) => one.id === partnerId);
+  const [party, setParty] = useState(
+    expense
+      ? expense.partyKind && expense.partyKind !== "OTHER" && expense.partyId
+        ? `${expense.partyKind}:${expense.partyId}`
+        : expense.subownerId
+          ? `COMPANY:${expense.subownerId}`
+          : "OTHER"
+      : "",
+  );
+  const fresh = (category = FEES, projectId = ""): Row => ({ category, other: "", projectId, description: "", net: "", rate: "19" });
+  const [rows, setRows] = useState<Row[]>(
+    savedLines.length > 0
+      ? savedLines.map((one) => ({
+          category: shownCode(one.category ?? "OTHER", one.categoryChoice),
+          other: one.categoryOther ?? "",
+          projectId: one.projectId ?? "",
+          description: one.description ?? "",
+          net: plain(one.netAmount),
+          rate: one.vatRate !== null && one.vatRate !== undefined ? plain(one.vatRate) : "19",
+        }))
+      : [fresh()],
+  );
+  const setRow = (i: number, change: Partial<Row>) => setRows((was) => was.map((one, n) => (n === i ? { ...one, ...change } : one)));
+  const empty = (row: Row) => !row.net.trim() && !row.projectId && !row.description.trim();
+
+  /* Management fees for several developments: ticked, a line each, its amount typed on the line. */
+  const feesFor = (projectId: string) => rows.some((one) => one.category === FEES && one.projectId === projectId);
+  const tickFees = (projectId: string, on: boolean) =>
+    setRows((was) => {
+      if (!on) {
+        const left = was.filter((one) => !(one.category === FEES && one.projectId === projectId));
+        return left.length > 0 ? left : [fresh()];
+      }
+      const blank = was.findIndex((one) => empty(one));
+      const line = { ...fresh(FEES, projectId), rate: was[0]?.rate || "19" };
+      return blank >= 0 ? was.map((one, n) => (n === blank ? line : one)) : [...was, line];
+    });
+
+  const sums = rows.reduce(
+    (a, row) => {
+      const net = parseAmount(row.net);
+      const vat = Math.round((net * (Number(row.rate.replace(",", ".")) || 0)) / 100);
+      return { net: a.net + net, vat: a.vat + vat };
+    },
+    { net: 0, vat: 0 },
+  );
+  const defaultOurs = expense ? (expense.ourCompanyId ?? "") : (ourCompanies[0]?.id ?? "");
+
+  const ours = (id: string, label: string) => (
+    <div>
+      <label className="label" htmlFor={id}>
+        {label}
+      </label>
+      <select id={id} name="ourCompanyId" defaultValue={defaultOurs} className="select" data-our-company>
+        {ourCompanies.map((one) => (
+          <option key={one.id || "oneeleven"} value={one.id}>
+            {one.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+  const theirs = (label: string) => (
+    <PartyPicker id="party" label={label} parties={parties} value={party} onChange={setParty} expense={expense} labels={labels} sendsTo={out} />
+  );
 
   return (
     <form action={action} className="space-y-4">
@@ -135,88 +271,13 @@ export default function ExpenseForm({
       </fieldset>
 
       <fieldset disabled={locked} className="space-y-4">
+        {/* From and To: our company on one side, anybody on the other. */}
+        <div className="grid gap-3 sm:grid-cols-2" data-from-to>
+          {out ? ours("ourCompanyFrom", labels.from) : theirs(labels.from)}
+          {out ? theirs(labels.to) : ours("ourCompanyTo", labels.to)}
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2">
-          {out ? (
-            <div>
-              <label className="label" htmlFor="subownerId">
-                {labels.partnerTo}
-              </label>
-              <select
-                id="subownerId"
-                name="subownerId"
-                required
-                value={partnerId}
-                onChange={(event) => setPartnerId(event.target.value)}
-                className="select"
-              >
-                <option value="">{labels.choosePartner}</option>
-                {partners.map((one) => (
-                  <option key={one.id} value={one.id}>
-                    {one.name}
-                  </option>
-                ))}
-              </select>
-              {partner ? (
-                <p className={`mt-1 text-xs ${partner.email ? "text-brand-graphite/60" : "text-[color:var(--color-negative)]"}`}>
-                  {partner.email ? `${labels.sentTo} ${partner.email}` : labels.partnerNoEmail}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <div>
-              <label className="label" htmlFor="supplier">
-                {labels.supplier}
-              </label>
-              <input
-                id="supplier"
-                name="supplier"
-                required
-                defaultValue={expense?.supplier ?? ""}
-                className="input"
-              />
-              <label className="label mt-2" htmlFor="subownerIdIn">
-                {labels.partnerOptional}
-              </label>
-              <select id="subownerIdIn" name="subownerId" defaultValue={expense?.subownerId ?? ""} className="select">
-                <option value="">{labels.notAPartner}</option>
-                {partners.map((one) => (
-                  <option key={one.id} value={one.id}>
-                    {one.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className="label" htmlFor="category">
-              {labels.category}
-            </label>
-            <select
-              id="category"
-              name="category"
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              className="select"
-            >
-              {categories.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {category === "OTHER" ? (
-              <input
-                name="categoryOther"
-                required
-                defaultValue={expense?.categoryOther ?? ""}
-                placeholder={labels.otherPlaceholder}
-                aria-label={labels.otherPlaceholder}
-                className="input mt-2"
-              />
-            ) : null}
-          </div>
-
           <div>
             <label className="label" htmlFor="description">
               {labels.description}
@@ -229,7 +290,6 @@ export default function ExpenseForm({
               className="input"
             />
           </div>
-
           {/* Their number, only on an invoice we received: ours is numbered by the CRM. */}
           {out ? (
             <div className="self-end text-xs text-brand-graphite/60">
@@ -241,14 +301,18 @@ export default function ExpenseForm({
                 {labels.reference}
               </label>
               <input id="reference" name="reference" defaultValue={expense?.reference ?? ""} className="input" />
+              <p className="mt-1 text-xs text-brand-graphite/60">{labels.referenceHint}</p>
             </div>
           )}
-
           <div>
             <label className="label" htmlFor="issueDate">
               {labels.issued}
             </label>
-            <DateField id="issueDate" name="issueDate" defaultValue={day(expense?.issueDate ?? null) || (out ? new Date().toISOString().slice(0, 10) : "")} />
+            <DateField
+              id="issueDate"
+              name="issueDate"
+              defaultValue={day(expense?.issueDate ?? null) || (out ? new Date().toISOString().slice(0, 10) : "")}
+            />
           </div>
           {locked ? null : (
             <div>
@@ -260,157 +324,164 @@ export default function ExpenseForm({
           )}
         </div>
 
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="split"
-            checked={split}
-            onChange={(event) => setSplit(event.target.checked)}
-            className="mt-0.5"
-            data-split
-          />
-          <span>
-            <span className="font-semibold">{labels.splitToggle}</span>
-            <span className="block text-xs text-brand-graphite/60">{labels.splitHint}</span>
-          </span>
-        </label>
-
-        {split ? (
-          <div className="space-y-2 rounded border border-brand-line bg-brand-surface p-3" data-lines>
-            {rows.map((row, i) => (
-              <div key={i} className="grid items-end gap-2 sm:grid-cols-[1.2fr_0.8fr_1.4fr_auto]" data-line-row>
-                <div>
-                  <label className="label">{labels.project}</label>
-                  <select
-                    name="lineProject"
-                    value={row.projectId}
-                    onChange={(event) => setRow(i, { projectId: event.target.value })}
-                    className="select"
-                    required
-                  >
-                    <option value="">{labels.chooseProject}</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">{labels.net}</label>
+        {/* Management fees for several developments: tick each, and each gets its own line. */}
+        {projects.length > 0 ? (
+          <div className="rounded border border-brand-line p-3" data-fees-picker>
+            <p className="text-sm font-semibold">{labels.feesTitle}</p>
+            <p className="mb-2 text-xs text-brand-graphite/60">{labels.feesHint}</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {projects.map((project) => (
+                <label key={project.id} className="flex items-center gap-1.5 text-sm">
                   <input
-                    name="lineNet"
-                    inputMode="decimal"
-                    required
-                    value={row.net}
-                    onChange={(event) => setRow(i, { net: event.target.value })}
-                    className="input"
+                    type="checkbox"
+                    checked={feesFor(project.id)}
+                    onChange={(event) => tickFees(project.id, event.target.checked)}
+                    data-fees-project={project.name}
                   />
-                </div>
-                <div>
-                  <label className="label">{labels.lineWords}</label>
-                  <input
-                    name="lineDescription"
-                    value={row.description}
-                    onChange={(event) => setRow(i, { description: event.target.value })}
-                    placeholder={labels.lineWordsHint}
-                    className="input"
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary !px-3 !py-2 !text-xs"
-                  disabled={rows.length <= 1}
-                  onClick={() => setRows((was) => was.filter((_, n) => n !== i))}
-                >
-                  {labels.removeLine}
-                </button>
-              </div>
-            ))}
-            {rows.length < 8 ? (
-              <button
-                type="button"
-                className="btn btn-secondary !px-3 !py-1 !text-xs"
-                onClick={() => setRows((was) => [...was, { projectId: "", net: "", description: "" }])}
-                data-add-line
-              >
-                {labels.addLine}
-              </button>
-            ) : null}
+                  {project.name}
+                </label>
+              ))}
+            </div>
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-4">
+        {/* The lines: what each is for, its development, its amount and its VAT. */}
+        <div className="space-y-2 rounded border border-brand-line bg-brand-surface p-3" data-lines>
+          <p className="text-sm font-semibold">{labels.linesTitle}</p>
+          {rows.map((row, i) => {
+            const net = parseAmount(row.net);
+            const vat = Math.round((net * (Number(row.rate.replace(",", ".")) || 0)) / 100);
+            return (
+              <div key={i} className="space-y-2 border-b border-brand-line pb-2 last:border-b-0" data-line-row>
+                <div className="grid items-end gap-2 sm:grid-cols-[1.1fr_1.1fr_1.6fr]">
+                  <div>
+                    <label className="label">{labels.category}</label>
+                    <select
+                      name="lineCategory"
+                      value={row.category}
+                      onChange={(event) => setRow(i, { category: event.target.value })}
+                      className="select"
+                    >
+                      {categories.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {/* Kept in step with the other lines, shown only for Other. */}
+                    <input
+                      name="lineCategoryOther"
+                      value={row.other}
+                      onChange={(event) => setRow(i, { other: event.target.value })}
+                      required={row.category === "OTHER"}
+                      hidden={row.category !== "OTHER"}
+                      placeholder={labels.otherPlaceholder}
+                      aria-label={labels.otherPlaceholder}
+                      className="input mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">{labels.project}</label>
+                    <select
+                      name="lineProject"
+                      value={row.projectId}
+                      onChange={(event) => setRow(i, { projectId: event.target.value })}
+                      className="select"
+                    >
+                      <option value="">{labels.noProject}</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">{labels.lineWords}</label>
+                    <input
+                      name="lineDescription"
+                      value={row.description}
+                      onChange={(event) => setRow(i, { description: event.target.value })}
+                      placeholder={labels.lineWordsHint}
+                      className="input"
+                    />
+                  </div>
+                </div>
+                <div className="grid items-end gap-2 sm:grid-cols-[1fr_0.6fr_1fr_1fr_auto]">
+                  <div>
+                    <label className="label">{labels.net}</label>
+                    <input
+                      name="lineNet"
+                      inputMode="decimal"
+                      required
+                      value={row.net}
+                      onChange={(event) => setRow(i, { net: event.target.value })}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">{labels.vatRate}</label>
+                    <input
+                      name="lineRate"
+                      inputMode="decimal"
+                      value={row.rate}
+                      onChange={(event) => setRow(i, { rate: event.target.value })}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <span className="label">{labels.vat}</span>
+                    <div className="input bg-white">{euros(vat)}</div>
+                  </div>
+                  <div>
+                    <span className="label">{labels.lineTotal}</span>
+                    <div className="input bg-white font-semibold" data-line-total>
+                      {euros(net + vat)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary !px-3 !py-2 !text-xs"
+                    disabled={rows.length <= 1}
+                    onClick={() => setRows((was) => was.filter((_, n) => n !== i))}
+                  >
+                    {labels.removeLine}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {rows.length < 12 ? (
+            <button
+              type="button"
+              className="btn btn-secondary !px-3 !py-1 !text-xs"
+              onClick={() => setRows((was) => [...was, { ...fresh(was[was.length - 1]?.category ?? FEES), rate: was[was.length - 1]?.rate || "19" }])}
+              data-add-line
+            >
+              {labels.addLine}
+            </button>
+          ) : null}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3" data-totals>
           <div>
-            <label className="label" htmlFor="netAmount">
-              {labels.net}
-            </label>
-            {split ? (
-              <div className="input bg-brand-surface" id="netAmount">{euros(netCents)}</div>
-            ) : (
-              <input
-                id="netAmount"
-                name="netAmount"
-                inputMode="decimal"
-                required
-                value={net}
-                onChange={(event) => setNet(event.target.value)}
-                className="input"
-              />
-            )}
-          </div>
-          <div>
-            <label className="label" htmlFor="vatRate">
-              {labels.vatRate}
-            </label>
-            <input
-              id="vatRate"
-              name="vatRate"
-              inputMode="decimal"
-              value={rate}
-              onChange={(event) => setRate(event.target.value)}
-              className="input"
-            />
+            <span className="label">{labels.net}</span>
+            <div className="input bg-brand-surface" id="netAmount">
+              {euros(sums.net)}
+            </div>
           </div>
           <div>
             <span className="label">{labels.vat}</span>
-            <div className="input bg-brand-surface">{euros(vatCents)}</div>
+            <div className="input bg-brand-surface" id="vatAmount">
+              {euros(sums.vat)}
+            </div>
           </div>
           <div>
             <span className="label">{labels.total}</span>
-            <div className="input bg-brand-surface font-semibold">{euros(netCents + vatCents)}</div>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="paidAmount">
-              {labels.alreadyPaid}
-            </label>
-            <input
-              id="paidAmount"
-              name="paidAmount"
-              inputMode="decimal"
-              defaultValue={plain(expense?.paidAmount)}
-              placeholder="0"
-              className="input"
-            />
-          </div>
-          {split ? null : (
-            <div>
-              <label className="label" htmlFor="projectId">
-                {labels.project}
-              </label>
-              <select id="projectId" name="projectId" defaultValue={expense?.projectId ?? ""} className="select">
-                <option value="">{labels.noProject}</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
+            <div className="input bg-brand-surface font-semibold" id="totalAmount">
+              {euros(sums.net + sums.vat)}
             </div>
-          )}
+          </div>
         </div>
       </fieldset>
 
@@ -427,17 +498,18 @@ export default function ExpenseForm({
       {out ? null : (
         <div>
           <label className="label" htmlFor="files">
-            {labels.files}
+            {labels.theirInvoice}
           </label>
           <input
             id="files"
             name="files"
             type="file"
             multiple
+            required={!expense}
             accept=".pdf,.xlsx,.xls,.csv,.doc,.docx,image/*"
             className="input !py-1.5 text-xs"
           />
-          <p className="mt-1 text-xs text-brand-graphite/60">{labels.filesNote}</p>
+          <p className="mt-1 text-xs text-brand-graphite/60">{labels.theirInvoiceNote}</p>
         </div>
       )}
 

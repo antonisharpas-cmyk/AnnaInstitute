@@ -1477,6 +1477,16 @@ export const expenses = pgTable("expenses", {
   /** On an invoice we issued, the numbered paper in the invoice series. */
   issuedDocumentId: text("issued_document_id"),
   emailedAt: timestamp("emailed_at", { withTimezone: true }),
+  /**
+   * Which of our companies the invoice is from (OUT) or to (IN). Empty is One
+   * Eleven itself, from Settings; otherwise a company's id, with its own series.
+   */
+  ourCompanyId: text("our_company_id").default(""),
+  /** The other side: COMPANY, CLIENT, AGENT, CONSTRUCTOR, TEAM or OTHER (typed by name). */
+  partyKind: text("party_kind"),
+  partyId: text("party_id"),
+  partyEmail: text("party_email"),
+  partyAddress: text("party_address"),
   createdAt: created(),
   updatedAt: updated(),
 });
@@ -1498,6 +1508,37 @@ export const expenseLines = pgTable("expense_lines", {
   vatAmount: money("vat_amount").default("0").notNull(),
   totalAmount: money("total_amount").default("0").notNull(),
   seq: integer("seq").default(0).notNull(),
+  /** What this line is for: the category, the office's own one, or Other in words. */
+  category: text("category"),
+  categoryChoice: text("category_choice"),
+  categoryOther: text("category_other"),
+  vatRate: rate("vat_rate"),
+  createdAt: created(),
+});
+
+/**
+ * Every payment on an invoice under Company.
+ *
+ * Money we received on an invoice we issued: our receipt is numbered, drawn and
+ * emailed the moment it is recorded. Money we paid on an invoice we received:
+ * their receipt is filed on it, and until it is, the invoice says so.
+ */
+export const expensePayments = pgTable("expense_payments", {
+  id: id(),
+  expenseId: text("expense_id")
+    .notNull()
+    .references(() => expenses.id, { onDelete: "cascade" }),
+  paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
+  amount: money("amount").notNull(),
+  method: text("method"),
+  reference: text("reference"),
+  /** Our receipt, on money we received. */
+  issuedDocumentId: text("issued_document_id"),
+  /** Their receipt, on money we paid: the file. */
+  receiptDocumentId: text("receipt_document_id"),
+  emailedAt: timestamp("emailed_at", { withTimezone: true }),
+  emailError: text("email_error"),
+  recordedByEmail: text("recorded_by_email"),
   createdAt: created(),
 });
 

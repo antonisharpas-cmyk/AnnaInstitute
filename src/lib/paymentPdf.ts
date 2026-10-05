@@ -99,7 +99,7 @@ export type IssuedSnapshot = {
    * whole stage it is against, what has come in on it so far and what remains.
    */
   /** An invoice with several lines: one development each, for instance. */
-  lines?: { description: string; netCents: number; vatCents: number }[];
+  lines?: { description: string; netCents: number; vatCents: number; rate?: number }[];
   againstInvoice?: {
     number: string;
     totalCents: number;
@@ -595,7 +595,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
     for (const [i, line] of descLines.entries()) text(page, i === 0 ? f.bold : f.plain, line, cols.desc, y - i * 14, 9.5);
     right(page, f.plain, "1", cols.qty, y, 9.5);
     right(page, f.plain, money(row.netCents), cols.price, y, 9.5);
-    right(page, f.plain, parts.map((part) => pc(part.rate)).join(", "), cols.vat, y, 9.5);
+    right(page, f.plain, "rate" in row && typeof row.rate === "number" ? pc(row.rate) : parts.map((part) => pc(part.rate)).join(", "), cols.vat, y, 9.5);
     right(page, f.plain, money(row.netCents), cols.amount, y, 9.5);
     y -= 14 * (descLines.length - 1) + 18;
     if (n < rows.length - 1) {
@@ -620,24 +620,27 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   } else {
     total(`VAT ${pc(parts[0].rate)}`, money(s.vatCents));
   }
-  /* The total in a box of its own, clear of the line above it. */
+  /*
+   * The figure in a box of its own, clear of the line above it. With a credit
+   * from the reduced VAT set against it, the box holds what is left to pay,
+   * because that is the figure the client acts on; the full total and the
+   * credit are the lines above it.
+   */
+  const withCredit = !credit && Boolean(s.creditAppliedCents);
+  if (withCredit) {
+    total("Total", money(s.totalCents), true);
+    total("Less credit (reduced VAT)", `−${eur(s.creditAppliedCents ?? 0)}`);
+  }
   const totalTop = y + 8;
   const totalH = 40;
   page.drawRectangle({ x: tx - 12, y: totalTop - totalH, width: R - tx + 12, height: totalH, color: sh.soft });
   page.drawRectangle({ x: tx - 12, y: totalTop - totalH, width: 3, height: totalH, color: sh.accent });
-  const totalValue = money(s.totalCents);
+  const totalValue = money(withCredit ? (s.payableCents ?? 0) : s.totalCents);
   const totalSize = fit(f.bold, totalValue, 15, 150);
   const mid = totalTop - totalH / 2;
-  text(page, f.bold, credit ? "Total credited" : "Total", tx, mid - 4, 11, sh.accent);
+  text(page, f.bold, credit ? "Total credited" : withCredit ? (s.advance ? "To pay" : "Paid") : "Total", tx, mid - 4, 11, sh.accent);
   right(page, f.bold, totalValue, R - 12, mid - totalSize * 0.36, totalSize, sh.accent);
   y = totalTop - totalH - 24;
-
-  /* A credit from the reduced VAT that settled part of it. */
-  if (!credit && s.creditAppliedCents) {
-    total("Less credit (reduced VAT)", `−${eur(s.creditAppliedCents)}`);
-    total(s.advance ? "To pay" : "Paid", eur(s.payableCents ?? 0), true);
-    y -= 4;
-  }
 
   /*
    * The left of the totals: the status stamp, and under it the amount in
@@ -668,7 +671,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   }
   text(page, f.plain, "Amount in words", L, ly, 8.5, QUIET);
   ly -= 15;
-  for (const line of wrap(f.bold, `${credit ? "Credited: " : ""}${amountInEnglish(s.totalCents)}`, 9.5, leftW)) {
+  for (const line of wrap(f.bold, `${credit ? "Credited: " : ""}${amountInEnglish(!credit && s.creditAppliedCents && (s.payableCents ?? 0) > 0 ? (s.payableCents ?? 0) : s.totalCents)}`, 9.5, leftW)) {
     text(page, f.bold, line, L, ly, 9.5);
     ly -= 13.5;
   }

@@ -6,6 +6,7 @@ import {
   campaigns,
   clients,
   contracts,
+  expenseLines,
   expenses,
   installments,
   leads,
@@ -680,30 +681,53 @@ export async function consentTotals() {
    What the company pays
    --------------------------------------------------------------------------- */
 
-export async function costsByMonth(range: Range, only: string[] | null = null) {
+/**
+ * The lines of the invoices under Company, one way: IN is what we were billed,
+ * OUT is what we charged. Each line counts for its own development and its own
+ * category, and what was paid on the invoice is shared over its lines by their
+ * amounts.
+ */
+async function moneyLines(direction: "IN" | "OUT", only: string[] | null, range?: Range) {
+  const when = sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`;
   const rows = await db
     .select({
-      issueDate: expenses.issueDate,
-      createdAt: expenses.createdAt,
-      total: expenses.totalAmount,
-      paid: expenses.paidAmount,
-      share: sql<string>`coalesce(${shareIn(only)}, 0)`,
+      when: sql<Date>`${when}`,
+      projectId: expenseLines.projectId,
+      category: sql<string>`coalesce(${expenseLines.category}, ${expenses.category}::text)`,
+      total: expenseLines.totalAmount,
+      paidShare: sql<string>`coalesce(round(${expenseLines.totalAmount} * ${expenses.paidAmount} / nullif(${expenses.totalAmount}, 0), 2), 0)`,
     })
-    .from(expenses)
-    .where(expensesIn(only));
+    .from(expenseLines)
+    .innerJoin(expenses, eq(expenses.id, expenseLines.expenseId))
+    .where(
+      and(
+        eq(expenses.direction, direction),
+        only === null ? undefined : (sql`${expenseLines.projectId} in ${only.length > 0 ? only : [""]}` as SQL),
+        range ? gte(when, range.from) : undefined,
+        range ? lte(when, range.to) : undefined,
+      ) as SQL,
+    );
+  return rows.map((row) => ({
+    when: new Date(row.when),
+    projectId: row.projectId,
+    category: row.category,
+    totalCents: toCents(row.total),
+    paidCents: toCents(row.paidShare),
+  }));
+}
 
+/** By month: billed and paid. IN for what the company pays, OUT for what it charges. */
+export async function costsByMonth(range: Range, only: string[] | null = null, direction: "IN" | "OUT" = "IN") {
+  const rows = await moneyLines(direction, only);
   const months = monthsIn(range);
   const billed = new Map(months.map((m) => [m, 0]));
   const paid = new Map(months.map((m) => [m, 0]));
-
   for (const row of rows) {
-    const key = monthKey(row.issueDate ?? row.createdAt);
+    const key = monthKey(row.when);
     if (!billed.has(key)) continue;
-    const share = Number(row.share) || 0;
-    billed.set(key, (billed.get(key) ?? 0) + Math.round(toCents(row.total) * share));
-    paid.set(key, (paid.get(key) ?? 0) + Math.round(toCents(row.paid) * share));
+    billed.set(key, (billed.get(key) ?? 0) + row.totalCents);
+    paid.set(key, (paid.get(key) ?? 0) + row.paidCents);
   }
-
   return months.map((month) => ({
     month,
     billedCents: billed.get(month) ?? 0,
@@ -711,30 +735,37 @@ export async function costsByMonth(range: Range, only: string[] | null = null) {
   }));
 }
 
-export async function costsByCategory(range: Range, only: string[] | null = null) {
-  const rows = await db
-    .select({
-      category: expenses.category,
-      billed: sql<string>`coalesce(round(sum(${expenses.totalAmount} * ${shareIn(only)}), 2), 0)`,
-      owed: sql<string>`coalesce(round(sum((${expenses.totalAmount} - ${expenses.paidAmount}) * ${shareIn(only)}), 2), 0)`,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(expenses)
-    .where(
-      and(
-        gte(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range.from),
-        lte(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range.to),
-        expensesIn(only),
-      ) as SQL,
-    )
-    .groupBy(expenses.category)
-    .orderBy(desc(sql`sum(${expenses.totalAmount} * ${shareIn(only)})`));
+/** By category, each line by its own: billed and still owed. */
+export async function costsByCategory(range: Range, only: string[] | null = null, direction: "IN" | "OUT" = "IN") {
+  const rows = await moneyLines(direction, only, range);
+  const by = new Map<string, { category: string; billedCents: number; owedCents: number; count: number }>();
+  for (const row of rows) {
+    const one = by.get(row.category) ?? { category: row.category, billedCents: 0, owedCents: 0, count: 0 };
+    one.billedCents += row.totalCents;
+    one.owedCents += row.totalCents - row.paidCents;
+    one.count += 1;
+    by.set(row.category, one);
+  }
+  return [...by.values()].sort((a, b) => b.billedCents - a.billedCents);
+}
 
-  return rows.map((row) => ({
-    ...row,
-    billedCents: toCents(row.billed),
-    owedCents: toCents(row.owed),
-  }));
+/** By development: what was charged, what was billed to us, and the difference. */
+export async function incomeAndCostsByProject(range: Range, only: string[] | null = null) {
+  const [income, costs, names] = await Promise.all([
+    moneyLines("OUT", only, range),
+    moneyLines("IN", only, range),
+    db.select({ id: projects.id, name: projects.name }).from(projects),
+  ]);
+  const by = new Map<string, { projectId: string; name: string; incomeCents: number; costCents: number }>();
+  const add = (projectId: string | null, field: "incomeCents" | "costCents", cents: number) => {
+    const key = projectId ?? "";
+    const one = by.get(key) ?? { projectId: key, name: names.find((p) => p.id === projectId)?.name ?? "", incomeCents: 0, costCents: 0 };
+    one[field] += cents;
+    by.set(key, one);
+  };
+  for (const row of income) add(row.projectId, "incomeCents", row.totalCents);
+  for (const row of costs) add(row.projectId, "costCents", row.totalCents);
+  return [...by.values()].sort((a, b) => (a.projectId === "" ? 1 : b.projectId === "" ? -1 : a.name.localeCompare(b.name)));
 }
 
 /* ---------------------------------------------------------------------------
@@ -815,7 +846,8 @@ export async function headline(range: Range, only: string[] | null = null) {
       .where(onlyProjects(only)),
     db
       .select({
-        owed: sql<string>`coalesce(round(sum((${expenses.totalAmount} - ${expenses.paidAmount}) * ${shareIn(only)}), 2), 0)`,
+        owed: sql<string>`coalesce(round(sum((${expenses.totalAmount} - ${expenses.paidAmount}) * ${shareIn(only)}) filter (where ${expenses.direction} = 'IN'), 2), 0)`,
+        owedToUs: sql<string>`coalesce(round(sum((${expenses.totalAmount} - ${expenses.paidAmount}) * ${shareIn(only)}) filter (where ${expenses.direction} = 'OUT'), 2), 0)`,
       })
       .from(expenses)
       .where(expensesIn(only)),
@@ -833,5 +865,6 @@ export async function headline(range: Range, only: string[] | null = null) {
       availableValueCents: toCents(stock?.availableValue ?? "0"),
     },
     costsOwedCents: toCents(costs?.owed ?? "0"),
+    incomeOwedCents: toCents(costs?.owedToUs ?? "0"),
   };
 }

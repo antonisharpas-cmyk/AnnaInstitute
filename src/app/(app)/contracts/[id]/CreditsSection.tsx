@@ -59,7 +59,14 @@ export default async function CreditsSection({ contractId }: { contractId: strin
         .orderBy(asc(issuedDocuments.issuedOn), asc(issuedDocuments.createdAt))
     : [];
   const byId = new Map([...invoices, ...notes].map((one) => [one.id, one]));
-  const cancelledInvoices = invoices.filter((one) => one.replacedById);
+  /* Newest first, each at the moment it was cancelled, which is when its replacement was issued. */
+  const cancelledAt = (one: (typeof invoices)[number]) => {
+    const fresh = one.replacedById ? invoices.find((other) => other.id === one.replacedById) : undefined;
+    return new Date(fresh?.createdAt ?? one.voidedAt ?? one.createdAt);
+  };
+  const cancelledInvoices = invoices
+    .filter((one) => one.replacedById)
+    .sort((a, b) => cancelledAt(b).getTime() - cancelledAt(a).getTime() || b.number.localeCompare(a.number));
   const toPayBack = await vatCreditToPayBack(contractId);
 
   const money = (cents: number) => formatAmount(cents, locale);
@@ -130,7 +137,7 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                         const legacyNote = old.creditedById ? byId.get(old.creditedById) : undefined;
                         return (
                           <tr key={old.id} data-cancelled-invoice={old.number}>
-                            <td className="nowrap text-xs">{day(old.voidedAt ?? contract.reducedVatApprovedOn)}</td>
+                            <td className="nowrap text-xs">{dayAndTime(cancelledAt(old), locale)}</td>
                             <td>
                               <span className="font-semibold">{old.number}</span>{" "}
                               <Pill tone="bad">{t("credits.cancelledPill")}</Pill>
@@ -308,7 +315,9 @@ export default async function CreditsSection({ contractId }: { contractId: strin
               <tbody>
                 {refunds.map(({ refund, note, amountCents }) => (
                   <tr key={refund.id}>
-                    <td className="nowrap text-xs">{day(refund.paidOn)}</td>
+                    <td className="nowrap text-xs">
+                      {day(refund.paidOn)} {dayAndTime(refund.createdAt, locale).slice(11)}
+                    </td>
                     <td className="nowrap text-xs">{dayAndTime(refund.createdAt, locale)}</td>
                     <td className="text-xs">
                       {t(`issued.purpose.${refund.purpose}` as "issued.purpose.REFUND")}
