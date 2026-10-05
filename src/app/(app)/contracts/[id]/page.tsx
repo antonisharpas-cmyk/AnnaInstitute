@@ -2,7 +2,6 @@ import { isCustom, optionsFor, shownCode } from "@/lib/choices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CreditsSection from "./CreditsSection";
-import SigningPapers from "./SigningPapers";
 import StageInvoices from "./StageInvoices";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
@@ -360,15 +359,6 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </dl>
         </Card>
 
-        {/* 1b. The Reservation and the Contract of Sale, from draft to signed. */}
-        {contract.kind !== "LAND_EXCHANGE" && contract.status !== "CANCELLED" ? (
-          <SigningPapers contractId={id} hasEmail={Boolean(client?.email)} />
-        ) : null}
-
-        {/* 1c. The invoice of each stage, with what proves it; the receipt follows the money by itself. */}
-        {contract.kind !== "LAND_EXCHANGE" && contract.status !== "CANCELLED" ? (
-          <StageInvoices contractId={id} hasEmail={Boolean(client?.email)} />
-        ) : null}
 
         {contract.kind === "LAND_EXCHANGE" ? (
           <Card title={t("contracts.theirApartments")}>
@@ -654,6 +644,12 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </div>
           <p className="mt-3 text-xs text-brand-graphite/60">{t("contracts.scheduleNote")}</p>
         </Card>
+
+        {/* 2b. The invoice of each stage, the Reservation and the Contract of Sale
+            in theirs, with what proves it. The receipt follows the money by itself. */}
+        {contract.kind !== "LAND_EXCHANGE" && contract.status !== "CANCELLED" ? (
+          <StageInvoices contractId={id} hasEmail={Boolean(client?.email)} />
+        ) : null}
 
         {/* The cash part, received a line at a time, with no invoice and no VAT. */}
         {hasCash ? (
