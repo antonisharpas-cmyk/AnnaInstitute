@@ -52,7 +52,8 @@ async function read(formData: FormData) {
         category,
         categoryChoice: known ? picked.choice : null,
         categoryOther: category === "OTHER" && !picked.choice ? others[i] || null : null,
-        projectId: projectsTyped[i] || null,
+        /* "NONE" is the company itself, chosen on purpose: no development. */
+        projectId: projectsTyped[i] && projectsTyped[i] !== "NONE" ? projectsTyped[i] : null,
         description: words[i] || null,
         netCents,
         rate,
@@ -102,7 +103,8 @@ async function read(formData: FormData) {
     categoryOther: main?.categoryOther ?? null,
     /* Their own number, on an invoice we received. Ours is given by the CRM. */
     reference: direction === "IN" ? String(formData.get("reference") ?? "").trim() || null : undefined,
-    description: String(formData.get("description") ?? "").trim() || null,
+    /* Each line says what it covers; an older invoice keeps the words it had. */
+    description: formData.has("description") ? String(formData.get("description") ?? "").trim() || null : undefined,
     issueDate: issue ? new Date(`${issue}T12:00:00`) : direction === "OUT" ? new Date() : null,
     dueDate: due ? new Date(`${due}T12:00:00`) : null,
     netAmount: fromCents(netCents),

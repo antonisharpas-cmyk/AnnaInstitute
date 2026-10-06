@@ -1027,6 +1027,29 @@ table.data tbody td.ctr {
   background: var(--color-negative);
 }
 
+/* A row that opens its record wherever it is clicked. */
+table.data tbody tr.rowlink {
+  cursor: pointer;
+}
+table.data tbody tr.rowlink:hover td,
+table.data tbody tr.rowlink:focus-visible td {
+  background: color-mix(in srgb, var(--color-brand-teal) 8%, transparent);
+}
+table.data tbody tr.rowlink:focus-visible {
+  outline: 2px solid var(--color-brand-teal);
+  outline-offset: -2px;
+}
+
+/* The money in and the money out on the company invoices, each tinted its own colour. */
+.tinted .statcard[data-tone="good"] {
+  background-image: linear-gradient(color-mix(in srgb, var(--color-positive) 9%, transparent), color-mix(in srgb, var(--color-positive) 9%, transparent));
+  border-color: color-mix(in srgb, var(--color-positive) 35%, transparent);
+}
+.tinted .statcard[data-tone="bad"] {
+  background-image: linear-gradient(color-mix(in srgb, var(--color-negative) 8%, transparent), color-mix(in srgb, var(--color-negative) 8%, transparent));
+  border-color: color-mix(in srgb, var(--color-negative) 35%, transparent);
+}
+
 .statlabel {
   font-size: 0.6875rem;
   font-weight: 700;

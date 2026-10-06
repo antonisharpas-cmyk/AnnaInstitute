@@ -353,6 +353,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the payments on company invoices, with their receipts",
     migration: "0050",
   },
+  {
+    probe: "select 'SERVICES'::expense_category",
+    what: "Services as a kind of company invoice",
+    migration: "0051",
+  },
 ];
 
 let answer: Missing[] | null = null;

@@ -213,6 +213,7 @@ export const LISTS: ListDef[] = [
     prefix: "invoices.category",
     builtins: [
       { code: "MANAGEMENT_FEES", locked: true },
+      { code: "SERVICES" },
       { code: "MARKETING" },
       { code: "OFFICE" },
       { code: "RENT" },

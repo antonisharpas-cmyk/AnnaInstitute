@@ -32,6 +32,7 @@ import { statusFor } from "@/lib/expenses";
 
 export const CATEGORY_WORDS: Record<string, string> = {
   MANAGEMENT_FEES: "Management fees",
+  SERVICES: "Services",
   MARKETING: "Marketing",
   OFFICE: "Office",
   RENT: "Rent",

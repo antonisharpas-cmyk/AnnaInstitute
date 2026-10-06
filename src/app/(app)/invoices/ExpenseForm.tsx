@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
@@ -55,8 +55,9 @@ const KINDS = ["COMPANY", "CLIENT", "AGENT", "CONSTRUCTOR", "TEAM"] as const;
 type Row = { category: string; other: string; projectId: string; description: string; net: string; rate: string };
 
 /**
- * The other side of an invoice: anybody the CRM knows, grouped, with a box to
- * find them by name, or somebody typed by name and address.
+ * The other side of an invoice: one box. Type a name or an email and the
+ * people the CRM knows come up under it, grouped: companies, clients, agents,
+ * constructors, the team. Or pick "Someone else" and type their name.
  */
 function PartyPicker({
   id,
@@ -78,45 +79,106 @@ function PartyPicker({
   /** On money we charge, the invoice is emailed to them: say where. */
   sendsTo: boolean;
 }) {
-  const [find, setFind] = useState("");
-  const shown = useMemo(() => {
-    const words = find.trim().toLowerCase();
-    return words ? parties.filter((one) => one.value === value || `${one.name} ${one.email}`.toLowerCase().includes(words)) : parties;
-  }, [find, parties, value]);
   const picked = parties.find((one) => one.value === value);
   const other = value === "OTHER";
+  const shownName = picked ? picked.name : other ? labels.partyOTHER : "";
+  const [query, setQuery] = useState(shownName);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const box = useRef<HTMLInputElement>(null);
+
+  /* The box cannot be left on words that are not a choice. */
+  useEffect(() => {
+    box.current?.setCustomValidity(value ? "" : labels.chooseParty);
+  }, [value, labels.chooseParty]);
+
+  const words = query.trim().toLowerCase();
+  const typing = open && words !== shownName.toLowerCase();
+  const found = useMemo(
+    () => (typing && words ? parties.filter((one) => `${one.name} ${one.email}`.toLowerCase().includes(words)) : parties).slice(0, 60),
+    [typing, words, parties],
+  );
+  const options = [...KINDS.flatMap((kind) => found.filter((one) => one.kind === kind)), { value: "OTHER", kind: "OTHER", name: labels.partyOTHER, email: "" }];
+
+  const choose = (one: PartyChoice) => {
+    onChange(one.value);
+    setQuery(one.value === "OTHER" ? labels.partyOTHER : one.name);
+    setOpen(false);
+  };
 
   return (
-    <div data-party-picker>
+    <div data-party-picker className="relative">
       <label className="label" htmlFor={id}>
         {label}
       </label>
+      <input type="hidden" name="party" value={value} />
       <input
-        type="search"
-        value={find}
-        onChange={(event) => setFind(event.target.value)}
+        ref={box}
+        id={id}
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        autoComplete="off"
+        required
+        value={query}
         placeholder={labels.findParty}
-        aria-label={labels.findParty}
-        className="input mb-1 !py-1.5 text-xs"
-        data-party-find
+        onFocus={(event) => {
+          setOpen(true);
+          event.currentTarget.select();
+        }}
+        onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setOpen(true);
+          setActive(0);
+          if (value) onChange("");
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setOpen(true);
+            setActive((n) => Math.min(n + 1, options.length - 1));
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setActive((n) => Math.max(n - 1, 0));
+          } else if (event.key === "Enter" && open) {
+            event.preventDefault();
+            if (options[active]) choose(options[active]);
+          } else if (event.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        className="select"
       />
-      <select id={id} name="party" required value={value} onChange={(event) => onChange(event.target.value)} className="select">
-        <option value="">{labels.chooseParty}</option>
-        {KINDS.map((kind) => {
-          const group = shown.filter((one) => one.kind === kind);
-          if (group.length === 0) return null;
-          return (
-            <optgroup key={kind} label={labels[`party${kind}`]}>
-              {group.map((one) => (
-                <option key={one.value} value={one.value}>
+      {open ? (
+        <ul
+          className="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded border border-brand-line bg-[color:var(--color-brand-paper)] py-1 text-sm shadow-lg"
+          data-party-list
+        >
+          {options.map((one, n) => {
+            const head = n === 0 || options[n - 1].kind !== one.kind;
+            return (
+              <li key={one.value}>
+                {head && one.kind !== "OTHER" ? (
+                  <div className="px-3 pb-0.5 pt-1.5 text-[0.65rem] font-bold uppercase tracking-wide text-brand-graphite/50">{labels[`party${one.kind}`]}</div>
+                ) : null}
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => choose(one)}
+                  onMouseEnter={() => setActive(n)}
+                  className={`block w-full px-3 py-1 text-left ${n === active ? "bg-brand-surface" : ""} ${one.kind === "OTHER" ? "mt-1 border-t border-brand-line pt-1.5 font-semibold" : ""}`}
+                  data-party-option={one.value}
+                >
                   {one.name}
-                </option>
-              ))}
-            </optgroup>
-          );
-        })}
-        <option value="OTHER">{labels.partyOTHER}</option>
-      </select>
+                  {one.email ? <span className="ml-2 text-xs text-brand-graphite/50">{one.email}</span> : null}
+                </button>
+              </li>
+            );
+          })}
+          {typing && words && found.length === 0 ? <li className="px-3 py-1 text-xs text-brand-graphite/60">{labels.noPartyFound}</li> : null}
+        </ul>
+      ) : null}
 
       {other ? (
         <div className="mt-2 space-y-2 rounded border border-brand-line bg-brand-surface p-2" data-party-typed>
@@ -187,7 +249,7 @@ export default function ExpenseForm({
       ? savedLines.map((one) => ({
           category: shownCode(one.category ?? "OTHER", one.categoryChoice),
           other: one.categoryOther ?? "",
-          projectId: one.projectId ?? "",
+          projectId: one.projectId ?? "NONE",
           description: one.description ?? "",
           net: plain(one.netAmount),
           rate: one.vatRate !== null && one.vatRate !== undefined ? plain(one.vatRate) : "19",
@@ -195,20 +257,6 @@ export default function ExpenseForm({
       : [fresh()],
   );
   const setRow = (i: number, change: Partial<Row>) => setRows((was) => was.map((one, n) => (n === i ? { ...one, ...change } : one)));
-  const empty = (row: Row) => !row.net.trim() && !row.projectId && !row.description.trim();
-
-  /* Management fees for several developments: ticked, a line each, its amount typed on the line. */
-  const feesFor = (projectId: string) => rows.some((one) => one.category === FEES && one.projectId === projectId);
-  const tickFees = (projectId: string, on: boolean) =>
-    setRows((was) => {
-      if (!on) {
-        const left = was.filter((one) => !(one.category === FEES && one.projectId === projectId));
-        return left.length > 0 ? left : [fresh()];
-      }
-      const blank = was.findIndex((one) => empty(one));
-      const line = { ...fresh(FEES, projectId), rate: was[0]?.rate || "19" };
-      return blank >= 0 ? was.map((one, n) => (n === blank ? line : one)) : [...was, line];
-    });
 
   const sums = rows.reduce(
     (a, row) => {
@@ -277,33 +325,8 @@ export default function ExpenseForm({
           {out ? theirs(labels.to) : ours("ourCompanyTo", labels.to)}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="description">
-              {labels.description}
-            </label>
-            <input
-              id="description"
-              name="description"
-              defaultValue={expense?.description ?? ""}
-              placeholder={out ? labels.descriptionExample : ""}
-              className="input"
-            />
-          </div>
-          {/* Their number, only on an invoice we received: ours is numbered by the CRM. */}
-          {out ? (
-            <div className="self-end text-xs text-brand-graphite/60">
-              {expense?.reference ? `${labels.ourNumber} ${expense.reference}` : labels.numberedByCrm}
-            </div>
-          ) : (
-            <div>
-              <label className="label" htmlFor="reference">
-                {labels.reference}
-              </label>
-              <input id="reference" name="reference" defaultValue={expense?.reference ?? ""} className="input" />
-              <p className="mt-1 text-xs text-brand-graphite/60">{labels.referenceHint}</p>
-            </div>
-          )}
+        {/* Issued on the left, due on the right, on one line. */}
+        <div className="grid gap-3 sm:grid-cols-2" data-dates>
           <div>
             <label className="label" htmlFor="issueDate">
               {labels.issued}
@@ -320,30 +343,20 @@ export default function ExpenseForm({
                 {labels.due}
               </label>
               <DateField id="dueDate" name="dueDate" defaultValue={day(expense?.dueDate ?? null)} />
+              <p className="mt-1 text-xs text-brand-graphite/60">{labels.dueHint}</p>
+            </div>
+          )}
+          {/* Their number, only on an invoice we received: ours is numbered by the CRM. */}
+          {out ? null : (
+            <div>
+              <label className="label" htmlFor="reference">
+                {labels.reference}
+              </label>
+              <input id="reference" name="reference" defaultValue={expense?.reference ?? ""} className="input" />
+              <p className="mt-1 text-xs text-brand-graphite/60">{labels.referenceHint}</p>
             </div>
           )}
         </div>
-
-        {/* Management fees for several developments: tick each, and each gets its own line. */}
-        {projects.length > 0 ? (
-          <div className="rounded border border-brand-line p-3" data-fees-picker>
-            <p className="text-sm font-semibold">{labels.feesTitle}</p>
-            <p className="mb-2 text-xs text-brand-graphite/60">{labels.feesHint}</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {projects.map((project) => (
-                <label key={project.id} className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={feesFor(project.id)}
-                    onChange={(event) => tickFees(project.id, event.target.checked)}
-                    data-fees-project={project.name}
-                  />
-                  {project.name}
-                </label>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         {/* The lines: what each is for, its development, its amount and its VAT. */}
         <div className="space-y-2 rounded border border-brand-line bg-brand-surface p-3" data-lines>
@@ -387,8 +400,10 @@ export default function ExpenseForm({
                       value={row.projectId}
                       onChange={(event) => setRow(i, { projectId: event.target.value })}
                       className="select"
+                      required
                     >
-                      <option value="">{labels.noProject}</option>
+                      <option value="">{labels.chooseProject}</option>
+                      <option value="NONE">{labels.noProject}</option>
                       {projects.map((project) => (
                         <option key={project.id} value={project.id}>
                           {project.name}
@@ -397,12 +412,12 @@ export default function ExpenseForm({
                     </select>
                   </div>
                   <div>
-                    <label className="label">{labels.lineWords}</label>
+                    <label className="label">{labels.description}</label>
                     <input
                       name="lineDescription"
                       value={row.description}
                       onChange={(event) => setRow(i, { description: event.target.value })}
-                      placeholder={labels.lineWordsHint}
+                      placeholder={out ? labels.descriptionExample : labels.lineWordsHint}
                       className="input"
                     />
                   </div>
@@ -512,6 +527,13 @@ export default function ExpenseForm({
           <p className="mt-1 text-xs text-brand-graphite/60">{labels.theirInvoiceNote}</p>
         </div>
       )}
+
+      {/* Where our number comes from, just above the notes. */}
+      {out ? (
+        <p className="text-xs text-brand-graphite/60" data-numbered-note>
+          {expense?.reference ? `${labels.ourNumber} ${expense.reference}` : labels.numberedByCrm}
+        </p>
+      ) : null}
 
       <div>
         <label className="label" htmlFor="notes">

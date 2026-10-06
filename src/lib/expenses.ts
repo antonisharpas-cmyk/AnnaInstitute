@@ -15,6 +15,7 @@ import { toCents } from "./money";
 
 export const EXPENSE_CATEGORIES = [
   "MANAGEMENT_FEES",
+  "SERVICES",
   "MARKETING",
   "OFFICE",
   "RENT",
@@ -37,6 +38,7 @@ export async function listExpenses({
   category = "",
   status = "",
   direction = "",
+  company = "",
   limit = 20,
   offset = 0,
 }: {
@@ -44,6 +46,8 @@ export async function listExpenses({
   category?: string;
   status?: string;
   direction?: string;
+  /** One of our companies ("ours" is One Eleven itself): on either side of the invoice. */
+  company?: string;
   limit?: number;
   offset?: number;
 }) {
@@ -72,6 +76,9 @@ export async function listExpenses({
   }
   if (status === "RECEIPT_MISSING") filters.push(RECEIPT_MISSING_SQL);
   if (direction === "IN" || direction === "OUT") filters.push(eq(expenses.direction, direction));
+  if (company === "ours") filters.push(sql`coalesce(${expenses.ourCompanyId}, '') = ''`);
+  else if (company)
+    filters.push(sql`(${expenses.ourCompanyId} = ${company} or (${expenses.partyKind} = 'COMPANY' and ${expenses.partyId} = ${company}) or ${expenses.subownerId} = ${company})`);
   const where = filters.length > 0 ? and(...filters) : undefined;
 
   const [rows, [counted], sums] = await Promise.all([

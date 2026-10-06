@@ -11,6 +11,7 @@ import {
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import { ourCompanies } from "@/lib/parties";
 import SearchBox from "@/components/SearchBox";
+import RowLink from "@/components/RowLink";
 import Pagination, { paginate } from "@/components/Pagination";
 
 const PER_PAGE = 20;
@@ -21,7 +22,7 @@ const day = (value: Date | null | undefined) =>
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; status?: string; direction?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; status?: string; direction?: string; company?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
@@ -29,10 +30,11 @@ export default async function InvoicesPage({
   const category = params.category ?? "";
   const status = params.status ?? "";
   const direction = params.direction ?? "";
+  const company = params.company ?? "";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
 
   const [{ rows, total, income, costs }, byCategory, companies] = await Promise.all([
-    listExpenses({ query, category, status, direction, limit: perPage, offset }),
+    listExpenses({ query, category, status, direction, company, limit: perPage, offset }),
     expensesByCategory(),
     ourCompanies(),
   ]);
@@ -58,11 +60,12 @@ export default async function InvoicesPage({
       />
 
       {/* Money coming in and money going out, side by side, never added together. */}
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-invoice-totals>
-        <Stat label={t("invoices.incomeBilled")} value={money(income.billedCents)} hint={`${money(income.paidCents)} ${t("invoices.received").toLowerCase()}`} />
-        <Stat label={t("invoices.toReceive")} value={money(income.owedCents)} />
-        <Stat label={t("invoices.costsBilled")} value={money(costs.billedCents)} hint={`${money(costs.paidCents)} ${t("invoices.paid").toLowerCase()}`} />
-        <Stat label={t("invoices.toPay")} value={money(costs.owedCents)} />
+      <div className="tinted mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-invoice-totals>
+        {/* Income in green, expenses in red, so the two sides are never read as one. */}
+        <Stat tone="good" label={t("invoices.incomeBilled")} value={money(income.billedCents)} hint={`${money(income.paidCents)} ${t("invoices.received").toLowerCase()}`} />
+        <Stat tone="good" label={t("invoices.toReceive")} value={money(income.owedCents)} />
+        <Stat tone="bad" label={t("invoices.costsBilled")} value={money(costs.billedCents)} hint={`${money(costs.paidCents)} ${t("invoices.paid").toLowerCase()}`} />
+        <Stat tone="bad" label={t("invoices.toPay")} value={money(costs.owedCents)} />
       </div>
 
       <div className="space-y-4">
@@ -124,6 +127,19 @@ export default async function InvoicesPage({
                 ))}
               </select>
             </div>
+            <div className="w-56">
+              <label className="label" htmlFor="company">
+                {t("invoices.companyFilter")}
+              </label>
+              <select id="company" name="company" defaultValue={company} className="select" data-company-filter>
+                <option value="">{t("common.all")}</option>
+                {companies.map((one) => (
+                  <option key={one.id || "ours"} value={one.id || "ours"}>
+                    {one.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="w-48">
               <label className="label" htmlFor="direction">
                 {t("invoices.which")}
@@ -148,11 +164,12 @@ export default async function InvoicesPage({
             </div>
           </SearchBox>
 
-          <div className="mt-4 overflow-x-auto">
+          <p className="mt-3 text-xs text-brand-graphite/60">{t("invoices.rowHint")}</p>
+          <div className="mt-2 overflow-x-auto">
             {rows.length === 0 ? (
               <Empty
                 message={
-                  query || category || status || direction ? t("invoices.noneFound") : t("invoices.noneYet")
+                  query || category || status || direction || company ? t("invoices.noneFound") : t("invoices.noneYet")
                 }
               />
             ) : (
@@ -169,6 +186,7 @@ export default async function InvoicesPage({
                     <th className="ctr">{t("invoices.paidOrReceived")}</th>
                     <th>{t("common.status")}</th>
                     <th>{t("projects.title")}</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
@@ -182,7 +200,7 @@ export default async function InvoicesPage({
                       </Link>
                     );
                     return (
-                      <tr key={r.expense.id} data-invoice-row={r.expense.direction}>
+                      <RowLink key={r.expense.id} href={`/invoices/${r.expense.id}`} data-invoice-row={r.expense.direction}>
                         <td>
                           {out ? <span className="text-xs">{ours}</span> : them}
                           {!out && r.expense.description ? <div className="text-xs text-brand-graphite/60">{r.expense.description}</div> : null}
@@ -219,7 +237,12 @@ export default async function InvoicesPage({
                             ""
                           )}
                         </td>
-                      </tr>
+                        <td className="ctr">
+                          <Link href={`/invoices/${r.expense.id}`} target="_blank" rel="noreferrer" className="btn btn-secondary !px-3 !py-1 !text-xs" data-open-invoice>
+                            {t("invoices.open")}
+                          </Link>
+                        </td>
+                      </RowLink>
                     );
                   })}
                 </tbody>
