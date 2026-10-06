@@ -3,11 +3,12 @@ import type { ReactNode } from "react";
 import { and, desc, eq, gte, isNotNull, lt, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { clients, contracts, expenses, installments, payments, projects, units } from "@/db/schema";
-import { getTranslator } from "@/i18n";
+import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { formatAmount, toCents } from "@/lib/money";
 import { newLeadCount } from "@/lib/leads";
 import { recentActivity } from "@/lib/activity";
+import { upcomingBirthdays } from "@/lib/automaticEmails";
 import {
   cashByMonth,
   leadFunnel,
@@ -413,6 +414,10 @@ export default async function DashboardPage({
     },
   ].filter((row) => row.count > 0);
 
+  /* The week's birthdays, read only when the panel is on show. */
+  const birthdays = on.has("birthdays") ? await upcomingBirthdays(7) : [];
+  const dayShort = (value: Date) => value.toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", { weekday: "short", day: "numeric", month: "short" });
+
   const seeAll = (href: string) => (
     <Link href={href} className="text-xs font-semibold text-brand-teal-dark">
       {t("dash.seeAll")}
@@ -610,6 +615,33 @@ export default async function DashboardPage({
             href: `/projects/${row.project.id}`,
           }))}
         />
+      </Card>
+    ),
+
+    birthdays: (
+      <Card title={t("birthdays.thisWeek")} action={seeAll("/emails/birthdays")}>
+        {birthdays.length === 0 ? (
+          <Empty message={t("birthdays.noneThisWeek")} />
+        ) : (
+          <ul className="space-y-1.5 text-sm" data-dash-birthdays>
+            {birthdays.map((row, i) => (
+              <li key={i} className="flex items-start justify-between gap-2">
+                <span>
+                  <Link href={row.records[0]?.href ?? "/emails/birthdays"} className="font-semibold hover:underline">
+                    {row.name}
+                  </Link>
+                  <span className="block text-xs text-brand-graphite/60">
+                    {dayShort(row.day)}
+                    {row.age ? `, ${t("birthdays.turns").toLowerCase()} ${row.age}` : ""}
+                  </span>
+                </span>
+                <Pill tone={row.state === "SENT" ? "good" : row.state === "NO_EMAIL" || row.state === "FAILED" ? "bad" : row.state === "TODAY" ? "teal" : row.state === "DUE" ? "neutral" : "warn"}>
+                  {t(`birthdays.state.${row.state}` as MessageKey)}
+                </Pill>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
     ),
 

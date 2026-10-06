@@ -118,7 +118,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/subowners", label: t("nav.subowners"), group: "network" },
     { href: "/constructors", label: t("nav.constructors"), group: "network" },
     { href: "/campaigns", label: t("nav.campaigns"), group: "marketing" },
-    { href: "/emails", label: t("nav.emails"), group: "marketing" },
+    {
+      href: "/emails",
+      label: t("nav.emails"),
+      group: "marketing",
+      children: [
+        { href: "/emails", label: t("nav.emails") },
+        { href: "/emails/birthdays", label: t("birthdays.title") },
+      ],
+    },
     { href: "/commissions", label: t("nav.commissions"), group: "finance" },
     {
       href: "/invoices",

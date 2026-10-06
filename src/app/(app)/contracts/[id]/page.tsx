@@ -97,7 +97,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <>
+    <div className="fit-buttons">
       <BackLink
         href="/contracts"
         label={`${t("common.backTo")} ${t("contracts.title").toLowerCase()}`}
@@ -980,6 +980,6 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           confirm={t("remove.confirm")}
         />
       </div>
-    </>
+    </div>
   );
 }

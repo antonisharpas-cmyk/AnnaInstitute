@@ -719,6 +719,184 @@ export async function letterForCommission(contractId: string): Promise<void> {
    Birthday wishes
    --------------------------------------------------------------------------- */
 
+/*
+ * Everybody the office wishes, from every list at once, put together into
+ * persons. Used by the wishes themselves and by the list of birthdays to come,
+ * so the list always shows exactly who the wishes will go to.
+ */
+export type BirthdayPerson = {
+  /** How the wish is written down: a client (main or second buyer), or somebody else. */
+  clientId: string | null;
+  second: boolean;
+  personKey: string | null;
+  agentId: string | null;
+  /** Where the record is, for the list of birthdays to come. */
+  href: string;
+  what: string;
+  first: string;
+  last: string;
+  email: string | null;
+  phone: string | null;
+  born: string | null;
+};
+const splitName = (name: string) => {
+  const parts = name.trim().split(/\s+/);
+  return { first: parts[0] ?? name.trim(), last: parts.slice(1).join(" ") };
+};
+
+
+async function birthdayPeople(year: number) {
+  /*
+   * Everybody the office wishes, from every list at once: the clients and
+   * their second buyers, the agents, the team, the shareholders who are people
+   * and the directors. One person is often on several of them, so they are
+   * first put together into persons, by any email address or mobile number two
+   * records share, and each person is wished once a year, whichever list they
+   * were wished from and on whichever day a record says their birthday is.
+   */
+  const [clientRows, agentRows, teamRows, holderRows, directorRows, wishedRows] = await Promise.all([
+    db
+      .select()
+      .from(clients)
+      .where(
+        and(
+          sql`${clients.deletedAt} is null`,
+          sql`${clients.closedAt} is null`,
+          sql`(${clients.birthDate} is not null or ${clients.secondBirthDate} is not null)`,
+        ),
+      ),
+    db.select().from(agents).where(and(eq(agents.isActive, true), sql`${agents.birthDate} is not null`)),
+    db.select().from(teamMembers).where(and(eq(teamMembers.isActive, true), sql`${teamMembers.birthDate} is not null`)),
+    db.select().from(subownerShares).where(and(eq(subownerShares.isOneEleven, false), sql`${subownerShares.birthDate} is not null`)),
+    db.select().from(subownerDirectors).where(sql`${subownerDirectors.birthDate} is not null`),
+    db
+      .select({
+        clientId: automaticEmails.clientId,
+        second: automaticEmails.secondBuyer,
+        personKey: automaticEmails.personKey,
+        status: automaticEmails.status,
+        reason: automaticEmails.reason,
+        at: automaticEmails.createdAt,
+      })
+      .from(automaticEmails)
+      .where(and(eq(automaticEmails.templateKey, "birthday"), eq(automaticEmails.forYear, year))),
+  ]);
+
+  const people: BirthdayPerson[] = [];
+  for (const one of clientRows) {
+    if (one.birthDate)
+      people.push({ clientId: one.id, second: false, personKey: null, agentId: null, href: `/clients/${one.id}`, what: "client", first: one.firstName ?? "", last: one.lastName ?? "", email: one.email, phone: one.phone, born: one.birthDate });
+    if (one.secondBirthDate && (one.secondFirstName ?? "").trim())
+      people.push({ clientId: one.id, second: true, personKey: null, agentId: null, href: `/clients/${one.id}`, what: "second buyer", first: one.secondFirstName ?? "", last: one.secondLastName ?? "", email: one.secondEmail, phone: one.secondPhone, born: one.secondBirthDate });
+  }
+  for (const one of agentRows) people.push({ clientId: null, second: false, personKey: `agent:${one.id}`, agentId: one.id, href: `/agents/${one.id}`, what: "agent", ...splitName(one.name), email: one.email, phone: one.phone, born: one.birthDate });
+  for (const one of teamRows) people.push({ clientId: null, second: false, personKey: `team:${one.id}`, agentId: null, href: "/team", what: "team member", ...splitName(one.name), email: one.email, phone: one.phone, born: one.birthDate });
+  for (const one of holderRows.filter((row) => row.holderKind !== "COMPANY"))
+    people.push({ clientId: null, second: false, personKey: `holder:${one.id}`, agentId: null, href: `/subowners/${one.subownerId}`, what: "shareholder", ...splitName(one.holder), email: one.email, phone: one.phone, born: one.birthDate });
+  for (const one of directorRows)
+    people.push({ clientId: null, second: false, personKey: `director:${one.id}`, agentId: null, href: `/subowners/${one.subownerId}`, what: "director", ...splitName(one.name), email: one.email || one.emailAlternate, phone: one.phone, born: one.birthDate });
+
+  /*
+   * Who is who: one group per person. Two records are the same person when
+   * they share an email address or a mobile number and have the same birthday.
+   * The birthday is part of it on purpose: an office number or an info@ address
+   * shared by two directors does not make them one person, and they are not
+   * born on the same day.
+   */
+  const dayOf = (born: string | null) => (cleanBirthDate(born) ?? "").slice(5);
+  const group = groupPeople(
+    people.map((one, i) => {
+      const day = dayOf(one.born);
+      const handles = day ? handlesOf({ email: one.email, phone: one.phone }).map((handle) => `${day}|${handle}`) : [];
+      /* With neither an address nor a number, a record is a person of its own. */
+      return handles.length ? handles : [`only:${i}`];
+    }),
+  );
+  const rowOf = (one: BirthdayPerson) =>
+    wishedRows.find((row) =>
+      one.personKey ? row.personKey === one.personKey : row.clientId === one.clientId && row.second === one.second && !row.personKey,
+    );
+  /* A person already wished this year, on any of their records. */
+  const wishedGroups = new Set<number>();
+  people.forEach((one, i) => {
+    if (rowOf(one)?.status === "SENT") wishedGroups.add(group[i]);
+  });
+
+  return { people, group, wishedRows, rowOf, wishedGroups };
+}
+
+export type UpcomingBirthday = {
+  day: Date;
+  /** The person as the wish names them. */
+  name: string;
+  /** Every record the person is on, with where it is. */
+  records: { what: string; name: string; href: string }[];
+  age: number | null;
+  email: string | null;
+  /**
+   * SENT, FAILED or SKIPPED once the day has come and the wish was looked at;
+   * TODAY or DUE before; NO_EMAIL when it cannot go; OFF when wishes are off.
+   */
+  state: "SENT" | "FAILED" | "SKIPPED" | "TODAY" | "DUE" | "NO_EMAIL" | "OFF";
+  reason: string | null;
+  at: Date | null;
+};
+
+/**
+ * The birthdays to come, day by day from today: one line per person, as the
+ * wishes will see them, and what will happen on the day.
+ */
+export async function upcomingBirthdays(days = 30): Promise<UpcomingBirthday[]> {
+  const template = await templateByKey("birthday");
+  const on = Boolean(template?.isActive);
+  const now = new Date();
+  const byYear = new Map<number, Awaited<ReturnType<typeof birthdayPeople>>>();
+  const out: UpcomingBirthday[] = [];
+
+  for (let n = 0; n < days; n++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + n, 12);
+    const year = day.getFullYear();
+    if (!byYear.has(year)) byYear.set(year, await birthdayPeople(year));
+    const { people, group, rowOf } = byYear.get(year)!;
+
+    const groups = new Map<number, number[]>();
+    people.forEach((one, i) => {
+      if (!isBirthday(one.born, day)) return;
+      groups.set(group[i], [...(groups.get(group[i]) ?? []), i]);
+    });
+
+    for (const members of groups.values()) {
+      const records = members.map((i) => people[i]);
+      const main = records.find((one) => one.what === "client") ?? records[0];
+      const email = records.map((one) => sameEmail(one.email)).find(Boolean) ?? null;
+      const rows = records.map((one) => rowOf(one)).filter(Boolean) as NonNullable<ReturnType<typeof rowOf>>[];
+      const sentRow = rows.find((row) => row.status === "SENT");
+      const lastRow = sentRow ?? rows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0];
+      const born = cleanBirthDate(main.born);
+      const state: UpcomingBirthday["state"] = lastRow
+        ? (lastRow.status as "SENT" | "FAILED" | "SKIPPED")
+        : !on
+          ? "OFF"
+          : !email
+            ? "NO_EMAIL"
+            : n === 0
+              ? "TODAY"
+              : "DUE";
+      out.push({
+        day,
+        name: `${main.first} ${main.last}`.trim(),
+        records: records.map((one) => ({ what: one.what, name: `${one.first} ${one.last}`.trim(), href: one.href })),
+        age: born ? year - Number(born.slice(0, 4)) : null,
+        email,
+        state,
+        reason: lastRow?.reason ?? null,
+        at: lastRow ? new Date(lastRow.at) : null,
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Wish every client a happy birthday, on the day.
  *
@@ -738,92 +916,7 @@ export async function sendBirthdayWishes(options?: { byHand?: boolean; hour?: nu
   if (!template) return { sent: 0, looked: 0 };
   const year = now.getFullYear();
 
-  /*
-   * Everybody the office wishes, from every list at once: the clients and
-   * their second buyers, the agents, the team, the shareholders who are people
-   * and the directors. One person is often on several of them, so they are
-   * first put together into persons, by any email address or mobile number two
-   * records share, and each person is wished once a year, whichever list they
-   * were wished from and on whichever day a record says their birthday is.
-   */
-  type Candidate = {
-    /** How the wish is written down: a client (main or second buyer), or somebody else. */
-    clientId: string | null;
-    second: boolean;
-    personKey: string | null;
-    agentId: string | null;
-    what: string;
-    first: string;
-    last: string;
-    email: string | null;
-    phone: string | null;
-    born: string | null;
-  };
-  const split = (name: string) => {
-    const parts = name.trim().split(/\s+/);
-    return { first: parts[0] ?? name.trim(), last: parts.slice(1).join(" ") };
-  };
-
-  const [clientRows, agentRows, teamRows, holderRows, directorRows, wishedRows] = await Promise.all([
-    db
-      .select()
-      .from(clients)
-      .where(
-        and(
-          sql`${clients.deletedAt} is null`,
-          sql`${clients.closedAt} is null`,
-          sql`(${clients.birthDate} is not null or ${clients.secondBirthDate} is not null)`,
-        ),
-      ),
-    db.select().from(agents).where(and(eq(agents.isActive, true), sql`${agents.birthDate} is not null`)),
-    db.select().from(teamMembers).where(and(eq(teamMembers.isActive, true), sql`${teamMembers.birthDate} is not null`)),
-    db.select().from(subownerShares).where(and(eq(subownerShares.isOneEleven, false), sql`${subownerShares.birthDate} is not null`)),
-    db.select().from(subownerDirectors).where(sql`${subownerDirectors.birthDate} is not null`),
-    db
-      .select({ clientId: automaticEmails.clientId, second: automaticEmails.secondBuyer, personKey: automaticEmails.personKey, status: automaticEmails.status })
-      .from(automaticEmails)
-      .where(and(eq(automaticEmails.templateKey, "birthday"), eq(automaticEmails.forYear, year))),
-  ]);
-
-  const people: Candidate[] = [];
-  for (const one of clientRows) {
-    if (one.birthDate)
-      people.push({ clientId: one.id, second: false, personKey: null, agentId: null, what: "client", first: one.firstName ?? "", last: one.lastName ?? "", email: one.email, phone: one.phone, born: one.birthDate });
-    if (one.secondBirthDate && (one.secondFirstName ?? "").trim())
-      people.push({ clientId: one.id, second: true, personKey: null, agentId: null, what: "second buyer", first: one.secondFirstName ?? "", last: one.secondLastName ?? "", email: one.secondEmail, phone: one.secondPhone, born: one.secondBirthDate });
-  }
-  for (const one of agentRows) people.push({ clientId: null, second: false, personKey: `agent:${one.id}`, agentId: one.id, what: "agent", ...split(one.name), email: one.email, phone: one.phone, born: one.birthDate });
-  for (const one of teamRows) people.push({ clientId: null, second: false, personKey: `team:${one.id}`, agentId: null, what: "team member", ...split(one.name), email: one.email, phone: one.phone, born: one.birthDate });
-  for (const one of holderRows.filter((row) => row.holderKind !== "COMPANY"))
-    people.push({ clientId: null, second: false, personKey: `holder:${one.id}`, agentId: null, what: "shareholder", ...split(one.holder), email: one.email, phone: one.phone, born: one.birthDate });
-  for (const one of directorRows)
-    people.push({ clientId: null, second: false, personKey: `director:${one.id}`, agentId: null, what: "director", ...split(one.name), email: one.email || one.emailAlternate, phone: one.phone, born: one.birthDate });
-
-  /*
-   * Who is who: one group per person. Two records are the same person when
-   * they share an email address or a mobile number and have the same birthday.
-   * The birthday is part of it on purpose: an office number or an info@ address
-   * shared by two directors does not make them one person, and they are not
-   * born on the same day.
-   */
-  const dayOf = (born: string | null) => (cleanBirthDate(born) ?? "").slice(5);
-  const group = groupPeople(
-    people.map((one, i) => {
-      const day = dayOf(one.born);
-      const handles = day ? handlesOf({ email: one.email, phone: one.phone }).map((handle) => `${day}|${handle}`) : [];
-      /* With neither an address nor a number, a record is a person of its own. */
-      return handles.length ? handles : [`only:${i}`];
-    }),
-  );
-  const rowOf = (one: Candidate) =>
-    wishedRows.find((row) =>
-      one.personKey ? row.personKey === one.personKey : row.clientId === one.clientId && row.second === one.second && !row.personKey,
-    );
-  /* A person already wished this year, on any of their records. */
-  const wishedGroups = new Set<number>();
-  people.forEach((one, i) => {
-    if (rowOf(one)?.status === "SENT") wishedGroups.add(group[i]);
-  });
+  const { people, group, rowOf, wishedGroups } = await birthdayPeople(year);
 
   let sent = 0;
   let looked = 0;

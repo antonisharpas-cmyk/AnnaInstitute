@@ -77,7 +77,15 @@ export default async function AutomaticEmailsPage() {
 
   return (
     <>
-      <PageHeader title={t("emails.title")} subtitle={t("emails.subtitle")} />
+      <PageHeader
+        title={t("emails.title")}
+        subtitle={t("emails.subtitle")}
+        action={
+          <Link href="/emails/birthdays" className="btn btn-secondary" data-upcoming-birthdays>
+            {t("birthdays.title")}
+          </Link>
+        }
+      />
 
       {/* Every email from the CRM, on or off, in one place. */}
       <EmailSwitch />
