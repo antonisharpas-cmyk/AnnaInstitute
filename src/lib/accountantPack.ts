@@ -1,7 +1,9 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLogs, documents, expenses, issuedDocuments, subowners } from "@/db/schema";
+import { auditLogs, clients, constructorPayments, constructorProjects, constructors, documents, expenses, issuedDocuments, projects, refunds, subowners } from "@/db/schema";
+import { issuerIdOfContract } from "@/lib/issuer";
+import { issuerOfProjects } from "@/lib/issuer";
 import { toCents } from "@/lib/money";
 import { paperAttachment, readDocument } from "@/lib/issued";
 import type { IssuedSnapshot } from "@/lib/paymentPdf";
@@ -23,24 +25,28 @@ import { ownCategoryWords, whatFor } from "@/lib/partnerInvoices";
  * or emailed in one go to the accountant's address.
  */
 
-export type PackGroup = "invoice" | "receipt" | "credit" | "companyInvoice" | "received";
+export type PackGroup = "invoice" | "receipt" | "credit" | "companyInvoice" | "received" | "constructor" | "refundAck";
 
-export const PACK_GROUPS: PackGroup[] = ["invoice", "receipt", "credit", "companyInvoice", "received"];
+export const PACK_GROUPS: PackGroup[] = ["invoice", "receipt", "credit", "companyInvoice", "received", "constructor", "refundAck"];
 
 const FOLDER: Record<PackGroup, string> = {
   invoice: "Invoices",
   receipt: "Receipts",
   credit: "Credit notes",
-  companyInvoice: "Invoices to companies",
+  companyInvoice: "Invoices issued",
   received: "Invoices received",
+  constructor: "Constructors",
+  refundAck: "Refund acknowledgements",
 };
 
 const KIND_WORD: Record<PackGroup, string> = {
   invoice: "Invoice",
   receipt: "Receipt",
   credit: "Credit note",
-  companyInvoice: "Invoice to a company",
+  companyInvoice: "Invoice issued",
   received: "Invoice received",
+  constructor: "Constructor payment",
+  refundAck: "Refund acknowledgement",
 };
 
 export type PackItem = {
@@ -55,7 +61,7 @@ export type PackItem = {
   vatCents: number;
   totalCents: number;
   /** Voided or credited papers are listed, marked, and left unticked. */
-  state: "" | "voided" | "credited" | "cancelled";
+  state: "" | "voided" | "credited" | "cancelled" | "pending" | "unsigned";
   files: number;
 };
 
@@ -171,6 +177,79 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
     });
   }
 
+  /*
+   * The payments to the constructors that month, with the papers filed on each:
+   * their invoice and their receipt. A payment still pending is listed and left
+   * unticked; a cancelled one is left out. Each goes under the company that
+   * holds the development it was for.
+   */
+  const built = await db
+    .select({ payment: constructorPayments, who: constructors, project: projects })
+    .from(constructorPayments)
+    .innerJoin(constructorProjects, eq(constructorProjects.id, constructorPayments.constructorProjectId))
+    .innerJoin(constructors, eq(constructors.id, constructorProjects.constructorId))
+    .leftJoin(projects, eq(projects.id, constructorProjects.projectId))
+    .where(and(gte(constructorPayments.paidOn, from), lt(constructorPayments.paidOn, to), sql`${constructorPayments.status} <> 'CANCELLED'`))
+    .orderBy(asc(constructorPayments.paidOn));
+  const builtFiles = built.length
+    ? await db
+        .select({ paymentId: documents.constructorPaymentId, n: sql<number>`count(*)::int` })
+        .from(documents)
+        .where(inArray(documents.constructorPaymentId, built.map((one) => one.payment.id)))
+        .groupBy(documents.constructorPaymentId)
+    : [];
+  const holders = await issuerOfProjects();
+  for (const one of built) {
+    const holder = one.project ? (holders.get(one.project.id) ?? "") : "";
+    const totalCents = toCents(one.payment.amount);
+    items.push({
+      key: `c:${one.payment.id}`,
+      group: "constructor",
+      company: holder ? companyName(holder, {}) : ownName,
+      number: "",
+      date: new Date(one.payment.paidOn).toISOString(),
+      party: one.who.company?.trim() || one.who.name,
+      about: [one.project?.name, one.payment.kind].filter(Boolean).join(", "),
+      netCents: totalCents,
+      vatCents: 0,
+      totalCents,
+      state: one.payment.status === "PAID" ? "" : "pending",
+      files: builtFiles.find((f) => f.paymentId === one.payment.id)?.n ?? 0,
+    });
+  }
+
+  /*
+   * The acknowledgement each refund or delay penalty comes with, beside its
+   * credit note: the copy the client signed, or, until it is uploaded, the one
+   * drawn up for signing, listed and left unticked.
+   */
+  const paidBack = await db
+    .select({ refund: refunds, note: issuedDocuments, client: clients })
+    .from(refunds)
+    .leftJoin(issuedDocuments, eq(issuedDocuments.id, refunds.creditNoteId))
+    .leftJoin(clients, eq(clients.id, refunds.clientId))
+    .where(and(gte(refunds.paidOn, from), lt(refunds.paidOn, to), sql`${refunds.purpose} <> 'VAT_CHANGE'`))
+    .orderBy(asc(refunds.paidOn));
+  for (const one of paidBack) {
+    if (!one.refund.signedDocumentId && !one.refund.acknowledgementDocumentId) continue;
+    const totalCents = toCents(one.refund.amount);
+    const issuer = one.note ? (one.note.issuerId ?? "") : await issuerIdOfContract(one.refund.contractId);
+    items.push({
+      key: `r:${one.refund.id}`,
+      group: "refundAck",
+      company: issuer ? companyName(issuer, {}) : ownName,
+      number: one.note?.number ?? "",
+      date: new Date(one.refund.paidOn).toISOString(),
+      party: one.client ? `${one.client.firstName ?? ""} ${one.client.lastName ?? ""}`.trim() : "",
+      about: `${one.refund.purpose === "PENALTY" ? "Delay penalty" : "Refund"}${one.note ? `, credit note ${one.note.number}` : ", nothing paid back"}`,
+      netCents: totalCents,
+      vatCents: 0,
+      totalCents,
+      state: one.refund.signedDocumentId ? "" : "unsigned",
+      files: 1,
+    });
+  }
+
   return items;
 }
 
@@ -194,10 +273,22 @@ export async function buildPack(month: string, keys: string[]) {
         placed.push(`${folder}/${file.filename}`);
       }
     } else {
+      /* A refund's acknowledgement: the signed copy when it is in, the one drawn up otherwise. */
+      let only: string | null = null;
+      if (item.key.startsWith("r:")) {
+        const [refund] = await db.select().from(refunds).where(eq(refunds.id, item.key.slice(2))).limit(1);
+        only = refund?.signedDocumentId ?? refund?.acknowledgementDocumentId ?? "none";
+      }
       const docs = await db
         .select()
         .from(documents)
-        .where(eq(documents.expenseId, item.key.slice(2)))
+        .where(
+          only
+            ? eq(documents.id, only)
+            : item.key.startsWith("c:")
+              ? eq(documents.constructorPaymentId, item.key.slice(2))
+              : eq(documents.expenseId, item.key.slice(2)),
+        )
         .orderBy(asc(documents.createdAt));
       for (const doc of docs) {
         const content = await readDocument(doc.id);
@@ -218,7 +309,7 @@ export async function buildPack(month: string, keys: string[]) {
       item.netCents / 100,
       item.vatCents / 100,
       item.totalCents / 100,
-      item.state === "voided" ? "Voided" : item.state === "cancelled" ? "Cancelled, issued again at the reduced VAT" : item.state === "credited" ? "Credited" : "",
+      item.state === "pending" ? "Pending, not paid yet" : item.state === "unsigned" ? "Not signed yet" : item.state === "voided" ? "Voided" : item.state === "cancelled" ? "Cancelled, issued again at the reduced VAT" : item.state === "credited" ? "Credited" : "",
       placed.join(", ") || "No file",
     ]);
   }

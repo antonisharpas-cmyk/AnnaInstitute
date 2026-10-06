@@ -22,6 +22,8 @@ type Labels = {
   total: string;
   voided: string;
   credited: string;
+  pending: string;
+  unsigned: string;
   noFile: string;
   chosen: string;
   to: string;
@@ -148,7 +150,7 @@ export default function PackPicker({
                         <td className="nowrap font-semibold">
                           {one.number}
                           {one.state ? (
-                            <span className="ml-1 text-xs font-normal">({one.state === "voided" ? labels.voided : labels.credited})</span>
+                            <span className="ml-1 text-xs font-normal">({one.state === "voided" ? labels.voided : one.state === "pending" ? labels.pending : one.state === "unsigned" ? labels.unsigned : labels.credited})</span>
                           ) : null}
                         </td>
                         <td className="nowrap text-xs">{day(one.date)}</td>
