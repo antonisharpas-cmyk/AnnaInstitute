@@ -4,13 +4,14 @@ import { useState } from "react";
 import DateField from "@/components/DateField";
 
 /**
- * The money part of a refund or penalty, with a way to say none was paid.
+ * The form of a refund or a delay penalty, which changes with what it is.
  *
- * Sometimes the agreement is that nothing goes back: the reservation is
- * cancelled and the deposit kept, or a delay is settled without compensation.
- * Ticking the box, or typing 0, records exactly that. The amount reads 0 and
- * the date, the method and the reference of a payment are greyed out, because
- * there was no payment.
+ * A refund can be nothing paid back: the reservation cancelled and the
+ * deposit kept. Ticking the box, or typing 0, records exactly that, and the
+ * date and the method are greyed out because there was no payment. A refund
+ * can also cancel the reservation.
+ *
+ * A delay penalty is always money paid, so it has neither of those.
  */
 export default function RefundMoneyFields({
   today,
@@ -19,31 +20,58 @@ export default function RefundMoneyFields({
 }: {
   today: string;
   methods: { value: string; label: string }[];
-  labels: { nothing: string; nothingHint: string; amount: string; paidOn: string; method: string; reference: string };
+  labels: {
+    purpose: string;
+    penalty: string;
+    refund: string;
+    nothing: string;
+    nothingHint: string;
+    amount: string;
+    paidOn: string;
+    method: string;
+    note: string;
+    noteHint: string;
+    cancel: string;
+    cancelHint: string;
+  };
 }) {
-  const [nothing, setNothing] = useState(false);
+  const [purpose, setPurpose] = useState("PENALTY");
+  const refund = purpose === "REFUND";
+  const [nothingTicked, setNothing] = useState(false);
   const [amount, setAmount] = useState("");
-  const zero = nothing || /^\s*0+([.,]0*)?\s*$/.test(amount);
+  const nothing = refund && nothingTicked;
+  const zero = refund && (nothing || /^\s*0+([.,]0*)?\s*$/.test(amount));
   const off = zero ? "opacity-50" : "";
 
   return (
     <>
-      <label className="flex items-start gap-2 text-sm sm:col-span-2" data-refund-nothing>
-        <input
-          type="checkbox"
-          name="nothingBack"
-          checked={nothing}
-          onChange={(event) => {
-            setNothing(event.target.checked);
-            if (event.target.checked) setAmount("0");
-          }}
-          className="mt-0.5"
-        />
-        <span>
-          {labels.nothing}
-          <span className="block text-xs text-brand-graphite/60">{labels.nothingHint}</span>
-        </span>
-      </label>
+      <div>
+        <label className="label" htmlFor="refundPurpose">
+          {labels.purpose}
+        </label>
+        <select id="refundPurpose" name="purpose" className="select" value={purpose} onChange={(event) => setPurpose(event.target.value)}>
+          <option value="PENALTY">{labels.penalty}</option>
+          <option value="REFUND">{labels.refund}</option>
+        </select>
+      </div>
+      {refund ? (
+        <label className="flex items-start gap-2 text-sm sm:col-span-2" data-refund-nothing>
+          <input
+            type="checkbox"
+            name="nothingBack"
+            checked={nothingTicked}
+            onChange={(event) => {
+              setNothing(event.target.checked);
+              if (event.target.checked) setAmount("0");
+            }}
+            className="mt-0.5"
+          />
+          <span>
+            {labels.nothing}
+            <span className="block text-xs text-brand-graphite/60">{labels.nothingHint}</span>
+          </span>
+        </label>
+      ) : null}
       <div>
         <label className="label" htmlFor="refundAmount">
           {labels.amount}
@@ -78,12 +106,21 @@ export default function RefundMoneyFields({
           ))}
         </select>
       </div>
-      <div className={off}>
-        <label className="label" htmlFor="refundReference">
-          {labels.reference}
+      <div className="sm:col-span-2">
+        <label className="label" htmlFor="refundNote">
+          {labels.note}
         </label>
-        <input id="refundReference" name="reference" className="input" disabled={zero} />
+        <input id="refundNote" name="note" className="input" placeholder={labels.noteHint} />
       </div>
+      {refund ? (
+        <label className="flex items-start gap-2 text-sm sm:col-span-2" data-refund-cancel>
+          <input type="checkbox" name="cancelContract" className="mt-0.5" />
+          <span>
+            {labels.cancel}
+            <span className="block text-xs text-brand-graphite/60">{labels.cancelHint}</span>
+          </span>
+        </label>
+      ) : null}
     </>
   );
 }

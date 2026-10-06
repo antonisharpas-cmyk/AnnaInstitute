@@ -90,9 +90,10 @@ export async function approveReducedVatAction(contractId: string, formData: Form
 export async function recordRefundAction(contractId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const purpose = String(formData.get("purpose") ?? "") === "PENALTY" ? "PENALTY" : "REFUND";
-  /* Nothing paid back: ticked, or a zero typed in. Then there is no date, method or reference of a payment. */
+  /* Nothing paid back, on a refund only: ticked, or a zero typed in. Then there is no date or method of a payment.
+     A delay penalty is always money paid. */
   const typed = String(formData.get("amount") ?? "").trim();
-  const nothing = formData.get("nothingBack") === "on" || /^[\s€]*0+([.,]0*)?[\s€]*$/.test(typed);
+  const nothing = purpose === "REFUND" && (formData.get("nothingBack") === "on" || /^[\s€]*0+([.,]0*)?[\s€]*$/.test(typed));
   const amountCents = nothing ? 0 : cents(typed);
   if (!nothing && !(amountCents > 0)) {
     await flash("said.refundNeedsAmount", "bad");
@@ -106,9 +107,10 @@ export async function recordRefundAction(contractId: string, formData: FormData)
     amountCents,
     paidOn: day ? new Date(`${day}T12:00:00`) : new Date(),
     method: nothing ? null : String(formData.get("method") ?? "") || null,
-    reference: nothing ? null : String(formData.get("reference") ?? "").trim() || null,
+    /* No cheque number or bank reference is asked for. */
+    reference: null,
     note: String(formData.get("note") ?? "").trim() || null,
-    cancelContract: formData.get("cancelContract") === "on",
+    cancelContract: purpose === "REFUND" && formData.get("cancelContract") === "on",
     who: { id: user.id, name: user.name, email: user.email },
   });
   await flash(nothing ? "said.refundNothingRecorded" : "said.refundRecorded");
@@ -144,7 +146,7 @@ export async function payBackVatCreditAction(contractId: string, formData: FormD
     amountCents,
     paidOn: day ? new Date(`${day}T12:00:00`) : new Date(),
     method,
-    reference: String(formData.get("reference") ?? "").trim() || null,
+    reference: null,
     note: String(formData.get("note") ?? "").trim() || null,
     cancelContract: false,
     who: { id: user.id, name: user.name, email: user.email },

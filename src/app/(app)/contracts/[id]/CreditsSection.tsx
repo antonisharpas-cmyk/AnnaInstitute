@@ -200,10 +200,6 @@ export default async function CreditsSection({ contractId }: { contractId: strin
                           </select>
                         </div>
                         <div>
-                          <label className="label" htmlFor="vatBackRef">{t("contracts.paymentReference")}</label>
-                          <input id="vatBackRef" name="reference" className="input" />
-                        </div>
-                        <div>
                           <label className="label" htmlFor="vatBackNote">{t("common.notes")}</label>
                           <input id="vatBackNote" name="note" className="input" />
                         </div>
@@ -376,40 +372,24 @@ export default async function CreditsSection({ contractId }: { contractId: strin
             action={recordRefundAction.bind(null, contractId)}
             className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-2"
           >
-            <div>
-              <label className="label" htmlFor="refundPurpose">
-                {t("credits.purpose")}
-              </label>
-              <select id="refundPurpose" name="purpose" className="select" defaultValue="PENALTY">
-                <option value="PENALTY">{t("issued.purpose.PENALTY")}</option>
-                <option value="REFUND">{t("issued.purpose.REFUND")}</option>
-              </select>
-            </div>
             <RefundMoneyFields
               today={today}
               methods={methods}
               labels={{
+                purpose: t("credits.purpose"),
+                penalty: t("issued.purpose.PENALTY"),
+                refund: t("issued.purpose.REFUND"),
                 nothing: t("credits.nothingBack"),
                 nothingHint: t("credits.nothingBackHint"),
                 amount: t("credits.amountWithVat"),
                 paidOn: t("credits.paidOn"),
                 method: t("contracts.method"),
-                reference: t("contracts.paymentReference"),
+                note: t("credits.note"),
+                noteHint: t("credits.noteHint"),
+                cancel: t("credits.cancelReservation"),
+                cancelHint: t("credits.cancelReservationHint"),
               }}
             />
-            <div>
-              <label className="label" htmlFor="refundNote">
-                {t("credits.note")}
-              </label>
-              <input id="refundNote" name="note" className="input" placeholder={t("credits.noteHint")} />
-            </div>
-            <label className="flex items-start gap-2 text-sm sm:col-span-2">
-              <input type="checkbox" name="cancelContract" className="mt-0.5" />
-              <span>
-                {t("credits.cancelReservation")}
-                <span className="block text-xs text-brand-graphite/60">{t("credits.cancelReservationHint")}</span>
-              </span>
-            </label>
             <div className="sm:col-span-2">
               <SubmitButton>{t("credits.recordButton")}</SubmitButton>
             </div>
