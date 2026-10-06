@@ -83,10 +83,11 @@ async function readContract(id: string) {
    * What was paid back.
    *
    * A refund is money that left again, by a credit note against the contract.
-   * The stages it was paid on stay paid, because they were, but what the buyer
-   * has paid in the end is less by the refund, and the credit note takes the
-   * same amount off what the contract comes to. So both the total and the paid
-   * figure go down by it, and what is still owed does not change.
+   * It comes off what the buyer has paid, and only that: the price of the
+   * apartment and its stages stay as signed, so what is still owed goes up by
+   * it. A delay penalty is different: it is compensation, an amount taken off
+   * what the contract comes to, so it comes off the total and off what was
+   * paid alike, and what is still owed does not change.
    */
   const refundRows = paidBack.map(({ refund, note }) => {
     const totalCents = toCents(refund.amount);
@@ -107,11 +108,10 @@ async function readContract(id: string) {
   });
   const refundedCents = refundRows.reduce((a, r) => a + r.totalCents, 0);
   /*
-   * A VAT credit paid back after the reduced VAT is different: the schedule
-   * already carries the new VAT, so the contract's total does not move. Only
-   * what was paid comes down, by the VAT the buyer had paid over.
+   * Only a delay penalty comes off the total. A refund, and a VAT credit paid
+   * back after the reduced VAT, come off what was paid only.
    */
-  const credited = refundRows.filter((r) => r.purpose !== "VAT_CHANGE");
+  const credited = refundRows.filter((r) => r.purpose === "PENALTY");
   const creditedCents = credited.reduce((a, r) => a + r.totalCents, 0);
   const refundedVatCents = credited.reduce((a, r) => a + r.vatCents, 0);
   const refundedNetCents = credited.reduce((a, r) => a + r.netCents, 0);
@@ -155,7 +155,7 @@ async function readContract(id: string) {
       outstandingCents: scheduleTotalCents - creditedCents - (paidTotalCents - refundedCents),
       /** Paid back to the buyer by credit note, VAT included, and its two parts. */
       refundedCents,
-      /** The part of it that came off the contract's total: every refund but a VAT credit paid back. */
+      /** The part of it that came off the contract's total: the delay penalties. */
       creditedCents,
       refundedNetCents,
       refundedVatCents,
@@ -362,10 +362,10 @@ export async function listContracts(options?: {
     installmentCount: sql<number>`(select count(*) from installments i where i.contract_id = ${contracts.id})::int`,
     scheduledCents: sql<string>`coalesce((select sum(i.total_amount) from installments i where i.contract_id = ${contracts.id}), 0)`,
     paid: sql<string>`coalesce((select sum(p.amount) from payments p where p.contract_id = ${contracts.id}), 0)`,
-    /* Paid back by credit note: it comes off both the total and what was paid. */
+    /* Paid back by credit note: it comes off what was paid. */
     refunded: sql<string>`coalesce((select sum(r.amount) from refunds r where r.contract_id = ${contracts.id}), 0)`,
-    /* A VAT credit paid back comes off what was paid only: the total already has the new VAT. */
-    credited: sql<string>`coalesce((select sum(r.amount) from refunds r where r.contract_id = ${contracts.id} and r.purpose <> 'VAT_CHANGE'), 0)`,
+    /* A delay penalty comes off the total too; a refund and a VAT credit do not. */
+    credited: sql<string>`coalesce((select sum(r.amount) from refunds r where r.contract_id = ${contracts.id} and r.purpose = 'PENALTY'), 0)`,
     nextDue: sql<Date | null>`(select min(i.due_date) from installments i where i.contract_id = ${contracts.id} and coalesce((select sum(p.amount) from payments p where p.installment_id = i.id), 0) < i.total_amount)`,
   };
 

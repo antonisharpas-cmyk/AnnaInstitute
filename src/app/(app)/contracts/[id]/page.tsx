@@ -576,7 +576,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                     </tr>
                   );
                 })}
-                {/* What was paid back, under the stages it came from: the stages stay paid, this line takes it off. */}
+                {/* What was paid back, under the stages it came from: it comes off the paid column. A delay penalty comes off the total too. */}
                 {detail.refunds.map((back) => (
                   <tr key={back.id} data-refund-row className="bg-[color-mix(in_srgb,var(--color-negative)_8%,transparent)]">
                     <td className="ctr text-[color:var(--color-negative)]">↩</td>
@@ -610,8 +610,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                       </>
                     ) : (
                       <>
-                        <td className="ctr text-[color:var(--color-negative)]">−{formatAmount(back.vatCents, locale)}</td>
-                        <td className="ctr text-[color:var(--color-negative)]">−{formatAmount(back.totalCents, locale)}</td>
+                        <td className="ctr text-[color:var(--color-negative)]">{back.purpose === "PENALTY" ? `−${formatAmount(back.vatCents, locale)}` : ""}</td>
+                        <td className="ctr text-[color:var(--color-negative)]">{back.purpose === "PENALTY" ? `−${formatAmount(back.totalCents, locale)}` : ""}</td>
                         <td className="ctr">
                           <Pill tone="bad">−{formatAmount(back.totalCents, locale)}</Pill>
                         </td>

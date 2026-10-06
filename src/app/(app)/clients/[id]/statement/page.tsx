@@ -152,8 +152,8 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
           const mine = lines.filter((line) => line.contractId === row.contract.id);
           const myRefunds = paidBack.filter((one) => one.contractId === row.contract.id);
           const mineBack = myRefunds.reduce((sum, one) => sum + toCents(one.amount), 0);
-          /* A refund comes off what the contract comes to and off what was paid alike. */
-          const mineCredited = myRefunds.filter((one) => one.purpose !== "VAT_CHANGE").reduce((sum, one) => sum + toCents(one.amount), 0);
+          /* A refund comes off what was paid; a delay penalty off the total as well. */
+          const mineCredited = myRefunds.filter((one) => one.purpose === "PENALTY").reduce((sum, one) => sum + toCents(one.amount), 0);
           const mineOwed = mine.reduce((sum, line) => sum + toCents(line.totalAmount), 0) - mineCredited;
           const minePaid =
             paid.filter((one) => one.contractId === row.contract.id).reduce((sum, one) => sum + toCents(one.amount), 0) -
@@ -227,7 +227,7 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
                         {toCents(one.amount) > 0 ? t("refunds.paidBack") : t("refunds.nothingBack")}: {t(`issued.purpose.${one.purpose}` as MessageKey)}
                       </td>
                       <td className="ctr">{day(one.paidOn, locale)}</td>
-                      <td className="ctr">{toCents(one.amount) > 0 ? `−${formatAmount(toCents(one.amount), locale)}` : ""}</td>
+                      <td className="ctr">{toCents(one.amount) > 0 && one.purpose === "PENALTY" ? `−${formatAmount(toCents(one.amount), locale)}` : ""}</td>
                       <td className="ctr">{toCents(one.amount) > 0 ? `−${formatAmount(toCents(one.amount), locale)}` : t("credits.nothingShort")}</td>
                       <td />
                     </tr>

@@ -195,10 +195,10 @@ export default async function ClientPage({
       : Promise.resolve([]),
   ]);
   const refundedByContract = new Map<string, number>();
-  /* A VAT credit paid back comes off what was paid only: the total already carries the new VAT. */
+  /* Only a delay penalty comes off the total: a refund and a VAT credit come off what was paid only. */
   const creditedByContract = new Map<string, number>();
   for (const r of refundRows) {
-    if (r.purpose !== "VAT_CHANGE") creditedByContract.set(r.contractId, (creditedByContract.get(r.contractId) ?? 0) + toCents(r.amount));
+    if (r.purpose === "PENALTY") creditedByContract.set(r.contractId, (creditedByContract.get(r.contractId) ?? 0) + toCents(r.amount));
     refundedByContract.set(r.contractId, (refundedByContract.get(r.contractId) ?? 0) + toCents(r.amount));
   }
 
