@@ -358,6 +358,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "Services as a kind of company invoice",
     migration: "0051",
   },
+  {
+    probe: "select method_other from expense_payments limit 1",
+    what: "the words for a payment made some other way",
+    migration: "0052",
+  },
+  {
+    probe: "select method_other from payments limit 1",
+    what: "the words for a contract payment made some other way",
+    migration: "0053",
+  },
 ];
 
 let answer: Missing[] | null = null;

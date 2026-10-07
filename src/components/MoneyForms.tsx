@@ -73,6 +73,7 @@ export function PaymentForm({
     method: string;
     methods: Record<string, string>;
     chooseMethod: string;
+    methodOtherHint?: string;
     reference?: string;
     referenceHint?: string;
     files: string;
@@ -95,6 +96,7 @@ export function PaymentForm({
   /** Ties the field ids apart when two of these are on one page. */
 }) {
   const amount = useRef<HTMLInputElement>(null);
+  const [method, setMethod] = useState("");
 
   /*
     Only the stages that still owe something are offered.
@@ -258,7 +260,14 @@ export function PaymentForm({
       <div>
         <label className="label">{labels.method}</label>
         {/* Required: every receipt says how the money came in. */}
-        <select name="method" className="select" defaultValue="" required data-payment-method>
+        <select
+          name="method"
+          className="select"
+          defaultValue=""
+          required
+          data-payment-method
+          onChange={(event) => setMethod(event.target.value)}
+        >
           <option value="">{labels.chooseMethod}</option>
           {/* The methods come in the office's order, its own ones from the Builder included. */}
           {Object.entries(labels.methods).map(([value, label]) => (
@@ -267,6 +276,17 @@ export function PaymentForm({
             </option>
           ))}
         </select>
+        {/* "Something else" says what, in a box of its own, printed on the receipt. */}
+        {method === "OTHER" ? (
+          <input
+            name="methodOther"
+            required
+            className="input mt-2"
+            placeholder={labels.methodOtherHint ?? ""}
+            aria-label={labels.methodOtherHint ?? ""}
+            data-method-other
+          />
+        ) : null}
       </div>
       {/*
         Four things are asked and nothing else. The receipt number is given by

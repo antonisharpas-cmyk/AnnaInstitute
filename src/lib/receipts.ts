@@ -219,7 +219,9 @@ export async function buyerReceipt(paymentId: string) {
     paidOn: row.payment.paidOn,
     amountCents: toCents(row.payment.amount),
     method: row.payment.method,
-    methodInWords: row.payment.method
+    methodInWords: row.payment.methodOther?.trim()
+      ? row.payment.methodOther.trim()
+      : row.payment.method
       ? (METHODS[row.payment.method] ??
         (isCustom(row.payment.method)
           ? (await englishWord("paymentMethod", row.payment.method)).toLowerCase()

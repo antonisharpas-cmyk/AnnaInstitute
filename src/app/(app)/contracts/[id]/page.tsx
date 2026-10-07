@@ -768,6 +768,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                   (await optionsFor("paymentMethod", t)).map((one) => [one.value, one.label]),
                 ),
                 chooseMethod: t("contracts.chooseMethod"),
+                methodOtherHint: t("invoices.methodOtherHint"),
                 reference: t("contracts.paymentReference"),
                 referenceHint: t("contracts.paymentReferenceHint"),
                 files: t("contracts.paymentFiles"),
@@ -835,6 +836,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                       <td>{p.receiptNumber ?? ""}</td>
                       <td>
                         {howPaid(p.method)}
+                        {p.methodOther ? `: ${p.methodOther}` : ""}
                         {/* A credit says where it went, in the row, where it
                             can wrap, rather than in a column of its own. */}
                         {p.kind === "CREDIT" && p.notes ? (

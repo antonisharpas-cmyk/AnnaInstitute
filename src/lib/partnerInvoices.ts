@@ -275,7 +275,7 @@ export async function issueIncomeReceipt(paymentId: string, who: { id?: string |
     paidOn: payment.paidOn.toISOString(),
     issuedOn: new Date().toISOString(),
     method,
-    methodName: method && isCustom(method) ? await englishWord("paymentMethod", method) : undefined,
+    methodName: payment.methodOther?.trim() || (method && isCustom(method) ? await englishWord("paymentMethod", method) : undefined),
     reference: payment.reference ?? "",
     netCents: amountCents,
     vatCents: 0,

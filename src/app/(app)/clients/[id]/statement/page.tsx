@@ -270,7 +270,10 @@ export default async function StatementPage({ params }: { params: Promise<{ id: 
                   <td>{day(one.paidOn, locale)}</td>
                   <td>{rows.find((r) => r.contract.id === one.contractId)?.contract.reference}</td>
                   <td>{one.receiptNumber ?? ""}</td>
-                  <td>{howPaid(one.method)}</td>
+                  <td>
+                    {howPaid(one.method)}
+                    {one.methodOther ? `: ${one.methodOther}` : ""}
+                  </td>
                   <td className="ctr">{formatAmount(toCents(one.amount), locale)}</td>
                 </tr>
               ))}

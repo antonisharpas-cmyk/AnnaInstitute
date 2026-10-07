@@ -675,6 +675,8 @@ export const payments = pgTable("payments", {
   amount: money("amount").notNull(),
   paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
   method: text("method"),
+  /** What "Something else" was, in the office's words. */
+  methodOther: text("method_other"),
   receiptNumber: text("receipt_number"),
   /** The cheque number or the bank's reference, printed on the receipt. */
   reference: text("reference"),
@@ -1532,6 +1534,8 @@ export const expensePayments = pgTable("expense_payments", {
   paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
   amount: money("amount").notNull(),
   method: text("method"),
+  /** What "Something else" was, in the office's words. */
+  methodOther: text("method_other"),
   reference: text("reference"),
   /** Our receipt, on money we received. */
   issuedDocumentId: text("issued_document_id"),

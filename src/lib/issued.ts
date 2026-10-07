@@ -278,7 +278,8 @@ export async function issueForPayment(
     issuedOn: new Date(row.payment.paidOn).toISOString(),
     method: row.payment.method ?? "",
     methodName:
-      row.payment.method && isCustom(row.payment.method) ? await englishWord("paymentMethod", row.payment.method) : undefined,
+      row.payment.methodOther?.trim() ||
+      (row.payment.method && isCustom(row.payment.method) ? await englishWord("paymentMethod", row.payment.method) : undefined),
     reference: row.payment.reference ?? "",
     netCents: split.netCents,
     vatCents: split.vatCents,
@@ -463,7 +464,8 @@ async function issueForPart(
     issuedOn: new Date(row.payment.paidOn).toISOString(),
     method: row.payment.method ?? "",
     methodName:
-      row.payment.method && isCustom(row.payment.method) ? await englishWord("paymentMethod", row.payment.method) : undefined,
+      row.payment.methodOther?.trim() ||
+      (row.payment.method && isCustom(row.payment.method) ? await englishWord("paymentMethod", row.payment.method) : undefined),
     reference: row.payment.reference ?? "",
     netCents: split.netCents,
     vatCents: split.vatCents,

@@ -278,7 +278,9 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
         title: `Paid ${stage ?? "on the contract"}: ${money(payment.amount)}`,
         note: [
           `Paid on ${new Date(payment.paidOn).toLocaleDateString("en-GB")}`,
-          payment.method
+          payment.methodOther?.trim()
+            ? `by ${payment.methodOther.trim()}`
+            : payment.method
             ? `by ${METHOD[payment.method] ?? (isCustom(payment.method) ? (await englishWord("paymentMethod", payment.method)).toLowerCase() : payment.method.toLowerCase())}`
             : null,
           invoice ? `invoice ${invoice.number}` : null,

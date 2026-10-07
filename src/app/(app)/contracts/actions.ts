@@ -920,6 +920,12 @@ export async function recordPayment(contractId: string, formData: FormData) {
     await flash("said.paymentNeedsMethod", "bad");
     return;
   }
+  /* "Something else" says what it was. */
+  const methodOther = method === "OTHER" ? String(formData.get("methodOther") ?? "").trim() || null : null;
+  if (method === "OTHER" && !methodOther) {
+    await flash("said.paymentNeedsMethod|Say how it was paid.", "bad");
+    return;
+  }
 
   const when = paidOn ? new Date(paidOn) : new Date();
 
@@ -994,6 +1000,7 @@ export async function recordPayment(contractId: string, formData: FormData) {
       amount: fromCents(amountCents),
       paidOn: when,
       method,
+      methodOther,
       receiptNumber: receipt,
       reference: String(formData.get("reference") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "") || null,

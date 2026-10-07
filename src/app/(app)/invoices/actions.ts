@@ -279,6 +279,8 @@ function readPayment(formData: FormData) {
     amountCents,
     paidOn: day ? new Date(`${day}T12:00:00`) : new Date(),
     method: String(formData.get("method") ?? "").trim(),
+    /* "Something else", in the words typed. */
+    methodOther: String(formData.get("method") ?? "") === "OTHER" ? String(formData.get("methodOther") ?? "").trim() || null : null,
     reference: String(formData.get("reference") ?? "").trim() || null,
   };
 }
@@ -302,7 +304,9 @@ export async function recordIncomePayment(expenseId: string, formData: FormData)
         ? `That is more than is still to receive on this invoice (${fromCents(owedCents)}).`
         : !typed.method
           ? "Choose how it was paid."
-          : null;
+          : typed.method === "OTHER" && !typed.methodOther
+            ? "Say how it was paid."
+            : null;
   if (problem) {
     await flash(`said.paymentNotSaved|${problem}`, "bad");
     revalidatePath(`/invoices/${expenseId}`);
@@ -315,6 +319,7 @@ export async function recordIncomePayment(expenseId: string, formData: FormData)
       paidOn: typed.paidOn,
       amount: fromCents(typed.amountCents),
       method: typed.method,
+      methodOther: typed.methodOther,
       reference: typed.reference,
       recordedByEmail: user.email,
     })
@@ -356,7 +361,9 @@ export async function recordExpensePayment(expenseId: string, formData: FormData
         ? `That is more than is still to pay on this invoice (${fromCents(owedCents)}).`
         : !typed.method
           ? "Choose how it was paid."
-          : null;
+          : typed.method === "OTHER" && !typed.methodOther
+            ? "Say how it was paid."
+            : null;
   if (problem) {
     await flash(`said.paymentNotSaved|${problem}`, "bad");
     revalidatePath(`/invoices/${expenseId}`);
@@ -378,6 +385,7 @@ export async function recordExpensePayment(expenseId: string, formData: FormData
     paidOn: typed.paidOn,
     amount: fromCents(typed.amountCents),
     method: typed.method,
+    methodOther: typed.methodOther,
     reference: typed.reference,
     receiptDocumentId,
     recordedByEmail: user.email,

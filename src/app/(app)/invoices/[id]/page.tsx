@@ -10,6 +10,7 @@ import { titleWithExtension } from "@/lib/fileLabels";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import DateField from "@/components/DateField";
 import ExpenseForm from "../ExpenseForm";
+import PaymentMethodField from "./PaymentMethodField";
 import {
   deleteExpense,
   deleteExpenseFile,
@@ -132,6 +133,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                           <td className="ctr font-semibold">{money(toCents(payment.amount))}</td>
                           <td className="text-xs">
                             {payment.method ? (methodWord.get(payment.method) ?? payment.method) : ""}
+                            {payment.methodOther ? <span>: {payment.methodOther}</span> : null}
                             {payment.reference ? <div className="text-brand-graphite/60">{payment.reference}</div> : null}
                           </td>
                           <td className="text-xs" data-payment-receipt>
@@ -202,7 +204,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                       : t("invoices.receiptNoEmail")
                     : t("invoices.theirReceiptHint")}
                 </p>
-                <div className="grid gap-2 sm:grid-cols-4">
+                {/* Two to a row, so every box has the room for its label and its value. */}
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="label" htmlFor="paidOn">
                       {t("common.date")}
@@ -215,19 +218,15 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                     </label>
                     <input id="amount" name="amount" inputMode="decimal" required defaultValue={(owedCents / 100).toFixed(2)} className="input" />
                   </div>
-                  <div>
-                    <label className="label" htmlFor="method">
-                      {t("invoices.method")}
-                    </label>
-                    <select id="method" name="method" required defaultValue="" className="select" data-payment-method>
-                      <option value="">{t("invoices.chooseMethod")}</option>
-                      {methods.map((one) => (
-                        <option key={one.value} value={one.value}>
-                          {one.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <PaymentMethodField
+                    methods={methods}
+                    labels={{
+                      method: t("invoices.method"),
+                      choose: t("invoices.chooseMethod"),
+                      other: t("invoices.methodOther"),
+                      otherHint: t("invoices.methodOtherHint"),
+                    }}
+                  />
                   <div>
                     <label className="label" htmlFor="payReference">
                       {t("invoices.payReference")}
