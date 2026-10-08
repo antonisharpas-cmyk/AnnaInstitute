@@ -203,6 +203,13 @@ export function longDay(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+/**
+ * Every word on the papers is drawn a touch smaller than the size asked, the
+ * office's wish, by this one factor, so the proportions between headings,
+ * figures and small print stay as they were.
+ */
+const SCALE = 0.93;
+
 function text(
   page: PDFPage,
   font: PDFFont,
@@ -212,11 +219,11 @@ function text(
   size: number,
   color: RGB = GRAPHITE,
 ) {
-  page.drawText(value || " ", { x, y, size, font, color });
+  page.drawText(value || " ", { x, y, size: size * SCALE, font, color });
 }
 
 function right(page: PDFPage, font: PDFFont, value: string, xRight: number, y: number, size: number, color: RGB = GRAPHITE) {
-  text(page, font, value, xRight - font.widthOfTextAtSize(value || " ", size), y, size, color);
+  text(page, font, value, xRight - font.widthOfTextAtSize(value || " ", size * SCALE), y, size, color);
 }
 
 /** The largest size, up to the one wanted, at which a value fits a width. */
@@ -309,9 +316,8 @@ async function drawLogo(sh: Sheet, s: IssuedSnapshot, x: number, top: number, ma
       /* A logo that will not draw leaves the name in its place. */
     }
   }
-  const size = fit(sh.f.bold, s.company.name, 16, maxW);
-  text(sh.page, sh.f.bold, s.company.name, x, top - size - 4, size, sh.accent);
-  return size + 8;
+  /* No logo: nothing here, the name under it says who it is, and once is enough. */
+  return 0;
 }
 
 /**
@@ -351,7 +357,7 @@ async function letterhead(
   const boxBottom = top - band - rowH * 2;
 
   /* The issuer, as the law asks it to be named, under the logo. */
-  let y = top - logoH - 22;
+  let y = top - logoH - (logoH ? 22 : 12);
   const width = boxX - L - 16;
   const nameSize = fit(f.bold, s.company.name, 11.5, width);
   text(page, f.bold, s.company.name, L, y, nameSize);
@@ -398,42 +404,28 @@ async function letterhead(
 
 /**
  * The foot of the letterhead, from the brand guideline: the name over a line
- * of the issuer's colour, the website in a tab of that colour at the right,
- * and the address and numbers in small print below.
+ * of the issuer's colour and the website in a tab of that colour at the right,
+ * with the paper's own name and number under the line.
+ *
+ * The address and the numbers are not repeated here: they are at the top,
+ * under the logo. And nothing is drawn in the last 40 points of the page, so
+ * a printer that keeps a margin on an A4 sheet never cuts a word off.
  */
 function foot(sh: Sheet, s: IssuedSnapshot, words: string) {
   const { page, f } = sh;
   const lineY = 58;
   const web = (s.company.website || s.company.email || "").replace(/^https?:\/\//, "");
-  const tabW = web ? Math.min(230, f.bold.widthOfTextAtSize(web, 8.5) + 40) : 0;
+  const tabW = web ? Math.min(230, f.bold.widthOfTextAtSize(web, 8) + 40) : 0;
   if (web) {
-    page.drawRectangle({ x: R - tabW, y: lineY, width: tabW, height: 20, color: sh.accent });
+    page.drawRectangle({ x: R - tabW, y: lineY, width: tabW, height: 18, color: sh.accent });
     const tracked = web.split("").join(" ");
-    const size = fit(f.plain, tracked, 8.5, tabW - 16);
-    text(page, f.plain, tracked, R - tabW + (tabW - f.plain.widthOfTextAtSize(tracked, size)) / 2, lineY + 6.5, size, WHITE);
+    const size = fit(f.plain, tracked, 8, (tabW - 16) / SCALE);
+    text(page, f.plain, tracked, R - tabW + (tabW - f.plain.widthOfTextAtSize(tracked, size * SCALE)) / 2, lineY + 5.5, size, WHITE);
   }
   page.drawRectangle({ x: L, y: lineY - 1.2, width: R - L, height: 2.4, color: sh.accent });
   const nameSize = fit(f.bold, s.company.name, 8.5, R - L - tabW - 12);
-  text(page, f.bold, s.company.name, L, lineY + 6, nameSize, sh.accent);
-
-  const contact = [
-    s.company.address,
-    s.company.phone ? `T ${s.company.phone}` : "",
-    s.company.mobile ? `M ${s.company.mobile}` : "",
-    s.company.email,
-  ]
-    .filter(Boolean)
-    .join("   .   ");
-  text(page, f.plain, contact, L, lineY - 16, fit(f.plain, contact, 7.4, R - L), QUIET);
-  const ids = [
-    s.company.registration ? `Reg. ${s.company.registration}` : "",
-    s.company.vat ? `VAT ${s.company.vat}` : "",
-    s.company.tic ? `TIC ${s.company.tic}` : "",
-  ]
-    .filter(Boolean)
-    .join("   .   ");
-  text(page, f.plain, ids, L, lineY - 28, 7.4, QUIET);
-  right(page, f.plain, words, R, lineY - 28, 7.4, QUIET);
+  text(page, f.bold, s.company.name, L, lineY + 5.5, nameSize, sh.accent);
+  right(page, f.plain, words, R, lineY - 14, 7.4, QUIET);
 }
 
 /** A labelled block of lines, used for "Bill to" and "Details". */
@@ -448,24 +440,24 @@ function panel(
 ): number {
   const { page, f } = sh;
   text(page, f.bold, heading.toUpperCase(), x, y, 8.5, sh.accent);
-  page.drawLine({ start: { x, y: y - 6 }, end: { x: x + w, y: y - 6 }, thickness: 0.6, color: sh.line });
-  let yy = y - 24;
+  page.drawLine({ start: { x, y: y - 5 }, end: { x: x + w, y: y - 5 }, thickness: 0.6, color: sh.line });
+  let yy = y - 19;
   for (const row of rows) {
     if (!row.value) continue;
     if (row.label) {
       text(page, f.plain, row.label, x, yy, 8.5, QUIET);
-      const lines = wrap(row.strong ? f.bold : f.plain, row.value, 10, w - labelWidth);
+      const lines = wrap(row.strong ? f.bold : f.plain, row.value, 9.5 * SCALE, w - labelWidth);
       for (const [i, line] of lines.entries()) {
-        text(page, row.strong ? f.bold : f.plain, line, x + labelWidth, yy - i * 13.5, 10);
+        text(page, row.strong ? f.bold : f.plain, line, x + labelWidth, yy - i * 12, 9.5);
       }
-      yy -= 13.5 * lines.length + 6;
+      yy -= 12 * lines.length + 3;
     } else {
-      const lines = wrap(row.strong ? f.bold : f.plain, row.value, row.strong ? 12 : 10, w);
+      const lines = wrap(row.strong ? f.bold : f.plain, row.value, (row.strong ? 11 : 9.5) * SCALE, w);
       for (const line of lines) {
-        text(page, row.strong ? f.bold : f.plain, line, x, yy, row.strong ? 12 : 10);
-        yy -= row.strong ? 17 : 13.5;
+        text(page, row.strong ? f.bold : f.plain, line, x, yy, row.strong ? 11 : 9.5);
+        yy -= row.strong ? 15 : 12;
       }
-      yy -= 3;
+      yy -= 2;
     }
   }
   return yy;
@@ -481,14 +473,14 @@ function bankPanel(sh: Sheet, s: IssuedSnapshot, x: number, top: number, w: numb
     ["IBAN", s.company.iban],
     ["SWIFT / BIC", s.company.swift],
   ].filter(([, value]) => value) as [string, string][];
-  const h = 30 + rows.length * 15;
+  const h = 26 + rows.length * 13;
   page.drawRectangle({ x, y: top - h, width: w, height: h, color: sh.soft });
-  text(page, f.bold, "BANK DETAILS", x + 14, top - 18, 8.5, sh.accent);
-  let y = top - 36;
+  text(page, f.bold, "BANK DETAILS", x + 14, top - 16, 8.5, sh.accent);
+  let y = top - 31;
   for (const [label, value] of rows) {
     text(page, f.plain, label, x + 14, y, 8.5, QUIET);
-    text(page, f.bold, value, x + 90, y, fit(f.bold, value, 9, w - 102));
-    y -= 15;
+    text(page, f.bold, value, x + 90, y, fit(f.bold, value, 9, (w - 102) / SCALE));
+    y -= 13;
   }
   return h;
 }
@@ -518,22 +510,42 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   const credit = mode === "credit";
   const number = credit ? (s.creditNoteNumber ?? "") : s.invoiceNumber;
   const sh = await start(`${credit ? "Credit note" : "Invoice"} ${number}`, s);
-  const { page, f } = sh;
+  const { f } = sh;
+  let page = sh.page;
   let y = await letterhead(sh, s, credit ? "CREDIT NOTE" : "INVOICE", number, longDay(s.issuedOn));
+  const paperWords = `${credit ? "Credit note" : "Invoice"} ${number}`;
+  /*
+   * A long invoice carries on onto a second page rather than running into the
+   * foot: the first page is closed with its foot, and the next one starts at
+   * the top with the column heads again.
+   */
+  const nextPage = (withHeads: boolean) => {
+    foot(sh, s, `${paperWords}, page ${sh.pdf.getPageCount()}`);
+    page = sh.pdf.addPage([W, H]);
+    sh.page = page;
+    page.drawRectangle({ x: 0, y: H - 10, width: W, height: 10, color: sh.accent });
+    y = H - 60;
+    if (withHeads) heads();
+  };
   const sign = credit ? "−" : "";
   const money = (cents: number) => `${sign}${eur(cents)}`;
 
   /* Who it is to, and what it is about. */
   const half = (R - L - 30) / 2;
+  /* Who it is to, in as few lines as it takes: the address on one line, the numbers on one, how to reach them on one. */
   const leftEnd = panel(sh, L, y, half, "Bill to", [
     { value: s.client.name, strong: true },
-    { value: s.client.address },
-    { value: s.client.country },
-    { label: "ID No", value: s.client.idNumber },
-    { label: "Reg. No", value: s.client.registration ?? "" },
-    { label: "VAT No", value: s.client.vatNumber },
-    { label: "Email", value: s.client.email },
-    { label: "Phone", value: s.client.phone },
+    { value: [s.client.address, s.client.country].map((one) => (one ?? "").trim()).filter((one, i, all) => one && !all.slice(0, i).some((before) => before.includes(one))).join(", ") },
+    {
+      value: [
+        s.client.idNumber ? `ID ${s.client.idNumber}` : "",
+        s.client.registration ? `Reg. ${s.client.registration}` : "",
+        s.client.vatNumber ? `VAT ${s.client.vatNumber}` : "",
+      ]
+        .filter(Boolean)
+        .join("    "),
+    },
+    { value: [s.client.email, s.client.phone].filter(Boolean).join("    ") },
   ], 64);
   const details = credit
     ? [
@@ -549,15 +561,15 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
       ]
     : s.billTo === "partner"
       ? [
+          /* The invoice date is at the top already; the due date is said only when there is one. */
           { label: "Development", value: s.property, strong: true },
-          { label: "Invoice date", value: longDay(s.issuedOn) },
           { label: "Due date", value: s.dueOn ? longDay(s.dueOn) : "" },
         ]
       : [
           { label: "Property", value: s.property, strong: true },
           { label: "Contract", value: s.contractReference },
-          { label: "Supply date", value: longDay(s.paidOn) },
-          { label: "Receipt", value: s.receiptNumber ? `No. ${s.receiptNumber}` : "" },
+          /* The supply date only when it is not the invoice's own date, and the receipt is in the stamp below. */
+          { label: "Supply date", value: s.advance || longDay(s.paidOn) === longDay(s.issuedOn) ? "" : longDay(s.paidOn) },
           {
             label: "Replaces",
             value: s.replacesNumber
@@ -565,25 +577,30 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
               : "",
           },
         ];
-  const rightEnd = panel(sh, L + half + 30, y, half, "Details", details, 86);
-  y = Math.min(leftEnd, rightEnd) - 18;
+  /* With nothing to say, the Details heading is left out too. */
+  const rightEnd = details.some((one) => one.value) ? panel(sh, L + half + 30, y, half, "Details", details, 78) : y;
+  y = Math.min(leftEnd, rightEnd) - 14;
 
   /* The line. One stage of the contract, as the books would write it. */
   const parts = s.parts && s.parts.length > 0 ? s.parts : [{ rate: s.rate, netCents: s.netCents, vatCents: s.vatCents }];
   const cols = { desc: L + 12, qty: 318, price: 405, vat: 455, amount: R - 12 };
-  const headH = 28;
-  page.drawRectangle({ x: L, y: y - headH, width: R - L, height: headH, color: sh.accent });
-  const headY = y - headH / 2 - 3;
-  text(page, f.bold, "Description", cols.desc, headY, 8.5, WHITE);
-  right(page, f.bold, "Qty", cols.qty, headY, 8.5, WHITE);
-  right(page, f.bold, "Price", cols.price, headY, 8.5, WHITE);
-  right(page, f.bold, "VAT", cols.vat, headY, 8.5, WHITE);
-  right(page, f.bold, "Amount", cols.amount, headY, 8.5, WHITE);
-  y -= headH + 22;
+  const headH = 26;
+  function heads() {
+    page.drawRectangle({ x: L, y: y - headH, width: R - L, height: headH, color: sh.accent });
+    const headY = y - headH / 2 - 3;
+    text(page, f.bold, "Description", cols.desc, headY, 8.5, WHITE);
+    right(page, f.bold, "Qty", cols.qty, headY, 8.5, WHITE);
+    right(page, f.bold, "Price", cols.price, headY, 8.5, WHITE);
+    right(page, f.bold, "VAT", cols.vat, headY, 8.5, WHITE);
+    right(page, f.bold, "Amount", cols.amount, headY, 8.5, WHITE);
+    y -= headH + 20;
+  }
+  heads();
 
   /* One line, or a line for each part of it: each development of a fee, say. */
   const rows = s.lines && s.lines.length > 0 ? s.lines : [{ description: s.description, netCents: s.netCents, vatCents: s.vatCents }];
-  if (s.lines && s.lines.length > 0 && s.description && s.description !== rows[0].description) {
+  /* A word above the lines only when it says more than the lines' own categories. */
+  if (s.lines && s.lines.length > 0 && s.description && s.description !== rows[0].description && s.description !== s.stage) {
     for (const line of wrap(f.plain, s.description, 9.5, R - L - 24)) {
       text(page, f.plain, line, cols.desc, y, 9.5, QUIET);
       y -= 14;
@@ -592,6 +609,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   }
   for (const [n, row] of rows.entries()) {
     const descLines = wrap(f.plain, row.description, 9.5, cols.qty - cols.desc - 40);
+    if (y - 14 * descLines.length < FOOT_TOP + 20) nextPage(true);
     for (const [i, line] of descLines.entries()) text(page, i === 0 ? f.bold : f.plain, line, cols.desc, y - i * 14, 9.5);
     right(page, f.plain, "1", cols.qty, y, 9.5);
     right(page, f.plain, money(row.netCents), cols.price, y, 9.5);
@@ -605,13 +623,19 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   }
   page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: LINE });
 
+  /* The totals, the stamp, the bank and the signature need about this much; otherwise they start a page of their own. */
+  const bankRows = [s.company.bankName, s.company.beneficiary || s.company.name, s.company.bankAccount, s.company.iban, s.company.swift].filter(Boolean).length;
+  const after = 24 + (s.parts && s.parts.length > 1 ? s.parts.length + 1 : 2) * 20 + (s.creditAppliedCents ? 40 : 0) + 46 + 30 + Math.max(credit ? 0 : 26 + bankRows * 13, 80);
+  if (y - after < FOOT_TOP + 16) nextPage(false);
+
   /* The totals, on the right, the way the book adds them up. */
-  y -= 26;
+  y -= 24;
   const tx = R - 270;
-  const total = (label: string, value: string, strong = false) => {
-    text(page, strong ? f.bold : f.plain, label, tx, y, 10);
-    right(page, strong ? f.bold : f.plain, value, R - 12, y, 10);
-    y -= 22;
+  /* The lines that add up to it, quiet; the amount to pay, alone in its box, the boldest thing on the page. */
+  const total = (label: string, value: string) => {
+    text(page, f.plain, label, tx, y, 9.5, QUIET);
+    right(page, f.plain, value, R - 12, y, 9.5);
+    y -= 20;
   };
   total("Amount before VAT", money(s.netCents));
   if (parts.length > 1) {
@@ -628,24 +652,30 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
    */
   const withCredit = !credit && Boolean(s.creditAppliedCents);
   if (withCredit) {
-    total("Total", money(s.totalCents), true);
+    total("Total", money(s.totalCents));
     total("Less credit (reduced VAT)", `−${eur(s.creditAppliedCents ?? 0)}`);
   }
   const totalTop = y + 8;
-  const totalH = 40;
+  const totalH = 46;
   page.drawRectangle({ x: tx - 12, y: totalTop - totalH, width: R - tx + 12, height: totalH, color: sh.soft });
   page.drawRectangle({ x: tx - 12, y: totalTop - totalH, width: 3, height: totalH, color: sh.accent });
   const totalValue = money(withCredit ? (s.payableCents ?? 0) : s.totalCents);
-  const totalSize = fit(f.bold, totalValue, 15, 150);
+  const totalSize = fit(f.bold, totalValue, 19, 165);
   const mid = totalTop - totalH / 2;
-  text(page, f.bold, credit ? "Total credited" : withCredit ? (s.advance ? "To pay" : "Paid") : "Total", tx, mid - 4, 11, sh.accent);
-  right(page, f.bold, totalValue, R - 12, mid - totalSize * 0.36, totalSize, sh.accent);
+  const totalWord = credit
+    ? "Total credited"
+    : withCredit
+      ? s.advance || !s.payableCents
+        ? "To pay"
+        : "Paid"
+      : s.advance || s.billTo === "partner"
+        ? "To pay"
+        : "Total";
+  text(page, f.bold, totalWord, tx, mid - 4.5, 12, sh.accent);
+  right(page, f.bold, totalValue, R - 12, mid - totalSize * SCALE * 0.36, totalSize, sh.accent);
   y = totalTop - totalH - 24;
 
-  /*
-   * The left of the totals: the status stamp, and under it the amount in
-   * words, so the figures and the words sit side by side.
-   */
+  /* The left of the totals: the status stamp. The amount is not written out in words. */
   const leftW = tx - 12 - L - 24;
   let ly = totalTop + 2 * 22 - 4;
   const stamp = (words: string) => {
@@ -669,12 +699,6 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
         : `PAID ${longDay(s.paidOn)}${s.receiptNumber ? `, RECEIPT ${s.receiptNumber}` : ""}`,
     );
   }
-  text(page, f.plain, "Amount in words", L, ly, 8.5, QUIET);
-  ly -= 15;
-  for (const line of wrap(f.bold, `${credit ? "Credited: " : ""}${amountInEnglish(!credit && s.creditAppliedCents && (s.payableCents ?? 0) > 0 ? (s.payableCents ?? 0) : s.totalCents)}`, 9.5, leftW)) {
-    text(page, f.bold, line, L, ly, 9.5);
-    ly -= 13.5;
-  }
   y = Math.min(y, ly) - 16;
 
   /*
@@ -683,7 +707,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
    * its end however short the invoice is.
    */
   const showBank = !credit && Boolean(s.company.iban || s.company.bankAccount);
-  const bankH = showBank ? 30 + 15 * [s.company.bankName, s.company.beneficiary || s.company.name, s.company.bankAccount, s.company.iban, s.company.swift].filter(Boolean).length : 0;
+  const bankH = showBank ? 26 + 13 * bankRows : 0;
   const bottomH = Math.max(bankH, 80);
   const bottomTop = Math.min(y, FOOT_TOP + 20 + bottomH);
   if (showBank) bankPanel(sh, s, L, bottomTop, 320);
@@ -692,7 +716,7 @@ async function billPdf(s: IssuedSnapshot, mode: "invoice" | "credit"): Promise<B
   page.drawLine({ start: { x: R - sigW, y: sigY }, end: { x: R, y: sigY }, thickness: 0.8, color: GRAPHITE });
   right(page, f.plain, `For ${s.company.name}`, R, sigY - 14, fit(f.plain, `For ${s.company.name}`, 8.5, sigW), QUIET);
 
-  foot(sh, s, `${credit ? "Credit note" : "Invoice"} ${number}`);
+  foot(sh, s, sh.pdf.getPageCount() > 1 ? `${paperWords}, page ${sh.pdf.getPageCount()}` : paperWords);
   return Buffer.from(await sh.pdf.save());
 }
 
@@ -712,22 +736,22 @@ export async function stampCancelled(original: Buffer, lines: string[]): Promise
   for (const page of pdf.getPages()) {
     const { width, height } = page.getSize();
     const title = "CANCELLED";
-    const size = 30;
+    const size = 24;
     const w = bold.widthOfTextAtSize(title, size);
-    const boxW = Math.max(w, ...lines.map((line) => plain.widthOfTextAtSize(line, 12))) + 48;
-    const boxH = 60 + lines.length * 18;
-    const x = (width - boxW) / 2;
-    /* In the open space below the totals, so the line it cancels stays readable. */
-    const y = height * 0.3;
+    const boxW = Math.min(width * 0.4, Math.max(w, ...lines.map((line) => plain.widthOfTextAtSize(line, 10))) + 36);
+    const boxH = 48 + lines.length * 15;
+    /* At the left of the totals, over the PAID stamp, so the line it cancels and its figures stay readable. */
+    const x = L;
+    const y = height * 0.37 - boxH;
     /* Straight across the middle, like a rubber stamp on the printed page:
        a white panel so it reads over anything, a double red frame, the word. */
     page.drawRectangle({ x, y, width: boxW, height: boxH, color: rgb(1, 1, 1), opacity: 0.85 });
     page.drawRectangle({ x, y, width: boxW, height: boxH, borderColor: RED, borderWidth: 3 });
     page.drawRectangle({ x: x + 6, y: y + 6, width: boxW - 12, height: boxH - 12, borderColor: RED, borderWidth: 1 });
-    page.drawText(title, { x: x + (boxW - w) / 2, y: y + boxH - 44, size, font: bold, color: RED });
+    page.drawText(title, { x: x + (boxW - w) / 2, y: y + boxH - 34, size, font: bold, color: RED });
     lines.forEach((line, i) => {
-      const lw = plain.widthOfTextAtSize(line, 12);
-      page.drawText(line, { x: x + (boxW - lw) / 2, y: y + boxH - 66 - i * 18, size: 12, font: plain, color: RED });
+      const lw = plain.widthOfTextAtSize(line, 10);
+      page.drawText(line, { x: x + (boxW - lw) / 2, y: y + boxH - 52 - i * 15, size: 10, font: plain, color: RED });
     });
   }
   return Buffer.from(await pdf.save());
@@ -823,28 +847,39 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
     const size = strong ? 12 : 10.5;
     const lines = wrap(strong ? f.bold : f.plain, value, size, R - valueX);
     for (const [i, line] of lines.entries()) text(page, strong ? f.bold : f.plain, line, valueX, y - i * 15, size);
-    const used = (lines.length - 1) * 15 + 12;
+    const used = (lines.length - 1) * 15 + 10;
     page.drawLine({ start: { x: valueX, y: y - used }, end: { x: R, y: y - used }, thickness: 0.5, color: LINE });
-    y -= used + 24;
+    y -= used + 18;
   };
 
-  row("Received from", s.client.name, true);
-  if (s.client.address) row("Address", [s.client.address, s.client.country].filter(Boolean).join(", "));
-  if (s.client.idNumber) row("ID No", s.client.idNumber);
-
   /*
-   * The sum, in words and in figures, as the book asks. The words wrap in the
-   * space left of the figure box, so the box never sits on top of them, and
-   * the box is tall enough for the whole of its figure.
+   * Who paid, in as few lines as it takes, like the invoice's Bill to: the
+   * name, then the address on one line and the numbers on one, in small print
+   * under it. Beside it, the amount received, the boldest figure on the page.
+   * The amount is not written out in words.
    */
-  const boxW = 170;
-  const boxH = 54;
-  text(page, f.plain, "The sum of Euro", L, y, 8.5, QUIET);
-  const wordsWidth = R - boxW - 18 - valueX;
-  const words = wrap(f.bold, amountInEnglish(s.totalCents), 10.5, wordsWidth);
-  for (const [i, line] of words.entries()) text(page, f.bold, line, valueX, y - i * 14.5, 10.5);
-  figureBox(sh, { x: R - boxW, top: y + 14, w: boxW, h: boxH, fill: sh.soft, border: sh.accent }, null, eur(s.totalCents), 18, sh.accent);
-  y -= Math.max(boxH + 4, words.length * 14.5 + 10) + 16;
+  const boxW = 190;
+  const boxH = 52;
+  const boxTop = y + 14;
+  text(page, f.plain, "Received from", L, y, 8.5, QUIET);
+  const nameW = R - boxW - 18 - valueX;
+  const nameLines = wrap(f.bold, s.client.name, 11.5 * SCALE, nameW);
+  for (const [i, line] of nameLines.entries()) text(page, f.bold, line, valueX, y - i * 14, 11.5);
+  let wy = y - 14 * nameLines.length - 1;
+  const small = [
+    [s.client.address, s.client.country].map((one) => (one ?? "").trim()).filter((one, i, all) => one && !all.slice(0, i).some((before) => before.includes(one))).join(", "),
+    [s.client.idNumber ? `ID ${s.client.idNumber}` : "", s.client.registration ? `Reg. ${s.client.registration}` : "", s.client.vatNumber ? `VAT ${s.client.vatNumber}` : ""].filter(Boolean).join("    "),
+  ].filter(Boolean);
+  for (const value of small) {
+    for (const line of wrap(f.plain, value, 9 * SCALE, nameW)) {
+      text(page, f.plain, line, valueX, wy, 9, QUIET);
+      wy -= 12;
+    }
+  }
+  figureBox(sh, { x: R - boxW, top: boxTop, w: boxW, h: boxH, fill: sh.soft, border: sh.accent }, "Amount received", eur(s.totalCents), 21, sh.accent);
+  y = Math.min(wy, boxTop - boxH) - 14;
+  page.drawLine({ start: { x: L, y: y + 6 }, end: { x: R, y: y + 6 }, thickness: 0.5, color: LINE });
+  y -= 12;
 
   row("For", s.description);
   if (s.againstInvoice) {
@@ -860,10 +895,15 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
   /* How it was paid: the book's boxes, with the one that applies ticked. */
   text(page, f.plain, "Paid by", L, y, 8.5, QUIET);
   let bx = valueX;
-  const widths: Record<string, number> = { CASH: 74, CHEQUE: 84, BANK: 122, CARD: 64 };
-  for (const key of ["CASH", "CHEQUE", "BANK", "CARD"]) {
-    const en = METHOD_WORDS[key];
-    const on = baseOf(s.method ?? "") === key;
+  const widths: Record<string, number> = { CASH: 64, CHEQUE: 74, BANK: 106, CARD: 56, OTHER: 0 };
+  /* "Something else" is a box of its own, ticked, with what it was written beside it. */
+  const base = baseOf(s.method ?? "");
+  const other = base === "OTHER" || (!!s.method && !["CASH", "CHEQUE", "BANK", "CARD"].includes(base));
+  const keys = other ? ["CASH", "CHEQUE", "BANK", "CARD", "OTHER"] : ["CASH", "CHEQUE", "BANK", "CARD"];
+  for (const key of keys) {
+    let en = key === "OTHER" ? s.methodName?.trim() || METHOD_WORDS.OTHER : METHOD_WORDS[key];
+    while (key === "OTHER" && en.length > 4 && f.bold.widthOfTextAtSize(en, 9 * SCALE) > R - bx - 16) en = `${en.slice(0, -2).trimEnd()}…`;
+    const on = key === "OTHER" ? other : base === key;
     page.drawRectangle({ x: bx, y: y - 2, width: 11, height: 11, borderColor: on ? sh.accent : QUIET, borderWidth: 1, color: on ? sh.accent : undefined });
     if (on) {
       page.drawLine({ start: { x: bx + 2.2, y: y + 3.5 }, end: { x: bx + 4.8, y: y + 0.6 }, thickness: 1.4, color: WHITE });
@@ -873,8 +913,8 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
     bx += widths[key];
   }
   /* The office's own method, named after the boxes: "Bank transfer" ticked, "Standing order" said. */
-  if (s.methodName) text(page, f.bold, s.methodName.slice(0, 24), Math.min(bx + 4, R - 90), y, 9);
-  y -= 22;
+  if (s.methodName && !other) text(page, f.bold, s.methodName.slice(0, 24), Math.min(bx + 4, R - 90), y, 9);
+  y -= 20;
   if (s.reference) {
     text(page, f.plain, `Reference: ${s.reference}`, valueX, y, 8.5, QUIET);
     y -= 16;
@@ -884,38 +924,39 @@ export async function receiptPdfFrom(s: IssuedSnapshot): Promise<Buffer> {
     text(page, f.plain, `Includes VAT of ${eur(s.vatCents)} at ${Number.isInteger(s.rate) ? s.rate : s.rate.toFixed(2)}%.`, valueX, y, 8.5, QUIET);
     y -= 16;
   }
-  y -= 16;
+  y -= 10;
 
   /* A part of a stage: where its invoice stands after this money. */
   if (s.againstInvoice) {
     const a = s.againstInvoice;
     const gap = 12;
     const w3 = (R - L - gap * 2) / 3;
-    const h = 62;
+    const h = 52;
     figureBox(sh, { x: L, top: y, w: w3, h, fill: sh.soft }, `Invoice ${a.number}`, eur(a.totalCents), 14, GRAPHITE);
     figureBox(sh, { x: L + w3 + gap, top: y, w: w3, h, fill: sh.soft }, "Received on it so far", eur(a.paidCents), 14, GRAPHITE);
     figureBox(sh, { x: L + 2 * (w3 + gap), top: y, w: w3, h, fill: sh.soft, border: sh.accent }, "Remaining on this invoice", eur(a.remainingCents), 15, sh.accent);
-    y -= h + 20;
+    y -= h + 12;
   }
 
   /* Where the contract stands after this money, in three boxes that fit their figures. */
   if (s.contractTotalCents > 0) {
     const gap = 12;
     const w3 = (R - L - gap * 2) / 3;
-    const h = 62;
+    const h = 52;
     figureBox(sh, { x: L, top: y, w: w3, h, fill: sh.soft }, "Contract total", eur(s.contractTotalCents), 14, GRAPHITE);
     figureBox(sh, { x: L + w3 + gap, top: y, w: w3, h, fill: sh.soft }, "Received to date", eur(s.receivedToDateCents), 14, GRAPHITE);
     figureBox(sh, { x: L + 2 * (w3 + gap), top: y, w: w3, h, fill: sh.soft, border: sh.accent }, "Balance", eur(s.balanceCents), 15, sh.accent);
-    y -= h + 24;
+    y -= h + 16;
   }
 
-  /* The person who took the money and a place for a signature, at the foot of the page. */
-  y = Math.min(y - 30, FOOT_TOP + 90);
+  /*
+   * The person who took the money and a place for a signature, at the foot of
+   * the page, clear of the foot. The date is the one at the top, said once.
+   */
+  y = Math.max(Math.min(y - 24, FOOT_TOP + 90), FOOT_TOP + 22);
   page.drawLine({ start: { x: R - 210, y }, end: { x: R, y }, thickness: 0.8, color: GRAPHITE });
   right(page, f.plain, `The recipient, for ${s.company.name}`, R, y - 14, fit(f.plain, `The recipient, for ${s.company.name}`, 8.5, 260), QUIET);
   if (s.recordedBy) right(page, f.bold, s.recordedBy, R, y - 29, 9.5);
-  text(page, f.plain, "Date", L, y - 14, 8.5, QUIET);
-  text(page, f.bold, longDay(s.paidOn), L, y - 29, 9.5);
 
   foot(sh, s, `Receipt ${s.receiptNumber}`);
   return Buffer.from(await sh.pdf.save());
