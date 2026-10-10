@@ -205,6 +205,7 @@ export default async function DashboardPage({
             total: sql<number>`count(*)::int`,
             sold: sql<number>`count(*) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
             available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
+            negotiation: sql<number>`count(*) filter (where ${units.status} = 'NEGOTIATION')::int`,
             reserved: sql<number>`count(*) filter (where ${units.status} = 'RESERVED')::int`,
             onlySold: sql<number>`count(*) filter (where ${units.status} = 'SOLD')::int`,
             delivered: sql<number>`count(*) filter (where ${units.status} = 'DELIVERED')::int`,
@@ -444,7 +445,7 @@ export default async function DashboardPage({
           value={String(unitStats?.total ?? 0)}
           count={{ amount: unitStats?.total ?? 0, locale }}
           hint={`${unitStats?.sold ?? 0} ${t("dash.sold").toLowerCase()}, ${
-            unitStats?.available ?? 0
+            (unitStats?.available ?? 0) + (unitStats?.negotiation ?? 0)
           } ${t("dash.available").toLowerCase()}`}
           href="/projects"
         />
@@ -549,6 +550,11 @@ export default async function DashboardPage({
               label: t("units.status.AVAILABLE"),
               value: unitStats?.available ?? 0,
               colour: SERIES.primary,
+            },
+            {
+              label: t("units.status.NEGOTIATION"),
+              value: unitStats?.negotiation ?? 0,
+              colour: SERIES.fifth,
             },
             {
               label: t("units.status.RESERVED"),

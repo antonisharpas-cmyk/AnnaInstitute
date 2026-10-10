@@ -24,6 +24,7 @@ const WHERE: Record<ListKey, string> = {
   paymentMethod: "select method as code from payments where method is not null",
   appointmentType: "select coalesce(type_choice, type::text) as code from appointments",
   expenseCategory: "select coalesce(category_choice, category::text) as code from expenses",
+  partnerCategory: "select category as code from partners",
 };
 
 export async function usageOf(list: ListKey): Promise<Map<string, number>> {

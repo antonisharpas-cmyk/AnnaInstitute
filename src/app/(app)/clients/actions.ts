@@ -17,6 +17,7 @@ import { matchingClientIds } from "@/lib/clients";
 import { splitChoice } from "@/lib/choices/lists";
 import { cleanBirthDate, emailList } from "@/lib/buyers";
 import { letterToAgent } from "@/lib/automaticEmails";
+import { titleFrom } from "@/lib/titles";
 
 const clientSchema = z.object({
   firstName: z.string().min(1),
@@ -73,6 +74,8 @@ function readClient(formData: FormData) {
   const agentId = source.base === "AGENT_REFERRAL" ? String(formData.get("agentId") ?? "").trim() || null : null;
   return {
     ...parsed,
+    /* Mr, Mrs or Ms for the letters; nothing when the form did not say. */
+    title: titleFrom(formData.get("title")),
     sourceChoice: source.choice,
     idTypeChoice: parsed.idType ? idType.choice : null,
     agentId,
@@ -381,7 +384,9 @@ export async function deleteClientDocument(documentId: string, clientId: string)
 export async function assignApartment(clientId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const unitId = String(formData.get("unitId") ?? "");
-  const status = String(formData.get("status") ?? "RESERVED") as "RESERVED" | "SOLD" | "DELIVERED";
+  /* Negotiation until the Reservation Agreement is signed; Reserved only after it. */
+  const picked = String(formData.get("status") ?? "NEGOTIATION");
+  const status = (["NEGOTIATION", "RESERVED", "SOLD", "DELIVERED"] as const).find((one) => one === picked) ?? "NEGOTIATION";
 
   if (!unitId) throw new Error("Choose an apartment first.");
 

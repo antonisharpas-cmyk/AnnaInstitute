@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { projects, units } from "@/db/schema";
+import { projects, units, unitStatusEnum } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import {
@@ -146,7 +146,7 @@ const unitSchema = z.object({
   parkingSpaces: z.coerce.number().int().min(0).max(10).default(0),
   netPrice: z.string(),
   vatRate: z.string().optional(),
-  status: z.enum(["AVAILABLE", "RESERVED", "SOLD", "DELIVERED"]),
+  status: z.enum(unitStatusEnum.enumValues),
   notes: z.string().optional(),
 });
 
@@ -251,8 +251,8 @@ export async function updateUnitPrice(unitId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const netPrice = fromCents(toCents(String(formData.get("netPrice") ?? "0")));
   const picked = splitChoice(String(formData.get("status") ?? "AVAILABLE"));
-  if (!["AVAILABLE", "RESERVED", "SOLD", "DELIVERED"].includes(picked.base)) return;
-  const status = picked.base as "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED";
+  const status = unitStatusEnum.enumValues.find((one) => one === picked.base);
+  if (!status) return;
 
   const before = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
   await db

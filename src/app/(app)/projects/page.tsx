@@ -124,7 +124,9 @@ export default async function ProjectsPage({
     project: projects,
     unitCount: sql<number>`count(${units.id})::int`,
     soldCount: sql<number>`count(${units.id}) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
-    availableCount: sql<number>`count(${units.id}) filter (where ${units.status} = 'AVAILABLE')::int`,
+    /* Still offered to buyers: available, and those in negotiation. */
+    availableCount: sql<number>`count(${units.id}) filter (where ${units.status} in ('AVAILABLE','NEGOTIATION'))::int`,
+    negotiationCount: sql<number>`count(${units.id}) filter (where ${units.status} = 'NEGOTIATION')::int`,
     reservedCount: sql<number>`count(${units.id}) filter (where ${units.status} = 'RESERVED')::int`,
     totalValue: sql<string>`coalesce(sum(${units.netPrice}), 0)`,
     soldValue: sql<string>`coalesce(sum(${units.netPrice}) filter (where ${units.status} in ('SOLD','DELIVERED')), 0)`,
@@ -382,6 +384,7 @@ export default async function ProjectsPage({
                             </div>
                             <div>
                               {r.availableCount} {t("dash.available").toLowerCase()}
+                              {r.negotiationCount > 0 ? ` (${r.negotiationCount} ${t("units.inNegotiation")})` : ""}
                             </div>
                             <div>
                               {r.reservedCount} {t("units.status.RESERVED").toLowerCase()}

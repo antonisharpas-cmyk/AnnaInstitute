@@ -27,7 +27,15 @@ export const projectStatusEnum = pgEnum("project_status", [
   /** Every apartment in it has been handed over. Set by the money, not by hand. */
   "DELIVERED",
 ]);
-export const unitStatusEnum = pgEnum("unit_status", ["AVAILABLE", "RESERVED", "SOLD", "DELIVERED"]);
+/*
+ * Negotiation: a client is discussing the terms of a reservation but has not
+ * signed the Reservation Agreement yet. The apartment is still offered to
+ * others. Reserved is kept for after the agreement is signed.
+ */
+export const unitStatusEnum = pgEnum("unit_status", ["AVAILABLE", "NEGOTIATION", "RESERVED", "SOLD", "DELIVERED"]);
+export type UnitStatus = (typeof unitStatusEnum.enumValues)[number];
+/** The statuses an apartment is still offered to buyers in: on the price list and counted as available. */
+export const OFFERED_STATUSES = ["AVAILABLE", "NEGOTIATION"] as const;
 /**
  * What kind of transaction a contract records.
  *
@@ -282,6 +290,8 @@ export const clients = pgTable("clients", {
   id: id(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
+  /** How the letters greet them: MR, MRS, MS, or nothing for "Dear Maria". */
+  title: text("title"),
   email: text("email"),
   phone: text("phone"),
   idType: idTypeEnum("id_type"),
@@ -1052,6 +1062,14 @@ export const campaigns = pgTable("campaigns", {
   toLeads: boolean("to_leads").default(false).notNull(),
   /** The leads chosen by hand, as a JSON list of ids. Empty means every lead. */
   leadIds: text("lead_ids"),
+  /**
+   * The buyers of what the campaign is about: the clients holding a reserved,
+   * sold or delivered apartment there. Service letters about their own home,
+   * so they are not limited to the clients who accepted marketing.
+   */
+  toBuyers: boolean("to_buyers").default(false).notNull(),
+  /** The buyers chosen by hand, as a JSON list of client ids. Empty means every buyer. */
+  buyerIds: text("buyer_ids"),
   /** The developments a campaign shows, for {{projects}}, as a JSON list of ids. */
   projectIds: text("project_ids"),
   /** The template this was written from, when it came from one. */
@@ -1363,6 +1381,7 @@ export const emailTemplates = pgTable("email_templates", {
   toAgents: boolean("to_agents").default(false).notNull(),
   toSubowners: boolean("to_subowners").default(false).notNull(),
   toLeads: boolean("to_leads").default(false).notNull(),
+  toBuyers: boolean("to_buyers").default(false).notNull(),
   /** A template the CRM ships with. It can be edited but not deleted. */
   isSystem: boolean("is_system").default(false).notNull(),
   /**
@@ -1714,6 +1733,27 @@ export const constructors = pgTable("constructors", {
   registryNumber: text("registry_number"),
   notes: text("notes"),
   isActive: boolean("is_active").default(true).notNull(),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+/**
+ * The office's partners and collaborators outside the company: architects, 3D
+ * visualisation studios, kitchens, bathrooms, marketing. A directory of who to
+ * call, nothing more: no money and no papers hang on a partner.
+ *
+ * The category is a code from the Builder's "Partner categories" list, so the
+ * office can rename the categories and add its own.
+ */
+export const partners = pgTable("partners", {
+  id: id(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  email: text("email"),
+  mobile: text("mobile"),
+  /** A Google Maps link to their showroom or office. */
+  locationUrl: text("location_url"),
+  notes: text("notes"),
   createdAt: created(),
   updatedAt: updated(),
 });

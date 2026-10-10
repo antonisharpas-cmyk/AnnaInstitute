@@ -327,12 +327,15 @@ async function alsoTheBuyer(contractId: string) {
 /**
 
  *
- * A contract on its own reserves the apartment rather than selling it, because
- * the office counts an apartment as sold once the first installment has come
- * in. That is what followTheMoney does the moment a payment is recorded, so
- * this only has to get the buyer and the reservation right.
+ * A contract on its own does not sell the apartment, because the office counts
+ * an apartment as sold once the first installment has come in, and it does not
+ * reserve it either: Reserved means the Reservation Agreement is signed. A free
+ * apartment taken by a new sale contract is in Negotiation, and followTheMoney
+ * moves it on when the signed agreement is uploaded or money comes in. The
+ * apartments a landowner receives are the owner's from the agreement itself,
+ * so a land exchange still takes them as reserved.
  */
-async function takeUnit(unitId: string | undefined, clientId: string) {
+async function takeUnit(unitId: string | undefined, clientId: string, start: "NEGOTIATION" | "RESERVED" = "NEGOTIATION") {
   if (!unitId) return;
   const rows = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
   const already = rows[0];
@@ -340,7 +343,7 @@ async function takeUnit(unitId: string | undefined, clientId: string) {
   await db
     .update(units)
     .set({
-      status: already && already.status !== "AVAILABLE" ? already.status : "RESERVED",
+      status: already && already.status !== "AVAILABLE" && !(start === "RESERVED" && already.status === "NEGOTIATION") ? already.status : start,
       clientId,
       updatedAt: new Date(),
     })
@@ -371,14 +374,14 @@ async function priceTheUnit(
     .where(eq(units.id, unitId));
 }
 
-/** An apartment with no contract on it is available again, or still reserved. */
+/** An apartment with no contract on it is available again, or back in negotiation with the client who still holds it. */
 async function releaseUnit(unitId: string | undefined) {
   if (!unitId) return;
   const rows = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
   if (!rows[0]) return;
   await db
     .update(units)
-    .set({ status: rows[0].clientId ? "RESERVED" : "AVAILABLE", updatedAt: new Date() })
+    .set({ status: rows[0].clientId ? "NEGOTIATION" : "AVAILABLE", updatedAt: new Date() })
     .where(eq(units.id, unitId));
 }
 
@@ -415,7 +418,7 @@ async function setLandExchangeUnits(contractId: string, clientId: string, wanted
     if (!had.has(unitId)) {
       await db.insert(contractUnits).values({ contractId, unitId });
     }
-    await takeUnit(unitId, clientId);
+    await takeUnit(unitId, clientId, "RESERVED");
   }
 }
 

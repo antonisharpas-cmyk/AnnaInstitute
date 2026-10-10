@@ -5,6 +5,7 @@ import SubmitButton from "@/components/SubmitButton";
 import SourceAgentFields from "@/components/SourceAgentFields";
 import DateField from "@/components/DateField";
 import NewClientExtras, { type ExtrasLabels } from "@/components/BuyerExtras";
+import { TITLES, titleWord } from "@/lib/titles";
 
 type Client = typeof clientsTable.$inferSelect;
 
@@ -36,6 +37,20 @@ export default function ClientForm({
   return (
     <form action={action} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2 sm:max-w-[12rem]">
+          <label className="label" htmlFor="title">
+            {t("clients.salutation")}
+          </label>
+          <select id="title" name="title" className="select" defaultValue={client?.title ?? ""}>
+            <option value="">{t("clients.salutationNone")}</option>
+            {TITLES.map((one) => (
+              <option key={one} value={one}>
+                {titleWord(one)}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-brand-graphite/60">{t("clients.salutationHint")}</p>
+        </div>
         <div>
           <label className="label" htmlFor="firstName">
             {t("common.name")}

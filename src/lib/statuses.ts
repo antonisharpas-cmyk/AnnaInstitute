@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { contracts, installments, payments, projects, units } from "@/db/schema";
+import { contracts, installments, payments, projects, signingPapers, units, type UnitStatus } from "@/db/schema";
 import { toCents } from "@/lib/money";
 import { recordAudit } from "@/lib/audit";
 import { recalculateCommission } from "@/lib/commissions";
@@ -47,22 +47,38 @@ type Who = { id: string; email: string } | null;
  * hand. What the money does instead, once a contract is paid off, is say so in
  * plain words wherever the figures are shown.
  */
-function deserved(
-  dueCents: number,
-  paidCents: number,
-  current: "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED",
-): "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED" {
+function deserved(dueCents: number, paidCents: number, current: UnitStatus, signed: boolean): UnitStatus {
   void dueCents;
   if (paidCents > 0) return "SOLD";
   /**
-   * A contract exists but nothing has come in against it yet, which is exactly
-   * what the office calls reserved: the apartment is somebody's, the sale is
-   * not. It goes back to reserved even from sold, because a payment that turns
-   * out to have been recorded in error has to be able to be taken off. Anybody
-   * who knows better sets the status by hand, and then none of this applies.
+   * Reserved means the Reservation Agreement is signed. Once its signed copy
+   * (or the signed Contract of Sale) is on the contract, the apartment is
+   * reserved.
    */
-  void current;
+  if (signed) return "RESERVED";
+  /**
+   * A contract with nothing signed and nothing paid is still a negotiation.
+   * That is only ever where an apartment starts: one already reserved stays
+   * reserved, so the apartments that were reserved before Negotiation existed
+   * are never moved back. It goes back to reserved even from sold, because a
+   * payment that turns out to have been recorded in error has to be able to be
+   * taken off. Anybody who knows better sets the status by hand.
+   */
+  if (current === "AVAILABLE" || current === "NEGOTIATION") return "NEGOTIATION";
   return "RESERVED";
+}
+
+/** Whether a signed Reservation Agreement or Contract of Sale is on the contract. */
+async function anythingSigned(contractId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(signingPapers)
+      .where(and(eq(signingPapers.contractId, contractId), isNotNull(signingPapers.signedDocumentId)));
+    return (row?.n ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -122,7 +138,7 @@ export async function followTheMoney(contractId: string, who: Who = null): Promi
   if (!unit) return;
 
   {
-    const should = deserved(toCents(owed?.due ?? "0"), toCents(received?.paid ?? "0"), unit.status);
+    const should = deserved(toCents(owed?.due ?? "0"), toCents(received?.paid ?? "0"), unit.status, await anythingSigned(contract.id));
 
     /*
       A status set by hand is a floor, not a freeze.
@@ -139,7 +155,7 @@ export async function followTheMoney(contractId: string, who: Who = null): Promi
       undoing it. But when the money has gone further than the hand did, the
       money wins and the apartment moves forward.
     */
-    const rank = { AVAILABLE: 0, RESERVED: 1, SOLD: 2, DELIVERED: 3 } as const;
+    const rank: Record<UnitStatus, number> = { AVAILABLE: 0, NEGOTIATION: 1, RESERVED: 2, SOLD: 3, DELIVERED: 4 };
     const forwards = rank[should] > rank[unit.status];
     const mayMove = unit.byHand === null || forwards;
 

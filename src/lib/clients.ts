@@ -4,13 +4,13 @@ import { LIST_BY_KEY } from "@/lib/choices/lists";
 import { and, asc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { many } from "@/lib/filters";
-import { clients, contracts, projects, units } from "@/db/schema";
+import { clients, contracts, projects, units, type UnitStatus } from "@/db/schema";
 import { partnersByProject } from "@/lib/subowners";
 
 export type AssignedApartment = {
   unitId: string;
   code: string;
-  status: "AVAILABLE" | "RESERVED" | "SOLD" | "DELIVERED";
+  status: UnitStatus;
   statusChoice: string | null;
   netPrice: string;
   projectId: string;

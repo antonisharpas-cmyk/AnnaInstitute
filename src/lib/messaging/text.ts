@@ -60,6 +60,8 @@ export function fillPlaceholders(
   values: {
     name: string;
     firstName: string;
+    /** "Mrs.", "Mr.", "Ms." or nothing. */
+    title?: string;
     priceListUrl?: string;
     filesUrl?: string;
     extras?: Record<string, string>;
@@ -75,7 +77,11 @@ export function fillPlaceholders(
   if (values.priceListUrl) known.price_list_url = values.priceListUrl;
   if (values.filesUrl) known.files_url = values.filesUrl;
   for (const [key, value] of Object.entries(values.extras ?? {})) known[keyOf(key)] = value;
-  return template.replace(PLACEHOLDER, (whole, raw: string) => known[keyOf(raw)] ?? whole);
+  /* "Dear {{title}} {{first_name}}" reads "Dear Maria" when there is no title, never "Dear  Maria". */
+  const title = values.title?.trim() ?? "";
+  const text = title ? template : template.replace(/\{\{\s*title\s*\}\}[ \t]?/gi, "");
+  if (title) known.title = title;
+  return text.replace(PLACEHOLDER, (whole, raw: string) => known[keyOf(raw)] ?? whole);
 }
 
 /** The placeholders still in a text after filling it: the ones that would go out as they are. */

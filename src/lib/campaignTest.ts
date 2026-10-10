@@ -8,6 +8,7 @@ import { campaignAttachments, filesLinkFor, filesUrl } from "@/lib/campaignFiles
 import { idsOf, projectsBlock } from "@/lib/campaignProjects";
 import { createPriceListLink, priceListUrl, resolvePriceListToken } from "@/lib/priceList";
 import { readSetting } from "@/lib/settings";
+import { buyersOf, chosenBuyers, materialPartners } from "@/lib/campaignBuyers";
 
 /**
  * What a campaign looks like when the office tries it on itself.
@@ -108,7 +109,11 @@ export async function campaignExtras(campaign: Campaign): Promise<Record<string,
   /* The developments it shows, each with its apartments and prices, for {{projects}}. */
   const shown = await projectsBlock(idsOf(campaign.projectIds));
   const showing: Record<string, string> = shown ? { projects: shown.text, project_names: shown.names } : {};
-  return { ...(await aboutExtras(campaign, month)), ...showing };
+  /* The kitchen and bathroom partners from the Partners directory, when there are any. */
+  const words = `${campaign.subject ?? ""} ${campaign.body} ${campaign.bodyWhatsapp ?? ""}`;
+  const partnersText = /\{\{\s*material[ _]partners\s*\}\}/i.test(words) ? await materialPartners() : "";
+  const partnersPart: Record<string, string> = partnersText ? { material_partners: partnersText } : {};
+  return { ...(await aboutExtras(campaign, month)), ...showing, ...partnersPart };
 }
 
 async function aboutExtras(campaign: Campaign, month: string): Promise<Record<string, string>> {
@@ -139,12 +144,15 @@ export async function testValues(campaign: Campaign) {
     .from(shareLinks)
     .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, campaign.id)))
     .limit(1);
+  /* A campaign to the buyers is tried with its first buyer's own apartment. */
+  const firstBuyer = campaign.toBuyers ? chosenBuyers(await buyersOf(campaign), campaign.buyerIds)[0] : undefined;
   return {
     name: "Maria Georgiou",
     firstName: "Maria",
+    title: "Mrs.",
     priceListUrl: price,
     filesUrl: files ? filesUrl(files.token) : undefined,
-    extras: await campaignExtras(campaign),
+    extras: { ...(await campaignExtras(campaign)), ...(firstBuyer?.own ?? {}) },
   };
 }
 

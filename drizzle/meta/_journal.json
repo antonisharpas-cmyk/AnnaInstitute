@@ -372,6 +372,27 @@
       "when": 1792185147383,
       "tag": "0053_contract_payment_method_other",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792271547383,
+      "tag": "0054_partners",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1792357947383,
+      "tag": "0055_unit_status_negotiation",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1792444347383,
+      "tag": "0056_buyers_titles_partner_location",
+      "breakpoints": true
     }
   ]
 }

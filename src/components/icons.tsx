@@ -261,6 +261,13 @@ export const IconChevron = (p: Props) => (
   </Svg>
 );
 
+/** An address book, for the partners directory. */
+export const IconAddressBook = (p: Props) => (
+  <Svg {...p}>
+    <path d="M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6zM4 7h3M4 12h3M4 17h3M12.5 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9.5 16a3 3 0 0 1 6 0" />
+  </Svg>
+);
+
 export const SECTION_ICONS: Record<string, (p: Props) => React.ReactElement> = {
   "/calendar": IconMonth,
   "/appointments": IconCalendar,
@@ -275,6 +282,7 @@ export const SECTION_ICONS: Record<string, (p: Props) => React.ReactElement> = {
   "/agents": IconAgents,
   "/subowners": IconPartners,
   "/constructors": IconConstructor,
+  "/partners": IconAddressBook,
   "/commissions": IconCommissions,
   "/campaigns": IconCampaigns,
   "/invoices": IconInvoices,

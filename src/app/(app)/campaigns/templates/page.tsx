@@ -34,10 +34,13 @@ export default async function TemplatesPage() {
               <code className="font-mono text-xs">{"{{name}}"}</code> their whole name
             </li>
             <li>
+              <code className="font-mono text-xs">{"{{title}}"}</code> Mr., Mrs. or Ms., from the client&apos;s card (left out when empty)
+            </li>
+            <li>
               <code className="font-mono text-xs">{"{{project}}"}</code> the development
             </li>
             <li>
-              <code className="font-mono text-xs">{"{{unit}}"}</code> the apartment code
+              <code className="font-mono text-xs">{"{{unit}}"}</code> the apartment code; to the buyers, each buyer&apos;s own
             </li>
             <li>
               <code className="font-mono text-xs">{"{{details}}"}</code> bedrooms, areas, parking
@@ -56,6 +59,9 @@ export default async function TemplatesPage() {
             </li>
             <li>
               <code className="font-mono text-xs">{"{{price_list_url}}"}</code> the live price list
+            </li>
+            <li>
+              <code className="font-mono text-xs">{"{{material_partners}}"}</code> the Kitchens and Bathrooms partners, with telephone and location, from Partners
             </li>
             <li>
               <code className="font-mono text-xs">{"{{files_url}}"}</code> the attachments, for
@@ -193,6 +199,10 @@ export default async function TemplatesPage() {
                         defaultChecked={template.toSubowners}
                       />
                       <span>{t("campaigns.groupSubowners")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" name="toBuyers" defaultChecked={template.toBuyers} />
+                      <span>{t("campaigns.groupBuyers")}</span>
                     </label>
                   </div>
                 </fieldset>

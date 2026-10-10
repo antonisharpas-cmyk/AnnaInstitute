@@ -127,9 +127,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const values = {
     name: checked[0]?.name ?? "Name Surname",
     firstName: checked[0]?.firstName ?? "Name",
+    title: checked[0]?.title,
     priceListUrl: url,
     filesUrl: filesLink,
-    extras: await campaignExtras(campaign),
+    extras: { ...(await campaignExtras(campaign)), ...(checked[0]?.own ?? {}) },
   };
   const preview = fillPlaceholders(campaign.body, values);
   const previewWhatsapp = campaign.bodyWhatsapp
@@ -151,6 +152,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
           groupsOf(campaign).agents ? t("campaigns.groupAgents").toLowerCase() : null,
           groupsOf(campaign).subowners ? t("campaigns.groupSubowners").toLowerCase() : null,
           groupsOf(campaign).leads ? t("campaigns.groupLeads").toLowerCase() : null,
+          groupsOf(campaign).buyers ? t("campaigns.groupBuyers").toLowerCase() : null,
         ]
           .filter(Boolean)
           .join(", ")}`}
@@ -291,7 +293,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
               <div className="mb-4">
                 <p className="label">{t("campaigns.theEmail")}</p>
                 {campaign.subject ? (
-                  <p className="mb-2 text-sm font-semibold">{campaign.subject}</p>
+                  <p className="mb-2 text-sm font-semibold">{fillPlaceholders(campaign.subject, values)}</p>
                 ) : null}
                 <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
                   {preview}
@@ -360,7 +362,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                             ? t("campaigns.groupAgents")
                             : r.group === "LEADS"
                               ? t("campaigns.groupLeads")
-                              : t("campaigns.groupSubowners")}
+                              : r.group === "BUYERS"
+                                ? `${t("campaigns.groupBuyers")}${r.own?.unit ? ` . ${r.own.project} ${r.own.unit}` : ""}`
+                                : t("campaigns.groupSubowners")}
                       </div>
                     </td>
                     <td className="break-all text-xs">

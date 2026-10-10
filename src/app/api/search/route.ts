@@ -7,6 +7,7 @@ import {
   contracts,
   expenses,
   leads,
+  partners,
   projects,
   subowners,
   units,
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
     agentRows,
     partnerRows,
     invoiceRows,
+    contactRows,
   ] = await Promise.all([
     db
       .select()
@@ -118,6 +120,11 @@ export async function GET(request: Request) {
       .from(expenses)
       .where(or(ilike(expenses.supplier, like), ilike(expenses.reference, like)))
       .limit(LIMIT),
+    db
+      .select()
+      .from(partners)
+      .where(or(ilike(partners.name, like), ilike(partners.email, like), ilike(partners.mobile, like)))
+      .limit(LIMIT),
   ]);
 
   const groups: HitGroup[] = [
@@ -180,6 +187,14 @@ export async function GET(request: Request) {
         title: row.name,
         subtitle: row.company ?? row.contactName ?? "",
         href: `/subowners/${row.id}`,
+      })),
+    },
+    {
+      key: "partners",
+      items: contactRows.map((row) => ({
+        title: row.name,
+        subtitle: [row.email, row.mobile].filter(Boolean).join(" . "),
+        href: `/partners/${row.id}`,
       })),
     },
     {

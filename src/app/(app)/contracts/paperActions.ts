@@ -9,6 +9,7 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { removeDocument, storeDocument } from "@/lib/uploads";
 import { sendWaitingFor } from "@/lib/automaticEmails";
+import { followTheMoney } from "@/lib/statuses";
 import {
   afterSigned,
   invoiceBeforeSigning,
@@ -185,6 +186,9 @@ export async function uploadPaperSigned(contractId: string, rawKind: string, for
     userId: user.id,
     userEmail: user.email,
   });
+
+  /* Signed means reserved: an apartment in Negotiation moves on now. */
+  await followTheMoney(contractId, user);
 
   /* The letter for the money that was waiting for it goes now, with it. */
   await sendWaitingFor(contractId);

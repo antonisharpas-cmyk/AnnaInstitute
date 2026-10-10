@@ -1,8 +1,8 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, isNull, or, gt } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, gt } from "drizzle-orm";
 import { db } from "@/db";
-import { projects, shareLinks, units } from "@/db/schema";
+import { OFFERED_STATUSES, projects, shareLinks, units } from "@/db/schema";
 import { appUrl } from "./unsubscribe";
 import { recordAudit } from "./audit";
 
@@ -21,7 +21,8 @@ export async function availableForPriceList() {
     .select({ unit: units, project: projects })
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
-    .where(eq(units.status, "AVAILABLE"))
+    /* An apartment in negotiation is still offered until its Reservation Agreement is signed. */
+    .where(inArray(units.status, [...OFFERED_STATUSES]))
     .orderBy(asc(projects.name), asc(units.code));
 }
 

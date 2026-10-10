@@ -31,9 +31,10 @@ export type ListKey =
   | "installmentStage"
   | "paymentMethod"
   | "appointmentType"
-  | "expenseCategory";
+  | "expenseCategory"
+  | "partnerCategory";
 
-export type SectionKey = "leads" | "clients" | "projects" | "contracts" | "appointments" | "invoices";
+export type SectionKey = "leads" | "clients" | "projects" | "contracts" | "appointments" | "invoices" | "partners";
 
 export type Builtin = {
   code: string;
@@ -53,7 +54,7 @@ export type ListDef = {
   builtins: Builtin[];
 };
 
-export const SECTIONS: SectionKey[] = ["leads", "clients", "projects", "contracts", "appointments", "invoices"];
+export const SECTIONS: SectionKey[] = ["leads", "clients", "projects", "contracts", "appointments", "invoices", "partners"];
 
 export const LISTS: ListDef[] = [
   {
@@ -131,6 +132,8 @@ export const LISTS: ListDef[] = [
     prefix: "units.status",
     builtins: [
       { code: "AVAILABLE", locked: true },
+      /* Talking terms, before the Reservation Agreement is signed. */
+      { code: "NEGOTIATION", locked: true },
       { code: "RESERVED", locked: true },
       { code: "SOLD", locked: true },
       { code: "DELIVERED", locked: true },
@@ -221,6 +224,21 @@ export const LISTS: ListDef[] = [
       { code: "LEGAL" },
       { code: "CONSTRUCTION" },
       { code: "OTHER", locked: true },
+    ],
+  },
+  {
+    /* What a partner does. Other is off until the office wants it: the
+       categories the office adds of its own count as it. */
+    key: "partnerCategory",
+    section: "partners",
+    prefix: "partners.category",
+    builtins: [
+      { code: "ARCHITECTS" },
+      { code: "VISUALIZATION_3D" },
+      { code: "KITCHENS" },
+      { code: "BATHROOMS" },
+      { code: "MARKETING" },
+      { code: "OTHER", offByDefault: true },
     ],
   },
 ];

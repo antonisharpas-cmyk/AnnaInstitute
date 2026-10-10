@@ -36,7 +36,13 @@ import ArmedSubmit from "@/components/ArmedSubmit";
 const PER_PAGE = 20;
 
 const statusTone = (status: string) =>
-  status === "SOLD" || status === "DELIVERED" ? "good" : status === "RESERVED" ? "warn" : "neutral";
+  status === "SOLD" || status === "DELIVERED"
+    ? "good"
+    : status === "RESERVED"
+      ? "warn"
+      : status === "NEGOTIATION"
+        ? "teal"
+        : "neutral";
 
 export default async function ClientsPage({
   searchParams,
@@ -605,7 +611,7 @@ export default async function ClientsPage({
                                 {mine.map((a) => (
                                   <li key={a.unitId}>
                                     <Pill
-                                      tone={statusTone(a.status) as "good" | "warn" | "neutral"}
+                                      tone={statusTone(a.status) as "good" | "warn" | "teal" | "neutral"}
                                     >
                                       {t(`units.status.${shownCode(a.status, a.statusChoice)}` as MessageKey)}
                                     </Pill>

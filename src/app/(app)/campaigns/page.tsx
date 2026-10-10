@@ -161,6 +161,7 @@ export default async function CampaignsPage() {
           groupsOf(c).agents ? t("campaigns.groupAgents") : null,
           groupsOf(c).subowners ? t("campaigns.groupSubowners") : null,
           groupsOf(c).leads ? t("campaigns.groupLeads") : null,
+          groupsOf(c).buyers ? t("campaigns.groupBuyers") : null,
         ]
           .filter(Boolean)
                           .join(", ")}

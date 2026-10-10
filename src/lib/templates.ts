@@ -30,6 +30,8 @@ export type TemplateSeed = {
   toSubowners: boolean;
   /** Goes to leads by default. */
   toLeads?: boolean;
+  /** Goes to the buyers of what the campaign is about, each with their own apartment. */
+  toBuyers?: boolean;
 };
 
 export const SYSTEM_TEMPLATES: TemplateSeed[] = [
@@ -244,6 +246,191 @@ One Eleven`,
     toClients: true,
     toAgents: true,
     toSubowners: false,
+  },
+
+  /* -------------------------------------------------------------------------
+     The three letters to the buyers as their home is finished.
+
+     Sent to the buyers of a development or of one apartment, each letter with
+     the buyer's own apartment in it. {{material_partners}} lists the Kitchens
+     and Bathrooms partners from the Partners section, with their telephone
+     and location, so changing a partner there changes the letter.
+     ------------------------------------------------------------------------- */
+  {
+    key: "material_selection",
+    name: "Material selection",
+    description:
+      "To the buyers of a development as the interior works begin: the partners they choose their kitchen, flooring and sanitary ware with, from the Partners section.",
+    subject: "MATERIAL SELECTION | {{project}}",
+    body: `Dear {{title}} {{first_name}},
+
+As we approach the stage of the interior works, we are initiating the process of selecting the materials that will shape the character of your apartment.
+
+At One Eleven we choose to collaborate with leading specialized partners. To ensure the best possible service and expert technical guidance, our team will contact you to arrange the first appointment with each partner on your behalf.
+
+At this initial meeting, we will be present to present the main specifications and ensure that your selections align with the overall project design. Following our first joint visit, you will be able to visit our partners independently for any further details or changes you may wish to make.
+
+Our Partners:
+
+{{material_partners}}
+
+Next Steps:
+
+Within the next few days, we will call you to schedule a convenient date and time for your first appointment at the Kitchen and Flooring showrooms.
+
+We remain at your disposal for any clarification you may need.
+
+Kind Regards,
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, the selection of materials for your apartment at {{project}} is starting. We will call you in the next few days to arrange your first appointments with our partners for the kitchen and the flooring. One Eleven",
+    subjectEl: "ΕΠΙΛΟΓΗ ΥΛΙΚΩΝ | {{project}}",
+    bodyEl: `Αγαπητέ/ή {{first_name}},
+
+Καθώς πλησιάζουμε στο στάδιο των εσωτερικών εργασιών, ξεκινάμε τη διαδικασία επιλογής των υλικών που θα διαμορφώσουν τον χαρακτήρα του διαμερίσματός σας.
+
+Στη One Eleven επιλέγουμε να συνεργαζόμαστε με κορυφαίους εξειδικευμένους συνεργάτες. Για να σας εξασφαλίσουμε την καλύτερη δυνατή εξυπηρέτηση και εξειδικευμένη τεχνική καθοδήγηση, η ομάδα μας θα επικοινωνήσει μαζί σας για να κανονίσει εκ μέρους σας το πρώτο ραντεβού με κάθε συνεργάτη.
+
+Στην πρώτη αυτή συνάντηση θα είμαστε παρόντες για να σας παρουσιάσουμε τις βασικές προδιαγραφές και να διασφαλίσουμε ότι οι επιλογές σας ταιριάζουν με τον συνολικό σχεδιασμό του έργου. Μετά την πρώτη κοινή μας επίσκεψη, θα μπορείτε να επισκέπτεστε τους συνεργάτες μας και μόνοι σας για οποιαδήποτε περαιτέρω λεπτομέρεια ή αλλαγή επιθυμείτε.
+
+Οι συνεργάτες μας:
+
+{{material_partners}}
+
+Επόμενα βήματα:
+
+Τις επόμενες ημέρες θα σας τηλεφωνήσουμε για να ορίσουμε μια βολική ημερομηνία και ώρα για το πρώτο σας ραντεβού στους εκθεσιακούς χώρους κουζίνας και δαπέδων.
+
+Παραμένουμε στη διάθεσή σας για οποιαδήποτε διευκρίνιση χρειαστείτε.
+
+Με εκτίμηση,
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, ξεκινά η επιλογή υλικών για το διαμέρισμά σας στο {{project}}. Τις επόμενες ημέρες θα σας τηλεφωνήσουμε για να κανονίσουμε τα πρώτα ραντεβού με τους συνεργάτες μας για την κουζίνα και τα δάπεδα. One Eleven",
+    toClients: false,
+    toAgents: false,
+    toSubowners: false,
+    toBuyers: true,
+  },
+  {
+    key: "final_inspection",
+    name: "Final inspection appointment",
+    description:
+      "To the buyer of an apartment whose works are finished: the invitation to walk through it before the key handover, with the Snagging List explained.",
+    subject: "Final Inspection Appointment | {{project}} Apartment {{unit}}",
+    body: `Dear {{title}} {{first_name}},
+
+We are pleased to inform you that the works in your apartment have been completed and the property is ready for your first official visit prior to the key handover.
+
+We would like to invite you to the Final Inspection appointment, a process designed to ensure that every detail of your new home meets the high quality standards we have set.
+
+Who will be present:
+
+1. A representative of One Eleven: To oversee the process and ensure all agreed specifications are met.
+2. A representative of the Construction Company: For the immediate recording and coordination of any minor technical adjustments.
+
+The Process:
+
+We will walk through all areas of the apartment together. If any items requiring final adjustment are identified, they will be recorded on a joint Snagging List, which we will both sign. The contractor's technical team will then proceed promptly with the necessary corrections, ensuring the apartment is in impeccable condition for the final handover.
+
+Please confirm your availability by replying to this email.
+
+Kind Regards,
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, the works in your apartment {{unit}} at {{project}} are complete and it is ready for the Final Inspection before the key handover. Please reply with the days and times that suit you. One Eleven",
+    subjectEl: "Ραντεβού Τελικής Επιθεώρησης | {{project}} Διαμέρισμα {{unit}}",
+    bodyEl: `Αγαπητέ/ή {{first_name}},
+
+Με χαρά σας ενημερώνουμε ότι οι εργασίες στο διαμέρισμά σας ολοκληρώθηκαν και το ακίνητο είναι έτοιμο για την πρώτη επίσημη επίσκεψή σας πριν από την παράδοση των κλειδιών.
+
+Θα θέλαμε να σας προσκαλέσουμε στο ραντεβού Τελικής Επιθεώρησης, μια διαδικασία που διασφαλίζει ότι κάθε λεπτομέρεια του νέου σας σπιτιού ανταποκρίνεται στα υψηλά πρότυπα ποιότητας που έχουμε θέσει.
+
+Ποιοι θα είναι παρόντες:
+
+1. Εκπρόσωπος της One Eleven: Για να επιβλέπει τη διαδικασία και να διασφαλίσει ότι τηρούνται όλες οι συμφωνημένες προδιαγραφές.
+2. Εκπρόσωπος της Κατασκευαστικής Εταιρείας: Για την άμεση καταγραφή και τον συντονισμό τυχόν μικρών τεχνικών διορθώσεων.
+
+Η διαδικασία:
+
+Θα περάσουμε μαζί από όλους τους χώρους του διαμερίσματος. Αν εντοπιστούν σημεία που χρειάζονται τελική διόρθωση, θα καταγραφούν σε κοινή Λίστα Παρατηρήσεων, την οποία θα υπογράψουμε από κοινού. Η τεχνική ομάδα του εργολάβου θα προχωρήσει άμεσα στις απαραίτητες διορθώσεις, ώστε το διαμέρισμα να είναι σε άψογη κατάσταση για την τελική παράδοση.
+
+Παρακαλούμε επιβεβαιώστε τη διαθεσιμότητά σας απαντώντας σε αυτό το email.
+
+Με εκτίμηση,
+One Eleven`,
+    bodyWhatsappEl:
+      "Γεια σας {{first_name}}, οι εργασίες στο διαμέρισμά σας {{unit}} στο {{project}} ολοκληρώθηκαν και είναι έτοιμο για την Τελική Επιθεώρηση πριν από την παράδοση των κλειδιών. Απαντήστε μας με τις ημέρες και ώρες που σας εξυπηρετούν. One Eleven",
+    toClients: false,
+    toAgents: false,
+    toSubowners: false,
+    toBuyers: true,
+  },
+  {
+    key: "key_handover",
+    name: "Key handover",
+    description:
+      "To the buyer once the Snagging List is done: the invitation to the key handover, what they receive, the utilities to transfer and the Google review.",
+    subject: "Congratulations! Key Handover & Welcome to Your New Home | {{project}}",
+    body: `Dear {{title}} {{first_name}},
+
+We are delighted to inform you that all final works and adjustments recorded during our inspection have been successfully completed. Your apartment is now ready to welcome you!
+
+We invite you at the property for the official key handover. Please let us know your availability to arrange the appointment.
+
+What you will receive at the handover:
+
+1. Your Home Keys: The full set of keys for the main entrance, your apartment, and the common areas.
+2. Warranties & Manuals: All manufacturer warranties for appliances and systems (e.g., solar water heater, air conditioning, security door).
+3. Contact List: The phone numbers of our partners for the technical support (after sales service) we provide.
+
+Final Pending Matters:
+
+Please ensure that the utility transfer procedures (Electricity/Water) have been completed in your name, so that your home is fully operational from your very first day of move in.
+
+On behalf of One Eleven, we would like to thank you once again for the trust you have shown us over this journey. It has been our honor to bring your vision of a new home to life.
+
+We wish you every happiness in your new residence!
+
+If you are satisfied with your experience so far, we would greatly appreciate it if you could take a moment to share your feedback with us through a Google review. Your opinion is truly valuable and helps us continue to improve our services.
+https://share.google/fht7QRfYaGgnATSNa
+
+Kind Regards,
+One Eleven`,
+    bodyWhatsapp:
+      "Congratulations {{first_name}}! Your apartment {{unit}} at {{project}} is ready for the key handover. Please let us know your availability to arrange the appointment. One Eleven",
+    subjectEl: "Συγχαρητήρια! Παράδοση Κλειδιών & Καλώς Ήρθατε στο Νέο σας Σπίτι | {{project}}",
+    bodyEl: `Αγαπητέ/ή {{first_name}},
+
+Με μεγάλη χαρά σας ενημερώνουμε ότι όλες οι τελικές εργασίες και διορθώσεις που καταγράφηκαν κατά την επιθεώρηση ολοκληρώθηκαν με επιτυχία. Το διαμέρισμά σας είναι πλέον έτοιμο να σας υποδεχτεί!
+
+Σας προσκαλούμε στο ακίνητο για την επίσημη παράδοση των κλειδιών. Παρακαλούμε ενημερώστε μας για τη διαθεσιμότητά σας ώστε να κανονίσουμε το ραντεβού.
+
+Τι θα παραλάβετε κατά την παράδοση:
+
+1. Τα κλειδιά του σπιτιού σας: Το πλήρες σετ κλειδιών για την κεντρική είσοδο, το διαμέρισμά σας και τους κοινόχρηστους χώρους.
+2. Εγγυήσεις & Εγχειρίδια: Όλες τις εγγυήσεις των κατασκευαστών για τις συσκευές και τα συστήματα (π.χ. ηλιακό θερμοσίφωνα, κλιματισμό, πόρτα ασφαλείας).
+3. Κατάλογος Επαφών: Τα τηλέφωνα των συνεργατών μας για την τεχνική υποστήριξη (εξυπηρέτηση μετά την πώληση) που παρέχουμε.
+
+Τελευταίες εκκρεμότητες:
+
+Παρακαλούμε βεβαιωθείτε ότι οι διαδικασίες μεταφοράς των λογαριασμών (Ρεύμα/Νερό) στο όνομά σας έχουν ολοκληρωθεί, ώστε το σπίτι σας να λειτουργεί πλήρως από την πρώτη κιόλας ημέρα της μετακόμισης.
+
+Εκ μέρους της One Eleven, σας ευχαριστούμε ξανά για την εμπιστοσύνη που μας δείξατε σε όλη αυτή τη διαδρομή. Ήταν τιμή μας να κάνουμε πραγματικότητα το όραμά σας για ένα νέο σπίτι.
+
+Σας ευχόμαστε κάθε ευτυχία στη νέα σας κατοικία!
+
+Αν είστε ικανοποιημένοι από την εμπειρία σας μέχρι τώρα, θα το εκτιμούσαμε ιδιαίτερα αν αφιερώνατε λίγο χρόνο για να μοιραστείτε τη γνώμη σας μαζί μας με μια αξιολόγηση στο Google. Η γνώμη σας είναι πολύτιμη και μας βοηθά να βελτιώνουμε συνεχώς τις υπηρεσίες μας.
+https://share.google/fht7QRfYaGgnATSNa
+
+Με εκτίμηση,
+One Eleven`,
+    bodyWhatsappEl:
+      "Συγχαρητήρια {{first_name}}! Το διαμέρισμά σας {{unit}} στο {{project}} είναι έτοιμο για την παράδοση των κλειδιών. Ενημερώστε μας για τη διαθεσιμότητά σας ώστε να κανονίσουμε το ραντεβού. One Eleven",
+    toClients: false,
+    toAgents: false,
+    toSubowners: false,
+    toBuyers: true,
   },
 
   /* -------------------------------------------------------------------------

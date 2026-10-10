@@ -70,6 +70,7 @@ const SUBJECTS: Record<string, MessageKey> = {
   user: "act.entity.user",
   payment: "act.entity.payment",
   commission: "act.entity.commission",
+  partner: "act.entity.partner",
 };
 
 /** Where the record lives, when it has a page of its own. */
@@ -88,6 +89,8 @@ function addressOf(entity: string, entityId: string | null): string | null {
       return `/agents/${entityId}`;
     case "subowner":
       return `/subowners/${entityId}`;
+    case "partner":
+      return `/partners/${entityId}`;
     case "expense":
       return `/invoices/${entityId}`;
     case "campaign":

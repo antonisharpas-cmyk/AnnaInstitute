@@ -35,6 +35,8 @@ import { endRun, runOf, startRun, tickRun } from "@/lib/campaignProgress";
 /** The line that takes the files too big to attach to the recipient. */
 const FILES_LINE = "The brochures and drawings, too large to attach, are here:";
 import { idsOf } from "@/lib/campaignProjects";
+import { buyersOf, chosenBuyers } from "@/lib/campaignBuyers";
+import { titleWord } from "@/lib/titles";
 
 /**
  * What the campaign is about, from the form: "project:<id>", "unit:<id>" or nothing.
@@ -96,7 +98,8 @@ export async function createCampaign(formData: FormData) {
   const toAgents = String(formData.get("toAgents") ?? "") === "on";
   const toSubowners = String(formData.get("toSubowners") ?? "") === "on";
   const toLeads = String(formData.get("toLeads") ?? "") === "on";
-  if (!toClients && !toAgents && !toSubowners && !toLeads) {
+  const toBuyers = String(formData.get("toBuyers") ?? "") === "on";
+  if (!toClients && !toAgents && !toSubowners && !toLeads && !toBuyers) {
     throw new Error("Choose at least one group to send it to.");
   }
   const audience = toClients ? "CLIENTS_CONSENTED" : toAgents ? "AGENTS" : "SUBOWNERS";
@@ -106,6 +109,11 @@ export async function createCampaign(formData: FormData) {
       ? formData.getAll("leadIds").map(String).filter(Boolean)
       : [];
   const projectIds = formData.getAll("projectIds").map(String).filter(Boolean);
+  /* Every buyer of what it is about, or only the ones ticked. */
+  const buyerIds =
+    toBuyers && String(formData.get("buyerMode") ?? "all") === "chosen"
+      ? formData.getAll("buyerIds").map(String).filter(Boolean)
+      : [];
 
   const viaEmail = String(formData.get("viaEmail") ?? "") === "on";
   const viaWhatsapp = String(formData.get("viaWhatsapp") ?? "") === "on";
@@ -136,6 +144,8 @@ export async function createCampaign(formData: FormData) {
       toSubowners,
       toLeads,
       leadIds: leadIds.length > 0 ? JSON.stringify(leadIds) : null,
+      toBuyers,
+      buyerIds: buyerIds.length > 0 ? JSON.stringify(buyerIds) : null,
       projectIds: projectIds.length > 0 ? JSON.stringify(projectIds) : null,
       templateKey: String(formData.get("templateKey") ?? "") || null,
       subject: String(formData.get("subject") ?? "") || null,
@@ -192,6 +202,12 @@ export type CampaignGroups = {
   toLeads?: boolean;
   /** JSON list of the leads chosen by hand; empty is every lead. */
   leadIds?: string | null;
+  /** The buyers of what the campaign is about, every one or the ones chosen. */
+  toBuyers?: boolean;
+  buyerIds?: string | null;
+  aboutIds?: string | null;
+  projectId?: string | null;
+  unitId?: string | null;
   /** Older campaigns carried one audience rather than three flags. */
   audience?: "CLIENTS_CONSENTED" | "AGENTS" | "SUBOWNERS";
 };
@@ -211,13 +227,17 @@ export async function audienceFor(groups: CampaignGroups) {
   const people: {
     name: string;
     firstName: string;
+    /** "Mrs.", "Mr.", "Ms." or nothing, for {{title}}. */
+    title?: string;
+    /** This person's own {{unit}} and {{project}}, for a buyer. */
+    own?: Record<string, string>;
     email: string | null;
     phone: string | null;
     clientId: string | null;
     agentId: string | null;
     subownerId: string | null;
     leadId?: string | null;
-    group: "CLIENTS" | "AGENTS" | "SUBOWNERS" | "LEADS";
+    group: "CLIENTS" | "AGENTS" | "SUBOWNERS" | "LEADS" | "BUYERS";
     /** An agent's own choice of how campaigns reach them: EMAIL, WHATSAPP or BOTH. */
     agentChannel?: string;
   }[] = [];
@@ -239,6 +259,7 @@ export async function audienceFor(groups: CampaignGroups) {
       people.push({
         name: `${c.firstName} ${c.lastName}`.trim(),
         firstName: c.firstName,
+        title: titleWord(c.title),
         email: c.email,
         phone: c.phone,
         clientId: c.id,
@@ -323,6 +344,30 @@ export async function audienceFor(groups: CampaignGroups) {
         group: "LEADS",
       });
     }
+  }
+
+  if (groups.toBuyers) {
+    const buyers = chosenBuyers(
+      await buyersOf({ aboutIds: groups.aboutIds ?? null, projectId: groups.projectId ?? null, unitId: groups.unitId ?? null }),
+      groups.buyerIds,
+    );
+    for (const b of buyers) {
+      people.push({
+        name: b.name,
+        firstName: b.firstName,
+        title: b.title,
+        own: b.own,
+        email: b.email,
+        phone: b.phone,
+        clientId: b.clientId,
+        agentId: null,
+        subownerId: null,
+        group: "BUYERS",
+      });
+    }
+    /* A buyer who is also on the clients list gets the buyer's letter, with their own apartment in it. */
+    const asBuyer = new Set(buyers.map((one) => one.clientId));
+    return people.filter((one) => one.group !== "CLIENTS" || !one.clientId || !asBuyer.has(one.clientId));
   }
 
   return people;
@@ -501,7 +546,8 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
         continue;
       }
       if (key) reached.add(key);
-      const values = { ...recipient, priceListUrl: url, filesUrl: files, extras };
+      /* A buyer's letter names their own apartment and development. */
+      const values = { ...recipient, priceListUrl: url, filesUrl: files, extras: { ...extras, ...(recipient.own ?? {}) } };
       try {
         if (channel === "EMAIL") {
           await sendAndRecord({
@@ -510,6 +556,7 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
             recipient,
             subject: campaign.subject ? fillPlaceholders(campaign.subject, values) : null,
             body: fillPlaceholders(emailBody, values),
+            /* A letter to a buyer about their own home is a service letter, not marketing. */
             withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
             attachments: emailFiles.attached,
           });
@@ -519,6 +566,7 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
             channel: "WHATSAPP",
             recipient,
             body: fillPlaceholders(withFilesLink, values),
+            /* A letter to a buyer about their own home is a service letter, not marketing. */
             withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
           });
         }
@@ -585,6 +633,7 @@ export async function saveTemplate(templateId: string, formData: FormData) {
       toClients: String(formData.get("toClients") ?? "") === "on",
       toAgents: String(formData.get("toAgents") ?? "") === "on",
       toSubowners: String(formData.get("toSubowners") ?? "") === "on",
+      toBuyers: String(formData.get("toBuyers") ?? "") === "on",
       updatedAt: new Date(),
     })
     .where(eq(emailTemplates.id, templateId));

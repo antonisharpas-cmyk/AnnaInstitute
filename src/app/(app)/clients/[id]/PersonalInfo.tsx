@@ -6,9 +6,12 @@ import { updateClient } from "../actions";
 import SourceAgentFields from "@/components/SourceAgentFields";
 import DateField from "@/components/DateField";
 import { birthdayText } from "@/lib/buyers";
+import { TITLES, titleWord } from "@/lib/titles";
 
 export type ClientRecord = {
   id: string;
+  /** MR, MRS, MS or nothing. */
+  title?: string | null;
   firstName: string;
   lastName: string;
   email: string | null;
@@ -92,6 +95,8 @@ export default function PersonalInfo({
     cancel: string;
     name: string;
     surname: string;
+    salutation: string;
+    salutationNone: string;
     email: string;
     phone: string;
     idType: string;
@@ -136,6 +141,7 @@ export default function PersonalInfo({
           </button>
         </header>
         <div className="px-4 py-2">
+          <Row label={labels.salutation} value={titleWord(client.title)} />
           <Row label={labels.name} value={client.firstName} />
           <Row label={labels.surname} value={client.lastName} />
           <Row label={labels.email} value={client.email ?? ""} />
@@ -167,6 +173,19 @@ export default function PersonalInfo({
         </h2>
       </header>
       <form action={formAction} className="px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2 border-b border-brand-line py-2">
+          <label className="label !mb-0 w-44 shrink-0" htmlFor="title">
+            {labels.salutation}
+          </label>
+          <select id="title" name="title" defaultValue={client.title ?? ""} className="select max-w-[12rem] flex-1">
+            <option value="">{labels.salutationNone}</option>
+            {TITLES.map((one) => (
+              <option key={one} value={one}>
+                {titleWord(one)}
+              </option>
+            ))}
+          </select>
+        </div>
         <Field label={labels.name} name="firstName" defaultValue={client.firstName} required />
         <Field label={labels.surname} name="lastName" defaultValue={client.lastName} required />
         <Field label={labels.email} name="email" type="email" defaultValue={client.email ?? ""} />

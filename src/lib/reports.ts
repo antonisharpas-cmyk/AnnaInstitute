@@ -252,7 +252,7 @@ export async function salesByProject(only: string[] | null = null) {
       total: sql<number>`count(${units.id})::int`,
       sold: sql<number>`count(*) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
       reserved: sql<number>`count(*) filter (where ${units.status} = 'RESERVED')::int`,
-      available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
+      available: sql<number>`count(*) filter (where ${units.status} in ('AVAILABLE','NEGOTIATION'))::int`,
       listValue: sql<string>`coalesce(sum(${units.netPrice}), 0)`,
       soldList: sql<string>`coalesce(sum(${units.netPrice}) filter (where ${units.status} in ('SOLD','DELIVERED')), 0)`,
       area: sql<string>`coalesce(sum(${units.coveredArea}), 0)`,
@@ -839,8 +839,8 @@ export async function headline(range: Range, only: string[] | null = null) {
       .select({
         total: sql<number>`count(*)::int`,
         sold: sql<number>`count(*) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
-        available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
-        availableValue: sql<string>`coalesce(sum(${units.netPrice}) filter (where ${units.status} = 'AVAILABLE'), 0)`,
+        available: sql<number>`count(*) filter (where ${units.status} in ('AVAILABLE','NEGOTIATION'))::int`,
+        availableValue: sql<string>`coalesce(sum(${units.netPrice}) filter (where ${units.status} in ('AVAILABLE','NEGOTIATION')), 0)`,
       })
       .from(units)
       .where(onlyProjects(only)),

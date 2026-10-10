@@ -16,9 +16,13 @@ export type TemplateChoice = {
   toAgents: boolean;
   toSubowners: boolean;
   toLeads?: boolean;
+  toBuyers?: boolean;
 };
 
 export type GroupCounts = { clients: number; agents: number; subowners: number; leads?: number };
+
+/** A buyer, with the developments and apartments they hold as "project:<id>" and "unit:<id>". */
+export type BuyerChoice = { id: string; label: string; hint: string; about: string[] };
 
 /**
  * Writing a campaign.
@@ -43,8 +47,11 @@ export default function CampaignForm({
   projectChoices = [],
   projectsDefault = [],
   leadsDefault = [],
+  buyerChoices = [],
   labels,
 }: {
+  /** Every buyer, to tick one by one; the list follows what the campaign is about. */
+  buyerChoices?: BuyerChoice[];
   /** Leads already chosen, when the campaign was started from one. */
   leadsDefault?: string[];
   /** Every open lead, to tick one by one. */
@@ -61,7 +68,7 @@ export default function CampaignForm({
   counts: GroupCounts;
   /** How many agents want campaigns by email, by WhatsApp, or both ways. */
   agentWays?: { email: number; whatsapp: number; both: number };
-  groups: { clients: boolean; agents: boolean; subowners: boolean; leads?: boolean };
+  groups: { clients: boolean; agents: boolean; subowners: boolean; leads?: boolean; buyers?: boolean };
   priceLists: { id: string; label: string }[];
   labels: Record<string, string>;
 }) {
@@ -80,6 +87,10 @@ export default function CampaignForm({
   const [chosenLeads, setChosenLeads] = useState<string[]>(leadsDefault);
   const [leadTerm, setLeadTerm] = useState("");
   const [shownProjects, setShownProjects] = useState<string[]>(projectsDefault);
+  const [toBuyers, setToBuyers] = useState(picked ? Boolean(picked.toBuyers) : Boolean(groups.buyers));
+  const [buyerMode, setBuyerMode] = useState<"all" | "chosen">("all");
+  const [chosenBuyers, setChosenBuyers] = useState<string[]>([]);
+  const [buyerTerm, setBuyerTerm] = useState("");
 
   const [viaEmail, setViaEmail] = useState(true);
   const [viaWhatsapp, setViaWhatsapp] = useState(Boolean(picked?.bodyWhatsapp));
@@ -93,8 +104,11 @@ export default function CampaignForm({
   const words = `${viaEmail ? `${subject} ${body}` : ""} ${viaWhatsapp ? whatsapp : ""}`;
   const needsProject = /\{\{\s*(project|location|details|completion)\s*\}\}/i.test(words);
   const needsUnit = /\{\{\s*(unit|price)\s*\}\}/i.test(words);
-  const aboutWarning =
-    needsUnit && !aboutValues.some((one) => one.startsWith("unit:"))
+  /* A letter to the buyers takes each buyer's own apartment and development. */
+  const ownPlaces = toBuyers && !toClients && !toAgents && !toSubowners && !toLeads;
+  const aboutWarning = ownPlaces
+    ? ""
+    : needsUnit && !aboutValues.some((one) => one.startsWith("unit:"))
       ? labels.aboutNeedsUnit
       : needsProject && aboutValues.length === 0
         ? labels.aboutNeedsProject
@@ -111,6 +125,7 @@ export default function CampaignForm({
     setToAgents(template.toAgents);
     setToSubowners(template.toSubowners);
     setToLeads(Boolean(template.toLeads));
+    setToBuyers(Boolean(template.toBuyers));
   };
 
   /* A message that shows developments needs at least one ticked. */
@@ -122,7 +137,21 @@ export default function CampaignForm({
   const toggle = (list: string[], id: string, on: boolean) =>
     on ? [...new Set([...list, id])] : list.filter((one) => one !== id);
 
+  /* The buyers of what the campaign is about: all of them when it is about nothing yet. */
+  const buyersInScope = buyerChoices.filter(
+    (one) => aboutValues.length === 0 || one.about.some((value) => aboutValues.includes(value)),
+  );
+  const buyerWords = buyerTerm.toLowerCase().split(/\s+/).filter(Boolean);
+  const buyersShown = buyersInScope.filter((one) =>
+    buyerWords.every((word) => `${one.label} ${one.hint}`.toLowerCase().includes(word)),
+  );
+  const buyersReach =
+    buyerMode === "chosen" && chosenBuyers.length > 0
+      ? buyersInScope.filter((one) => chosenBuyers.includes(one.id)).length
+      : buyersInScope.length;
+
   const reach =
+    (toBuyers ? buyersReach : 0) +
     (toClients ? counts.clients : 0) +
     (toAgents ? counts.agents : 0) +
     (toSubowners ? counts.subowners : 0) +
@@ -239,7 +268,81 @@ export default function CampaignForm({
               {labels.groupLeads} <span className="text-brand-graphite/60">({counts.leads ?? 0})</span>
             </span>
           </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="toBuyers"
+              checked={toBuyers}
+              onChange={(event) => setToBuyers(event.target.checked)}
+            />
+            <span>
+              {labels.groupBuyers} <span className="text-brand-graphite/60">({buyersInScope.length})</span>
+            </span>
+          </label>
         </div>
+
+        {/* The buyers of what the campaign is about, every one or only the ones ticked. */}
+        {toBuyers ? (
+          <div className="mt-3 rounded border border-brand-line bg-brand-surface p-3" data-buyer-picker>
+            <p className="mb-2 text-xs text-brand-graphite/70">{labels.buyersNote}</p>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="radio" name="buyerMode" value="all" checked={buyerMode === "all"} onChange={() => setBuyerMode("all")} />
+                {labels.buyersAll} ({buyersInScope.length})
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="buyerMode"
+                  value="chosen"
+                  checked={buyerMode === "chosen"}
+                  onChange={() => setBuyerMode("chosen")}
+                />
+                {labels.buyersChosen}
+                {buyerMode === "chosen" ? (
+                  <span className="text-xs text-brand-graphite/60">
+                    ({buyersReach} {labels.leadsPicked})
+                  </span>
+                ) : null}
+              </label>
+            </div>
+            {buyersInScope.length === 0 ? (
+              <p className="mt-2 text-xs font-semibold text-[color:var(--color-negative)]">{labels.buyersNone}</p>
+            ) : null}
+            {buyerMode === "chosen" ? (
+              <>
+                <input
+                  value={buyerTerm}
+                  onChange={(event) => setBuyerTerm(event.target.value)}
+                  placeholder={labels.leadsSearch}
+                  className="input mt-2"
+                  data-buyer-search
+                />
+                <ul className="mt-2 max-h-56 overflow-y-auto rounded border border-brand-line bg-white text-sm">
+                  {buyersShown.map((one) => (
+                    <li key={one.id} className="border-b border-brand-line last:border-0">
+                      <label className="flex cursor-pointer items-center gap-2 px-2 py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={chosenBuyers.includes(one.id)}
+                          onChange={(event) => setChosenBuyers(toggle(chosenBuyers, one.id, event.target.checked))}
+                          data-buyer={one.label}
+                        />
+                        <span className="font-medium">{one.label}</span>
+                        <span className="text-xs text-brand-graphite/60">{one.hint}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                {chosenBuyers
+                  .filter((id) => buyersInScope.some((one) => one.id === id))
+                  .map((id) => (
+                    <input key={id} type="hidden" name="buyerIds" value={id} />
+                  ))}
+              </>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Every enquiry, or only the ones ticked here. */}
         {toLeads ? (

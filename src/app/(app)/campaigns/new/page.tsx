@@ -7,6 +7,7 @@ import { detailsForProject, detailsForUnit, listTemplates } from "@/lib/template
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import CampaignForm, { type TemplateChoice } from "../CampaignForm";
 import { audienceFor, createCampaign } from "../actions";
+import { buyerChoices } from "@/lib/campaignBuyers";
 
 /**
  * A new campaign.
@@ -23,10 +24,11 @@ export default async function NewCampaignPage({
   const params = await searchParams;
   const { locale, t } = await getTranslator();
 
-  const [links, everyone, templates] = await Promise.all([
+  const [links, everyone, templates, buyers] = await Promise.all([
     activePriceListLinks(),
     audienceFor({ toClients: true, toAgents: true, toSubowners: true, toLeads: true }),
     listTemplates(),
+    buyerChoices(),
   ]);
 
   /* What a campaign can be about: a development, or one apartment in it. */
@@ -93,13 +95,15 @@ export default async function NewCampaignPage({
     toAgents: template.toAgents,
     toSubowners: template.toSubowners,
     toLeads: template.toLeads,
+    toBuyers: template.toBuyers,
   }));
 
   const groups = {
-    clients: params.audience !== "AGENTS" && params.audience !== "SUBOWNERS" && params.audience !== "LEADS",
+    clients: params.audience !== "AGENTS" && params.audience !== "SUBOWNERS" && params.audience !== "LEADS" && params.audience !== "BUYERS",
     agents: params.audience === "AGENTS",
     subowners: params.audience === "SUBOWNERS",
     leads: params.audience === "LEADS",
+    buyers: params.audience === "BUYERS",
   };
 
   return (
@@ -128,6 +132,7 @@ export default async function NewCampaignPage({
             about={about}
             aboutDefault={aboutDefault}
             leadChoices={leadChoices}
+            buyerChoices={buyers}
             projectChoices={projectRows}
             projectsDefault={params.project ? [params.project] : []}
             leadsDefault={(params.leads ?? "").split(",").filter(Boolean)}
@@ -151,6 +156,11 @@ export default async function NewCampaignPage({
               groupAgents: t("campaigns.groupAgents"),
               groupSubowners: t("campaigns.groupSubowners"),
               groupLeads: t("campaigns.groupLeads"),
+              groupBuyers: t("campaigns.groupBuyers"),
+              buyersAll: t("campaigns.buyersAll"),
+              buyersChosen: t("campaigns.buyersChosen"),
+              buyersNote: t("campaigns.buyersNote"),
+              buyersNone: t("campaigns.buyersNone"),
               leadsAll: t("campaigns.leadsAll"),
               leadsChosen: t("campaigns.leadsChosen"),
               leadsSearch: t("campaigns.leadsSearch"),

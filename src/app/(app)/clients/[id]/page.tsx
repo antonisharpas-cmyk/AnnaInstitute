@@ -61,7 +61,13 @@ const day = (value: Date | null | undefined, locale: string) =>
   value ? new Date(value).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB") : "";
 
 const statusTone = (status: string) =>
-  status === "SOLD" || status === "DELIVERED" ? "good" : status === "RESERVED" ? "warn" : "neutral";
+  status === "SOLD" || status === "DELIVERED"
+    ? "good"
+    : status === "RESERVED"
+      ? "warn"
+      : status === "NEGOTIATION"
+        ? "teal"
+        : "neutral";
 
 /** The six kinds, in the order the office listed them. */
 
@@ -355,6 +361,7 @@ export default async function ClientPage({
         <PersonalInfo
           client={{
             id: client.id,
+            title: client.title,
             firstName: client.firstName,
             lastName: client.lastName,
             email: client.email,
@@ -382,6 +389,8 @@ export default async function ClientPage({
             cancel: t("common.cancel"),
             name: t("common.name"),
             surname: t("common.surname"),
+            salutation: t("clients.salutation"),
+            salutationNone: t("clients.salutationNone"),
             email: t("common.email"),
             phone: t("common.phone"),
             idType: t("clients.idType"),
@@ -575,8 +584,9 @@ export default async function ClientPage({
                     id="assignStatus"
                     name="status"
                     className="select"
-                    defaultValue="RESERVED"
+                    defaultValue="NEGOTIATION"
                   >
+                    <option value="NEGOTIATION">{t("units.status.NEGOTIATION")}</option>
                     <option value="RESERVED">{t("units.status.RESERVED")}</option>
                     <option value="SOLD">{t("units.status.SOLD")}</option>
                     <option value="DELIVERED">{t("units.status.DELIVERED")}</option>
@@ -648,7 +658,7 @@ export default async function ClientPage({
                       </td>
                       <td className="ctr">{formatAmount(toCents(a.netPrice), locale)}</td>
                       <td className="ctr">
-                        <Pill tone={statusTone(a.status) as "good" | "warn" | "neutral"}>
+                        <Pill tone={statusTone(a.status) as "good" | "warn" | "teal" | "neutral"}>
                           {t(`units.status.${shownCode(a.status, a.statusChoice)}` as MessageKey)}
                         </Pill>
                       </td>

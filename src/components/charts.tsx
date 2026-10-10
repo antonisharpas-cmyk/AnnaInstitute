@@ -20,6 +20,7 @@ export const SERIES = {
   secondary: "#C4671F",
   third: "#6C5BAA",
   fourth: "#2E8B57",
+  fifth: "#B8901E",
   /** A plain grey, for a reference line rather than a series of its own. */
   muted: "var(--chart-muted)",
 } as const;

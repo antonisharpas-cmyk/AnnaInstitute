@@ -33,7 +33,7 @@ import { letTheApartmentsDecide } from "../actions";
 const PER_PAGE = 25;
 
 const statusTone = (status: string) =>
-  status === "AVAILABLE" ? "good" : status === "RESERVED" ? "warn" : "neutral";
+  status === "AVAILABLE" ? "good" : status === "NEGOTIATION" ? "teal" : status === "RESERVED" ? "warn" : "neutral";
 
 const area = (value: string | null) => (value ? `${Number(value)} m2` : "");
 
@@ -119,7 +119,9 @@ export default async function ProjectPage({
     db
       .select({
         count: sql<number>`count(*)::int`,
-        available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
+        /* Still offered to buyers: available, and those in negotiation. */
+        available: sql<number>`count(*) filter (where ${units.status} in ('AVAILABLE','NEGOTIATION'))::int`,
+        negotiation: sql<number>`count(*) filter (where ${units.status} = 'NEGOTIATION')::int`,
         reserved: sql<number>`count(*) filter (where ${units.status} = 'RESERVED')::int`,
         sold: sql<number>`count(*) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
         totalValue: sql<string>`coalesce(sum(${units.netPrice}), 0)`,
@@ -176,8 +178,8 @@ export default async function ProjectPage({
           hint={`${totals?.sold ?? 0} ${t("dash.sold").toLowerCase()}, ${
             totals?.available ?? 0
           } ${t("dash.available").toLowerCase()}${
-            (totals?.reserved ?? 0) > 0 ? `, ${totals?.reserved} reserved` : ""
-          }`}
+            (totals?.negotiation ?? 0) > 0 ? ` (${totals?.negotiation} ${t("units.inNegotiation")})` : ""
+          }${(totals?.reserved ?? 0) > 0 ? `, ${totals?.reserved} ${t("units.status.RESERVED").toLowerCase()}` : ""}`}
         />
         <Stat
           label={t("projects.totalAmount")}
@@ -428,7 +430,7 @@ export default async function ProjectPage({
                           {formatAmount(toCents(u.netPrice), locale)}
                         </td>
                         <td className="ctr">
-                          <Pill tone={statusTone(u.status) as "good" | "warn" | "neutral"}>
+                          <Pill tone={statusTone(u.status) as "good" | "warn" | "teal" | "neutral"}>
                             {t(`units.status.${shownCode(u.status, u.statusChoice)}` as MessageKey)}
                           </Pill>
                           {u.statusByHandAt ? (

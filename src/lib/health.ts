@@ -368,6 +368,36 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the words for a contract payment made some other way",
     migration: "0053",
   },
+  {
+    probe: "select category from partners limit 1",
+    what: "the partners table",
+    migration: "0054",
+  },
+  {
+    probe: "select 'NEGOTIATION'::unit_status",
+    what: "the Negotiation status for apartments",
+    migration: "0055",
+  },
+  {
+    probe: "select title from clients limit 1",
+    what: "the Mr, Mrs or Ms of a client",
+    migration: "0056",
+  },
+  {
+    probe: "select to_buyers, buyer_ids from campaigns limit 1",
+    what: "campaigns to the buyers",
+    migration: "0056",
+  },
+  {
+    probe: "select to_buyers from email_templates limit 1",
+    what: "ready messages for the buyers",
+    migration: "0056",
+  },
+  {
+    probe: "select location_url from partners limit 1",
+    what: "the location of a partner",
+    migration: "0056",
+  },
 ];
 
 let answer: Missing[] | null = null;

@@ -117,6 +117,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/agents", label: t("nav.agents"), group: "network" },
     { href: "/subowners", label: t("nav.subowners"), group: "network" },
     { href: "/constructors", label: t("nav.constructors"), group: "network" },
+    { href: "/partners", label: t("nav.partners"), group: "network" },
     { href: "/campaigns", label: t("nav.campaigns"), group: "marketing" },
     {
       href: "/emails",
@@ -155,6 +156,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/campaigns/new", label: t("shell.newCampaign") },
     { href: "/agents/new", label: t("shell.newAgent") },
     { href: "/subowners/new", label: t("shell.newPartner") },
+    { href: "/partners/new", label: t("shell.newPartnerContact") },
   ];
 
   const alerts: Alert[] = (
@@ -225,6 +227,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             leads: t("nav.leads"),
             agents: t("nav.agents"),
             subowners: t("nav.subowners"),
+            partners: t("nav.partners"),
             invoices: t("nav.invoices"),
           },
           quickAdd: t("shell.quickAdd"),

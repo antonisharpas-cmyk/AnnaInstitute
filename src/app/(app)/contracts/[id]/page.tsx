@@ -401,7 +401,9 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                             tone={
                               row.unit.status === "AVAILABLE"
                                 ? "good"
-                                : row.unit.status === "RESERVED"
+                                : row.unit.status === "NEGOTIATION"
+                                  ? "teal"
+                                  : row.unit.status === "RESERVED"
                                   ? "warn"
                                   : "neutral"
                             }
