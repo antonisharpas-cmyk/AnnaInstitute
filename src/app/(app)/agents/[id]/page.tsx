@@ -14,6 +14,7 @@ import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
 import DateField from "@/components/DateField";
 import { birthdayText } from "@/lib/buyers";
+import { TITLES, titleWord } from "@/lib/titles";
 import ProfileCard from "@/components/ProfileCard";
 import DeleteRecord from "@/components/DeleteRecord";
 import { whatGoesWithAgent } from "@/lib/deletes";
@@ -108,6 +109,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
             action={saveAgentProfile.bind(null, id)}
             labels={{ edit: t("common.edit"), save: t("common.save"), cancel: t("common.cancel") }}
             fields={[
+              {
+                name: "title",
+                label: t("clients.salutation"),
+                value: agent.title ?? "",
+                display: titleWord(agent.title),
+                kind: "select",
+                options: [{ value: "", label: t("clients.salutationNone") }, ...TITLES.map((one) => ({ value: one, label: titleWord(one) }))],
+              },
               { name: "name", label: t("common.name"), value: agent.name, required: true },
               { name: "company", label: t("subowners.company"), value: agent.company ?? "" },
               { name: "email", label: t("leads.email"), value: agent.email ?? "", kind: "email" },

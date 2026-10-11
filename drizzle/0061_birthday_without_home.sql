@@ -1,0 +1,2 @@
+-- The birthday wishes no longer mention the home. Only the exact words are taken out.
+UPDATE "email_templates" SET "body" = replace(replace("body", 'with the people you love, and in your home.', 'with the people you love.'), 'με τους ανθρώπους σας, στο σπίτι σας.', 'με τους ανθρώπους σας.'), "body_el" = replace("body_el", 'με τους ανθρώπους σας, στο σπίτι σας.', 'με τους ανθρώπους σας.'), "updated_at" = now() WHERE "key" = 'birthday';

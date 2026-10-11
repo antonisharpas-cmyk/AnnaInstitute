@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { removeDocument, storeDocument } from "@/lib/uploads";
-import { sendWaitingFor } from "@/lib/automaticEmails";
+import { sendWaitingFor, welcomeAfterSale } from "@/lib/automaticEmails";
 import { followTheMoney } from "@/lib/statuses";
 import {
   afterSigned,
@@ -193,6 +193,8 @@ export async function uploadPaperSigned(contractId: string, rawKind: string, for
   /* The letter for the money that was waiting for it goes now, with it. */
   await sendWaitingFor(contractId);
   const alone = await afterSigned(contractId, kind);
+  /* The Contract of Sale signed after its receipt went: the welcome goes now. */
+  if (kind === "SALE") await welcomeAfterSale(contractId);
   await flash(alone ? `${alone.ok ? "said.paperSignedSent" : "said.paperNotSent"}|${alone.said}` : "said.paperSigned", alone && !alone.ok ? "bad" : "good");
   refresh(contractId, row.contract.clientId);
 }

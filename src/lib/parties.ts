@@ -5,6 +5,7 @@ import { agents, clients, constructors, subownerDirectors, subowners, teamMember
 import { companyDetails, issuerDetails, ONE_ELEVEN } from "@/lib/issuer";
 import type { IssuedSnapshot } from "@/lib/paymentPdf";
 import type { Recipient } from "@/lib/messaging";
+import { titleWord } from "@/lib/titles";
 
 /*
  * Who is on the other side of an invoice under Company.
@@ -37,6 +38,9 @@ const norm = (value: string | null | undefined) =>
     .replace(/[^a-z0-9α-ω]+/g, " ")
     .replace(/\b(ltd|limited|llc|plc)\b/g, "")
     .trim();
+
+/** The first name of a person's name: "Maria" of "Maria Georgiou". */
+const firstOf = (value: string | null | undefined) => (value ?? "").trim().split(/\s+/)[0] ?? "";
 
 /** A company's first director's address, when the company has none of its own. */
 async function companyEmail(companyId: string, own: string | null): Promise<string> {
@@ -125,6 +129,8 @@ export type Party = {
   name: string;
   /** Who the letter starts with: the contact person when there is one. */
   dear: string;
+  /** "Mrs. Maria" for a person, with their title and first name; a company with nobody named stays its name. */
+  greeting: string;
   email: string;
   phone: string;
   /** As the paper prints it under "Bill to" or "Received from". */
@@ -170,6 +176,7 @@ export async function partyOf(expense: {
         id,
         name,
         dear: one.contactName?.trim() || name,
+        greeting: one.contactName?.trim() ? firstOf(one.contactName) : name,
         email,
         phone: one.phone ?? "",
         bill: blank(name, {
@@ -194,6 +201,7 @@ export async function partyOf(expense: {
         id,
         name,
         dear: name,
+        greeting: `${titleWord(one.title)} ${one.firstName ?? name}`.trim(),
         email,
         phone: one.phone ?? "",
         bill: blank(name, {
@@ -218,6 +226,7 @@ export async function partyOf(expense: {
         id,
         name,
         dear: one.name,
+        greeting: `${titleWord(one.title)} ${firstOf(one.name)}`.trim(),
         email,
         phone: one.phone ?? "",
         bill: blank(name, {
@@ -242,6 +251,7 @@ export async function partyOf(expense: {
         id,
         name,
         dear: one.contactName?.trim() || name,
+        greeting: one.contactName?.trim() ? firstOf(one.contactName) : name,
         email,
         phone: one.phone ?? "",
         bill: blank(name, {
@@ -264,6 +274,7 @@ export async function partyOf(expense: {
         id,
         name: one.name,
         dear: one.name,
+        greeting: firstOf(one.name),
         email,
         phone: one.phone ?? "",
         bill: blank(one.name, { email, phone: one.phone ?? "" }),
@@ -278,6 +289,7 @@ export async function partyOf(expense: {
     id: null,
     name,
     dear: name,
+    greeting: name,
     email: typedEmail,
     phone: "",
     bill: blank(name, { address: expense.partyAddress ?? "", email: typedEmail }),

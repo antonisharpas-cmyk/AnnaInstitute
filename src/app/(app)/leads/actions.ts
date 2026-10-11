@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { letterToAgent } from "@/lib/automaticEmails";
+import { letterToAgent, sendLeadReminder } from "@/lib/automaticEmails";
 import { redirect } from "next/navigation";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -447,9 +447,6 @@ async function makeClient(
     userId: who.id,
     userEmail: who.email,
   });
-
-  /* Their agent hears that the potential client is now a client. */
-  if (lead.agentId) await letterToAgent("client", inserted[0].id);
 
   revalidatePath("/leads");
   revalidatePath("/clients");
@@ -1053,4 +1050,20 @@ export async function saveLeadDetails(
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/leads");
   return { ok: true };
+}
+
+/** The reminder email to a lead, sent now, from the button on the lead's page. */
+export async function remindLead(leadId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const result = await sendLeadReminder(leadId);
+  await recordAudit({
+    action: "lead.reminder",
+    entity: "lead",
+    entityId: leadId,
+    detail: result.said,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(`${result.ok ? "said.reminderSent" : "said.reminderNotSent"}|${result.said}`, result.ok ? "good" : "bad");
+  revalidatePath(`/leads/${leadId}`);
 }

@@ -502,15 +502,6 @@ export default async function ProjectPage({
                             >
                               {t("common.edit")}
                             </Link>
-                            <Link
-                              href={`/campaigns/new?template=new_property&unit=${u.id}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              title={t("campaigns.announceNote")}
-                              className="btn btn-secondary !px-3 !py-1 !text-xs"
-                            >
-                              {t("campaigns.announce")}
-                            </Link>
                           </div>
                         </td>
                       </tr>

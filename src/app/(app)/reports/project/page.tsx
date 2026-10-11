@@ -1,33 +1,21 @@
-import { asc, desc, eq, and } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLogs, projects } from "@/db/schema";
+import { projects } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { requireUser } from "@/lib/auth";
-import { projectReportData, reportRecipients } from "@/lib/projectReport";
+import { projectReportData } from "@/lib/projectReport";
 import { BackLink, Card, PageHeader } from "@/components/ui";
-import ReportSender from "./ReportSender";
 
-/** A development's status, as a PDF for its shareholders. */
+/** A development's status, as a PDF to look at or download. The office sends it itself. */
 export const dynamic = "force-dynamic";
 
 export default async function ProjectReportPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   await requireUser(["ADMIN"]);
   const params = await searchParams;
-  const { locale, t } = await getTranslator();
+  const { t } = await getTranslator();
   const list = await db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name));
   const projectId = params.project && list.some((one) => one.id === params.project) ? params.project : (list[0]?.id ?? "");
-  const [data, people, history] = projectId
-    ? await Promise.all([
-        projectReportData(projectId),
-        reportRecipients(projectId),
-        db
-          .select({ detail: auditLogs.detail, at: auditLogs.createdAt })
-          .from(auditLogs)
-          .where(and(eq(auditLogs.action, "project.report"), eq(auditLogs.entityId, projectId)))
-          .orderBy(desc(auditLogs.createdAt))
-          .limit(6),
-      ])
-    : [null, [], []];
+  const data = projectId ? await projectReportData(projectId) : null;
 
   return (
     <>
@@ -69,35 +57,7 @@ export default async function ProjectReportPage({ searchParams }: { searchParams
                 {t("projectReport.download")}
               </a>
             </div>
-            <ReportSender
-              key={projectId}
-              projectId={projectId}
-              people={people}
-              labels={{
-                who: t("projectReport.who"),
-                none: t("projectReport.noShareholders"),
-                noEmail: t("projectReport.noEmail"),
-                extra: t("projectReport.extra"),
-                extraHint: t("projectReport.extraHint"),
-                note: t("projectReport.note2"),
-                send: t("projectReport.send"),
-                sending: t("projectReport.sending"),
-                preview: t("projectReport.preview"),
-              }}
-            />
           </Card>
-          {history.length > 0 ? (
-            <Card title={t("projectReport.sent")}>
-              <ul className="divide-y divide-brand-line text-sm" data-report-history>
-                {history.map((one, i) => (
-                  <li key={i} className="py-2">
-                    <span className="font-semibold">{new Date(one.at).toLocaleString(locale === "el" ? "el-GR" : "en-GB")}</span>
-                    <span className="text-brand-graphite/70"> . {one.detail}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ) : null}
         </div>
       ) : null}
     </>

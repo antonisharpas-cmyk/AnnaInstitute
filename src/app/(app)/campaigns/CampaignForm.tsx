@@ -102,7 +102,7 @@ export default function CampaignForm({
    * form, before saving, rather than found in a client's inbox.
    */
   const words = `${viaEmail ? `${subject} ${body}` : ""} ${viaWhatsapp ? whatsapp : ""}`;
-  const needsProject = /\{\{\s*(project|location|details|completion)\s*\}\}/i.test(words);
+  const needsProject = /\{\{\s*(project|location|details|completion|residences)\s*\}\}/i.test(words);
   const needsUnit = /\{\{\s*(unit|price)\s*\}\}/i.test(words);
   /* A letter to the buyers takes each buyer's own apartment and development. */
   const ownPlaces = toBuyers && !toClients && !toAgents && !toSubowners && !toLeads;

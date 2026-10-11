@@ -335,6 +335,7 @@ export async function voidIncomeReceipt(issuedDocumentId: string | null, reason:
  */
 export function partnerLetter(v: {
   number: string;
+  /** "Mrs. Maria", or the company's name when nobody there is named. */
   dear: string;
   what: string;
   project: string;
@@ -346,24 +347,19 @@ export function partnerLetter(v: {
   /** The lines, each with its amount, when there is more than one. */
   lines?: string[];
 }): { subject: string; body: string } {
+  /* Short, as the office asked: the amounts and the dates are on the invoice itself. */
   return {
     subject: `Invoice ${v.number} from ${v.from || "One Eleven"}: ${v.what}`,
     body: [
       `Dear ${v.dear},`,
       "",
-      `Please find attached invoice ${v.number} for ${v.what}${v.project ? `, ${v.project}` : ""}.`,
+      `Please find attached invoice ${v.number} for ${v.what}.`,
       "",
-      ...(v.lines && v.lines.length > 1 ? [...v.lines, ""] : []),
-      `Amount before VAT: ${v.net}`,
-      `VAT: ${v.vat}`,
-      `Total: ${v.total}`,
-      v.due ? `Due by: ${v.due}` : "",
+      "Have a lovely day!",
       "",
       "Kind regards,",
       v.from || "One Eleven",
-    ]
-      .filter((line, i, all) => line !== "" || all[i - 1] !== "")
-      .join("\n"),
+    ].join("\n"),
   };
 }
 
@@ -453,7 +449,7 @@ export async function emailCompanyInvoice(expenseId: string): Promise<Emailed> {
     const attachment = paper ? files.find((one) => one.filename === (paper.originalName || `${paper.title}.pdf`)) : null;
     const letter = partnerLetter({
       number: expense.reference ?? "",
-      dear: party.dear,
+      dear: party.greeting,
       what: expense.description?.trim() || label,
       project: developments,
       net: money(expense.netAmount),

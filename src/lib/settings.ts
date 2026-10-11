@@ -67,6 +67,8 @@ export const DEFAULTS = {
 
   /** Where the month's papers go: the accountant, and anybody copied, commas between. */
   "accountant.email": "",
+  /* From when the invoice reminders count: invoices sent before it are never chased by themselves. */
+  "invoiceReminders.since": "",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

@@ -398,6 +398,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the location of a partner",
     migration: "0056",
   },
+  {
+    probe: "select title from agents limit 1",
+    what: "the Mr, Mrs or Ms of an agent",
+    migration: "0059",
+  },
 ];
 
 let answer: Missing[] | null = null;

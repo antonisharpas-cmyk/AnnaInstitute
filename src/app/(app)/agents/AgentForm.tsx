@@ -2,10 +2,12 @@ import Link from "next/link";
 import type { MessageKey } from "@/i18n";
 import SubmitButton from "@/components/SubmitButton";
 import DateField from "@/components/DateField";
+import { TITLES, titleWord } from "@/lib/titles";
 
 type AgentRecord = {
   id: string;
   name: string;
+  title?: string | null;
   company: string | null;
   email: string | null;
   phone: string | null;
@@ -30,6 +32,19 @@ export default function AgentForm({
   return (
     <form action={action} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2 sm:max-w-[12rem]">
+          <label className="label" htmlFor="title">
+            {t("clients.salutation")}
+          </label>
+          <select id="title" name="title" className="select" defaultValue={agent?.title ?? ""}>
+            <option value="">{t("clients.salutationNone")}</option>
+            {TITLES.map((one) => (
+              <option key={one} value={one}>
+                {titleWord(one)}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="label" htmlFor="name">
             {t("common.name")}

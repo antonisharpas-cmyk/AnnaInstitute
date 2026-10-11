@@ -23,6 +23,7 @@ import { fromCents, toCents } from "@/lib/money";
 import { recalculateCommission, refreshCommissionPapers } from "@/lib/commissions";
 import { whatGoesWithAgent } from "@/lib/deletes";
 import { letterForCommission } from "@/lib/automaticEmails";
+import { titleFrom } from "@/lib/titles";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
 
 const agentSchema = z.object({
@@ -69,6 +70,7 @@ export async function createAgent(formData: FormData) {
     .insert(agents)
     .values({
       name: parsed.name,
+      title: titleFrom(formData.get("title")),
       company: parsed.company,
       email: parsed.email || null,
       phone: parsed.phone,
@@ -125,6 +127,7 @@ export async function saveAgentProfile(
     .update(agents)
     .set({
       name,
+      ...(formData.has("title") ? { title: titleFrom(formData.get("title")) } : {}),
       company: String(formData.get("company") ?? "").trim() || null,
       email: String(formData.get("email") ?? "").trim() || null,
       phone: String(formData.get("phone") ?? "").trim() || null,
@@ -174,6 +177,7 @@ export async function updateAgent(agentId: string, formData: FormData) {
     .update(agents)
     .set({
       name: parsed.name,
+      ...(formData.has("title") ? { title: titleFrom(formData.get("title")) } : {}),
       company: parsed.company ?? null,
       email: parsed.email || null,
       phone: parsed.phone ?? null,

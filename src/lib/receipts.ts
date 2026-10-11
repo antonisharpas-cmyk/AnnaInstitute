@@ -28,6 +28,8 @@ import {
 } from "@/db/schema";
 import { formatAmount, toCents } from "./money";
 import { companySeriesStart, issuerOfProjects, ONE_ELEVEN } from "./issuer";
+import { buyersFirstNames, hasSecondBuyer } from "./buyers";
+import { titleWord } from "./titles";
 
 const METHODS: Record<string, string> = {
   CASH: "cash",
@@ -281,6 +283,8 @@ export async function agentReceipt(paymentId: string) {
   return {
     kind: "agent" as const,
     number: row.payment.reference || receiptNumber("A", row.payment.id, row.payment.paidOn),
+    /** The agent's own invoice number, as typed when the payment was recorded. */
+    invoiceNumber: row.payment.reference?.trim() || null,
     paidOn: row.payment.paidOn,
     amountCents: toCents(row.payment.amount),
     notes: row.payment.notes,
@@ -299,42 +303,39 @@ export async function agentReceipt(paymentId: string) {
 /**
  * The email itself.
  *
- * Plain words, no attachment: the figures are short enough to read in the
- * message, and an email that says what it says without opening anything is more
- * likely to be read and less likely to be filtered. The office can print the
- * page for the paper copy.
+ * Short and personal, as the office asked: the amount and what it was for. The
+ * figures, the balance and the numbers are on the receipt and the invoice
+ * that go with it.
  */
 export function buyerReceiptEmail(receipt: NonNullable<BuyerReceipt>, ...ignored: string[]) {
   void ignored;
   /* English only, whatever the screen is set to. */
   const locale: string = "en";
-  const name = receipt.client
-    ? `${receipt.client.firstName} ${receipt.client.lastName}`.trim()
+  /* "Mrs. Maria"; an apartment in two names is greeted by both first names, without a title. */
+  const client = receipt.client;
+  const greeting = client
+    ? hasSecondBuyer(client)
+      ? buyersFirstNames(client)
+      : `${titleWord(client.title)} ${client.firstName}`.trim()
     : "";
-  const what =
-    receipt.project && receipt.unit ? `${receipt.project.name} ${receipt.unit.code}` : "";
+  /* What the money was for, the way a person says it: "the completion of the tiling of your apartment". */
+  const stage = (receipt.stage ?? "").trim().replace(/^on\s+/i, "");
+  const forWhat = stage ? `the ${stage.charAt(0).toLowerCase()}${stage.slice(1).toLowerCase()} of your apartment` : "your apartment";
 
   const lines = [
-    name ? `Dear ${name},` : "Dear buyer,",
+    greeting ? `Dear ${greeting},` : "Dear buyer,",
     "",
-    `We confirm receipt of ${formatAmount(receipt.amountCents, locale)}${
-      receipt.methodInWords ? ` by ${receipt.methodInWords}` : ""
-    } on ${new Date(receipt.paidOn).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB")}.`,
+    "May this email find you well.",
     "",
-    `Receipt number: ${receipt.number}`,
-    what ? `Apartment: ${what}` : null,
-    receipt.contract ? `Contract: ${receipt.contract.reference}` : null,
-    receipt.stage ? `Stage: ${receipt.stage}` : null,
+    `Thank you. We have received ${formatAmount(receipt.amountCents, locale)} for ${forWhat}.`,
     "",
-    `Paid to date: ${formatAmount(receipt.paidCents, locale)} of ${formatAmount(
-      receipt.owedCents,
-      locale,
-    )}.`,
-    `Remaining: ${formatAmount(receipt.outstandingCents, locale)}.`,
+    "Please find the receipt attached.",
     "",
-    "Thank you.",
+    "Thank you in advance for your cooperation.",
+    "",
+    "Kind regards,",
     "One Eleven",
-  ].filter((line) => line !== null);
+  ];
 
   return {
     subject: `Receipt ${receipt.number}`,
@@ -345,34 +346,28 @@ export function buyerReceiptEmail(receipt: NonNullable<BuyerReceipt>, ...ignored
 export function agentReceiptEmail(receipt: NonNullable<AgentReceipt>, ...ignored: string[]) {
   void ignored;
   const locale: string = "en";
-  const what =
-    receipt.project && receipt.unit ? `${receipt.project.name} ${receipt.unit.code}` : "";
+  /* "Mrs. Maria", from the agent's title and first name. */
+  const first = receipt.agent.name.trim().split(/\s+/)[0] ?? receipt.agent.name;
+  const greeting = `${titleWord(receipt.agent.title)} ${first}`.trim();
+  /* What the money was for: their invoice when its number was typed, otherwise the sale. */
+  const regarding = receipt.invoiceNumber
+    ? `regarding the invoice number ${receipt.invoiceNumber}`
+    : receipt.project && receipt.unit
+      ? `regarding the commission on ${receipt.project.name} ${receipt.unit.code}`
+      : "regarding your commission";
 
   const lines = [
-    `Dear ${receipt.agent.name},`,
+    `Dear ${greeting},`,
     "",
-    `We confirm payment of ${formatAmount(receipt.amountCents, locale)} in commission on ${new Date(
-      receipt.paidOn,
-    ).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB")}.`,
+    `We confirm the payment of ${formatAmount(receipt.amountCents, locale)} ${regarding}.`,
     "",
-    `Reference: ${receipt.number}`,
-    what ? `Apartment: ${what}` : null,
-    receipt.client
-      ? `Buyer: ${`${receipt.client.firstName} ${receipt.client.lastName}`.trim()}`
-      : null,
-    receipt.commission
-      ? `Commission line: ${formatAmount(toCents(receipt.commission.amount), locale)} at ${Number(
-          receipt.commission.rate,
-        )}%`
-      : null,
+    "Please send us the related invoice.",
     "",
-    `Commission earned to date: ${formatAmount(receipt.earnedCents, locale)}.`,
-    `Paid to date: ${formatAmount(receipt.paidCents, locale)}.`,
-    `Outstanding: ${formatAmount(receipt.outstandingCents, locale)}.`,
+    "Have a lovely day!",
     "",
-    "Thank you.",
+    "Kind regards,",
     "One Eleven",
-  ].filter((line) => line !== null);
+  ];
 
   return {
     subject: `Commission payment ${receipt.number}`,

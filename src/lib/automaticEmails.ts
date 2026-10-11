@@ -1,7 +1,7 @@
 import "server-only";
 import { stageFrom, stageNames } from "@/lib/choices/stages";
 import { englishWord, shownCode } from "@/lib/choices";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
@@ -9,12 +9,15 @@ import {
   automaticEmails,
   clients,
   commissions,
+  constructorProjects,
+  constructors,
   contracts,
   documents,
   installments,
   leads,
   payments,
   projects,
+  signingPapers,
   subownerDirectors,
   subownerShares,
   teamMembers,
@@ -24,12 +27,14 @@ import { formatAmount, toCents } from "@/lib/money";
 import { sendAndRecord } from "@/lib/messaging";
 import { resolveStored } from "@/lib/storage";
 import { templateByKey, type AutomaticKey } from "@/lib/templates";
-import { issuedAttachments, issueForPayment } from "@/lib/issued";
+import { advanceInvoiceFor, issuedAttachments, issueForPayment, paperAttachment } from "@/lib/issued";
 import { markSignedSent, PAPER_NAME, paperForPayment } from "@/lib/signingPapers";
 import type { EmailAttachment } from "@/lib/messaging/email";
 import { buyersFirstNames, buyersName, cleanBirthDate, emailList, hasSecondBuyer, isBirthday } from "@/lib/buyers";
 import { groupPeople, handlesOf, sameEmail } from "@/lib/samePerson";
 import { invoiceWentFor } from "@/lib/stageInvoices";
+import { titleWord } from "@/lib/titles";
+import { readSetting, writeSetting } from "@/lib/settings";
 
 /**
  * The letters that follow the money.
@@ -87,7 +92,11 @@ function sayAttached(body: string, paper: string): string {
 
 /** What the braces in a letter are filled with. */
 export function fill(text: string, values: Record<string, string>): string {
-  return text.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (whole, key: string) => values[key] ?? whole);
+  /* "Dear {{title}} {{first_name}}" reads "Dear Maria" when there is no title. */
+  let words = Object.hasOwn(values, "title") && !values.title ? text.replace(/\{\{\s*title\s*\}\}[ \t]?/g, "") : text;
+  /* No contractor on the development: "the company, which", never "the company , which". */
+  if (Object.hasOwn(values, "constructor") && !values["constructor"]) words = words.replace(/[ \t]?\{\{\s*constructor\s*\}\}/g, "");
+  return words.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (whole, key: string) => (Object.hasOwn(values, key) ? values[key] : undefined) ?? whole);
 }
 
 type Papers = EmailAttachment;
@@ -135,6 +144,13 @@ async function contractPaper(contractId: string): Promise<Papers | null> {
  * already been written about, it stops.
  */
 export async function letterForPayment(paymentId: string): Promise<void> {
+  await receiptLetter(paymentId);
+  /* The receipt of the signing went, or was noted as not going: the welcome follows, if the Contract of Sale is signed. */
+  const [paid] = await db.select({ contractId: payments.contractId }).from(payments).where(eq(payments.id, paymentId)).limit(1);
+  if (paid?.contractId) await welcomeAfterSale(paid.contractId, paymentId);
+}
+
+async function receiptLetter(paymentId: string): Promise<void> {
   const [row] = await db
     .select({
       payment: payments,
@@ -336,6 +352,135 @@ export async function letterForPayment(paymentId: string): Promise<void> {
   else if (result.status === "SIMULATED")
     await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
   else await note("FAILED", result.error ?? "It did not go.");
+}
+
+/**
+ * The welcome, once the sale is real.
+ *
+ * Two things have to be true, in either order: the Contract of Sale is signed,
+ * and the receipt for the signing installment has gone to the buyer. Whichever
+ * happens second sends it: the receipt letter calls this with its payment, and
+ * uploading the signed Contract of Sale calls it with none. It goes once a
+ * contract. Called for anything else, an installment years later, it does
+ * nothing, so the buyers of contracts signed before this letter existed are
+ * never welcomed out of the blue.
+ */
+export async function welcomeAfterSale(contractId: string, paymentId?: string): Promise<void> {
+  try {
+    const [row] = await db
+      .select({ contract: contracts, client: clients, unit: units, project: projects })
+      .from(contracts)
+      .leftJoin(clients, eq(clients.id, contracts.clientId))
+      .leftJoin(units, eq(units.id, contracts.unitId))
+      .leftJoin(projects, eq(projects.id, units.projectId))
+      .where(eq(contracts.id, contractId))
+      .limit(1);
+    if (!row || row.contract.kind === "LAND_EXCHANGE" || row.contract.status === "CANCELLED") return;
+
+    /* Once a contract: a welcome already sent, or noted as not going, is the answer. */
+    const [already] = await db
+      .select()
+      .from(automaticEmails)
+      .where(and(eq(automaticEmails.contractId, contractId), eq(automaticEmails.templateKey, "welcome_contract")))
+      .limit(1);
+    if (already && already.status !== "FAILED") return;
+
+    /* The signing installment: the one the Contract of Sale is paid with, or the line that reads as the signing. */
+    const papers = await db.select().from(signingPapers).where(eq(signingPapers.contractId, contractId));
+    const sale = papers.find((one) => one.kind === "SALE");
+    const lines = await db.select().from(installments).where(eq(installments.contractId, contractId));
+    const names = await stageNames();
+    const signingLines = sale?.installmentId
+      ? [sale.installmentId]
+      : lines.filter((one) => stageFrom(names, one.label, one.labelEl) === "SIGNING").map((one) => one.id);
+    if (signingLines.length === 0) return;
+
+    /* Called by a payment: only a payment of the signing installment. */
+    const signingPayments = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(and(eq(payments.contractId, contractId), inArray(payments.installmentId, signingLines)));
+    if (paymentId && !signingPayments.some((one) => one.id === paymentId)) return;
+    if (signingPayments.length === 0) return;
+
+    /* The receipt has gone: its letter was sent, or noted as not going (switched off, no address). */
+    const receipts = await db
+      .select({ status: automaticEmails.status })
+      .from(automaticEmails)
+      .where(inArray(automaticEmails.paymentId, signingPayments.map((one) => one.id)));
+    if (!receipts.some((one) => one.status === "SENT" || one.status === "SKIPPED")) return;
+
+    /* The Contract of Sale is signed: its signed copy on the contract, or the contract filed the older way. */
+    const [filed] = await db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(and(eq(documents.contractId, contractId), eq(documents.category, "CONTRACT")))
+      .limit(1);
+    if (!sale?.signedDocumentId && !filed) return;
+
+    const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
+      const values = {
+        templateKey: "welcome_contract",
+        contractId,
+        paymentId: null,
+        clientId: row.client?.id ?? null,
+        status,
+        reason,
+        sentAt: status === "SENT" ? new Date() : null,
+        updatedAt: new Date(),
+      };
+      if (already) await db.update(automaticEmails).set(values).where(eq(automaticEmails.id, already.id));
+      else await db.insert(automaticEmails).values(values);
+    };
+
+    const template = await templateByKey("welcome_contract");
+    if (!template) return;
+    if (!template.isActive) {
+      await note("SKIPPED", "This letter is switched off in the automatic emails section.");
+      return;
+    }
+    if (!row.client?.email) {
+      await note("SKIPPED", "The buyer has no email address on their record.");
+      return;
+    }
+
+    /* The contractor building the development, from Constructors. */
+    const [builder] = row.project
+      ? await db
+          .select({ name: constructors.name, company: constructors.company })
+          .from(constructorProjects)
+          .innerJoin(constructors, eq(constructors.id, constructorProjects.constructorId))
+          .where(and(eq(constructorProjects.projectId, row.project.id), isNotNull(constructors.id)))
+          .limit(1)
+      : [];
+
+    /* Two buyers are greeted by both first names, without a title. */
+    const two = hasSecondBuyer(row.client);
+    const values: Record<string, string> = {
+      title: two ? "" : titleWord(row.client.title),
+      first_name: buyersFirstNames(row.client),
+      last_name: row.client.lastName ?? "",
+      name: buyersName(row.client),
+      unit: row.unit?.code ?? row.contract.reference ?? "",
+      project: row.project?.name ?? "",
+      reference: row.contract.reference ?? "",
+      constructor: builder?.company?.trim() || builder?.name?.trim() || "",
+    };
+
+    const result = await sendAndRecord({
+      channel: "EMAIL",
+      recipient: { name: values.name, email: row.client.email, clientId: row.client.id },
+      subject: fill(template.subject || "", values),
+      body: fill(template.body, values),
+      withOptOut: false,
+      cc: emailList(two ? row.client.secondEmail : null),
+    });
+    if (result.status === "SENT") await note("SENT", "Sent.");
+    else if (result.status === "SIMULATED") await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
+    else await note("FAILED", result.error ?? "It did not go.");
+  } catch (error) {
+    console.error("[welcome] could not be handled", contractId, error);
+  }
 }
 
 /**
@@ -692,6 +837,7 @@ export async function letterForCommission(contractId: string): Promise<void> {
 
   const money = (cents: number) => formatAmount(cents, "en");
   const values: Record<string, string> = {
+    title: titleWord(line.agent.title),
     first_name: line.agent.name.split(" ")[0] ?? line.agent.name,
     name: line.agent.name,
     buyer: line.client ? `${line.client.firstName ?? ""} ${line.client.lastName ?? ""}`.trim() : "The buyer",
@@ -993,14 +1139,14 @@ export async function sendBirthdayWishes(options?: { byHand?: boolean; hour?: nu
  * about each lead once and about each client once, however many times the
  * record is saved.
  */
-export async function letterToAgent(kind: "lead" | "client", id: string): Promise<void> {
+export async function letterToAgent(kind: "lead", id: string): Promise<void> {
   try {
-    const key = kind === "lead" ? "agent_new_lead" : "agent_new_client";
+    const key = "agent_new_lead";
     let agentId: string | null = null;
     let name = "";
     let interest = "";
     let who = "our office";
-    let clientId: string | null = null;
+    const clientId: string | null = null;
     let leadId: string | null = null;
 
     if (kind === "lead") {
@@ -1017,23 +1163,6 @@ export async function letterToAgent(kind: "lead" | "client", id: string): Promis
       interest = row.lead.interest || row.lead.projectName || row.project?.name || "";
       if (row.member?.name) who = row.member.name;
       leadId = id;
-    } else {
-      const [row] = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
-      if (!row) return;
-      agentId = row.agentId;
-      name = buyersName(row);
-      clientId = id;
-      /* What they are interested in: the apartments they hold, or what the lead asked about. */
-      const held = await db
-        .select({ code: units.code, project: projects.name })
-        .from(units)
-        .innerJoin(projects, eq(projects.id, units.projectId))
-        .where(eq(units.clientId, id));
-      if (held.length > 0) interest = held.map((one) => `${one.project} ${one.code}`).join(", ");
-      else {
-        const [lead] = await db.select().from(leads).where(eq(leads.clientId, id)).limit(1);
-        interest = lead?.interest || lead?.projectName || "";
-      }
     }
     if (!agentId) return;
     if (!interest) interest = "to be confirmed";
@@ -1045,7 +1174,7 @@ export async function letterToAgent(kind: "lead" | "client", id: string): Promis
         and(
           eq(automaticEmails.templateKey, key),
           eq(automaticEmails.agentId, agentId),
-          kind === "lead" ? eq(automaticEmails.leadId, id) : eq(automaticEmails.clientId, id),
+          eq(automaticEmails.leadId, id),
         ),
       )
       .limit(1);
@@ -1072,6 +1201,7 @@ export async function letterToAgent(kind: "lead" | "client", id: string): Promis
     if (!agent.email) return note("SKIPPED", "The agent has no email address on their record.");
 
     const values = {
+      title: titleWord(agent.title),
       first_name: agent.name.split(" ")[0] ?? agent.name,
       name,
       interest,
@@ -1090,4 +1220,184 @@ export async function letterToAgent(kind: "lead" | "client", id: string): Promis
   } catch (error) {
     console.error("[agent letter]", error);
   }
+}
+
+/**
+ * The reminder to a lead, sent when somebody presses the button on the lead's
+ * page. Never by itself. It answers with what happened, for the message on the
+ * screen, and is written in the list of automatic emails and the lead's history.
+ */
+export async function sendLeadReminder(leadId: string): Promise<{ ok: boolean; said: string }> {
+  const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  if (!lead) return { ok: false, said: "The lead is not there any more." };
+  const email = lead.email?.trim();
+  if (!email) return { ok: false, said: "The lead has no email address." };
+  const template = await templateByKey("lead_reminder");
+  if (!template) return { ok: false, said: "The reminder letter is not there." };
+  if (!template.isActive) return { ok: false, said: "The reminder is switched off in Automatic emails." };
+
+  const name = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || email;
+  const values: Record<string, string> = {
+    /* A lead has no Mr or Mrs on its record, so the greeting is the first name. */
+    title: "",
+    first_name: (lead.firstName ?? "").trim() || name,
+    last_name: lead.lastName ?? "",
+    name,
+  };
+  const result = await sendAndRecord({
+    channel: "EMAIL",
+    recipient: { name, email, leadId: lead.id },
+    subject: fill(template.subject || "", values),
+    body: fill(template.body, values),
+    withOptOut: false,
+  });
+  const status = result.status === "SENT" ? "SENT" : result.status === "SIMULATED" ? "SKIPPED" : "FAILED";
+  const reason =
+    result.status === "SENT"
+      ? "Sent."
+      : (result.error ?? (result.status === "SIMULATED" ? "Email is not set up yet, so nothing left the building." : "It did not go."));
+  await db.insert(automaticEmails).values({
+    templateKey: "lead_reminder",
+    leadId: lead.id,
+    status,
+    reason: `${name}: ${reason}`,
+    sentAt: status === "SENT" ? new Date() : null,
+  });
+  return { ok: result.status === "SENT", said: result.status === "SENT" ? `to ${email}` : reason };
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The reminders for unpaid invoices.
+ *
+ * Ten days after the invoice of a stage went to the buyer, if that stage is
+ * still not paid in full, the buyer gets one kind reminder with the invoice
+ * attached again. Once a stage, whatever came of it. It rides on the same
+ * clock as the birthday wishes, from ten in the morning.
+ *
+ * Invoices sent before this letter existed are left alone: the first time it
+ * runs it remembers the day, less ten days, and only invoices sent since then
+ * are ever chased, so nobody gets a reminder for an invoice of last year.
+ */
+export async function sendInvoiceReminders(options?: { byHand?: boolean; hour?: number }): Promise<{ sent: number; looked: number }> {
+  const now = new Date();
+  const hour = options?.hour ?? 10;
+  if (!options?.byHand && (now.getHours() < hour || now.getHours() >= 20)) return { sent: 0, looked: 0 };
+
+  const template = await templateByKey("invoice_reminder");
+  if (!template || !template.isActive) return { sent: 0, looked: 0 };
+
+  let sinceText = await readSetting("invoiceReminders.since");
+  if (!sinceText) {
+    sinceText = new Date(now.getTime() - 10 * DAY).toISOString();
+    await writeSetting("invoiceReminders.since", sinceText);
+  }
+  const since = new Date(sinceText);
+  const dueBy = new Date(now.getTime() - 10 * DAY);
+
+  /* The stages whose invoice went between then and ten days ago, from the stage itself or from its paper's box. */
+  const fromLines = await db
+    .select({ id: installments.id })
+    .from(installments)
+    .where(and(isNotNull(installments.invoiceSentAt), gte(installments.invoiceSentAt, since), lte(installments.invoiceSentAt, dueBy)));
+  const fromPapers = await db
+    .select({ id: signingPapers.installmentId })
+    .from(signingPapers)
+    .where(
+      and(
+        isNotNull(signingPapers.installmentId),
+        isNotNull(signingPapers.invoiceSentAt),
+        gte(signingPapers.invoiceSentAt, since),
+        lte(signingPapers.invoiceSentAt, dueBy),
+      ),
+    );
+  const lineIds = [...new Set([...fromLines.map((one) => one.id), ...fromPapers.map((one) => one.id as string)])];
+  if (lineIds.length === 0) return { sent: 0, looked: 0 };
+
+  let sent = 0;
+  let looked = 0;
+  for (const lineId of lineIds) {
+    const [row] = await db
+      .select({ line: installments, contract: contracts, client: clients, unit: units, project: projects })
+      .from(installments)
+      .innerJoin(contracts, eq(contracts.id, installments.contractId))
+      .leftJoin(clients, eq(clients.id, contracts.clientId))
+      .leftJoin(units, eq(units.id, contracts.unitId))
+      .leftJoin(projects, eq(projects.id, units.projectId))
+      .where(and(eq(installments.id, lineId), ne(contracts.status, "CANCELLED")))
+      .limit(1);
+    if (!row || row.contract.kind === "LAND_EXCHANGE") continue;
+
+    /* Paid in full already: nothing to remind. */
+    const [paid] = await db
+      .select({ total: sql<string>`coalesce(sum(${payments.amount}), 0)` })
+      .from(payments)
+      .where(eq(payments.installmentId, lineId));
+    if (toCents(paid?.total ?? "0") >= toCents(row.line.totalAmount)) continue;
+
+    /* Once a stage. */
+    const personKey = `installment:${lineId}`;
+    const [already] = await db
+      .select({ id: automaticEmails.id })
+      .from(automaticEmails)
+      .where(and(eq(automaticEmails.templateKey, "invoice_reminder"), eq(automaticEmails.personKey, personKey)))
+      .limit(1);
+    if (already) continue;
+    looked += 1;
+
+    const invoice = await advanceInvoiceFor(lineId);
+    const note = async (status: "SENT" | "FAILED" | "SKIPPED", reason: string) => {
+      await db.insert(automaticEmails).values({
+        templateKey: "invoice_reminder",
+        contractId: row.contract.id,
+        clientId: row.client?.id ?? null,
+        personKey,
+        status,
+        reason,
+        sentAt: status === "SENT" ? new Date() : null,
+      });
+    };
+    if (!invoice) {
+      await note("SKIPPED", "The invoice of this stage is not there any more.");
+      continue;
+    }
+    if (!row.client?.email) {
+      await note("SKIPPED", "The buyer has no email address on their record.");
+      continue;
+    }
+
+    const two = hasSecondBuyer(row.client);
+    const values: Record<string, string> = {
+      title: two ? "" : titleWord(row.client.title),
+      first_name: buyersFirstNames(row.client),
+      last_name: row.client.lastName ?? "",
+      name: buyersName(row.client),
+      invoice_number: invoice.number,
+      stage: row.line.label ?? "",
+      amount: formatAmount(toCents(invoice.totalAmount), "en"),
+      unit: row.unit?.code ?? row.contract.reference ?? "",
+      project: row.project?.name ?? "",
+      reference: row.contract.reference ?? "",
+    };
+    const file = await paperAttachment(invoice).catch(() => null);
+    const result = await sendAndRecord({
+      channel: "EMAIL",
+      recipient: { name: values.name, email: row.client.email, clientId: row.client.id },
+      subject: fill(template.subject || "", values),
+      body: fill(template.body, values),
+      withOptOut: false,
+      attachments: file ? [{ filename: file.filename, content: file.content, contentType: file.contentType }] : [],
+      cc: emailList(two ? row.client.secondEmail : null),
+    });
+    if (result.status === "SENT") {
+      sent += 1;
+      await note("SENT", `Invoice ${invoice.number}: sent.`);
+    } else if (result.status === "SIMULATED") {
+      await note("SKIPPED", result.error ?? "Email is not set up yet, so nothing left the building.");
+    } else {
+      await note("FAILED", result.error ?? "It did not go.");
+    }
+  }
+  return { sent, looked };
 }

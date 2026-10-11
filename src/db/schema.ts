@@ -158,6 +158,8 @@ export const commissionStatusEnum = pgEnum("commission_status", [
 export const agents = pgTable("agents", {
   id: id(),
   name: text("name").notNull(),
+  /** How the letters greet them: MR, MRS, MS, or nothing for "Dear Maria". */
+  title: text("title"),
   company: text("company"),
   email: text("email"),
   phone: text("phone"),

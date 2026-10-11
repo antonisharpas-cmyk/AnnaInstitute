@@ -125,6 +125,8 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
     name = template.name;
 
     const values: Record<string, string> = {
+      title: "Mrs.",
+      constructor: "Example Construction Ltd",
       first_name: "Maria",
       last_name: "Georgiou",
       name: "Maria Georgiou",
@@ -158,7 +160,7 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
       values.amount = money(25000);
       values.outstanding = money(0);
     }
-    if (key === "agent_new_lead" || key === "agent_new_client") {
+    if (key === "agent_new_lead") {
       values.first_name = "Andreas";
       values.name = "Maria Georgiou";
       values.interest = `${place.project}, apartment ${place.unit}`;
@@ -173,6 +175,11 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
       values.invoice_number = "0001";
       values.stage = key === "stage_invoice_works" ? "Completion of the Structure" : key === "stage_invoice" ? "Completion of the Property" : "Reservation";
       values.amount = money(key === "stage_invoice_signed" ? 5000 : 37500);
+    }
+    if (key === "invoice_reminder") {
+      values.invoice_number = "0001";
+      values.stage = "Completion of the Tiling";
+      values.amount = money(37500);
     }
     if (key === "agent_commission") {
       values.first_name = "Andreas";
@@ -191,6 +198,15 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
             "The real letter carries the paper on the contract.",
             "This page only stands in for it in the test.",
           ]),
+          contentType: "application/pdf",
+        },
+      ];
+    }
+    if (key === "invoice_reminder") {
+      attachments = [
+        {
+          filename: "Invoice 0001 EXAMPLE.pdf",
+          content: await stand_in("The invoice goes here", ["The real reminder carries the unpaid invoice again.", "This page only stands in for it in the test."]),
           contentType: "application/pdf",
         },
       ];
@@ -244,8 +260,8 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
     const due = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-GB");
     const letter = partnerLetter({
       number: "TEST",
-      dear: "Example Company Ltd",
-      what: "Management fees, an example",
+      dear: "Mrs. Maria",
+      what: "the management fee",
       project: place.project,
       net: money(net),
       vat: money(net * 0.19),

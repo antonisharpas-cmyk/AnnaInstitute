@@ -23,6 +23,7 @@ import {
   convertLead,
   deleteFollowUp,
   deleteLead,
+  remindLead,
   removeLeadNote,
   saveLeadDetails,
   setFollowUpStatus,
@@ -111,6 +112,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               >
                 {t("leads.sendDevelopments")}
               </Link>
+            ) : null}
+            {/* A polite follow up on what we sent them, by email, now. */}
+            {!locked && lead.email ? (
+              <form action={remindLead.bind(null, lead.id)} data-lead-reminder>
+                <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("leads.sendReminder")}</SubmitButton>
+              </form>
             ) : null}
             <Pill tone={leadStatusTone(lead.status) as "good" | "warn" | "neutral"}>
               {t(`leads.status.${shownCode(lead.status, lead.statusChoice)}` as MessageKey)}
