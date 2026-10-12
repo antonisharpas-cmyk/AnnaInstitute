@@ -402,7 +402,7 @@ export default async function DashboardPage({
       tone: "warn" as const,
     },
     {
-      href: "/invoices?status=UNPAID",
+      href: "/invoices?status=OVERDUE",
       label: t("dash.overdueBills"),
       count: bills,
       tone: "warn" as const,

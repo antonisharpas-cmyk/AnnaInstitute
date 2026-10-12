@@ -13,6 +13,7 @@ import { invoicePdf, receiptPdfFrom, type IssuedSnapshot } from "@/lib/paymentPd
 import { buildSummaries, dayStart, summarySubject, summaryText, type MemberSummary } from "@/lib/appointmentSummary";
 import { partnerLetter, receivedLetter } from "@/lib/partnerInvoices";
 import { whoCanGo } from "@/lib/team";
+import { issuerForProject } from "@/lib/issuer";
 
 /**
  * A test of an automatic email, sent to an address the office chooses.
@@ -40,12 +41,12 @@ const money = (euros: number) => formatAmount(Math.round(euros * 100), "en");
 /** An apartment and a development to talk about: a real pair when there is one. */
 async function examplePlace() {
   const [row] = await db
-    .select({ unit: units.code, project: projects.name })
+    .select({ unit: units.code, project: projects.name, projectId: projects.id })
     .from(units)
     .innerJoin(projects, eq(projects.id, units.projectId))
     .orderBy(asc(projects.name), asc(units.code))
     .limit(1);
-  return { unit: row?.unit ?? "A101", project: row?.project ?? "Magnum Opus" };
+  return { unit: row?.unit ?? "A101", project: row?.project ?? "Magnum Opus", projectId: row?.projectId ?? null };
 }
 
 /** A one page PDF standing in for a file only the real letter has. */
@@ -185,6 +186,7 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
       values.first_name = "Andreas";
       values.name = "Andreas Agent";
       values.amount = money(7500);
+      values.company = (await issuerForProject(place.projectId)).name;
     }
 
     subject = fill(template.subject ?? "", values);

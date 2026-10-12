@@ -34,6 +34,7 @@ import { buyersFirstNames, buyersName, cleanBirthDate, emailList, hasSecondBuyer
 import { groupPeople, handlesOf, sameEmail } from "@/lib/samePerson";
 import { invoiceWentFor } from "@/lib/stageInvoices";
 import { titleWord } from "@/lib/titles";
+import { issuerForProject } from "@/lib/issuer";
 import { readSetting, writeSetting } from "@/lib/settings";
 
 /**
@@ -845,6 +846,8 @@ export async function letterForCommission(contractId: string): Promise<void> {
     project: line.project?.name ?? "",
     amount: money(toCents(line.commission.amount)),
     base: `${Number(line.commission.rate)}% of ${money(toCents(line.commission.baseAmount))}`,
+    /* The company the agent makes the invoice out to: the one that holds the development, or One Eleven. */
+    company: (await issuerForProject(line.project?.id ?? null)).name,
   };
 
   const result = await sendAndRecord({

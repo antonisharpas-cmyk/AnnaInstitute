@@ -277,7 +277,7 @@ export async function sendCreditNote(noteId: string) {
     `Credit note ${note.number} from One Eleven`,
     `Dear {{first_name}},\n\nPlease find attached credit note ${note.number}${
       note.reason ? ` (${note.reason})` : ""
-    } for ${fromCents(toCents(note.totalAmount))} euro, together with the papers that go with it.\n\nOne Eleven`,
+    } for ${fromCents(toCents(note.totalAmount))} euro, together with the papers that go with it.\n\nKind Regards,\nOne Eleven`,
     files,
     user.id,
     user.email,
@@ -334,7 +334,7 @@ async function vatPapersTo(contractId: string, userId: string, userEmail: string
   return send(
     contractId,
     "Your reduced VAT: the new invoices",
-    `Dear {{first_name}},\n\nYour reduced VAT has been approved. The invoices issued at the standard rate are cancelled, and a copy of each, stamped CANCELLED, is attached together with the new invoice at the new VAT that replaces it, for the same payment.\n\nPlease keep the new invoices: they are the ones that count from now on, and the cancelled ones can be ignored.\n\nThe VAT you paid over, ${fromCents(credit)} euro, is credited against your next payments: each new invoice shows the full amount, less the credit, and what is left to pay.${back > 0 ? `\n\n${fromCents(back)} euro of it is more than the payments still to come, and we will pay it back to you.` : ""}\n\nOne Eleven`,
+    `Dear {{first_name}},\n\nYour reduced VAT has been approved. The invoices issued at the standard rate are cancelled, and a copy of each, stamped CANCELLED, is attached together with the new invoice at the new VAT that replaces it, for the same payment.\n\nPlease keep the new invoices: they are the ones that count from now on, and the cancelled ones can be ignored.\n\nThe VAT you paid over, ${fromCents(credit)} euro, is credited against your next payments: each new invoice shows the full amount, less the credit, and what is left to pay.${back > 0 ? `\n\n${fromCents(back)} euro of it is more than the payments still to come, and we will pay it back to you.` : ""}\n\nKind Regards,\nOne Eleven`,
     files,
     userId,
     userEmail,

@@ -243,6 +243,7 @@ Find it on the map: {{maps_url}}
 
 Reply to this message and we will keep a time for you.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, we are inviting you to see {{project}} in {{location}}. {{details}}",
@@ -257,6 +258,7 @@ One Eleven`,
 
 Απαντήστε και κρατάμε μια ώρα για εσάς.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, σας προσκαλούμε στο {{project}} στη {{location}}. {{details}}",
@@ -478,6 +480,7 @@ What happens next is the contract. We will be in touch to arrange the signing, a
 
 Welcome to {{project}}.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, we have received your reservation of {{amount}} for {{unit}} at {{project}}. Welcome.",
@@ -492,6 +495,7 @@ One Eleven`,
 
 Καλώς ήρθατε στο {{project}}.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, λάβαμε την κράτηση {{amount}} για το {{unit}} στο {{project}}. Καλώς ήρθατε.",
@@ -514,6 +518,7 @@ Your contract is attached, together with the receipt for this payment. Please ke
 
 The remaining installments are as set out in the contract, and we will write to you each time one is received.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, we have received {{amount}} on signing for {{unit}} at {{project}}. Your contract is on its way by email.",
@@ -526,6 +531,7 @@ One Eleven`,
 
 Οι υπόλοιπες δόσεις είναι όπως ορίζονται στο συμβόλαιο, και θα σας γράφουμε κάθε φορά που εισπράττεται μία.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, λάβαμε {{amount}} με την υπογραφή για το {{unit}} στο {{project}}.",
@@ -587,6 +593,7 @@ Thank you. We have received {{amount}} for {{stage}} on {{unit}} at {{project}}.
 
 Your receipt is attached. The balance on your contract is now {{outstanding}}.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, we have received {{amount}} for {{unit}} at {{project}}. Balance {{outstanding}}.",
@@ -597,6 +604,7 @@ One Eleven`,
 
 Η απόδειξή σας επισυνάπτεται. Το υπόλοιπο του συμβολαίου σας είναι {{outstanding}}.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, λάβαμε {{amount}} για το {{unit}} στο {{project}}. Υπόλοιπο {{outstanding}}.",
@@ -619,6 +627,7 @@ Your receipt is attached.
 
 Congratulations. It has been a pleasure to have you with us, and we will be in touch about the handover and the keys.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, {{unit}} at {{project}} is fully paid. Congratulations, and thank you.",
@@ -631,6 +640,7 @@ One Eleven`,
 
 Συγχαρητήρια. Χαρήκαμε πολύ που σας είχαμε μαζί μας, και θα επικοινωνήσουμε για την παράδοση και τα κλειδιά.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, το {{unit}} στο {{project}} εξοφλήθηκε. Συγχαρητήρια.",
@@ -667,6 +677,7 @@ You will be meeting: {{who}}
 
 If the day or the time does not suit you, reply to this email and we will move it.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, confirming {{place}} on {{day}} at {{time}} with {{who}}.",
@@ -683,6 +694,7 @@ One Eleven`,
 
 Αν η ημέρα ή η ώρα δεν σας εξυπηρετεί, απαντήστε σε αυτό το email και το μετακινούμε.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, επιβεβαιώνουμε {{place}} στις {{day}} στις {{time}} με {{who}}.",
@@ -709,6 +721,7 @@ You will be meeting: {{who}}
 
 Reply to this email if the new time does not suit you.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, your appointment has moved: {{place}} on {{day}} at {{time}} with {{who}}.",
@@ -725,6 +738,7 @@ One Eleven`,
 
 Απαντήστε αν η νέα ώρα δεν σας εξυπηρετεί.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, το ραντεβού μετακινήθηκε: {{place}} στις {{day}} στις {{time}} με {{who}}.",
@@ -745,6 +759,7 @@ Your appointment at {{place}} on {{day}} at {{time}} has been cancelled.
 
 Reply to this email and we will arrange another one whenever suits you.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, the appointment at {{place}} on {{day}} at {{time}} is cancelled. We will arrange another.",
@@ -755,6 +770,7 @@ One Eleven`,
 
 Απαντήστε σε αυτό το email και κανονίζουμε άλλο όποτε σας εξυπηρετεί.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, το ραντεβού στο {{place}} στις {{day}} ακυρώθηκε.",
@@ -781,6 +797,7 @@ You will be meeting: {{who}}
 
 If something has come up, reply to this email and we will find another time.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, a reminder: {{place}} tomorrow, {{day}}, at {{time}} with {{who}}.",
@@ -797,6 +814,7 @@ One Eleven`,
 
 Αν προέκυψε κάτι, απαντήστε σε αυτό το email και βρίσκουμε άλλη ώρα.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, υπενθύμιση: {{place}} αύριο, {{day}}, στις {{time}} με {{who}}.",
@@ -887,7 +905,7 @@ One Eleven`,
     isAutomatic: true,
     name: "Commission generated, to the agent",
     description:
-      "Goes to the agent the moment their commission comes into being, which is when the buyer has paid the opening of the contract: the reservation and the signing where there are both. It says which sale, what the commission is, and that the invoice is now due from them.",
+      "Goes to the agent the moment their commission comes into being, which is when the buyer has paid the opening of the contract: the reservation and the signing where there are both. It says which sale, what the commission is, and that the invoice is now due from them, made out to the company that holds the development ({{company}}).",
     subject: "Your commission on {{unit}} at {{project}}",
     body: `Dear {{first_name}},
 
@@ -898,10 +916,11 @@ Worked out on: {{base}}
 
 Please send us the invoice for it and we will proceed with the payment accordingly.
 
-Please issue the invoice under the company name: Dex-ino
+Please issue the invoice under the company name: {{company}}
 
 Thank you for the sale.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp:
       "Hello {{first_name}}, your commission of {{amount}} on {{unit}} at {{project}} has been generated. Please send us your invoice.",
@@ -915,10 +934,11 @@ One Eleven`,
 
 Παρακαλούμε στείλτε μας το τιμολόγιο και θα προχωρήσουμε με την πληρωμή αναλόγως.
 
-Παρακαλούμε εκδώστε το τιμολόγιο στο όνομα της εταιρείας: Dex-ino
+Παρακαλούμε εκδώστε το τιμολόγιο στο όνομα της εταιρείας: {{company}}
 
 Σας ευχαριστούμε για την πώληση.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
       "Γεια σας {{first_name}}, η προμήθειά σας {{amount}} για το {{unit}} στο {{project}} δημιουργήθηκε. Στείλτε μας το τιμολόγιο.",
@@ -976,6 +996,7 @@ Attached is the {{paper}} for {{unit}} at {{project}}.
 
 Please read it and tell us if you would like anything changed. When it is as you want it, reply to let us know and we will send you the invoice, so you have it with you when you come to sign.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp: "Hello {{first_name}}, we have emailed you the {{paper}} for {{unit}} at {{project}} to check. Tell us if you would like anything changed.",
     subjectEl: "Το {{paper}} σας για το {{unit}} στο {{project}}, για έλεγχο",
@@ -985,6 +1006,7 @@ One Eleven`,
 
 Παρακαλούμε διαβάστε το και πείτε μας αν θέλετε κάποια αλλαγή. Όταν είναι όπως το θέλετε, απαντήστε μας και θα σας στείλουμε το τιμολόγιο, ώστε να το έχετε μαζί σας όταν έρθετε να υπογράψετε.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το {{paper}} για το {{unit}} στο {{project}} για έλεγχο.",
     toClients: true,
@@ -1004,6 +1026,7 @@ Thank you for confirming the {{paper}} for {{unit}} at {{project}}.
 
 Attached is invoice {{invoice_number}} for {{stage}}, {{amount}}, to pay when you come to sign. Your receipt and the signed {{paper}} will follow once it is signed and paid.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp: "Hello {{first_name}}, we have emailed you invoice {{invoice_number}} of {{amount}} for {{stage}}, to pay when you come to sign the {{paper}}.",
     subjectEl: "Τιμολόγιο {{invoice_number}} για το {{paper}} σας, {{unit}} στο {{project}}",
@@ -1013,6 +1036,7 @@ One Eleven`,
 
 Επισυνάπτεται το τιμολόγιο {{invoice_number}} για {{stage}}, {{amount}}, για να το πληρώσετε όταν έρθετε να υπογράψετε. Η απόδειξη και το υπογεγραμμένο {{paper}} θα ακολουθήσουν μόλις υπογραφεί και πληρωθεί.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το τιμολόγιο {{invoice_number}} των {{amount}} για {{stage}}, για να το πληρώσετε όταν έρθετε να υπογράψετε.",
     toClients: true,
@@ -1032,6 +1056,7 @@ Attached is your signed {{paper}} for {{unit}} at {{project}}, with the receipt 
 
 Thank you.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp: "Hello {{first_name}}, we have emailed you your signed {{paper}} for {{unit}} at {{project}}.",
     subjectEl: "Το υπογεγραμμένο {{paper}} σας, {{unit}} στο {{project}}",
@@ -1041,6 +1066,7 @@ One Eleven`,
 
 Σας ευχαριστούμε.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το υπογεγραμμένο {{paper}} σας για το {{unit}} στο {{project}}.",
     toClients: true,
@@ -1068,6 +1094,7 @@ Attached is your signed {{paper}} for {{unit}} at {{project}}, together with inv
 
 Your receipt will follow as soon as the payment is received.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp: "Hello {{first_name}}, we have emailed you your signed {{paper}} and invoice {{invoice_number}} of {{amount}} for {{unit}} at {{project}}.",
     subjectEl: "Τιμολόγιο {{invoice_number}} και το υπογεγραμμένο {{paper}}, {{unit}} στο {{project}}",
@@ -1077,6 +1104,7 @@ One Eleven`,
 
 Η απόδειξη θα ακολουθήσει μόλις εισπραχθεί η πληρωμή.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το υπογεγραμμένο {{paper}} και το τιμολόγιο {{invoice_number}} των {{amount}}.",
     toClients: true,
@@ -1098,6 +1126,7 @@ Attached is invoice {{invoice_number}} for {{stage}} on {{unit}}, {{amount}}.
 
 Your receipt will follow as soon as the payment is received.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp: "Hello {{first_name}}, {{stage}} at {{project}} has been reached. We have emailed you invoice {{invoice_number}} of {{amount}}, with the architect's certificate and photographs.",
     subjectEl: "{{stage}}, {{unit}} στο {{project}}: τιμολόγιο {{invoice_number}}",
@@ -1109,6 +1138,7 @@ One Eleven`,
 
 Η απόδειξη θα ακολουθήσει μόλις εισπραχθεί η πληρωμή.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl: "Γεια σας {{first_name}}, ολοκληρώθηκε το στάδιο {{stage}} στο {{project}}. Σας στείλαμε το τιμολόγιο {{invoice_number}} των {{amount}}.",
     toClients: true,
@@ -1128,6 +1158,7 @@ Attached is invoice {{invoice_number}} for {{stage}} on {{unit}} at {{project}},
 
 Your receipt will follow as soon as the payment is received.
 
+Kind Regards,
 One Eleven`,
     bodyWhatsapp: "Hello {{first_name}}, we have emailed you invoice {{invoice_number}} of {{amount}} for {{stage}}, {{unit}} at {{project}}.",
     subjectEl: "Τιμολόγιο {{invoice_number}} για {{stage}}, {{unit}} στο {{project}}",
@@ -1137,6 +1168,7 @@ One Eleven`,
 
 Η απόδειξη θα ακολουθήσει μόλις εισπραχθεί η πληρωμή.
 
+Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl: "Γεια σας {{first_name}}, σας στείλαμε με email το τιμολόγιο {{invoice_number}} των {{amount}}.",
     toClients: true,

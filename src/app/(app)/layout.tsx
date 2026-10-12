@@ -175,7 +175,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       },
       {
         label: t("shell.alertBills"),
-        href: "/invoices?status=UNPAID",
+        href: "/invoices?status=OVERDUE",
         count: bills?.total ?? 0,
         tone: "warn",
       },

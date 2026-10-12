@@ -75,6 +75,8 @@ export async function listExpenses({
     filters.push(eq(expenses.status, status as "UNPAID"));
   }
   if (status === "RECEIPT_MISSING") filters.push(RECEIPT_MISSING_SQL);
+  /* Past its due date and not fully paid: unpaid or part paid. The same rule as the "Invoices overdue" alert. */
+  if (status === "OVERDUE") filters.push(sql`(${expenses.dueDate} is not null and ${expenses.dueDate} < now() and ${expenses.status} <> 'PAID')`);
   if (direction === "IN" || direction === "OUT") filters.push(eq(expenses.direction, direction));
   if (company === "ours") filters.push(sql`coalesce(${expenses.ourCompanyId}, '') = ''`);
   else if (company)

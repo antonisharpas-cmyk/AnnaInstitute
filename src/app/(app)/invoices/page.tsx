@@ -107,7 +107,9 @@ export default async function InvoicesPage({
         </Card>
 
         <Card>
+          {/* The key makes the filters show the address when a link opens this page with other filters. */}
           <SearchBox
+            key={`${query}|${category}|${company}|${direction}|${status}`}
             action="/invoices"
             query={query}
             placeholder={t("invoices.searchPlaceholder")}
@@ -156,6 +158,7 @@ export default async function InvoicesPage({
               </label>
               <select id="status" name="status" defaultValue={status} className="select">
                 <option value="">{t("common.all")}</option>
+                <option value="OVERDUE">{t("invoices.status.OVERDUE")}</option>
                 <option value="UNPAID">{t("invoices.status.UNPAID")}</option>
                 <option value="PARTIALLY_PAID">{t("invoices.status.PARTIALLY_PAID")}</option>
                 <option value="PAID">{t("invoices.status.PAID")}</option>
