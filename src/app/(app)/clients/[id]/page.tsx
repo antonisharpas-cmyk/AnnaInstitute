@@ -41,6 +41,7 @@ import { extrasLabels } from "@/lib/buyerLabels";
 import { buyersName, hasSecondBuyer, mainName, secondName } from "@/lib/buyers";
 import DocumentUpload from "@/components/DocumentUpload";
 import { undoConversion } from "../../leads/actions";
+import ConfirmButton from "@/components/ConfirmButton";
 import {
   assignApartment,
   assignClient,
@@ -49,6 +50,7 @@ import {
   reopenClient,
   setMarketingConsent,
   unassignApartment,
+  endNegotiation,
   unsubscribeClient,
   uploadClientDocuments,
 } from "../actions";
@@ -663,7 +665,17 @@ export default async function ClientPage({
                         </Pill>
                       </td>
                       <td className="ctr">
-                        {a.contractId ? (
+                        {a.status === "NEGOTIATION" ? (
+                          /* The talks came to nothing: the apartment goes back on the market, and the client back to Leads if this was all they had. */
+                          <div data-no-deal={a.unitId}>
+                            <ConfirmButton
+                              action={endNegotiation.bind(null, a.unitId, id)}
+                              label={t("clients.noDeal")}
+                              confirm={t("clients.noDealConfirm")}
+                              title={t("clients.noDealHint")}
+                            />
+                          </div>
+                        ) : a.contractId ? (
                           <span className="text-xs text-brand-graphite/60">
                             {t("clients.contractLocked")}
                           </span>

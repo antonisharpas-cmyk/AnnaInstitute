@@ -39,9 +39,12 @@ const escapeHtml = (value: string) =>
  *   3. the outcome is recorded per recipient, including the provider reference
  *      or the error, so there is proof of what went where.
  */
+/** The look of every letter the CRM sends: Times New Roman, 11 points, as the office writes its own. */
+export const LETTER_FONT = "font-family:'Times New Roman',Times,serif;font-size:11pt";
+
 /** A letter's text as the email's HTML, the same for every letter the CRM sends. */
 export function letterHtml(body: string): string {
-  return `<div style="font-family:system-ui,Arial,sans-serif;font-size:14px;line-height:1.6;color:#121111">${escapeHtml(
+  return `<div style="${LETTER_FONT};line-height:1.45;color:#121111">${escapeHtml(
     body,
   )
     .split("\n")
@@ -118,7 +121,7 @@ export async function sendAndRecord(options: {
   if (options.withOptOut && (recipient.clientId || recipient.leadId)) {
     if (channel === "EMAIL") {
       const url = recipient.clientId ? unsubscribeUrl(recipient.clientId) : leadUnsubscribeUrl(recipient.leadId as string);
-      html += `<hr style="margin:24px 0 12px;border:none;border-top:1px solid #e3e5e8"><p style="font-family:system-ui,Arial,sans-serif;font-size:12px;color:#6b7280">If you would rather not receive these, <a href="${url}" style="color:#3d8397">unsubscribe here</a>.</p>`;
+      html += `<hr style="margin:24px 0 12px;border:none;border-top:1px solid #e3e5e8"><p style="font-family:'Times New Roman',Times,serif;font-size:9pt;color:#6b7280">If you would rather not receive these, <a href="${url}" style="color:#3d8397">unsubscribe here</a>.</p>`;
       body = `${body}\n\nIf you would rather not receive these, unsubscribe here: ${url}`;
     } else if (!/reply stop/i.test(body)) {
       body = `${body}\nReply STOP to opt out.`;

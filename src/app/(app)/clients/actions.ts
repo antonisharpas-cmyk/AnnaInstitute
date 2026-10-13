@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { clients, contractUnits, contracts, teamMembers, units } from "@/db/schema";
+import { clients, contractUnits, contracts, leads, payments, projects, teamMembers, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { followTheApartments, markUnitByHand } from "@/lib/statuses";
@@ -465,6 +465,135 @@ export async function unassignApartment(unitId: string, clientId: string) {
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/clients");
   revalidatePath(`/projects/${unit.projectId}`);
+}
+
+/**
+ * A negotiation that came to nothing.
+ *
+ * The apartment was held for the client while they talked about a reservation,
+ * and they did not go ahead. It goes back on the market as Available, any
+ * contract drawn up for it is cancelled (nothing was paid on it, or it would be
+ * reserved or sold, not in negotiation), and the agent's commission on it is
+ * taken back. Then, if the client holds nothing else, no other apartment and no
+ * other contract, they were never really a client: they go back to Leads, to
+ * the lead they came from when there is one, or as a new lead with their
+ * details, and the client record moves to the Closed list with the reason.
+ */
+export async function endNegotiation(unitId: string, clientId: string) {
+  const user = await requireUser(["ADMIN"]);
+
+  const [unit] = await db.select().from(units).where(eq(units.id, unitId)).limit(1);
+  if (!unit || unit.clientId !== clientId || unit.status !== "NEGOTIATION") {
+    await flash("said.noDealNotInNegotiation", "bad");
+    revalidatePath(`/clients/${clientId}`);
+    return;
+  }
+
+  /* The contracts drawn up for this apartment, with this client, still open. */
+  const open = await db
+    .select({ id: contracts.id, kind: contracts.kind })
+    .from(contracts)
+    .where(and(eq(contracts.unitId, unitId), eq(contracts.clientId, clientId), ne(contracts.status, "CANCELLED"), ne(contracts.status, "COMPLETED")));
+  const openIds = open.map((one) => one.id);
+  if (openIds.length > 0) {
+    const [paid] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(and(inArray(payments.contractId, openIds), eq(payments.kind, "PAYMENT")))
+      .limit(1);
+    if (paid) {
+      await flash("said.noDealPaid", "bad");
+      revalidatePath(`/clients/${clientId}`);
+      return;
+    }
+    await db.update(contracts).set({ status: "CANCELLED", updatedAt: new Date() }).where(inArray(contracts.id, openIds));
+    for (const one of open) if (one.kind === "SALE") await revertCommission(one.id);
+  }
+
+  await db
+    .update(units)
+    .set({ clientId: null, status: "AVAILABLE", statusByHandAt: null, statusByHandById: null, updatedAt: new Date() })
+    .where(eq(units.id, unitId));
+  await followTheApartments(unit.projectId, user);
+
+  const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.id, unit.projectId)).limit(1);
+  const apartment = `${project?.name ?? ""} ${unit.code}`.trim();
+
+  await recordAudit({
+    action: "unit.negotiation.ended",
+    entity: "unit",
+    entityId: unitId,
+    detail: `${apartment} back to available, no deal with client ${clientId}${openIds.length ? `, ${openIds.length} contract(s) cancelled` : ""}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  /* Anything else of theirs keeps them a client. */
+  const [otherUnit] = await db.select({ id: units.id }).from(units).where(eq(units.clientId, clientId)).limit(1);
+  const [otherContract] = await db
+    .select({ id: contracts.id })
+    .from(contracts)
+    .where(and(eq(contracts.clientId, clientId), ne(contracts.status, "CANCELLED")))
+    .limit(1);
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${unit.projectId}`);
+  revalidatePath("/contracts");
+  revalidatePath("/clients");
+  if (otherUnit || otherContract) {
+    await flash("said.noDealStaysClient");
+    revalidatePath(`/clients/${clientId}`);
+    return;
+  }
+
+  const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!client) return;
+  const reason = `Negotiation on ${apartment} ended without a deal.`;
+
+  /* Back to the lead they came from, or a new lead with their details. */
+  const [lead] = await db.select().from(leads).where(eq(leads.clientId, clientId)).limit(1);
+  let leadId: string;
+  if (lead) {
+    await db.update(leads).set({ clientId: null, status: "ACTIVE", deletedAt: null, updatedAt: new Date() }).where(eq(leads.id, lead.id));
+    leadId = lead.id;
+  } else {
+    const [made] = await db
+      .insert(leads)
+      .values({
+        firstName: client.firstName,
+        lastName: client.lastName,
+        email: client.email,
+        phone: client.phone,
+        message: reason,
+        interest: apartment,
+        projectId: unit.projectId,
+        projectName: project?.name ?? null,
+        unitCode: unit.code,
+        sourceKind: client.source === "AGENT_REFERRAL" ? "AGENT" : client.source === "ENQUIRY" ? "ENQUIRY" : "OTHER",
+        source: "Back from a negotiation",
+        consent: client.marketingOptIn,
+        status: "ACTIVE",
+        agentId: client.agentId,
+        assignedToId: client.assignedToId,
+      })
+      .returning({ id: leads.id });
+    leadId = made.id;
+  }
+
+  /* The client record stays, on the Closed list, so its cancelled contract and papers keep their history. */
+  await db.update(clients).set({ closedAt: new Date(), closedReason: reason, updatedAt: new Date() }).where(eq(clients.id, clientId));
+
+  await recordAudit({
+    action: "client.backToLead",
+    entity: "client",
+    entityId: clientId,
+    detail: `${reason} Back to lead ${leadId}.`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+
+  await flash("said.noDealBackToLead");
+  revalidatePath("/leads");
+  redirect(`/leads/${leadId}`);
 }
 
 /* ---------------------------------------------------------------------------

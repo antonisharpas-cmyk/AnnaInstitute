@@ -29,13 +29,15 @@ export const projectStatusEnum = pgEnum("project_status", [
 ]);
 /*
  * Negotiation: a client is discussing the terms of a reservation but has not
- * signed the Reservation Agreement yet. The apartment is still offered to
- * others. Reserved is kept for after the agreement is signed.
+ * signed the Reservation Agreement yet. The apartment is held for them while
+ * they talk, so it is no longer offered to others: it leaves the price list
+ * and is not counted as available. Reserved is kept for after the agreement
+ * is signed. If the talks come to nothing, "No deal" on the client puts it back.
  */
 export const unitStatusEnum = pgEnum("unit_status", ["AVAILABLE", "NEGOTIATION", "RESERVED", "SOLD", "DELIVERED"]);
 export type UnitStatus = (typeof unitStatusEnum.enumValues)[number];
 /** The statuses an apartment is still offered to buyers in: on the price list and counted as available. */
-export const OFFERED_STATUSES = ["AVAILABLE", "NEGOTIATION"] as const;
+export const OFFERED_STATUSES = ["AVAILABLE"] as const;
 /**
  * What kind of transaction a contract records.
  *

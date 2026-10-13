@@ -4,7 +4,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { db } from "@/db";
 import { projects, units } from "@/db/schema";
 import { formatAmount } from "@/lib/money";
-import { letterHtml } from "@/lib/messaging";
+import { LETTER_FONT, letterHtml } from "@/lib/messaging";
 import { sendEmail, type EmailAttachment } from "@/lib/messaging/email";
 import { fill } from "@/lib/automaticEmails";
 import { AUTOMATIC_KEYS, templateByKey, type AutomaticKey } from "@/lib/templates";
@@ -329,7 +329,7 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
     to,
     subject: `[Test] ${subject}`,
     text,
-    html: html ? `<p><em>${intro.replace(/</g, "&lt;")}</em></p>${html}` : letterHtml(text),
+    html: html ? `<p style="${LETTER_FONT}"><em>${intro.replace(/</g, "&lt;")}</em></p>${html}` : letterHtml(text),
     attachments,
     pastTheSwitch: true,
   });

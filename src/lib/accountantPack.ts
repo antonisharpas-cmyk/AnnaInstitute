@@ -1,18 +1,19 @@
 import "server-only";
 import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLogs, clients, constructorPayments, constructorProjects, constructors, documents, expenses, issuedDocuments, projects, refunds, subowners } from "@/db/schema";
+import { agents, auditLogs, clients, commissionPayments, commissions, constructorPayments, constructorProjects, constructors, contracts, documents, expenses, issuedDocuments, projects, refunds, subowners, units } from "@/db/schema";
 import { issuerIdOfContract } from "@/lib/issuer";
 import { issuerOfProjects } from "@/lib/issuer";
 import { toCents } from "@/lib/money";
 import { paperAttachment, readDocument } from "@/lib/issued";
 import type { IssuedSnapshot } from "@/lib/paymentPdf";
-import { readSetting } from "@/lib/settings";
+import { readSetting, writeSetting } from "@/lib/settings";
 import { makeZip, type ZipEntry } from "@/lib/zip";
 import { makeXlsx } from "@/lib/xlsx";
 import { sendAndRecord } from "@/lib/messaging";
 import { emailList } from "@/lib/buyers";
 import { ownCategoryWords, whatFor } from "@/lib/partnerInvoices";
+import { ourCompanies } from "@/lib/parties";
 
 /**
  * The month's papers, for the accountant.
@@ -25,9 +26,9 @@ import { ownCategoryWords, whatFor } from "@/lib/partnerInvoices";
  * or emailed in one go to the accountant's address.
  */
 
-export type PackGroup = "invoice" | "receipt" | "credit" | "companyInvoice" | "received" | "constructor" | "refundAck";
+export type PackGroup = "invoice" | "receipt" | "credit" | "companyInvoice" | "received" | "constructor" | "commission" | "refundAck";
 
-export const PACK_GROUPS: PackGroup[] = ["invoice", "receipt", "credit", "companyInvoice", "received", "constructor", "refundAck"];
+export const PACK_GROUPS: PackGroup[] = ["invoice", "receipt", "credit", "companyInvoice", "received", "constructor", "commission", "refundAck"];
 
 const FOLDER: Record<PackGroup, string> = {
   invoice: "Invoices",
@@ -36,6 +37,7 @@ const FOLDER: Record<PackGroup, string> = {
   companyInvoice: "Invoices issued",
   received: "Invoices received",
   constructor: "Constructors",
+  commission: "Agents commissions",
   refundAck: "Refund acknowledgements",
 };
 
@@ -46,6 +48,7 @@ const KIND_WORD: Record<PackGroup, string> = {
   companyInvoice: "Invoice issued",
   received: "Invoice received",
   constructor: "Constructor payment",
+  commission: "Commission payment",
   refundAck: "Refund acknowledgement",
 };
 
@@ -60,10 +63,71 @@ export type PackItem = {
   netCents: number;
   vatCents: number;
   totalCents: number;
-  /** Voided or credited papers are listed, marked, and left unticked. */
+  /** Voided, cancelled, credited, pending or unsigned papers are listed and marked; they go with the rest. */
   state: "" | "voided" | "credited" | "cancelled" | "pending" | "unsigned";
   files: number;
+  /** Which of our companies it belongs to: "" for One Eleven itself, otherwise the company's id. */
+  companyId: string;
 };
+
+/** "2026-08,2026-09" or a list, to the months asked for, in order, each once. */
+export function monthsFrom(raw: string | string[] | null | undefined): string[] {
+  const list = (Array.isArray(raw) ? raw : String(raw ?? "").split(",")).map((one) => one.trim()).filter((one) => /^\d{4}-\d{2}$/.test(one));
+  return [...new Set(list)].sort();
+}
+
+/** "September 2026", or "August 2026 and September 2026", for the email, the ZIP and the history. */
+export function monthsLabel(months: string[]): string {
+  const labels = monthsFrom(months).map((one) => monthRange(one).label);
+  if (labels.length <= 1) return labels[0] ?? "";
+  return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
+/**
+ * Our companies, each with the developments it holds, for the choice on the
+ * page: each company has its own accountant. One Eleven holds whatever no
+ * company does.
+ */
+export async function packCompanies(): Promise<{ id: string; name: string; projects: string[] }[]> {
+  const [list, holders, rows] = await Promise.all([
+    ourCompanies(),
+    issuerOfProjects(),
+    db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
+  ]);
+  const known = new Set(list.map((one) => one.id));
+  return list.map((company) => ({
+    ...company,
+    projects: rows
+      .filter((project) => {
+        const holder = holders.get(project.id) ?? "";
+        return (known.has(holder) ? holder : "") === company.id;
+      })
+      .map((project) => project.name),
+  }));
+}
+
+/**
+ * The months that have papers, newest first: a month the office recorded
+ * nothing in is not offered, and a paper dated in the past brings its month in.
+ */
+export async function packMonths(): Promise<string[]> {
+  const key = (column: unknown) => sql<string>`to_char(${column}, 'YYYY-MM')`;
+  const [a, b, c, d, e] = await Promise.all([
+    db.selectDistinct({ m: key(issuedDocuments.issuedOn) }).from(issuedDocuments),
+    db.selectDistinct({ m: key(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`) }).from(expenses).where(eq(expenses.direction, "IN")),
+    db.selectDistinct({ m: key(constructorPayments.paidOn) }).from(constructorPayments).where(sql`${constructorPayments.status} <> 'CANCELLED'`),
+    db.selectDistinct({ m: key(commissionPayments.paidOn) }).from(commissionPayments),
+    db.selectDistinct({ m: key(refunds.paidOn) }).from(refunds).where(sql`${refunds.purpose} <> 'VAT_CHANGE'`),
+  ]);
+  return monthsFrom([...a, ...b, ...c, ...d, ...e].map((one) => one.m)).reverse();
+}
+
+/** Every paper of the months chosen, of one company or of all of them. */
+export async function papersFor(months: string[], companyId: string | null = null): Promise<PackItem[]> {
+  const all: PackItem[] = [];
+  for (const month of monthsFrom(months)) all.push(...(await monthPapers(month)));
+  return companyId === null ? all : all.filter((one) => one.companyId === companyId);
+}
 
 /** "2026-10" to the first moment of that month and of the next, on the office's clock. */
 export function monthRange(month: string): { from: Date; to: Date; label: string } {
@@ -114,6 +178,10 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
     (issuerId ? (companies.find((one) => one.id === issuerId)?.company || companies.find((one) => one.id === issuerId)?.name) : "") ||
     ownName;
 
+  /* Our companies, so every paper is filed under one of them, One Eleven when the id is not one of ours. */
+  const ours = new Set((await ourCompanies()).map((one) => one.id));
+  const ourId = (id: string | null | undefined) => (id && ours.has(id) ? id : "");
+
   const items: PackItem[] = issued.map((paper) => {
     const snap = read(paper.snapshot);
     const group: PackGroup = paper.expenseId && paper.kind !== "RECEIPT"
@@ -135,7 +203,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
       vatCents: toCents(paper.vatAmount),
       totalCents: toCents(paper.totalAmount),
       state: paper.voidedAt ? (paper.replacedById ? "cancelled" : "voided") : paper.creditedById ? "credited" : "",
-      files: paper.documentId ? 1 : 0,
+      files: paper.documentId || paper.stampedDocumentId ? 1 : 0,
+      companyId: ourId(paper.issuerId),
     };
   });
 
@@ -174,6 +243,7 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
       totalCents: toCents(one.totalAmount),
       state: "",
       files: files.find((f) => f.expenseId === one.id)?.n ?? 0,
+      companyId: ourId(one.ourCompanyId),
     });
   }
 
@@ -215,6 +285,53 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
       totalCents,
       state: one.payment.status === "PAID" ? "" : "pending",
       files: builtFiles.find((f) => f.paymentId === one.payment.id)?.n ?? 0,
+      companyId: ourId(holder),
+    });
+  }
+
+  /*
+   * The commissions paid to the agents that month, with the papers filed on the
+   * commission: the agent's invoice and the receipt of the payment. Each goes
+   * under the company that holds the development of the sale; a payment with no
+   * sale behind it goes under One Eleven.
+   */
+  const paidAgents = await db
+    .select({ payment: commissionPayments, agent: agents, commission: commissions, contract: contracts, unit: units, project: projects })
+    .from(commissionPayments)
+    .innerJoin(agents, eq(agents.id, commissionPayments.agentId))
+    .leftJoin(commissions, eq(commissions.id, commissionPayments.commissionId))
+    .leftJoin(contracts, eq(contracts.id, commissions.contractId))
+    .leftJoin(units, eq(units.id, contracts.unitId))
+    .leftJoin(projects, eq(projects.id, units.projectId))
+    .where(and(gte(commissionPayments.paidOn, from), lt(commissionPayments.paidOn, to)))
+    .orderBy(asc(commissionPayments.paidOn));
+  const commissionIds = [...new Set(paidAgents.map((one) => one.payment.commissionId).filter(Boolean) as string[])];
+  const commissionFiles = commissionIds.length
+    ? await db
+        .select({ commissionId: documents.commissionId, n: sql<number>`count(*)::int` })
+        .from(documents)
+        .where(inArray(documents.commissionId, commissionIds))
+        .groupBy(documents.commissionId)
+    : [];
+  for (const one of paidAgents) {
+    const holder = one.project ? (holders.get(one.project.id) ?? "") : "";
+    const totalCents = toCents(one.payment.amount);
+    const sale = one.project ? `${one.project.name} ${one.unit?.code ?? ""}`.trim() : "";
+    items.push({
+      key: `a:${one.payment.id}`,
+      group: "commission",
+      company: holder ? companyName(holder, {}) : ownName,
+      /* The agent's invoice number, as typed when the payment was recorded. */
+      number: one.payment.reference ?? "",
+      date: new Date(one.payment.paidOn).toISOString(),
+      party: one.agent.company?.trim() ? `${one.agent.name}, ${one.agent.company.trim()}` : one.agent.name,
+      about: ["Commission", sale, one.contract?.reference].filter(Boolean).join(", "),
+      netCents: totalCents,
+      vatCents: 0,
+      totalCents,
+      state: "",
+      files: one.payment.commissionId ? (commissionFiles.find((f) => f.commissionId === one.payment.commissionId)?.n ?? 0) : 0,
+      companyId: ourId(holder),
     });
   }
 
@@ -247,17 +364,24 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
       totalCents,
       state: one.refund.signedDocumentId ? "" : "unsigned",
       files: 1,
+      companyId: ourId(issuer),
     });
   }
 
   return items;
 }
 
+/** The commission a payment to an agent was for, whose papers are filed on it. */
+async function commissionOfPayment(paymentId: string): Promise<string | null> {
+  const [row] = await db.select({ id: commissionPayments.commissionId }).from(commissionPayments).where(eq(commissionPayments.id, paymentId)).limit(1);
+  return row?.id ?? null;
+}
+
 /** The ticked papers as one ZIP: a folder per company, a folder per kind, and the list. */
-export async function buildPack(month: string, keys: string[]) {
-  const { label } = monthRange(month);
+export async function buildPack(months: string[], keys: string[], companyName = "") {
+  const label = monthsLabel(months);
   const wanted = new Set(keys);
-  const items = (await monthPapers(month)).filter((one) => wanted.has(one.key));
+  const items = (await papersFor(months)).filter((one) => wanted.has(one.key));
   const entries: ZipEntry[] = [];
   const rows: (string | number)[][] = [];
   const missing: string[] = [];
@@ -287,7 +411,9 @@ export async function buildPack(month: string, keys: string[]) {
             ? eq(documents.id, only)
             : item.key.startsWith("c:")
               ? eq(documents.constructorPaymentId, item.key.slice(2))
-              : eq(documents.expenseId, item.key.slice(2)),
+              : item.key.startsWith("a:")
+                ? eq(documents.commissionId, (await commissionOfPayment(item.key.slice(2))) ?? "none")
+                : eq(documents.expenseId, item.key.slice(2)),
         )
         .orderBy(asc(documents.createdAt));
       for (const doc of docs) {
@@ -324,7 +450,7 @@ export async function buildPack(month: string, keys: string[]) {
 
   return {
     zip: makeZip(entries),
-    filename: `One Eleven papers, ${label}.zip`,
+    filename: `${companyName || "One Eleven"} papers, ${label}.zip`.replace(/[\\/:*?"<>|]/g, " "),
     label,
     count: items.length,
     missing,
@@ -336,7 +462,9 @@ export async function buildPack(month: string, keys: string[]) {
 export const MAX_EMAIL_BYTES = 20 * 1024 * 1024;
 
 export async function emailPack(options: {
-  month: string;
+  months: string[];
+  /** The company chosen on the page, null for all of them. */
+  companyId?: string | null;
   keys: string[];
   to: string;
   note?: string;
@@ -344,7 +472,8 @@ export async function emailPack(options: {
 }): Promise<{ ok: boolean; detail: string }> {
   const addresses = emailList(options.to);
   if (addresses.length === 0) return { ok: false, detail: "Type the accountant's email address first." };
-  const pack = await buildPack(options.month, options.keys);
+  const chosen = options.companyId === null || options.companyId === undefined ? null : (await ourCompanies()).find((one) => one.id === options.companyId) ?? null;
+  const pack = await buildPack(options.months, options.keys, chosen?.name ?? "");
   if (pack.count === 0) return { ok: false, detail: "Tick at least one paper." };
   if (pack.zip.length > MAX_EMAIL_BYTES) {
     return {
@@ -372,7 +501,7 @@ export async function emailPack(options: {
     channel: "EMAIL",
     recipient: { name: "Accountant", email: addresses[0] },
     cc: addresses.slice(1),
-    subject: `${company}: papers for ${pack.label}`,
+    subject: `${chosen?.name || company}: papers for ${pack.label}`,
     body,
     withOptOut: false,
     attachments: [{ filename: pack.filename, content: pack.zip, contentType: "application/zip" }],
@@ -382,8 +511,8 @@ export async function emailPack(options: {
   await recordAudit({
     action: "accountant.pack",
     entity: "settings",
-    entityId: options.month,
-    detail: `${pack.count} papers to ${addresses.join(", ")}: ${result.status}${result.error ? `, ${result.error}` : ""}`,
+    entityId: monthsFrom(options.months).join(","),
+    detail: `${chosen ? `${chosen.name}, ` : ""}${pack.count} papers to ${addresses.join(", ")}: ${result.status}${result.error ? `, ${result.error}` : ""}`,
     userId: options.who.id,
     userEmail: options.who.email,
   });
@@ -391,6 +520,33 @@ export async function emailPack(options: {
   if (result.status === "SENT") return { ok: true, detail: `Sent to ${addresses.join(", ")}: ${pack.count} papers, ${Math.max(1, Math.round(pack.zip.length / 1024))} KB.` };
   if (result.status === "SIMULATED") return { ok: false, detail: result.error ?? "Email is not set up, so nothing was sent." };
   return { ok: false, detail: result.error ?? "It did not go." };
+}
+
+/**
+ * Each company has its own accountant: the address last used for a company
+ * comes back filled in when that company is chosen again. "" is all companies
+ * together, "ours" One Eleven itself, otherwise the company's id.
+ */
+export async function accountantFor(company: string): Promise<string> {
+  if (!company) return readSetting("accountant.email");
+  try {
+    const all = JSON.parse((await readSetting("accountant.emails")) || "{}") as Record<string, string>;
+    return all[company] ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export async function rememberAccountant(company: string, to: string): Promise<void> {
+  if (!company) return writeSetting("accountant.email", to);
+  let all: Record<string, string> = {};
+  try {
+    all = JSON.parse((await readSetting("accountant.emails")) || "{}") as Record<string, string>;
+  } catch {
+    all = {};
+  }
+  all[company] = to;
+  await writeSetting("accountant.emails", JSON.stringify(all));
 }
 
 /** When each month was last sent, newest first. */

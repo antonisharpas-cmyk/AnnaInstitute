@@ -7,7 +7,7 @@ import { nextInvoiceNumber, nextReceiptNumber } from "@/lib/receipts";
 import { keepPdf, paperName, readDocument } from "@/lib/issued";
 import { issuerDetails } from "@/lib/issuer";
 import { invoicePdf, receiptPdfFrom, type IssuedSnapshot } from "@/lib/paymentPdf";
-import { sendAndRecord } from "@/lib/messaging";
+import { letterHtml, sendAndRecord } from "@/lib/messaging";
 import { sendEmail, type EmailAttachment } from "@/lib/messaging/email";
 import { readSetting } from "@/lib/settings";
 import { englishWord, isCustom, listEntries, shownCode } from "@/lib/choices";
@@ -405,7 +405,7 @@ export function receivedLetter(v: {
   return {
     subject: `Invoice received: ${v.supplier}, ${v.total}`,
     body,
-    html: body.split("\n").map((line) => `<p>${line.replace(/</g, "&lt;")}</p>`).join(""),
+    html: letterHtml(body),
   };
 }
 

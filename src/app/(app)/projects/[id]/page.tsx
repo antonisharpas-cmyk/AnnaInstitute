@@ -120,7 +120,7 @@ export default async function ProjectPage({
       .select({
         count: sql<number>`count(*)::int`,
         /* Still offered to buyers: available, and those in negotiation. */
-        available: sql<number>`count(*) filter (where ${units.status} in ('AVAILABLE','NEGOTIATION'))::int`,
+        available: sql<number>`count(*) filter (where ${units.status} = 'AVAILABLE')::int`,
         negotiation: sql<number>`count(*) filter (where ${units.status} = 'NEGOTIATION')::int`,
         reserved: sql<number>`count(*) filter (where ${units.status} = 'RESERVED')::int`,
         sold: sql<number>`count(*) filter (where ${units.status} in ('SOLD','DELIVERED'))::int`,
@@ -178,7 +178,7 @@ export default async function ProjectPage({
           hint={`${totals?.sold ?? 0} ${t("dash.sold").toLowerCase()}, ${
             totals?.available ?? 0
           } ${t("dash.available").toLowerCase()}${
-            (totals?.negotiation ?? 0) > 0 ? ` (${totals?.negotiation} ${t("units.inNegotiation")})` : ""
+            (totals?.negotiation ?? 0) > 0 ? `, ${totals?.negotiation} ${t("units.inNegotiation")}` : ""
           }${(totals?.reserved ?? 0) > 0 ? `, ${totals?.reserved} ${t("units.status.RESERVED").toLowerCase()}` : ""}`}
         />
         <Stat

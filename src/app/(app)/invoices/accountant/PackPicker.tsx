@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import type { PackGroup, PackItem } from "@/lib/accountantPack";
 
 /*
- * The month's papers with a tick beside each, grouped by kind, and the two
- * things to do with what is ticked: download it as one ZIP, or email it to
- * the accountant. Voided and credited papers are listed, marked, and left
- * unticked, since the accountant usually wants what stands.
+ * The papers of the months chosen with a tick beside each, grouped by kind,
+ * and the two things to do with what is ticked: download it as one ZIP, or
+ * email it to the accountant. Everything starts ticked, cancelled, voided and
+ * credited invoices too, marked as such, because the accountant keeps every
+ * paper that was issued.
  */
 
 type Labels = {
@@ -21,6 +22,7 @@ type Labels = {
   about: string;
   total: string;
   voided: string;
+  cancelled: string;
   credited: string;
   pending: string;
   unsigned: string;
@@ -41,19 +43,22 @@ const eur = (cents: number) =>
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB");
 
 export default function PackPicker({
-  month,
+  months,
+  company,
   items,
   groups,
   defaultTo,
   labels,
 }: {
-  month: string;
+  months: string[];
+  /** "" for every company, "ours" for One Eleven, otherwise the company's id. */
+  company: string;
   items: PackItem[];
   groups: PackGroup[];
   defaultTo: string;
   labels: Labels;
 }) {
-  const [ticked, setTicked] = useState<Set<string>>(() => new Set(items.filter((one) => !one.state).map((one) => one.key)));
+  const [ticked, setTicked] = useState<Set<string>>(() => new Set(items.map((one) => one.key)));
   const [to, setTo] = useState(defaultTo);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<"" | "download" | "send">("");
@@ -78,7 +83,7 @@ export default function PackPicker({
       const answer = await fetch("/api/accountant/pack", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month, keys: [...ticked], mode, to, note }),
+        body: JSON.stringify({ months, company, keys: [...ticked], mode, to, note }),
       });
       if (mode === "download" && answer.ok) {
         const blob = await answer.blob();
@@ -137,7 +142,7 @@ export default function PackPicker({
                   </thead>
                   <tbody>
                     {rows.map((one) => (
-                      <tr key={one.key} className={one.state ? "opacity-60" : ""}>
+                      <tr key={one.key}>
                         <td>
                           <input
                             type="checkbox"
@@ -150,7 +155,7 @@ export default function PackPicker({
                         <td className="nowrap font-semibold">
                           {one.number}
                           {one.state ? (
-                            <span className="ml-1 text-xs font-normal">({one.state === "voided" ? labels.voided : one.state === "pending" ? labels.pending : one.state === "unsigned" ? labels.unsigned : labels.credited})</span>
+                            <span className="ml-1 text-xs font-normal">({one.state === "voided" ? labels.voided : one.state === "cancelled" ? labels.cancelled : one.state === "pending" ? labels.pending : one.state === "unsigned" ? labels.unsigned : labels.credited})</span>
                           ) : null}
                         </td>
                         <td className="nowrap text-xs">{day(one.date)}</td>

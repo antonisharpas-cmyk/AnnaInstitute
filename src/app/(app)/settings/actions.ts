@@ -7,6 +7,7 @@ import { recordAudit } from "@/lib/audit";
 import { writeSetting } from "@/lib/settings";
 import { sendDailySummary } from "@/lib/appointmentSummary";
 import { sendEmail } from "@/lib/messaging/email";
+import { letterHtml } from "@/lib/messaging";
 
 /**
  * The few things the office sets once.
@@ -110,7 +111,7 @@ export async function sendTestEmail(formData: FormData) {
     to,
     subject: "One Eleven CRM: test email",
     text: "This is a test from the One Eleven CRM. If you are reading it, the automatic emails can go out.",
-    html: "<p>This is a test from the One Eleven CRM. If you are reading it, the automatic emails can go out.</p>",
+    html: letterHtml("This is a test from the One Eleven CRM. If you are reading it, the automatic emails can go out."),
     /* The test goes only to the office itself, so it is allowed even while
        every other email is switched off: that is when it is most useful. */
     pastTheSwitch: true,

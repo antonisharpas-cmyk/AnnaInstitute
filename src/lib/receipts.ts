@@ -361,7 +361,7 @@ export function agentReceiptEmail(receipt: NonNullable<AgentReceipt>, ...ignored
     "",
     `We confirm the payment of ${formatAmount(receipt.amountCents, locale)} ${regarding}.`,
     "",
-    "Please send us the related invoice.",
+    "Please send us the related receipt.",
     "",
     "Have a lovely day!",
     "",
