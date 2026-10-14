@@ -36,7 +36,14 @@ type Labels = {
   downloading: string;
   send: string;
   sending: string;
+  previous: string;
+  next: string;
+  /** "{from} to {to} of {total}". */
+  showing: string;
 };
+
+/** Each kind shows its newest five; the rest are a page away, and Tick all still means all of them. */
+const PER_PAGE = 5;
 
 const eur = (cents: number) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(cents / 100);
@@ -64,7 +71,18 @@ export default function PackPicker({
   const [busy, setBusy] = useState<"" | "download" | "send">("");
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const byGroup = useMemo(() => groups.map((group) => ({ group, rows: items.filter((one) => one.group === group) })), [groups, items]);
+  const [pages, setPages] = useState<Partial<Record<PackGroup, number>>>({});
+  /* Newest first, so the first page of each kind is the latest five. */
+  const byGroup = useMemo(
+    () =>
+      groups.map((group) => ({
+        group,
+        rows: items
+          .filter((one) => one.group === group)
+          .sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number)),
+      })),
+    [groups, items],
+  );
   const chosen = items.filter((one) => ticked.has(one.key));
   const flip = (keys: string[], on: boolean) =>
     setTicked((was) => {
@@ -110,74 +128,8 @@ export default function PackPicker({
 
   return (
     <div className="space-y-5" data-pack>
-      {byGroup
-        .filter((one) => one.rows.length > 0)
-        .map(({ group, rows }) => {
-          const keys = rows.map((one) => one.key);
-          const on = keys.filter((key) => ticked.has(key)).length;
-          return (
-            <section key={group} data-pack-group={group}>
-              <div className="mb-2 flex flex-wrap items-center gap-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-brand-graphite">
-                  {labels.groups[group]} ({on} / {rows.length})
-                </h3>
-                <button type="button" className="text-xs text-brand-teal-dark underline" onClick={() => flip(keys, true)}>
-                  {labels.all}
-                </button>
-                <button type="button" className="text-xs text-brand-teal-dark underline" onClick={() => flip(keys, false)}>
-                  {labels.none}
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th className="w-8" />
-                      <th>{labels.number}</th>
-                      <th>{labels.date}</th>
-                      <th>{labels.party}</th>
-                      <th>{labels.about}</th>
-                      <th className="ctr">{labels.total}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((one) => (
-                      <tr key={one.key}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={ticked.has(one.key)}
-                            onChange={(event) => flip([one.key], event.target.checked)}
-                            aria-label={`${labels.groups[group]} ${one.number}`}
-                            data-pack-item={one.key}
-                          />
-                        </td>
-                        <td className="nowrap font-semibold">
-                          {one.number}
-                          {one.state ? (
-                            <span className="ml-1 text-xs font-normal">({one.state === "voided" ? labels.voided : one.state === "cancelled" ? labels.cancelled : one.state === "pending" ? labels.pending : one.state === "unsigned" ? labels.unsigned : labels.credited})</span>
-                          ) : null}
-                        </td>
-                        <td className="nowrap text-xs">{day(one.date)}</td>
-                        <td className="text-xs">
-                          {one.party}
-                          <div className="text-brand-graphite/60">{one.company}</div>
-                        </td>
-                        <td className="text-xs">
-                          {one.about}
-                          {one.files === 0 ? <div className="text-[color:var(--color-negative)]">{labels.noFile}</div> : null}
-                        </td>
-                        <td className="ctr nowrap">{eur(one.totalCents)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          );
-        })}
-
-      <div className="space-y-3 rounded border border-brand-line bg-brand-surface p-3">
+      {/* What is ticked and where it goes, first, so it is in reach without scrolling past every paper. */}
+      <div className="space-y-3 rounded border border-brand-line bg-brand-surface p-3" data-pack-send-panel>
         <p className="text-sm font-semibold" data-pack-chosen>
           {labels.chosen.replace("{n}", String(chosen.length)).replace("{total}", eur(chosen.reduce((a, one) => a + one.totalCents, 0)))}
         </p>
@@ -210,6 +162,109 @@ export default function PackPicker({
           </p>
         ) : null}
       </div>
+      {byGroup
+        .filter((one) => one.rows.length > 0)
+        .map(({ group, rows }) => {
+          /* Tick all and Untick all reach every page of the kind, not only the one on show. */
+          const keys = rows.map((one) => one.key);
+          const on = keys.filter((key) => ticked.has(key)).length;
+          const pageCount = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+          const page = Math.min(pages[group] ?? 1, pageCount);
+          const shown = rows.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+          const go = (to: number) => setPages((was) => ({ ...was, [group]: Math.max(1, Math.min(pageCount, to)) }));
+          return (
+            <section key={group} data-pack-group={group}>
+              <div className="mb-2 flex flex-wrap items-center gap-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-brand-graphite">
+                  {labels.groups[group]} ({on} / {rows.length})
+                </h3>
+                <button type="button" className="text-xs text-brand-teal-dark underline" onClick={() => flip(keys, true)}>
+                  {labels.all}
+                </button>
+                <button type="button" className="text-xs text-brand-teal-dark underline" onClick={() => flip(keys, false)}>
+                  {labels.none}
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="data">
+                  <thead>
+                    <tr>
+                      <th className="w-8" />
+                      <th>{labels.number}</th>
+                      <th>{labels.date}</th>
+                      <th>{labels.party}</th>
+                      <th>{labels.about}</th>
+                      <th className="ctr">{labels.total}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map((one) => (
+                      <tr key={one.key}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={ticked.has(one.key)}
+                            onChange={(event) => flip([one.key], event.target.checked)}
+                            aria-label={`${labels.groups[group]} ${one.number}`}
+                            data-pack-item={one.key}
+                          />
+                        </td>
+                        <td className="nowrap font-semibold">
+                          {one.number}
+                          {one.state ? (
+                            <span className="ml-1 text-xs font-normal">({one.state === "voided" ? labels.voided : one.state === "cancelled" ? labels.cancelled : one.state === "pending" ? labels.pending : one.state === "unsigned" ? labels.unsigned : labels.credited})</span>
+                          ) : null}
+                        </td>
+                        <td className="nowrap text-xs">{day(one.date)}</td>
+                        <td className="text-xs">
+                          {one.party}
+                          <div className="text-brand-graphite/60">{one.company}</div>
+                        </td>
+                        <td className="text-xs">
+                          {one.about}
+                          {one.files === 0 ? <div className="text-[color:var(--color-negative)]">{labels.noFile}</div> : null}
+                        </td>
+                        <td className="ctr nowrap">{eur(one.totalCents)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {pageCount > 1 ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" data-pack-pages={group}>
+                  <button type="button" className="btn btn-secondary !px-2 !py-1 !text-xs" disabled={page <= 1} onClick={() => go(page - 1)} aria-label={labels.previous}>
+                    &lsaquo;
+                  </button>
+                  {Array.from({ length: pageCount }, (_, index) => index + 1)
+                    .filter((number) => number === 1 || number === pageCount || Math.abs(number - page) <= 2)
+                    .map((number, index, list) => (
+                      <span key={number} className="flex items-center gap-2">
+                        {index > 0 && number - list[index - 1] > 1 ? <span className="text-brand-graphite/50">...</span> : null}
+                        <button
+                          type="button"
+                          className={`btn !px-2 !py-1 !text-xs ${number === page ? "btn-primary" : "btn-secondary"}`}
+                          onClick={() => go(number)}
+                          aria-current={number === page ? "page" : undefined}
+                        >
+                          {number}
+                        </button>
+                      </span>
+                    ))}
+                  <button type="button" className="btn btn-secondary !px-2 !py-1 !text-xs" disabled={page >= pageCount} onClick={() => go(page + 1)} aria-label={labels.next}>
+                    &rsaquo;
+                  </button>
+                  <span className="text-brand-graphite/60">
+                    {labels.showing
+                      .replace("{from}", String((page - 1) * PER_PAGE + 1))
+                      .replace("{to}", String(Math.min(page * PER_PAGE, rows.length)))
+                      .replace("{total}", String(rows.length))}
+                  </span>
+                </div>
+              ) : null}
+            </section>
+          );
+        })}
+
     </div>
   );
 }

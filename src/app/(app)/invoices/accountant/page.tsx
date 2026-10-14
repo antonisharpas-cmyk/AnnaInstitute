@@ -85,6 +85,27 @@ export default async function AccountantPage({ searchParams }: { searchParams: P
         <p className="mt-1 text-xs text-brand-graphite/60">{t("pack.monthsHint")}</p>
       </form>
 
+      {/* What went to the accountant before, under the filters where it is seen. */}
+      {history.length > 0 ? (
+        <div className="mb-4">
+          <Card title={t("pack.history")}>
+            <ul className="divide-y divide-brand-line text-sm" data-pack-history>
+              {history.map((one, i) => (
+                <li key={i} className="py-2">
+                  <span className="font-semibold">
+                    {one.month ? monthsFrom(one.month).map((m) => monthRange(m).from.toLocaleDateString(tag, { month: "long", year: "numeric" })).join(", ") : ""}
+                  </span>
+                  <span className="text-brand-graphite/70">
+                    {" "}
+                    . {new Date(one.at).toLocaleString(tag)} . {one.detail}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      ) : null}
+
       <Card title={companyName ? `${companyName}, ${label}` : label}>
         <PackPicker
           key={`${months.join(",")}|${company}`}
@@ -94,6 +115,9 @@ export default async function AccountantPage({ searchParams }: { searchParams: P
           groups={PACK_GROUPS}
           defaultTo={to}
           labels={{
+            previous: t("pack.previous"),
+            next: t("pack.next"),
+            showing: t("pack.showing"),
             groups: {
               invoice: t("pack.group.invoice"),
               receipt: t("pack.group.receipt"),
@@ -131,25 +155,6 @@ export default async function AccountantPage({ searchParams }: { searchParams: P
         />
       </Card>
 
-      {history.length > 0 ? (
-        <div className="mt-4">
-          <Card title={t("pack.history")}>
-            <ul className="divide-y divide-brand-line text-sm" data-pack-history>
-              {history.map((one, i) => (
-                <li key={i} className="py-2">
-                  <span className="font-semibold">
-                    {one.month ? monthsFrom(one.month).map((m) => monthRange(m).from.toLocaleDateString(tag, { month: "long", year: "numeric" })).join(", ") : ""}
-                  </span>
-                  <span className="text-brand-graphite/70">
-                    {" "}
-                    . {new Date(one.at).toLocaleString(tag)} . {one.detail}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </div>
-      ) : null}
     </>
   );
 }

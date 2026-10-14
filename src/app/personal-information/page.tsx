@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { asc } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { projects } from "@/db/schema";
+import { projects, units } from "@/db/schema";
 import Logo from "@/components/Logo";
 import { QR_CONSENT_TEXT } from "@/lib/qrLead";
 import { sendPersonalInformation } from "./actions";
+import InterestPicker, { type Development } from "./InterestPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +31,37 @@ export default async function PersonalInformationPage({
   searchParams: Promise<{ sent?: string; missing?: string }>;
 }) {
   const params = await searchParams;
-  const developments = await db
-    .select({ name: projects.name })
-    .from(projects)
-    .orderBy(asc(projects.name))
-    .catch(() => [] as { name: string }[]);
+  /* Every development, with the apartments still available in it. */
+  const [buildings, free] = await Promise.all([
+    db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .orderBy(asc(projects.name))
+      .catch(() => [] as { id: string; name: string }[]),
+    db
+      .select({ id: units.id, projectId: units.projectId, code: units.code, floor: units.floor, bedrooms: units.bedrooms })
+      .from(units)
+      .where(and(eq(units.status, "AVAILABLE")))
+      .orderBy(asc(units.code))
+      .catch(() => [] as { id: string; projectId: string; code: string; floor: string | null; bedrooms: number | null }[]),
+  ]);
+  const developments: Development[] = buildings.map((one) => ({
+    id: one.id,
+    name: one.name,
+    units: free
+      .filter((unit) => unit.projectId === one.id)
+      .map((unit) => ({
+        id: unit.id,
+        label: [
+          `Apartment ${unit.code}`,
+          /* "1st floor" or "ground floor" as written, "floor 3" when only the number is. */
+          unit.floor ? (/^\d+$/.test(unit.floor.trim()) ? `floor ${unit.floor.trim()}` : `${unit.floor.trim()} floor`.replace(/ floor floor$/i, " floor")) : null,
+          unit.bedrooms ? `${unit.bedrooms} ${unit.bedrooms === 1 ? "bedroom" : "bedrooms"}` : null,
+        ]
+          .filter(Boolean)
+          .join(", "),
+      })),
+  }));
 
   return (
     <main className="min-h-screen bg-brand-surface px-4 py-10">
@@ -91,14 +118,7 @@ export default async function PersonalInformationPage({
                 {developments.length > 0 ? (
                   <div>
                     <label className="label" htmlFor="interest">Interested in</label>
-                    <select id="interest" name="interest" className="select" defaultValue="">
-                      <option value="">Any of our developments</option>
-                      {developments.map((one) => (
-                        <option key={one.name} value={one.name}>
-                          {one.name}
-                        </option>
-                      ))}
-                    </select>
+                    <InterestPicker developments={developments} />
                   </div>
                 ) : null}
                 <div>

@@ -989,7 +989,7 @@ One Eleven`,
     name: "The agreed paper, with its invoice",
     description:
       "Goes to the buyer when the office presses Send on the agreed Reservation or Contract of Sale, before it is signed. The agreed paper and the invoice for its stage are attached, so they can pay it on the day they sign. The receipt follows with the signed copy when the money comes in.",
-    subject: "Invoice {{invoice_number}} for your {{paper}}, {{unit}} at {{project}}",
+    subject: "Your {{paper}} and invoice {{invoice_number}}, apartment {{unit}} at {{project}}",
     body: `Dear {{first_name}},
 
 Attached is the {{paper}} for {{unit}} at {{project}}, as agreed, together with invoice {{invoice_number}} for {{stage}}, {{amount}}, to pay when you come to sign.
@@ -999,7 +999,7 @@ Your receipt and the signed {{paper}} will follow once it is signed and paid.
 Kind Regards,
 One Eleven`,
     bodyWhatsapp: "Hello {{first_name}}, we have emailed you invoice {{invoice_number}} of {{amount}} for {{stage}}, to pay when you come to sign the {{paper}}.",
-    subjectEl: "Τιμολόγιο {{invoice_number}} για το {{paper}} σας, {{unit}} στο {{project}}",
+    subjectEl: "Το {{paper}} σας και το τιμολόγιο {{invoice_number}}, διαμέρισμα {{unit}} στο {{project}}",
     bodyEl: `Αγαπητέ {{first_name}},
 
 Επισυνάπτεται το {{paper}} για το {{unit}} στο {{project}}, όπως συμφωνήθηκε, μαζί με το τιμολόγιο {{invoice_number}} για {{stage}}, {{amount}}, για να το πληρώσετε όταν έρθετε να υπογράψετε.
@@ -1057,7 +1057,7 @@ One Eleven`,
     name: "Invoice with the signed Reservation or Contract of Sale",
     description:
       "Goes to the buyer when the office presses Send the invoice with the signed copy, on the Reservation or the Contract of Sale. It carries the invoice for the stage and the signed paper. The receipt follows by itself when the money is recorded.",
-    subject: "Invoice {{invoice_number}} and your signed {{paper}}, {{unit}} at {{project}}",
+    subject: "Your signed {{paper}} and invoice {{invoice_number}}, apartment {{unit}} at {{project}}",
     body: `Dear {{first_name}},
 
 Attached is your signed {{paper}} for {{unit}} at {{project}}, together with invoice {{invoice_number}} for {{stage}}, {{amount}}.
@@ -1067,7 +1067,7 @@ Your receipt will follow as soon as the payment is received.
 Kind Regards,
 One Eleven`,
     bodyWhatsapp: "Hello {{first_name}}, we have emailed you your signed {{paper}} and invoice {{invoice_number}} of {{amount}} for {{unit}} at {{project}}.",
-    subjectEl: "Τιμολόγιο {{invoice_number}} και το υπογεγραμμένο {{paper}}, {{unit}} στο {{project}}",
+    subjectEl: "Το υπογεγραμμένο {{paper}} σας και το τιμολόγιο {{invoice_number}}, διαμέρισμα {{unit}} στο {{project}}",
     bodyEl: `Αγαπητέ {{first_name}},
 
 Επισυνάπτεται το υπογεγραμμένο {{paper}} για το {{unit}} στο {{project}}, μαζί με το τιμολόγιο {{invoice_number}} για {{stage}}, {{amount}}.

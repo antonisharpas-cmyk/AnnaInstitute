@@ -2,8 +2,9 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { leads } from "@/db/schema";
+import { leads, projects, units } from "@/db/schema";
 import { matchProject, recentDuplicate } from "@/lib/leads";
 import { recordAudit } from "@/lib/audit";
 import { QR_CONSENT_TEXT as CONSENT_TEXT } from "@/lib/qrLead";
@@ -54,7 +55,6 @@ export async function sendPersonalInformation(formData: FormData) {
   const lastName = clean(formData.get("lastName"), 80);
   const email = clean(formData.get("email"), 160)?.toLowerCase() ?? null;
   const phone = clean(formData.get("phone"), 40);
-  const interest = clean(formData.get("interest"), 160);
   const country = clean(formData.get("country"), 80);
   const message = clean(formData.get("message"), 1000);
   const consent = formData.get("consent") === "on";
@@ -67,7 +67,40 @@ export async function sendPersonalInformation(formData: FormData) {
   const duplicate = await recentDuplicate(email, phone);
   if (duplicate) redirect("/personal-information?sent=1");
 
-  const projectId = interest ? await matchProject(interest) : null;
+  /*
+   * Which developments, and which apartments in them: ids from the page,
+   * kept only when they are real, and an apartment only when it is still
+   * available in a development that was ticked. The lead keeps the first
+   * development as its own, and every name and apartment in words.
+   */
+  const askedProjects = formData.getAll("projects").map((one) => String(one)).filter(Boolean).slice(0, 20);
+  const askedUnits = formData.getAll("units").map((one) => String(one)).filter(Boolean).slice(0, 60);
+  const chosen = askedProjects.length
+    ? await db.select({ id: projects.id, name: projects.name }).from(projects).where(inArray(projects.id, askedProjects))
+    : [];
+  const ordered = askedProjects.map((id) => chosen.find((one) => one.id === id)).filter((one): one is { id: string; name: string } => Boolean(one));
+  const flats = askedUnits.length && ordered.length
+    ? await db
+        .select({ id: units.id, code: units.code, projectId: units.projectId })
+        .from(units)
+        .where(and(inArray(units.id, askedUnits), inArray(units.projectId, ordered.map((one) => one.id)), eq(units.status, "AVAILABLE")))
+    : [];
+  /* "MAGNUM OPUS DUE 101, 102; MAGNUM OPUS TRE": each development with its apartments, if any. */
+  const interest =
+    ordered
+      .map((one) => {
+        const codes = flats.filter((flat) => flat.projectId === one.id).map((flat) => flat.code).sort();
+        return codes.length ? `${one.name} ${codes.join(", ")}` : one.name;
+      })
+      .join("; ")
+      .slice(0, 500) || clean(formData.get("interest"), 160);
+  const projectName = ordered.map((one) => one.name).join(", ").slice(0, 300) || interest;
+  const unitCode =
+    flats
+      .map((flat) => `${ordered.find((one) => one.id === flat.projectId)?.name ?? ""} ${flat.code}`.trim())
+      .join(", ")
+      .slice(0, 300) || null;
+  const projectId = ordered[0]?.id ?? (interest ? await matchProject(interest) : null);
   const [row] = await db
     .insert(leads)
     .values({
@@ -78,8 +111,9 @@ export async function sendPersonalInformation(formData: FormData) {
       country,
       message,
       interest,
-      projectName: interest,
+      projectName,
       projectId,
+      unitCode,
       sourceKind: "OTHER",
       source: "QR code",
       formName: "Personal information (QR code)",
