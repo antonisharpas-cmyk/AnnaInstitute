@@ -12,8 +12,8 @@ import { removePaperDraft, sendPaperForReview, uploadPaperDraft, uploadPaperSign
  * The invoice of each stage, one box each, in the order of the schedule.
  *
  * The reservation and the signing carry their paper in their own box: the
- * draft for the client to check, the signed copy, then the invoice with the
- * signed copy. A stage of the building needs the architect's certificate and
+ * agreed paper, sent to the client with the invoice; the signed copy; then
+ * the receipt with the signed copy, which goes by itself when the money is in. A stage of the building needs the architect's certificate and
  * photographs before its invoice can go. Any other stage goes with the invoice
  * alone. When the money is recorded, the receipt goes to the buyer by itself.
  */
@@ -84,7 +84,7 @@ export default async function StageInvoices({ contractId, hasEmail }: { contract
                           <Pill tone={one.step === "SIGNED" ? "good" : one.step === "NONE" ? "neutral" : "warn"}>{t(`papers.step.${one.step}` as MessageKey)}</Pill>
                         </div>
                         <div className="grid gap-3 md:grid-cols-3">
-                          {/* 1. The draft, to check. */}
+                          {/* 1. The agreed paper, not signed yet, sent with the invoice. */}
                           <div>
                             <p className="label !mb-1">1. {t("papers.draft")}</p>
                             {one.signed ? (
@@ -142,20 +142,24 @@ export default async function StageInvoices({ contractId, hasEmail }: { contract
                               </form>
                             )}
                           </div>
-                          {/* 3. The invoice, with the signed copy. */}
+                          {/* 3. The receipt, with the signed copy: by itself, when the money is recorded. */}
                           <div>
                             <p className="label !mb-1">3. {t("papers.invoiceWithSigned")}</p>
-                            {paid ? (
-                              <p className="text-xs text-brand-graphite/60">{t("stages.paid")}</p>
-                            ) : !one.signed ? (
-                              <p className="text-xs text-brand-graphite/60">{t("papers.signedFirst")}</p>
+                            {one.paper?.signedSentAt ? (
+                              <p className="text-xs text-[color:var(--color-positive)]" data-paper-receipt-sent>
+                                {t("papers.letterWent")} {when(one.paper.signedSentAt)}
+                              </p>
                             ) : (
-                              <form action={sendStageInvoiceAction.bind(null, contractId, stage.line.id)} data-paper-invoice-form>
-                                <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">
-                                  {(sentAt ? t("papers.sendInvoiceAgain") : t("papers.sendInvoiceWithSigned")).replace("{paper}", name)}
+                              <p className="text-xs text-brand-graphite/60">{t("papers.signedFirst")}</p>
+                            )}
+                            {/* Signed without the agreed copy going first: its invoice can still go with the signed copy. */}
+                            {one.signed && !sentAt && !paid ? (
+                              <form action={sendStageInvoiceAction.bind(null, contractId, stage.line.id)} className="mt-1" data-paper-invoice-form>
+                                <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">
+                                  {t("papers.sendInvoiceWithSigned").replace("{paper}", name)}
                                 </SubmitButton>
                               </form>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                         {stage.paidCents > 0 && !one.signed && (one.draft || one.invoice) ? (

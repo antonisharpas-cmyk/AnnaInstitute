@@ -10,15 +10,7 @@ import { flash } from "@/lib/flash";
 import { removeDocument, storeDocument } from "@/lib/uploads";
 import { sendWaitingFor, welcomeAfterSale } from "@/lib/automaticEmails";
 import { followTheMoney } from "@/lib/statuses";
-import {
-  afterSigned,
-  invoiceBeforeSigning,
-  PAPER_KINDS,
-  PAPER_NAME,
-  paperRow,
-  sendDraftForReview,
-  type PaperKind,
-} from "@/lib/signingPapers";
+import { afterSigned, PAPER_KINDS, PAPER_NAME, paperRow, sendAgreedWithInvoice, type PaperKind } from "@/lib/signingPapers";
 
 /*
  * The steps of the Reservation and the Contract of Sale on a contract.
@@ -104,35 +96,17 @@ export async function removePaperDraft(contractId: string, rawKind: string) {
   refresh(contractId, row?.contract.clientId ?? null);
 }
 
-/** Step 1: to the buyer, to check. */
-export async function sendPaperForReview(contractId: string, rawKind: string) {
+/** Step 1: the agreed paper, not signed yet, to the buyer with the invoice of its stage. */
+export async function sendPaperForReview(contractId: string, rawKind: string, formData?: FormData) {
   const user = await requireUser(["ADMIN"]);
   const kind = kindOf(rawKind);
-  const result = await sendDraftForReview(contractId, kind);
-  await recordAudit({
-    action: "paper.review.sent",
-    entity: "contract",
-    entityId: contractId,
-    detail: `${PAPER_NAME[kind]}: ${result.said}`,
-    userId: user.id,
-    userEmail: user.email,
-  });
-  await flash(`${result.ok ? "said.paperSent" : "said.paperNotSent"}|${result.said}`, result.ok ? "good" : "bad");
-  const row = await contractOf(contractId);
-  refresh(contractId, row?.contract.clientId ?? null);
-}
-
-/** Step 2: the buyer is happy and wants to go ahead. The invoice is issued and sent. */
-export async function invoicePaper(contractId: string, rawKind: string, formData: FormData) {
-  const user = await requireUser(["ADMIN"]);
-  const kind = kindOf(rawKind);
-  const installmentId = String(formData.get("stageId") ?? "");
-  const result = await invoiceBeforeSigning(contractId, kind, installmentId, { id: user.id, name: user.name });
+  const installmentId = formData ? String(formData.get("stageId") ?? "") || null : null;
+  const result = await sendAgreedWithInvoice(contractId, kind, { id: user.id, name: user.name }, installmentId);
   await recordAudit({
     action: "paper.invoice.sent",
     entity: "contract",
     entityId: contractId,
-    detail: `${PAPER_NAME[kind]}: invoice ${result.number ?? "none"}, ${result.said}`,
+    detail: `${PAPER_NAME[kind]} as agreed, with invoice ${result.number ?? "none"}: ${result.said}`,
     userId: user.id,
     userEmail: user.email,
   });
@@ -143,6 +117,11 @@ export async function invoicePaper(contractId: string, rawKind: string, formData
   const row = await contractOf(contractId);
   refresh(contractId, row?.contract.clientId ?? null);
   revalidatePath("/invoices");
+}
+
+/** The same, from a form that chooses the stage the paper is paid with. */
+export async function invoicePaper(contractId: string, rawKind: string, formData: FormData) {
+  return sendPaperForReview(contractId, rawKind, formData);
 }
 
 /** Step 3: the signed copy, in the draft's place. */

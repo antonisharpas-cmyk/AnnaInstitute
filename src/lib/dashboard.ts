@@ -18,20 +18,17 @@ import type { MessageKey } from "@/i18n";
  */
 
 export const PANEL_KEYS = [
-  "tiles",
-  "figures",
-  "meters",
-  "cash",
-  "stock",
-  "sales",
-  "funnel",
-  "projects",
   "attention",
+  "figures",
+  "matrix",
+  "funnel",
+  "monthly",
+  "payments",
   "birthdays",
   "activity",
+  "sales",
   "overdue",
   "upcoming",
-  "payments",
 ] as const;
 
 export type PanelKey = (typeof PANEL_KEYS)[number];
@@ -43,58 +40,62 @@ export type Panel = { key: PanelKey; width: PanelWidth; shown: boolean };
 
 export const WIDTHS: PanelWidth[] = [2, 3, 4, 6];
 
-/** The screen everybody starts with, which is the one the office asked for. */
+/**
+ * The screen everybody starts with, which is the one the office asked for:
+ * what needs somebody first, at the top left, with the money beside it; the
+ * apartments of every development; the year a month a row; then the payments
+ * beside the leads, the birthdays and what happened lately. The monthly sales
+ * chart and the two installment lists are put away, a click from coming back.
+ */
 export const DEFAULT_LAYOUT: Panel[] = [
-  { key: "tiles", width: 6, shown: true },
-  { key: "figures", width: 6, shown: true },
-  { key: "meters", width: 6, shown: true },
-  { key: "cash", width: 4, shown: true },
-  { key: "stock", width: 2, shown: true },
-  { key: "sales", width: 2, shown: true },
+  { key: "attention", width: 4, shown: true },
+  { key: "figures", width: 2, shown: true },
+  { key: "matrix", width: 6, shown: true },
+  { key: "monthly", width: 6, shown: true },
+  { key: "payments", width: 4, shown: true },
   { key: "funnel", width: 2, shown: true },
-  { key: "projects", width: 2, shown: true },
-  { key: "attention", width: 2, shown: true },
   { key: "birthdays", width: 2, shown: true },
   { key: "activity", width: 4, shown: true },
-  { key: "overdue", width: 3, shown: true },
-  { key: "upcoming", width: 3, shown: true },
-  { key: "payments", width: 6, shown: true },
+  { key: "sales", width: 2, shown: false },
+  { key: "overdue", width: 3, shown: false },
+  { key: "upcoming", width: 3, shown: false },
 ];
+
+/**
+ * The panel that marks a stored arrangement as made for this screen. One saved
+ * before it existed was made for the old dashboard, whose panels are mostly
+ * gone, so it is set aside once and the person starts from the new one.
+ */
+const LAYOUT_MARK: PanelKey = "matrix";
 
 /** What each panel is called in the arrange list, in either language. */
 export const PANEL_TITLE: Record<PanelKey, MessageKey> = {
-  tiles: "dash.quick",
-  figures: "panel.figures",
-  meters: "dash.collection",
-  cash: "reports.cashflow",
-  stock: "dash.stock",
-  sales: "reports.monthlySales",
-  funnel: "reports.funnel",
-  projects: "dash.byProject",
   attention: "dash.attention",
+  figures: "panel.figures",
+  matrix: "dash.matrix",
+  funnel: "reports.funnel",
+  monthly: "dash.monthly",
+  payments: "dash.recentPayments",
   birthdays: "birthdays.thisWeek",
   activity: "dash.activity",
+  sales: "reports.monthlySales",
   overdue: "dash.overdue",
   upcoming: "dash.nextPayments",
-  payments: "dash.recentPayments",
 };
 
 /** One line saying what a panel is for, so a hidden one can be found again. */
 export const PANEL_NOTE: Record<PanelKey, MessageKey> = {
-  tiles: "panel.note.tiles",
-  figures: "panel.note.figures",
-  meters: "panel.note.meters",
-  cash: "panel.note.cash",
-  stock: "panel.note.stock",
-  sales: "panel.note.sales",
-  funnel: "panel.note.funnel",
-  projects: "panel.note.projects",
   attention: "panel.note.attention",
+  figures: "panel.note.figures",
+  matrix: "panel.note.matrix",
+  funnel: "panel.note.funnel",
+  monthly: "panel.note.monthly",
+  payments: "panel.note.payments",
   birthdays: "birthdays.panelNote",
   activity: "panel.note.activity",
+  sales: "panel.note.sales",
   overdue: "panel.note.overdue",
   upcoming: "panel.note.upcoming",
-  payments: "panel.note.payments",
 };
 
 /**
@@ -176,7 +177,8 @@ export async function readLayout(userId: string): Promise<Panel[]> {
     if (!row) return DEFAULT_LAYOUT;
 
     const stored = parse(row.panels);
-    return stored.length === 0 ? DEFAULT_LAYOUT : withEveryPanel(stored);
+    if (stored.length === 0 || !stored.some((panel) => panel.key === LAYOUT_MARK)) return DEFAULT_LAYOUT;
+    return withEveryPanel(stored);
   } catch (error) {
     console.warn(
       "The dashboard layout could not be read, so the standard one is being used. If this says the table is missing, run npm run db:migrate.",

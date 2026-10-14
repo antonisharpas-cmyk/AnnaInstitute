@@ -166,7 +166,7 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
       values.name = "Maria Georgiou";
       values.interest = `${place.project}, apartment ${place.unit}`;
     }
-    if (key === "paper_review" || key === "paper_invoice" || key === "paper_signed") {
+    if (key === "paper_invoice" || key === "paper_signed") {
       values.paper = "Reservation";
       values.invoice_number = "0001";
       values.amount = money(5000);
@@ -192,11 +192,25 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
     subject = fill(template.subject ?? "", values);
     body = fill(template.body, values);
 
-    if (key.startsWith("paper_")) {
+    if (key === "paper_invoice") {
+      /* The agreed paper, not signed yet, and the invoice of its stage, in one letter. */
       attachments = [
         {
-          filename: key === "paper_invoice" ? "Invoice 0001 EXAMPLE.pdf" : key === "paper_signed" ? "Reservation signed EXAMPLE.pdf" : "Reservation draft EXAMPLE.pdf",
-          content: await stand_in(key === "paper_invoice" ? "The invoice goes here" : "The Reservation goes here", [
+          filename: "Reservation agreed EXAMPLE.pdf",
+          content: await stand_in("The agreed Reservation goes here", ["The real letter carries the agreed paper uploaded on the contract.", "This page only stands in for it in the test."]),
+          contentType: "application/pdf",
+        },
+        {
+          filename: "Invoice 0001 EXAMPLE.pdf",
+          content: await stand_in("The invoice goes here", ["The real letter carries the invoice of the stage.", "This page only stands in for it in the test."]),
+          contentType: "application/pdf",
+        },
+      ];
+    } else if (key.startsWith("paper_")) {
+      attachments = [
+        {
+          filename: "Reservation signed EXAMPLE.pdf",
+          content: await stand_in("The Reservation goes here", [
             "The real letter carries the paper on the contract.",
             "This page only stands in for it in the test.",
           ]),

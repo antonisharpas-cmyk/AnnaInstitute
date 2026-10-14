@@ -210,7 +210,15 @@ async function receiptLetter(paymentId: string): Promise<void> {
     stage: row.installment?.label ?? null,
     outstandingCents: dueCents > 0 ? outstandingCents : 1,
   });
-  const key = invoiceWent && chosen === "paid_signing" ? "paid_installment" : chosen;
+  /*
+   * The Reservation or the Contract of Sale paid with this stage. The agreed
+   * paper went to the buyer with its invoice before they signed, so the letter
+   * for the money is the receipt with the signed copy: it waits for the signed
+   * copy, and goes the moment it is uploaded. A stage with no paper on its way
+   * whose invoice went already reads as the ordinary payment letter.
+   */
+  const signing = await paperForPayment(row.contract.id, row.payment.installmentId, counted);
+  const key = invoiceWent && chosen === "paid_signing" && !signing ? "paid_installment" : chosen;
 
   const note = async (status: "SENT" | "WAITING" | "FAILED" | "SKIPPED", reason: string) => {
     const values = {
@@ -268,7 +276,6 @@ async function receiptLetter(paymentId: string): Promise<void> {
    * through the steps on the contract: the letter carries the signed copy, so
    * it waits for it, and goes the moment it is uploaded.
    */
-  const signing = invoiceWent ? null : await paperForPayment(row.contract.id, row.payment.installmentId, counted);
   if (signing && !signing.signed) {
     await note("WAITING", `Waiting for the signed ${PAPER_NAME[signing.kind]} to be uploaded on the contract.`);
     return;

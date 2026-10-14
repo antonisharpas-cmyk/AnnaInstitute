@@ -26,18 +26,16 @@ import { issuedAttachments, issueForPayment, issueStageInvoice, paperAttachment 
  * The Reservation and the Contract of Sale, from draft to signed.
  *
  * The buyer comes to the office to sign, and the office wants them to arrive
- * with everything settled: the paper read and agreed, and the invoice in hand
- * so they can pay it on the day. So each paper goes through the same steps:
+ * with everything settled: the paper agreed, and the invoice in hand so they
+ * can pay it on the day. So each paper goes through the same steps:
  *
- *   1. The draft is uploaded and sent to the buyer to check. If they want a
- *      change, the draft is replaced and sent again, as often as it takes.
- *   2. The buyer says it is fine and they want to go ahead. The office marks
- *      it, and the invoice for the stage the paper is paid with is issued and
- *      sent to them, so they come to sign with it.
- *   3. They sign and pay. The signed copy is uploaded and takes the draft's
- *      place, and the letter for the money goes with the receipt and the
- *      signed copy attached. Whichever comes first, the money or the signed
- *      copy, the letter waits for the other, so the buyer gets one letter.
+ *   1. The agreed paper, not signed yet, is uploaded and sent to the buyer
+ *      together with the invoice for the stage it is paid with.
+ *   2. They sign. The signed copy is uploaded and takes the agreed copy's place.
+ *   3. They pay. The letter for the money goes by itself with the receipt and
+ *      the signed copy attached. If the money is recorded before the signed
+ *      copy is uploaded, the letter waits for it and goes the moment it is in.
+ *      For the Contract of Sale the welcome follows that letter, never before.
  */
 
 export const PAPER_KINDS = ["RESERVATION", "SALE"] as const;
@@ -212,50 +210,51 @@ export async function writeToBuyer(
   return { ok: false, said: result.error ?? "It did not go." };
 }
 
-/** Step 1: the draft to the buyer, to check. */
-export async function sendDraftForReview(contractId: string, kind: PaperKind): Promise<LetterResult> {
-  const paper = await paperRow(contractId, kind);
-  const [draft] = paper.draftDocumentId
-    ? await db.select().from(documents).where(eq(documents.id, paper.draftDocumentId)).limit(1)
-    : [];
-  if (!draft) return { ok: false, said: "Upload the draft first." };
-  const result = await writeToBuyer("paper_review", contractId, kind, {}, [fileOf(draft)]);
-  if (result.ok) {
-    await db.update(signingPapers).set({ sentForReviewAt: new Date(), updatedAt: new Date() }).where(eq(signingPapers.id, paper.id));
-  }
-  return result;
-}
-
-/** Step 2: the buyer wants to go ahead. The invoice for the stage is issued and sent. */
-export async function invoiceBeforeSigning(
+/**
+ * Step 1: the agreed paper, not signed yet, to the buyer with its invoice.
+ *
+ * The office uploads the Reservation or the Contract of Sale as agreed and
+ * presses send: the invoice for the stage the paper is paid with is issued (or
+ * the one already issued is used), and both go to the buyer in one letter, so
+ * they come to sign with the invoice in hand. Pressed again, after a changed
+ * version is uploaded say, the same invoice goes with the new version.
+ */
+export async function sendAgreedWithInvoice(
   contractId: string,
   kind: PaperKind,
-  installmentId: string,
   who: { id: string; name?: string | null },
+  installmentId?: string | null,
 ): Promise<LetterResult & { number?: string }> {
-  const [line] = await db
-    .select()
-    .from(installments)
-    .where(and(eq(installments.id, installmentId), eq(installments.contractId, contractId)))
-    .limit(1);
-  if (!line) return { ok: false, said: "Choose the stage this paper is paid with." };
+  const paper = await paperRow(contractId, kind);
+  if (paper.signedDocumentId) return { ok: false, said: `The ${PAPER_NAME[kind]} is signed already.` };
+  const [agreed] = paper.draftDocumentId
+    ? await db.select().from(documents).where(eq(documents.id, paper.draftDocumentId)).limit(1)
+    : [];
+  if (!agreed) return { ok: false, said: `Upload the agreed ${PAPER_NAME[kind]} first.` };
+  const lines = await db.select().from(installments).where(eq(installments.contractId, contractId));
+  const line =
+    (installmentId ? lines.find((one) => one.id === installmentId) : null) ??
+    (paper.installmentId ? lines.find((one) => one.id === paper.installmentId) : null) ??
+    (await defaultStage(kind, lines));
+  if (!line) return { ok: false, said: "Add the payment stages to the contract first." };
   const invoice = await issueStageInvoice(line.id, who);
   if (!invoice) return { ok: false, said: "No invoice can be issued for this contract." };
-  const paper = await paperRow(contractId, kind);
-  await db
-    .update(signingPapers)
-    .set({ installmentId: line.id, invoiceId: invoice.id, approvedAt: paper.approvedAt ?? new Date(), updatedAt: new Date() })
-    .where(eq(signingPapers.id, paper.id));
   const file = await paperAttachment(invoice);
   const result = await writeToBuyer(
     "paper_invoice",
     contractId,
     kind,
     { invoice_number: invoice.number, stage: line.label ?? "", amount: formatAmount(toCents(invoice.totalAmount), "en") },
-    file ? [file] : [],
+    [fileOf(agreed), ...(file ? [file] : [])],
   );
   if (result.ok) {
-    await db.update(signingPapers).set({ invoiceSentAt: new Date(), updatedAt: new Date() }).where(eq(signingPapers.id, paper.id));
+    const now = new Date();
+    /* The stage's invoice went: the letter for its money is then the receipt, with the signed copy. */
+    await db.update(installments).set({ invoiceSentAt: now, updatedAt: now }).where(eq(installments.id, line.id));
+    await db
+      .update(signingPapers)
+      .set({ installmentId: line.id, invoiceId: invoice.id, sentForReviewAt: now, invoiceSentAt: now, approvedAt: paper.approvedAt ?? now, updatedAt: now })
+      .where(eq(signingPapers.id, paper.id));
   }
   return { ...result, number: invoice.number };
 }

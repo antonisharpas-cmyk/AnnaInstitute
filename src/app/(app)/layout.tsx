@@ -1,12 +1,9 @@
-import { and, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
-import { db } from "@/db";
-import { expenses, installments, leads } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { ensureSchema } from "@/lib/health";
 import { readSetting } from "@/lib/settings";
 import Link from "next/link";
 import { readFlash } from "@/lib/flash";
-import { howManyNeedAnAnswer } from "@/lib/appointments";
+import { attention, attentionTotal } from "@/lib/attention";
 import { readUndo } from "@/lib/undo";
 import { pressingFollowUpCount } from "@/lib/followUps";
 import { getTranslator, type MessageKey } from "@/i18n";
@@ -56,47 +53,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // The three figures the bell counts. One query each, all at once.
-  const unpaidHere = sql`coalesce((
-      select sum(p.amount) from payments p where p.installment_id = installments.id
-    ), 0) < ${installments.totalAmount}`;
-
   const mailOff = (await readSetting("mail.enabled")) === "no";
 
-  const [[late], [waiting], [bills], asking, followUps, said, undo] = await Promise.all([
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(installments)
-      .where(
-        and(isNotNull(installments.dueDate), lt(installments.dueDate, new Date()), unpaidHere),
-      ),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(leads)
-      .where(and(eq(leads.status, "NEW"), isNull(leads.clientId), isNull(leads.deletedAt))),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(expenses)
-      .where(
-        and(
-          isNotNull(expenses.dueDate),
-          lt(expenses.dueDate, new Date()),
-          sql`${expenses.status} <> 'PAID'`,
-        ),
-      ),
-    /* Appointments whose day has passed with nobody saying what happened. */
-    howManyNeedAnAnswer(),
+  /*
+   * What needs somebody. The same list the dashboard shows as a table, so the
+   * bell, the count beside Dashboard and the table can never disagree.
+   */
+  const [groups, followUps, said, undo] = await Promise.all([
+    attention(),
     /* Follow ups due tomorrow or already due, still pending. */
     pressingFollowUpCount(),
     readFlash(),
     readUndo(),
   ]);
+  const countOf = (kind: string) => groups.find((group) => group.kind === kind)?.count ?? 0;
+  const waiting = { total: countOf("leads") };
+  const bills = { total: countOf("bills") };
+  const asking = countOf("appointments");
 
   /* The order the office asked for: what is done every day first, then the
      work itself, the people, the reach, the money and the figures. */
   const items: NavItem[] = [
     { href: "/calendar", label: t("nav.calendar"), group: "main" },
-    { href: "/", label: t("nav.dashboard"), group: "main" },
+    { href: "/", label: t("nav.dashboard"), group: "main", count: attentionTotal(groups) },
     { href: "/leads", label: t("nav.leads"), group: "main", count: waiting?.total ?? 0 },
     { href: "/clients", label: t("nav.clients"), group: "main" },
     {
@@ -159,35 +138,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/partners/new", label: t("shell.newPartnerContact") },
   ];
 
-  const alerts: Alert[] = (
-    [
-      {
-        label: t("shell.alertOverdue"),
-        href: "/reports/money",
-        count: late?.total ?? 0,
-        tone: "bad",
-      },
-      {
-        label: t("shell.alertLeads"),
-        href: "/leads?status=NEW",
-        count: waiting?.total ?? 0,
-        tone: "warn",
-      },
-      {
-        label: t("shell.alertBills"),
-        href: "/invoices?status=OVERDUE",
-        count: bills?.total ?? 0,
-        tone: "warn",
-      },
-      {
-        /* Yesterday's appointments that nobody has answered for. */
-        label: t("appointments.waitingShort"),
-        href: "/appointments?when=waiting",
-        count: asking ?? 0,
-        tone: "warn",
-      },
-    ] satisfies Alert[]
-  ).filter((alert) => alert.count > 0);
+  const alerts: Alert[] = groups
+    .filter((group) => group.count > 0)
+    .map((group) => ({ label: t(group.label), href: group.href, count: group.count, tone: group.tone }));
 
   return (
     <>

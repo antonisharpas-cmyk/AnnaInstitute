@@ -477,6 +477,13 @@
       "when": 1793481147383,
       "tag": "0068_commission_company",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1793567547383,
+      "tag": "0069_agreed_paper_with_invoice",
+      "breakpoints": true
     }
   ]
 }
