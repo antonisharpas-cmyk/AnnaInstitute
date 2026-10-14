@@ -86,6 +86,7 @@ export default async function CostsReportPage({
       <div className="mb-4">
         <Card title={t("reports.incomeMonthly")}>
           <BarSeries
+            empty={t("reports.noData")}
             labels={incomeMonths.map((row) => monthLabel(row.month, locale))}
             series={[
               {

@@ -68,28 +68,83 @@ export type Series = {
 };
 
 /**
- * Bars over time, one or two series side by side.
+ * Only the months that have something in them.
+ *
+ * The office asked for this plainly: a chart of the last twelve months with
+ * eleven empty months and one bar says nothing the one bar does not. So a
+ * month where every series is nothing is left off the chart, before and after
+ * the data alike, and a chart with nothing left in it says so in words.
+ */
+function filled(labels: string[], series: Series[]): { labels: string[]; series: Series[] } {
+  const keep = labels.map((_, index) => series.some((s) => (s.values[index] ?? 0) !== 0));
+  return {
+    labels: labels.filter((_, index) => keep[index]),
+    series: series.map((s) => ({ ...s, values: s.values.filter((_, index) => keep[index]) })),
+  };
+}
+
+function Legend({ series }: { series: Series[] }) {
+  if (series.length < 2) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-4 text-xs text-brand-graphite/70">
+      {series.map((s) => (
+        <span key={s.label} className="flex items-center gap-1.5">
+          <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.colour }} />
+          {s.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const NOTHING = "Nothing recorded in this period.";
+
+/** Three ticks down the side: nothing, half, and the top, never the same label twice. */
+function ticksFor(max: number, format: (value: number) => string): number[] {
+  const ticks: number[] = [];
+  const seen = new Set<string>();
+  for (const fraction of [0, 0.5, 1]) {
+    const value = max * fraction;
+    const label = format(value);
+    if (seen.has(label)) continue;
+    seen.add(label);
+    ticks.push(value);
+  }
+  return ticks;
+}
+
+/**
+ * Bars over time, one or two series side by side, each with its figure
+ * written above it.
  *
  * One series needs no legend, because the card title already names it. Two get
  * a legend and a 2px gap between the pair, so the eye reads them as one month
- * rather than as four bars.
+ * rather than as four bars. Months with nothing in them are left off.
  */
 export function BarSeries({
-  labels,
-  series,
-  height = 180,
+  labels: allLabels,
+  series: allSeries,
+  height = 200,
   /** A chart in a narrow card needs a narrower floor before it scrolls. */
-  minWidth = 640,
+  minWidth = 420,
+  empty = NOTHING,
 }: {
   labels: string[];
   series: Series[];
   height?: number;
   minWidth?: number;
+  /** What to say when no month has anything in it. */
+  empty?: string;
 }) {
+  const { labels, series } = filled(allLabels, allSeries);
+  if (labels.length === 0 || series.length === 0) {
+    return <p className="py-6 text-center text-sm text-brand-graphite/60">{empty}</p>;
+  }
+
   const width = 760;
   const padLeft = 56;
   const padRight = 12;
-  const padTop = 10;
+  const padTop = 18;
   const padBottom = 26;
 
   const plotWidth = width - padLeft - padRight;
@@ -97,25 +152,125 @@ export function BarSeries({
 
   const max = niceMax(Math.max(1, ...series.flatMap((s) => s.values)));
   const slot = plotWidth / Math.max(labels.length, 1);
-  const groupWidth = Math.min(slot * 0.7, 46);
+  const groupWidth = Math.min(slot * 0.7, series.length > 1 ? 90 : 56);
   const barWidth = series.length > 1 ? (groupWidth - 2) / series.length : groupWidth;
 
   const y = (value: number) => padTop + plotHeight - (value / max) * plotHeight;
+  const ticks = ticksFor(max, series[0].format);
+  const everyOther = labels.length > 14;
+  /* The figure above each bar, while there is room to read it. */
+  const writeValues = barWidth >= 14;
 
-  /**
-   * Three ticks: nothing, half, and the top. Quarters of a round number are
-   * rarely round themselves, so they printed as €63k and €188k down the side,
-   * and a count that tops out at two printed 1 twice.
-   */
-  const ticks: number[] = [];
-  const seen = new Set<string>();
-  for (const fraction of [0, 0.5, 1]) {
-    const value = max * fraction;
-    const label = series[0].format(value);
-    if (seen.has(label)) continue;
-    seen.add(label);
-    ticks.push(value);
+  return (
+    <div className="overflow-x-auto">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={series.map((s) => s.label).join(" and ")}
+        className="w-full"
+        style={{ minWidth }}
+      >
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line x1={padLeft} x2={width - padRight} y1={y(tick)} y2={y(tick)} stroke={GRID} />
+            <text x={padLeft - 8} y={y(tick) + 4} textAnchor="end" fontSize="10" fill={AXIS} fontFamily="inherit">
+              {series[0].format(tick)}
+            </text>
+          </g>
+        ))}
+
+        {labels.map((label, index) => {
+          const centre = padLeft + slot * index + slot / 2;
+          return (
+            <g key={`${label}${index}`}>
+              {series.map((s, seriesIndex) => {
+                const value = s.values[index] ?? 0;
+                const barHeight = Math.max(value > 0 ? 2 : 0, padTop + plotHeight - y(value));
+                const x = centre - groupWidth / 2 + seriesIndex * (barWidth + (series.length > 1 ? 2 : 0));
+                return (
+                  <g key={s.label}>
+                    <rect
+                      className="bar"
+                      x={x}
+                      y={padTop + plotHeight - barHeight}
+                      width={barWidth}
+                      height={barHeight}
+                      rx={barHeight > 6 ? 3 : 1}
+                      fill={s.colour}
+                      style={{ animationDelay: `${Math.min(index * 26, 420)}ms` }}
+                    >
+                      <title>{`${label} . ${s.label} . ${s.format(value)}`}</title>
+                    </rect>
+                    {writeValues && value !== 0 ? (
+                      <text
+                        x={x + barWidth / 2}
+                        y={padTop + plotHeight - barHeight - 4}
+                        textAnchor="middle"
+                        fontSize="12"
+                        fontWeight="600"
+                        fill={AXIS}
+                        fontFamily="inherit"
+                      >
+                        {s.format(value)}
+                      </text>
+                    ) : null}
+                  </g>
+                );
+              })}
+              {everyOther && index % 2 === 1 ? null : (
+                <text x={centre} y={height - 8} textAnchor="middle" fontSize="10" fill={AXIS} fontFamily="inherit">
+                  {label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        <line x1={padLeft} x2={width - padRight} y1={padTop + plotHeight} y2={padTop + plotHeight} stroke={AXIS} />
+      </svg>
+      <Legend series={series} />
+    </div>
+  );
+}
+
+/**
+ * Lines over time, one for each thing counted, each point with its figure.
+ *
+ * For counts that are read as a trend, leads arriving against leads becoming
+ * clients say. Months with nothing in any line are left off, the same as the
+ * bars.
+ */
+export function LineSeries({
+  labels: allLabels,
+  series: allSeries,
+  height = 200,
+  minWidth = 420,
+  empty = NOTHING,
+}: {
+  labels: string[];
+  series: Series[];
+  height?: number;
+  minWidth?: number;
+  empty?: string;
+}) {
+  const { labels, series } = filled(allLabels, allSeries);
+  if (labels.length === 0 || series.length === 0) {
+    return <p className="py-6 text-center text-sm text-brand-graphite/60">{empty}</p>;
   }
+
+  const width = 760;
+  const padLeft = 56;
+  const padRight = 24;
+  const padTop = 22;
+  const padBottom = 26;
+  const plotWidth = width - padLeft - padRight;
+  const plotHeight = height - padTop - padBottom;
+
+  const max = niceMax(Math.max(1, ...series.flatMap((s) => s.values)));
+  const slot = plotWidth / Math.max(labels.length, 1);
+  const x = (index: number) => padLeft + slot * index + slot / 2;
+  const y = (value: number) => padTop + plotHeight - (value / max) * plotHeight;
+  const ticks = ticksFor(max, series[0].format);
   const everyOther = labels.length > 14;
 
   return (
@@ -130,89 +285,57 @@ export function BarSeries({
         {ticks.map((tick) => (
           <g key={tick}>
             <line x1={padLeft} x2={width - padRight} y1={y(tick)} y2={y(tick)} stroke={GRID} />
-            <text
-              x={padLeft - 8}
-              y={y(tick) + 4}
-              textAnchor="end"
-              fontSize="10"
-              fill={AXIS}
-              fontFamily="inherit"
-            >
+            <text x={padLeft - 8} y={y(tick) + 4} textAnchor="end" fontSize="10" fill={AXIS} fontFamily="inherit">
               {series[0].format(tick)}
             </text>
           </g>
         ))}
 
-        {labels.map((label, index) => {
-          const centre = padLeft + slot * index + slot / 2;
-          return (
-            <g key={label}>
-              {series.map((s, seriesIndex) => {
-                const value = s.values[index] ?? 0;
-                const barHeight = Math.max(value > 0 ? 2 : 0, padTop + plotHeight - y(value));
-                const x =
-                  centre - groupWidth / 2 + seriesIndex * (barWidth + (series.length > 1 ? 2 : 0));
-                return (
-                  <rect
-                    key={s.label}
-                    className="bar"
-                    x={x}
-                    y={padTop + plotHeight - barHeight}
-                    width={barWidth}
-                    height={barHeight}
-                    rx={barHeight > 6 ? 3 : 1}
-                    fill={s.colour}
-                    /*
-                      Each month starts a beat after the one before it, so the
-                      chart draws itself across rather than appearing whole. The
-                      delay is capped, because the last bar of a long year should
-                      not keep somebody waiting.
-                    */
-                    style={{ animationDelay: `${Math.min(index * 26, 420)}ms` }}
-                  >
-                    <title>{`${label} . ${s.label} . ${s.format(value)}`}</title>
-                  </rect>
-                );
-              })}
-              {everyOther && index % 2 === 1 ? null : (
+        {series.map((s, seriesIndex) => (
+          <g key={s.label}>
+            {labels.length > 1 ? (
+              <polyline
+                points={s.values.map((value, index) => `${x(index)},${y(value)}`).join(" ")}
+                fill="none"
+                stroke={s.colour}
+                strokeWidth="2.5"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            ) : null}
+            {s.values.map((value, index) => (
+              <g key={index}>
+                <circle cx={x(index)} cy={y(value)} r="4" fill={s.colour}>
+                  <title>{`${labels[index]} . ${s.label} . ${s.format(value)}`}</title>
+                </circle>
+                {/* The first line's figures above its points, the second's below, so two equal months do not write over each other. */}
                 <text
-                  x={centre}
-                  y={height - 8}
+                  x={x(index)}
+                  y={seriesIndex % 2 === 0 || y(value) + 16 > padTop + plotHeight - 2 ? y(value) - 9 : y(value) + 16}
                   textAnchor="middle"
-                  fontSize="10"
-                  fill={AXIS}
+                  fontSize="12"
+                  fontWeight="600"
+                  fill={s.colour}
                   fontFamily="inherit"
                 >
-                  {label}
+                  {s.format(value)}
                 </text>
-              )}
-            </g>
-          );
-        })}
+              </g>
+            ))}
+          </g>
+        ))}
 
-        <line
-          x1={padLeft}
-          x2={width - padRight}
-          y1={padTop + plotHeight}
-          y2={padTop + plotHeight}
-          stroke={AXIS}
-        />
+        {labels.map((label, index) =>
+          everyOther && index % 2 === 1 ? null : (
+            <text key={`${label}${index}`} x={x(index)} y={height - 8} textAnchor="middle" fontSize="10" fill={AXIS} fontFamily="inherit">
+              {label}
+            </text>
+          ),
+        )}
+
+        <line x1={padLeft} x2={width - padRight} y1={padTop + plotHeight} y2={padTop + plotHeight} stroke={AXIS} />
       </svg>
-
-      {series.length > 1 ? (
-        <div className="mt-2 flex flex-wrap gap-4 text-xs text-brand-graphite/70">
-          {series.map((s) => (
-            <span key={s.label} className="flex items-center gap-1.5">
-              <span
-                aria-hidden
-                className="inline-block h-2.5 w-2.5 rounded-sm"
-                style={{ background: s.colour }}
-              />
-              {s.label}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <Legend series={series} />
     </div>
   );
 }

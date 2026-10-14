@@ -1,5 +1,6 @@
 import Link from "next/link";
 import DateField from "@/components/DateField";
+import Pick from "@/components/Pick";
 
 /**
  * The period a report covers.
@@ -16,6 +17,7 @@ export default function PeriodPicker({
   labels,
   exportHref,
   scope,
+  defaultPeriod = "12m",
 }: {
   basePath: string;
   period: string;
@@ -36,8 +38,10 @@ export default function PeriodPicker({
     partner: string;
     everyBuilding: string;
     everyPartner: string;
-    oursAlone: string;
+    reset: string;
   };
+  /** The period the report opens on, so the reset knows what nothing chosen looks like. */
+  defaultPeriod?: string;
   /**
    * Whose money, and which building.
    *
@@ -120,51 +124,36 @@ export default function PeriodPicker({
           year when somebody changes building.
         */}
         {scope ? (
-          <form action={basePath} method="get" className="flex flex-wrap items-end gap-2">
+          <form action={basePath} method="get" className="flex flex-wrap items-end gap-2" data-scope-form>
             <input type="hidden" name="period" value={period} />
             {from ? <input type="hidden" name="from" value={from} /> : null}
             {to ? <input type="hidden" name="to" value={to} /> : null}
-            <div>
-              <label className="label" htmlFor="project">
-                {labels.building}
-              </label>
-              <select
-                id="project"
-                name="project"
-                defaultValue={scope.project}
-                className="select !w-44 !py-1 !text-xs"
-              >
-                <option value="">{labels.everyBuilding}</option>
-                {scope.buildings.map((one) => (
-                  <option key={one.id} value={one.id}>
-                    {one.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="partner">
-                {labels.partner}
-              </label>
-              <select
-                id="partner"
-                name="partner"
-                defaultValue={scope.partner}
-                className="select !w-44 !py-1 !text-xs"
-              >
-                <option value="">{labels.everyPartner}</option>
-                <option value="ours">{labels.oursAlone}</option>
-                {scope.partners.map((one) => (
-                  <option key={one.id} value={one.id}>
-                    {one.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Several of each, ticked in a dropdown that applies itself when it closes. */}
+            <Pick
+              name="project"
+              label={labels.building}
+              chosen={scope.project ? scope.project.split(",") : []}
+              anything={labels.everyBuilding}
+              choices={scope.buildings.map((one) => ({ value: one.id, label: one.name }))}
+            />
+            <Pick
+              name="partner"
+              label={labels.partner}
+              chosen={scope.partner ? scope.partner.split(",") : []}
+              anything={labels.everyPartner}
+              choices={scope.partners.map((one) => ({ value: one.id, label: one.name }))}
+            />
             <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
               {labels.apply}
             </button>
           </form>
+        ) : null}
+
+        {/* Back to the report as it opens: its own period, every development, every company. */}
+        {period !== defaultPeriod || from || to || scope?.project || scope?.partner ? (
+          <Link href={basePath} className="btn btn-secondary !px-3 !py-1 !text-xs" prefetch={false} data-reset>
+            {labels.reset}
+          </Link>
         ) : null}
 
         {exportHref ? (

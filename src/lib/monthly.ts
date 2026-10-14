@@ -12,6 +12,10 @@ import { toCents } from "@/lib/money";
  * the month is over, with one exception that says so: the cash still to come
  * is what was owed in cash at the end of that month.
  *
+ * Only the months something happened in are rows: a month with no lead, no
+ * contract and no money is not shown, and is not offered in the filters
+ * either. The office narrows it by year and by month, several of each.
+ *
  * Narrowed to a development or a partnership, everything that belongs to a
  * contract follows the narrowing, and so do the company invoices and the
  * constructor's payments for those developments. Leads and clients belong to
@@ -47,37 +51,23 @@ export const MONEY_COLUMNS: MonthlyColumn[] = [
   "expensePaid",
 ];
 
-export type MonthlyRow = { month: number; future: boolean } & Record<MonthlyColumn, number>;
+/** One month: its key ("2026-09"), its year, and the month of the year from 1 to 12. */
+export type MonthlyRow = { key: string; year: number; month: number } & Record<MonthlyColumn, number>;
 
 type Row = Record<string, unknown>;
 const rowsOf = (result: unknown): Row[] =>
   Array.isArray(result) ? (result as Row[]) : (((result as { rows?: unknown[] })?.rows ?? []) as Row[]);
 const run = async (query: SQL): Promise<Row[]> => rowsOf(await db.execute(query));
 
-/** The years worth offering: from the first record the office has to this one. */
-export async function monthlyYears(): Promise<number[]> {
-  const now = new Date().getFullYear();
-  let first = now;
-  try {
-    const [row] = await run(sql`
-      select least(
-        (select min(created_at) from leads),
-        (select min(coalesce(contract_date, created_at)) from contracts),
-        (select min(paid_on) from payments),
-        (select min(paid_on) from expense_payments)
-      ) as first`);
-    if (row?.first) first = Math.min(now, new Date(row.first as string).getFullYear());
-  } catch {
-    /* An older database without one of the tables: this year alone. */
-  }
-  const out: number[] = [];
-  for (let year = now; year >= Math.max(first, now - 10); year -= 1) out.push(year);
-  return out;
-}
-
-export async function monthlyTable(year: number, only: string[] | null): Promise<{ rows: MonthlyRow[]; total: MonthlyRow }> {
-  const from = new Date(year, 0, 1);
-  const to = new Date(year + 1, 0, 1);
+/**
+ * Every month that has something in it, oldest first.
+ *
+ * Narrowing by year or by month is the page's job: it is a filter on these
+ * rows, and the total is worked out from the rows left.
+ */
+export async function monthlyRows(only: string[] | null): Promise<MonthlyRow[]> {
+  const from = new Date(2000, 0, 1);
+  const to = new Date(2100, 0, 1);
   const ids = only === null ? null : only.length > 0 ? only : [""];
 
   /* A contract in the narrowing: its apartment is in one of the developments. */
@@ -160,22 +150,24 @@ export async function monthlyTable(year: number, only: string[] | null): Promise
         ${ids === null ? sql`` : sql`and cp.project_id in ${ids}`}`),
   ]);
 
-  const now = new Date();
-  const rows: MonthlyRow[] = Array.from({ length: 12 }, (_, month) => {
-    const row = { month, future: new Date(year, month, 1) > now } as MonthlyRow;
-    for (const column of MONTHLY_COLUMNS) row[column] = 0;
-    return row;
-  });
-
-  const monthOf = (value: unknown): number | null => {
+  const byKey = new Map<string, MonthlyRow>();
+  const keyOf = (value: unknown): string | null => {
     if (!value) return null;
     const at = new Date(value as string);
-    if (at < from || at >= to) return null;
-    return at.getMonth();
+    if (Number.isNaN(at.getTime())) return null;
+    return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}`;
   };
   const add = (column: MonthlyColumn, at: unknown, amount = 1) => {
-    const month = monthOf(at);
-    if (month !== null) rows[month][column] += amount;
+    const key = keyOf(at);
+    if (!key) return;
+    let row = byKey.get(key);
+    if (!row) {
+      const [year, month] = key.split("-").map(Number);
+      row = { key, year, month } as MonthlyRow;
+      for (const one of MONTHLY_COLUMNS) row[one] = 0;
+      byKey.set(key, row);
+    }
+    row[column] += amount;
   };
   const cents = (value: unknown) => toCents(value === null || value === undefined ? "0" : String(value));
 
@@ -196,10 +188,11 @@ export async function monthlyTable(year: number, only: string[] | null): Promise
   for (const r of companyRows) add(r.direction === "OUT" ? "incomePaid" : "expensePaid", r.at, cents(r.amount));
   for (const r of constructorRows) add("expensePaid", r.at, cents(r.amount));
 
-  /* The cash still to come at the end of each month gone by. */
+  const rows = [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
+
+  /* The cash still to come at the end of each month. */
   for (const row of rows) {
-    if (row.future) continue;
-    const end = new Date(year, row.month + 1, 1);
+    const end = new Date(row.year, row.month, 1);
     let owed = 0;
     for (const r of cashOwedRows) {
       if (!r.at || new Date(r.at as string) >= end) continue;
@@ -208,13 +201,13 @@ export async function monthlyTable(year: number, only: string[] | null): Promise
     row.cashOwed = owed;
   }
 
-  const total = { month: -1, future: false } as MonthlyRow;
-  for (const column of MONTHLY_COLUMNS) {
-    total[column] = column === "cashOwed" ? 0 : rows.reduce((sum, row) => sum + row[column], 0);
-  }
-  /* A balance does not add up across months: the total is where it stands at the last month gone by. */
-  const last = [...rows].reverse().find((row) => !row.future);
-  total.cashOwed = last ? last.cashOwed : 0;
+  return rows;
+}
 
-  return { rows, total };
+/** The total of the rows shown. The cash still to come is a balance, so it is where it stands at the last row. */
+export function monthlyTotal(rows: MonthlyRow[]): MonthlyRow {
+  const total = { key: "", year: 0, month: 0 } as MonthlyRow;
+  for (const column of MONTHLY_COLUMNS) total[column] = rows.reduce((sum, row) => sum + row[column], 0);
+  total.cashOwed = rows.length > 0 ? rows[rows.length - 1].cashOwed : 0;
+  return total;
 }

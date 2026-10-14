@@ -56,6 +56,11 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
           <button type="submit" className="btn btn-secondary">
             {t("common.search")}
           </button>
+          {q || category ? (
+            <Link href="/partners" className="btn btn-secondary" prefetch={false} data-reset>
+              {t("list.resetAll")}
+            </Link>
+          ) : null}
         </form>
 
         <nav className="segment mb-4 flex-wrap" aria-label={t("partners.categoryLabel")} data-partner-tabs>

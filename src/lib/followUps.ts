@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, eq, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, clients, leadFollowUps, leads, teamMembers } from "@/db/schema";
+import { many } from "@/lib/filters";
 
 /**
  * What happens next, with a lead, a client, an agent or anybody else.
@@ -172,10 +173,13 @@ export async function listFollowUps(filter: {
 } = {}) {
   const parts: SQL[] = [];
 
-  if (filter.status === "PENDING" || filter.status === "DONE" || filter.status === "CANCELLED") {
-    parts.push(eq(leadFollowUps.status, filter.status));
-  }
-  if (filter.assignedTo) parts.push(sql`${whose} = ${filter.assignedTo}` as SQL);
+  /* Both take several, comma separated, like every filter in the CRM. */
+  const statuses = many(filter.status).filter((one): one is "PENDING" | "DONE" | "CANCELLED" =>
+    ["PENDING", "DONE", "CANCELLED"].includes(one),
+  );
+  if (statuses.length > 0) parts.push(inArray(leadFollowUps.status, statuses) as SQL);
+  const people = many(filter.assignedTo);
+  if (people.length > 0) parts.push(sql`${whose} in ${people}` as SQL);
 
   /* Overdue is pending and in the past, which is the one the office wants
      first thing in the morning. */

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { subowners } from "@/db/schema";
@@ -98,6 +99,11 @@ export default async function ShareholdersReportPage({
         <button type="submit" className="btn btn-primary">
           {t("reports.apply")}
         </button>
+        {params.who || params.period || params.from || params.to ? (
+          <Link href="/reports/shareholders" className="btn btn-secondary" prefetch={false} data-reset>
+            {t("list.resetAll")}
+          </Link>
+        ) : null}
       </form>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6" data-shareholder-totals>

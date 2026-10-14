@@ -96,7 +96,7 @@ const TONE: Record<AttentionKind, "bad" | "warn"> = {
 };
 
 const LIST: Record<AttentionKind, string> = {
-  late: "/reports/money",
+  late: "/reports/apartments",
   bills: "/invoices?status=OVERDUE",
   paperUnpaid: "/contracts",
   waitingLetters: "/emails",

@@ -15,6 +15,8 @@ import { peopleOptions, whoWhereLabels } from "@/lib/appointmentLabels";
 import { whoCanBeMet } from "@/lib/appointments";
 import { followUpWho } from "@/lib/followUps";
 import { addFollowUpFromList, deleteFollowUp, setFollowUpStatus } from "../leads/actions";
+import Pick from "@/components/Pick";
+import { many } from "@/lib/filters";
 
 /**
  * Every follow up, in one list.
@@ -105,46 +107,35 @@ export default async function FollowUpsPage({
           </a>
         ))}
 
-        {/* Whose they are. A plain form so the choice is an address. */}
-        <form action="/follow-ups" method="get" className="flex flex-wrap items-end gap-2">
+        {/* Whose they are, and where they stand: several of each, applied as the dropdown closes. */}
+        <form action="/follow-ups" method="get" className="flex flex-wrap items-end gap-2" data-followup-filters>
           <input type="hidden" name="when" value={when === "all" ? "" : when} />
-          <div>
-            <label className="label" htmlFor="assignedTo">
-              {t("appointments.assignedTo")}
-            </label>
-            <select
-              id="assignedTo"
-              name="assignedTo"
-              defaultValue={assignedTo}
-              className="select !w-48 !py-1 !text-xs"
-            >
-              <option value="">{t("common.all")}</option>
-              {team.map((one) => (
-                <option key={one.id} value={one.id}>
-                  {one.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="status">
-              {t("common.status")}
-            </label>
-            <select
-              id="status"
-              name="status"
-              defaultValue={status}
-              className="select !w-40 !py-1 !text-xs"
-            >
-              <option value="">{t("common.all")}</option>
-              <option value="PENDING">{t("leads.followUpPending")}</option>
-              <option value="DONE">{t("leads.followUpDone")}</option>
-              <option value="CANCELLED">{t("appointments.cancelled")}</option>
-            </select>
-          </div>
+          <Pick
+            name="assignedTo"
+            label={t("appointments.assignedTo")}
+            chosen={many(assignedTo)}
+            anything={t("common.all")}
+            choices={team.map((one) => ({ value: one.id, label: one.name }))}
+          />
+          <Pick
+            name="status"
+            label={t("common.status")}
+            chosen={many(status)}
+            anything={t("common.all")}
+            choices={[
+              { value: "PENDING", label: t("leads.followUpPending") },
+              { value: "DONE", label: t("leads.followUpDone") },
+              { value: "CANCELLED", label: t("appointments.cancelled") },
+            ]}
+          />
           <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
             {t("common.search")}
           </button>
+          {when !== "all" || status || assignedTo ? (
+            <a href="/follow-ups" className="btn btn-secondary !px-3 !py-1 !text-xs" data-reset>
+              {t("list.resetAll")}
+            </a>
+          ) : null}
         </form>
       </div>
       {/* eslint-enable @next/next/no-html-link-for-pages */}

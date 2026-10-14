@@ -4,6 +4,8 @@ import { listSubowners } from "@/lib/subowners";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import SearchBox from "@/components/SearchBox";
 import Pagination, { paginate } from "@/components/Pagination";
+import Pick from "@/components/Pick";
+import { many } from "@/lib/filters";
 
 const PER_PAGE = 20;
 
@@ -39,17 +41,19 @@ export default async function SubownersPage({
           placeholder={t("subowners.searchPlaceholder")}
           searchLabel={t("common.search")}
           clearLabel={t("common.clear")}
+          filtered={Boolean(query || active)}
+          resetLabel={t("list.resetAll")}
         >
-          <div className="w-48">
-            <label className="label" htmlFor="active">
-              {t("common.status")}
-            </label>
-            <select id="active" name="active" defaultValue={active} className="select">
-              <option value="">{t("common.all")}</option>
-              <option value="yes">{t("agents.active")}</option>
-              <option value="no">{t("agents.inactive")}</option>
-            </select>
-          </div>
+          <Pick
+            name="active"
+            label={t("common.status")}
+            chosen={many(active)}
+            anything={t("common.all")}
+            choices={[
+              { value: "yes", label: t("agents.active") },
+              { value: "no", label: t("agents.inactive") },
+            ]}
+          />
         </SearchBox>
 
         <div className="mt-4 overflow-x-auto">

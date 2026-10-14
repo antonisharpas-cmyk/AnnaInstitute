@@ -33,15 +33,23 @@ export async function POST(request: Request) {
   if (months.length === 0) return NextResponse.json({ ok: false, detail: "Choose at least one month." }, { status: 400 });
   if (keys.length === 0) return NextResponse.json({ ok: false, detail: "Tick at least one paper." }, { status: 400 });
 
-  /* "ours" is One Eleven itself, an id is one of the companies, nothing is all of them. */
-  const raw = String(body.company ?? "").trim();
+  /* "ours" is One Eleven itself, an id is one of the companies, nothing is all of them; several are any of them. */
   const companies = await packCompanies();
-  const companyId = raw === "ours" ? "" : raw && companies.some((one) => one.id === raw) ? raw : null;
-  const companyName = companyId === null ? "" : (companies.find((one) => one.id === companyId)?.name ?? "");
+  const picked = String(body.company ?? "")
+    .split(",")
+    .map((one) => one.trim())
+    .filter((one) => one === "ours" || companies.some((c) => c.id === one && c.id));
+  const raw = picked.length === 1 ? picked[0] : "";
+  const companyId = picked.length === 1 ? (raw === "ours" ? "" : raw) : null;
+  const companyName = picked
+    .map((one) => companies.find((c) => c.id === (one === "ours" ? "" : one))?.name ?? "")
+    .filter(Boolean)
+    .join(", ");
 
   if (body.mode === "send") {
     const to = emailList(body.to ?? "").join(", ");
-    if (to) await rememberAccountant(companyId === null ? "" : raw, to);
+    /* The address is remembered for the company when one was chosen, or as the everybody address when none was. */
+    if (to && picked.length <= 1) await rememberAccountant(raw, to);
     const result = await emailPack({ months, companyId, keys, to, note: body.note, who: { id: user.id, email: user.email } });
     return NextResponse.json(result, { status: result.ok ? 200 : 400 });
   }

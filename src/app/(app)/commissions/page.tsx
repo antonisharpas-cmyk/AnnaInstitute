@@ -7,6 +7,8 @@ import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import SearchBox from "@/components/SearchBox";
 import Pagination, { paginate } from "@/components/Pagination";
 import DateField from "@/components/DateField";
+import Pick from "@/components/Pick";
+import { many } from "@/lib/filters";
 
 const PER_PAGE = 10;
 
@@ -65,10 +67,19 @@ export default async function CommissionsPage({
 
   const matching = all.filter((r) => {
     const standing = standingOf(r);
-    if (status === "PENDING" && standing !== "PENDING" && standing !== "PARTIAL") return false;
-    if (status === "PAID" && standing !== "PAID" && standing !== "COMPLETED") return false;
-    if (status === "COMPLETED" && standing !== "COMPLETED") return false;
-    if (status === "CANCELLED" && standing !== "CANCELLED") return false;
+    /* Several statuses are any of them. */
+    const wanted = many(status);
+    if (
+      wanted.length > 0 &&
+      !wanted.some(
+        (one) =>
+          (one === "PENDING" && (standing === "PENDING" || standing === "PARTIAL")) ||
+          (one === "PAID" && (standing === "PAID" || standing === "COMPLETED")) ||
+          (one === "COMPLETED" && standing === "COMPLETED") ||
+          (one === "CANCELLED" && standing === "CANCELLED"),
+      )
+    )
+      return false;
 
     if (from || until) {
       const at = by === "paid" ? (r.paidAt ? new Date(r.paidAt) : null) : new Date(r.line.createdAt);
@@ -153,30 +164,34 @@ export default async function CommissionsPage({
           placeholder={t("commissions.searchPlaceholder")}
           searchLabel={t("common.search")}
           clearLabel={t("common.clear")}
+          filtered={Boolean(query || status || params.from || params.to || params.by)}
+          resetLabel={t("list.resetAll")}
         >
-          <div className="w-44">
-            <label className="label" htmlFor="status">
-              {t("common.status")}
-            </label>
-            <select id="status" name="status" defaultValue={status} className="select">
-              <option value="">{t("common.all")}</option>
-              <option value="PENDING">{t("commissions.pending")}</option>
-              <option value="PAID">{t("commissions.paidFilter")}</option>
-              <option value="COMPLETED">{t("commissions.completed")}</option>
-              <option value="CANCELLED">{t("commissions.cancelled")}</option>
-            </select>
-          </div>
+          <Pick
+            name="status"
+            label={t("common.status")}
+            chosen={many(status)}
+            anything={t("common.all")}
+            choices={[
+              { value: "PENDING", label: t("commissions.pending") },
+              { value: "PAID", label: t("commissions.paidFilter") },
+              { value: "COMPLETED", label: t("commissions.completed") },
+              { value: "CANCELLED", label: t("commissions.cancelled") },
+            ]}
+          />
           {/* A period, read against the day a commission was generated or the
-              day it was paid, whichever the office picks. */}
-          <div className="w-44">
-            <label className="label" htmlFor="by">
-              {t("commissions.periodBy")}
-            </label>
-            <select id="by" name="by" defaultValue={by} className="select">
-              <option value="generated">{t("commissions.byGenerated")}</option>
-              <option value="paid">{t("commissions.byPaid")}</option>
-            </select>
-          </div>
+              day it was paid, whichever the office picks: one or the other. */}
+          <Pick
+            name="by"
+            label={t("commissions.periodBy")}
+            chosen={[by]}
+            anything={t("commissions.byGenerated")}
+            only
+            choices={[
+              { value: "generated", label: t("commissions.byGenerated") },
+              { value: "paid", label: t("commissions.byPaid") },
+            ]}
+          />
           <div>
             <label className="label" htmlFor="cFrom">
               {t("common.from")}

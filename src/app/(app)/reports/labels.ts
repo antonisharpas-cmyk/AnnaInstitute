@@ -16,7 +16,7 @@ export function periodLabels(t: (key: MessageKey) => string) {
     partner: t("clients.partner"),
     everyBuilding: t("reports.everyBuilding"),
     everyPartner: t("reports.everyPartner"),
-    oursAlone: t("reports.oursAlone"),
+    reset: t("list.resetAll"),
   };
 }
 

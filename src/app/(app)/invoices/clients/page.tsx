@@ -11,6 +11,8 @@ import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import Pagination, { paginate } from "@/components/Pagination";
 import { issuePapers } from "./actions";
+import Pick from "@/components/Pick";
+import { many } from "@/lib/filters";
 
 /**
  * The invoices and receipts the CRM has issued to buyers.
@@ -106,61 +108,49 @@ export default async function ClientInvoicesPage({
             </label>
             <input id="to" name="to" type="date" defaultValue={filters.to} className="input" />
           </div>
-          <div className="w-48">
-            <label className="label" htmlFor="project">
-              {t("nav.projects")}
-            </label>
-            <select id="project" name="project" defaultValue={filters.project} className="select">
-              <option value="">{t("common.all")}</option>
-              {projectList.map((one) => (
-                <option key={one.id} value={one.id}>
-                  {one.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="w-48">
-            <label className="label" htmlFor="issuer">
-              {t("issued.issuer")}
-            </label>
-            <select id="issuer" name="issuer" defaultValue={filters.issuer} className="select">
-              <option value="">{t("common.all")}</option>
-              <option value="one">One Eleven</option>
-              {companyList.map((one) => (
-                <option key={one.id} value={one.id}>
-                  {one.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="w-40">
-            <label className="label" htmlFor="kind">
-              {t("issued.type")}
-            </label>
-            <select id="kind" name="kind" defaultValue={filters.kind} className="select">
-              <option value="">{t("common.all")}</option>
-              <option value="INVOICE">{t("issued.type.INVOICE")}</option>
-              <option value="RECEIPT">{t("issued.type.RECEIPT")}</option>
-              <option value="CREDIT_NOTE">{t("issued.type.CREDIT_NOTE")}</option>
-            </select>
-          </div>
-          <div className="w-40">
-            <label className="label" htmlFor="state">
-              {t("common.status")}
-            </label>
-            <select id="state" name="state" defaultValue={filters.state} className="select">
-              <option value="">{t("issued.state.live")}</option>
-              <option value="credited">{t("issued.state.credited")}</option>
-              <option value="void">{t("issued.state.void")}</option>
-              <option value="all">{t("common.all")}</option>
-            </select>
-          </div>
+          <Pick
+            name="project"
+            label={t("nav.projects")}
+            chosen={many(filters.project)}
+            anything={t("common.all")}
+            choices={projectList.map((one) => ({ value: one.id, label: one.name }))}
+          />
+          <Pick
+            name="issuer"
+            label={t("issued.issuer")}
+            chosen={many(filters.issuer)}
+            anything={t("common.all")}
+            choices={[{ value: "one", label: "One Eleven" }, ...companyList.map((one) => ({ value: one.id, label: one.name }))]}
+          />
+          <Pick
+            name="kind"
+            label={t("issued.type")}
+            chosen={many(filters.kind)}
+            anything={t("common.all")}
+            choices={[
+              { value: "INVOICE", label: t("issued.type.INVOICE") },
+              { value: "RECEIPT", label: t("issued.type.RECEIPT") },
+              { value: "CREDIT_NOTE", label: t("issued.type.CREDIT_NOTE") },
+            ]}
+          />
+          <Pick
+            name="state"
+            label={t("common.status")}
+            chosen={many(filters.state)}
+            anything={t("issued.state.live")}
+            choices={[
+              { value: "live", label: t("issued.state.live") },
+              { value: "credited", label: t("issued.state.credited") },
+              { value: "void", label: t("issued.state.void") },
+              { value: "all", label: t("common.all") },
+            ]}
+          />
           <button type="submit" className="btn btn-primary">
             {t("common.search")}
           </button>
           {filtered ? (
-            <Link href="/invoices/clients" className="btn btn-secondary" prefetch={false}>
-              {t("common.clear")}
+            <Link href="/invoices/clients" className="btn btn-secondary" prefetch={false} data-reset>
+              {t("list.resetAll")}
             </Link>
           ) : null}
         </form>

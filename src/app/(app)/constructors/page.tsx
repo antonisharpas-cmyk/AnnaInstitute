@@ -32,6 +32,11 @@ export default async function ConstructorsPage({ searchParams }: { searchParams:
           <button type="submit" className="btn btn-secondary">
             {t("common.search")}
           </button>
+          {params.q ? (
+            <Link href="/constructors" className="btn btn-secondary" prefetch={false} data-reset>
+              {t("list.resetAll")}
+            </Link>
+          ) : null}
         </form>
         {rows.length === 0 ? (
           <Empty message={t("constructors.none")} />

@@ -1,7 +1,8 @@
 import "server-only";
-import { and, asc, eq, gte, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, appointments, clients, leadFollowUps, leads, projects, teamMembers } from "@/db/schema";
+import { many } from "@/lib/filters";
 
 /**
  * The calendar: every appointment and every follow up, on its day.
@@ -42,10 +43,10 @@ const name = (first: string | null | undefined, last: string | null | undefined)
   `${first ?? ""} ${last ?? ""}`.trim();
 
 /** Is this client, by id, in the development: an apartment, or a contract on one there? */
-function clientInProject(clientId: SQL | typeof appointments.clientId, projectId: string): SQL {
+function clientInProject(clientId: SQL | typeof appointments.clientId, projectIds: string[]): SQL {
   return sql`exists (
     select 1 from units u
-    where u.project_id = ${projectId}
+    where u.project_id in ${projectIds}
       and (u.client_id = ${clientId}
         or exists (select 1 from contracts c where c.unit_id = u.id and c.client_id = ${clientId} and c.status <> 'CANCELLED'))
   )`;
@@ -57,14 +58,25 @@ export async function calendarItems(filter: CalendarFilter): Promise<CalendarIte
 
   /* The appointments. */
   const meet: SQL[] = [gte(appointments.at, filter.from), lt(appointments.at, filter.to)];
-  if (filter.member === "nobody") meet.push(isNull(appointments.assignedToId));
-  else if (filter.member) meet.push(eq(appointments.assignedToId, filter.member));
-  if (filter.project) {
+  /* Several people and several developments are any of them, "nobody" included. */
+  const people = many(filter.member);
+  const named = people.filter((one) => one !== "nobody");
+  const developments = many(filter.project);
+  const either = (parts: SQL[]) => (parts.length === 1 ? parts[0] : (or(...parts) as SQL));
+  if (people.length > 0) {
+    meet.push(
+      either([
+        ...(people.includes("nobody") ? [isNull(appointments.assignedToId) as SQL] : []),
+        ...(named.length > 0 ? [inArray(appointments.assignedToId, named) as SQL] : []),
+      ]),
+    );
+  }
+  if (developments.length > 0) {
     meet.push(
       or(
-        eq(appointments.projectId, filter.project),
-        eq(leads.projectId, filter.project),
-        clientInProject(appointments.clientId, filter.project),
+        inArray(appointments.projectId, developments),
+        inArray(leads.projectId, developments),
+        clientInProject(appointments.clientId, developments),
       ) as SQL,
     );
   }
@@ -90,14 +102,20 @@ export async function calendarItems(filter: CalendarFilter): Promise<CalendarIte
   /* The follow ups. Whose they are is their own person, or the lead's. */
   const whose = sql<string | null>`coalesce(${leadFollowUps.assignedToId}, ${leads.assignedToId})`;
   const follow: SQL[] = [gte(leadFollowUps.at, filter.from), lt(leadFollowUps.at, filter.to)];
-  if (filter.member === "nobody") follow.push(sql`${whose} is null` as SQL);
-  else if (filter.member) follow.push(sql`${whose} = ${filter.member}` as SQL);
-  if (filter.project) {
+  if (people.length > 0) {
+    follow.push(
+      either([
+        ...(people.includes("nobody") ? [sql`${whose} is null` as SQL] : []),
+        ...(named.length > 0 ? [sql`${whose} in ${named}` as SQL] : []),
+      ]),
+    );
+  }
+  if (developments.length > 0) {
     follow.push(
       or(
-        eq(leads.projectId, filter.project),
-        clientInProject(sql`${leadFollowUps.clientId}`, filter.project),
-        clientInProject(sql`${leads.clientId}`, filter.project),
+        inArray(leads.projectId, developments),
+        clientInProject(sql`${leadFollowUps.clientId}`, developments),
+        clientInProject(sql`${leads.clientId}`, developments),
       ) as SQL,
     );
   }

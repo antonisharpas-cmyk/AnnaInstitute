@@ -13,6 +13,8 @@ import { ourCompanies } from "@/lib/parties";
 import SearchBox from "@/components/SearchBox";
 import RowLink from "@/components/RowLink";
 import Pagination, { paginate } from "@/components/Pagination";
+import Pick from "@/components/Pick";
+import { many } from "@/lib/filters";
 
 const PER_PAGE = 20;
 
@@ -115,56 +117,46 @@ export default async function InvoicesPage({
             placeholder={t("invoices.searchPlaceholder")}
             searchLabel={t("common.search")}
             clearLabel={t("common.clear")}
+            filtered={Boolean(query || category || status || direction || company)}
+            resetLabel={t("list.resetAll")}
           >
-            <div className="w-48">
-              <label className="label" htmlFor="category">
-                {t("invoices.category")}
-              </label>
-              <select id="category" name="category" defaultValue={category} className="select">
-                <option value="">{t("common.all")}</option>
-                {everyCategory.map((one) => (
-                  <option key={one.value} value={one.value}>
-                    {one.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="w-56">
-              <label className="label" htmlFor="company">
-                {t("invoices.companyFilter")}
-              </label>
-              <select id="company" name="company" defaultValue={company} className="select" data-company-filter>
-                <option value="">{t("common.all")}</option>
-                {companies.map((one) => (
-                  <option key={one.id || "ours"} value={one.id || "ours"}>
-                    {one.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="w-48">
-              <label className="label" htmlFor="direction">
-                {t("invoices.which")}
-              </label>
-              <select id="direction" name="direction" defaultValue={direction} className="select">
-                <option value="">{t("common.all")}</option>
-                <option value="OUT">{t("invoices.direction.OUT")}</option>
-                <option value="IN">{t("invoices.direction.IN")}</option>
-              </select>
-            </div>
-            <div className="w-48">
-              <label className="label" htmlFor="status">
-                {t("common.status")}
-              </label>
-              <select id="status" name="status" defaultValue={status} className="select">
-                <option value="">{t("common.all")}</option>
-                <option value="OVERDUE">{t("invoices.status.OVERDUE")}</option>
-                <option value="UNPAID">{t("invoices.status.UNPAID")}</option>
-                <option value="PARTIALLY_PAID">{t("invoices.status.PARTIALLY_PAID")}</option>
-                <option value="PAID">{t("invoices.status.PAID")}</option>
-                <option value="RECEIPT_MISSING">{t("invoices.status.RECEIPT_MISSING")}</option>
-              </select>
-            </div>
+            <Pick
+              name="category"
+              label={t("invoices.category")}
+              chosen={many(category)}
+              anything={t("common.all")}
+              choices={everyCategory}
+            />
+            <Pick
+              name="company"
+              label={t("invoices.companyFilter")}
+              chosen={many(company)}
+              anything={t("common.all")}
+              choices={companies.map((one) => ({ value: one.id || "ours", label: one.name }))}
+            />
+            <Pick
+              name="direction"
+              label={t("invoices.which")}
+              chosen={many(direction)}
+              anything={t("common.all")}
+              choices={[
+                { value: "OUT", label: t("invoices.direction.OUT") },
+                { value: "IN", label: t("invoices.direction.IN") },
+              ]}
+            />
+            <Pick
+              name="status"
+              label={t("common.status")}
+              chosen={many(status)}
+              anything={t("common.all")}
+              choices={[
+                { value: "OVERDUE", label: t("invoices.status.OVERDUE") },
+                { value: "UNPAID", label: t("invoices.status.UNPAID") },
+                { value: "PARTIALLY_PAID", label: t("invoices.status.PARTIALLY_PAID") },
+                { value: "PAID", label: t("invoices.status.PAID") },
+                { value: "RECEIPT_MISSING", label: t("invoices.status.RECEIPT_MISSING") },
+              ]}
+            />
           </SearchBox>
 
           <p className="mt-3 text-xs text-brand-graphite/60">{t("invoices.rowHint")}</p>

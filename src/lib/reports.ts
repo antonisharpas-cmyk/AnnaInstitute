@@ -18,6 +18,7 @@ import {
   units,
 } from "@/db/schema";
 import { toCents } from "./money";
+import { many } from "./filters";
 
 /**
  * What the CRM knows, counted.
@@ -44,10 +45,17 @@ export type Range = { from: Date; to: Date };
    the CRM cannot know is still the agreement.
    --------------------------------------------------------------------------- */
 
+/**
+ * Which developments and which companies, several of each.
+ *
+ * Both travel in the address as comma separated lists, the same as every
+ * other filter in the CRM: ?project=a,b&partner=c. Nothing chosen is the
+ * whole book.
+ */
 export type Scope = { project: string; partner: string };
 
 export function scopeFrom(params: { project?: string; partner?: string }): Scope {
-  return { project: params.project ?? "", partner: params.partner ?? "" };
+  return { project: many(params.project).join(","), partner: many(params.partner).join(",") };
 }
 
 export const scopeIsOn = (scope: Scope) => Boolean(scope.project || scope.partner);
@@ -60,21 +68,30 @@ export const scopeIsOn = (scope: Scope) => Boolean(scope.project || scope.partne
  * read than one that lists forty ids it is not excluding. A scope that matches
  * nothing returns an empty list, which correctly shows zeroes rather than
  * silently showing the whole book.
+ *
+ * Several developments are any of them; several companies are the
+ * developments any of them holds a share in; both at once is the developments
+ * that are in both answers.
  */
 export async function projectsInScope(scope: Scope): Promise<string[] | null> {
   if (!scopeIsOn(scope)) return null;
 
+  const buildings = many(scope.project);
+  const companies = many(scope.partner);
   const parts: SQL[] = [];
-  if (scope.project) parts.push(eq(projects.id, scope.project));
-  if (scope.partner) {
-    parts.push(
-      scope.partner === "ours"
-        ? (sql`not exists (select 1 from project_partners pp where pp.project_id = ${projects.id})` as SQL)
-        : (sql`exists (
+  if (buildings.length > 0) parts.push(sql`${projects.id} in ${buildings}` as SQL);
+  if (companies.length > 0) {
+    /* "ours" is an old address meaning the developments no partner holds a share in. */
+    const named = companies.filter((one) => one !== "ours");
+    const either: SQL[] = [];
+    if (named.length > 0)
+      either.push(sql`exists (
             select 1 from project_partners pp
-            where pp.project_id = ${projects.id} and pp.subowner_id = ${scope.partner}
-          )` as SQL),
-    );
+            where pp.project_id = ${projects.id} and pp.subowner_id in ${named}
+          )` as SQL);
+    if (companies.includes("ours"))
+      either.push(sql`not exists (select 1 from project_partners pp where pp.project_id = ${projects.id})` as SQL);
+    parts.push(sql`(${sql.join(either, sql` or `)})` as SQL);
   }
 
   const rows = await db
@@ -176,18 +193,22 @@ export function rangeFrom(params: { period?: string; from?: string; to?: string 
   return { range: { from: new Date(now.getFullYear(), now.getMonth() - 11, 1), to: end }, period };
 }
 
-/** The months in a range, oldest first, so a chart has no holes in it. */
+/**
+ * The months in a range, oldest first.
+ *
+ * A long "everything" range is kept to its last ten years, counted back from
+ * its end, so the months with the data in them are always the ones kept. The
+ * charts leave out the months with nothing in them on their own.
+ */
 export function monthsIn(range: Range): string[] {
   const out: string[] = [];
-  const cursor = new Date(range.from.getFullYear(), range.from.getMonth(), 1);
   const last = new Date(range.to.getFullYear(), range.to.getMonth(), 1);
-  // A long "all time" range is cut to the last five years, which is as far back
-  // as a monthly chart stays readable.
-  let guard = 0;
-  while (cursor <= last && guard < 60) {
+  const earliest = new Date(last.getFullYear(), last.getMonth() - 119, 1);
+  const cursor = new Date(range.from.getFullYear(), range.from.getMonth(), 1);
+  if (cursor < earliest) cursor.setTime(earliest.getTime());
+  while (cursor <= last) {
     out.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
     cursor.setMonth(cursor.getMonth() + 1);
-    guard += 1;
   }
   return out;
 }

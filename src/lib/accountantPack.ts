@@ -122,11 +122,13 @@ export async function packMonths(): Promise<string[]> {
   return monthsFrom([...a, ...b, ...c, ...d, ...e].map((one) => one.m)).reverse();
 }
 
-/** Every paper of the months chosen, of one company or of all of them. */
-export async function papersFor(months: string[], companyId: string | null = null): Promise<PackItem[]> {
+/** Every paper of the months chosen, of one company, of several, or of all of them (null). */
+export async function papersFor(months: string[], companyId: string | string[] | null = null): Promise<PackItem[]> {
   const all: PackItem[] = [];
   for (const month of monthsFrom(months)) all.push(...(await monthPapers(month)));
-  return companyId === null ? all : all.filter((one) => one.companyId === companyId);
+  if (companyId === null) return all;
+  const wanted = Array.isArray(companyId) ? companyId : [companyId];
+  return wanted.length === 0 ? all : all.filter((one) => wanted.includes(one.companyId));
 }
 
 /** "2026-10" to the first moment of that month and of the next, on the office's clock. */

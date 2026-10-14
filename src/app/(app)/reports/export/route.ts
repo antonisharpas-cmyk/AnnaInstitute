@@ -1,14 +1,17 @@
 import { getSessionUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { saleLines } from "@/lib/apartmentSales";
 import {
   ageing,
   cashByMonth,
   costsByCategory,
   leadsBySource,
+  projectsInScope,
   rangeFrom,
   salesByAgent,
   salesByMonth,
   salesByProject,
+  scopeFrom,
 } from "@/lib/reports";
 
 /**
@@ -53,6 +56,34 @@ export async function GET(request: Request) {
       rows = [
         ["Month", "Contracts", "Value before VAT"],
         ...monthly.map((row) => [row.month, row.count, money(row.valueCents)]),
+      ];
+      break;
+    }
+
+    case "apartments": {
+      /* Apartment Sales opens on everything, and its download does the same. */
+      const period = url.searchParams.get("period") ?? (url.searchParams.get("from") || url.searchParams.get("to") ? undefined : "all");
+      const span =
+        period === "all"
+          ? { from: new Date(2000, 0, 1), to: new Date(2100, 0, 1) }
+          : rangeFrom({ period, from: url.searchParams.get("from") ?? undefined, to: url.searchParams.get("to") ?? undefined }).range;
+      const only = await projectsInScope(
+        scopeFrom({ project: url.searchParams.get("project") ?? undefined, partner: url.searchParams.get("partner") ?? undefined }),
+      );
+      const lines = await saleLines(span, only);
+      rows = [
+        [
+          "Development", "Apartment", "Contract", "Date", "Buyer", "Stage", "VAT rate",
+          "Agreed before VAT", "Received before VAT", "Agreed with VAT", "Received with VAT",
+          "Cash agreed", "Cash received", "Reduced VAT", "VAT saved", "Penalties", "Refunds", "Credit notes", "Overdue",
+        ],
+        ...lines.map((line) => [
+          line.project, line.unit, line.reference, line.date ? line.date.toISOString().slice(0, 10) : "", line.buyer,
+          line.stage, line.vatRate,
+          money(line.netAgreed), money(line.netReceived), money(line.grossAgreed), money(line.grossReceived),
+          money(line.cashAgreed), money(line.cashReceived), line.reducedVat ? "Yes" : "No", money(line.vatSaved),
+          money(line.penalties), money(line.refunds), line.creditNotes, money(line.overdueCents),
+        ]),
       ];
       break;
     }

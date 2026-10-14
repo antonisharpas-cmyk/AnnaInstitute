@@ -10,6 +10,7 @@ import {
   units,
 } from "@/db/schema";
 import { toCents } from "./money";
+import { many } from "@/lib/filters";
 
 /**
  * Partners on a development.
@@ -42,8 +43,10 @@ export async function listSubowners({
       ) as SQL,
     );
   }
-  if (active === "yes") filters.push(eq(subowners.isActive, true));
-  if (active === "no") filters.push(eq(subowners.isActive, false));
+  /* Both ticked is every company, which is the same as neither. */
+  const states = many(active);
+  if (states.length === 1 && states[0] === "yes") filters.push(eq(subowners.isActive, true));
+  if (states.length === 1 && states[0] === "no") filters.push(eq(subowners.isActive, false));
   const where = filters.length > 0 ? and(...filters) : undefined;
 
   const [rows, [counted]] = await Promise.all([

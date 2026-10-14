@@ -1,7 +1,7 @@
 import { getTranslator, type MessageKey } from "@/i18n";
 import { leadFunnel, leadsByMonth, leadsBySource, monthLabel, rangeFrom } from "@/lib/reports";
 import { BackLink, Card, PageHeader } from "@/components/ui";
-import { BarSeries, Breakdown, Figure, Funnel, SERIES } from "@/components/charts";
+import { Breakdown, Figure, Funnel, LineSeries, SERIES } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
 import { periodLabels, periodQuery } from "../labels";
 
@@ -54,7 +54,8 @@ export default async function LeadsReportPage({
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
         <Card title={t("reports.leadsMonthly")}>
-          <BarSeries
+          <LineSeries
+            empty={t("reports.noData")}
             labels={monthly.map((row) => monthLabel(row.month, locale))}
             series={[
               {

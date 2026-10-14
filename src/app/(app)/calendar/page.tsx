@@ -5,6 +5,8 @@ import { calendarItems, calendarProjects } from "@/lib/calendar";
 import { PageHeader } from "@/components/ui";
 import DateField from "@/components/DateField";
 import CalendarView, { type CalendarDay, type CalendarEntry } from "./CalendarView";
+import Pick from "@/components/Pick";
+import { many } from "@/lib/filters";
 
 /**
  * The calendar: every appointment and follow up, on its day, like the
@@ -57,7 +59,9 @@ export default async function CalendarPage({
 
   const member = params.member ?? "";
   const project = params.project ?? "";
-  const show = params.show === "appointments" || params.show === "followUps" ? params.show : "";
+  /* Appointments, follow ups, or both: both ticked or none ticked is both. */
+  const showing = many(params.show).filter((one) => one === "appointments" || one === "followUps");
+  const show = showing.length === 1 ? showing[0] : "";
 
   const [items, team, projects] = await Promise.all([
     calendarItems({ from: start, to: end, member: member || undefined, project: project || undefined }),
@@ -124,43 +128,30 @@ export default async function CalendarPage({
         className="card mb-4 flex flex-wrap items-end gap-3 p-3"
         data-calendar-filters
       >
-        <div>
-          <label className="label" htmlFor="calendarMember">
-            {t("appointments.assignedTo")}
-          </label>
-          <select id="calendarMember" name="member" defaultValue={member} className="select !w-52">
-            <option value="">{t("common.all")}</option>
-            <option value="nobody">{t("appointments.nobody")}</option>
-            {team.map((one) => (
-              <option key={one.id} value={one.id}>
-                {one.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="calendarProject">
-            {t("calendar.project")}
-          </label>
-          <select id="calendarProject" name="project" defaultValue={project} className="select !w-52">
-            <option value="">{t("common.all")}</option>
-            {projects.map((one) => (
-              <option key={one.id} value={one.id}>
-                {one.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="calendarShow">
-            {t("calendar.show")}
-          </label>
-          <select id="calendarShow" name="show" defaultValue={show} className="select !w-64">
-            <option value="">{t("calendar.showBoth")}</option>
-            <option value="appointments">{t("nav.appointments")}</option>
-            <option value="followUps">{t("nav.followUps")}</option>
-          </select>
-        </div>
+        <Pick
+          name="member"
+          label={t("appointments.assignedTo")}
+          chosen={many(member)}
+          anything={t("common.all")}
+          choices={[{ value: "nobody", label: t("appointments.nobody") }, ...team.map((one) => ({ value: one.id, label: one.name }))]}
+        />
+        <Pick
+          name="project"
+          label={t("calendar.project")}
+          chosen={many(project)}
+          anything={t("common.all")}
+          choices={projects.map((one) => ({ value: one.id, label: one.name }))}
+        />
+        <Pick
+          name="show"
+          label={t("calendar.show")}
+          chosen={showing}
+          anything={t("calendar.showBoth")}
+          choices={[
+            { value: "appointments", label: t("nav.appointments") },
+            { value: "followUps", label: t("nav.followUps") },
+          ]}
+        />
         {shownMonth ? <input type="hidden" name="month" value={monthKey(shownMonth)} /> : null}
         <div>
           <label className="label" htmlFor="calendarFrom">
@@ -180,6 +171,11 @@ export default async function CalendarPage({
         <a href={link({})} className="btn btn-secondary">
           {t("calendar.thisMonth")}
         </a>
+        {member || project || show || custom ? (
+          <a href="/calendar" className="btn btn-secondary" data-reset>
+            {t("list.resetAll")}
+          </a>
+        ) : null}
       </form>
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

@@ -1,8 +1,11 @@
+import Link from "next/link";
 import { getTranslator } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { accountantFor, lastMonth, monthRange, monthsFrom, packCompanies, packHistory, packMonths, papersFor, PACK_GROUPS } from "@/lib/accountantPack";
 import { Card, PageHeader } from "@/components/ui";
 import PackPicker from "./PackPicker";
+import Pick from "@/components/Pick";
+import { many } from "@/lib/filters";
 
 /**
  * For the accountant: the invoices, receipts and credit notes of the months
@@ -11,7 +14,7 @@ import PackPicker from "./PackPicker";
  */
 export const dynamic = "force-dynamic";
 
-export default async function AccountantPage({ searchParams }: { searchParams: Promise<{ month?: string | string[]; company?: string }> }) {
+export default async function AccountantPage({ searchParams }: { searchParams: Promise<{ month?: string | string[]; company?: string | string[] }> }) {
   await requireUser(["ADMIN"]);
   const params = await searchParams;
   const { locale, t } = await getTranslator();
@@ -20,14 +23,25 @@ export default async function AccountantPage({ searchParams }: { searchParams: P
   const recorded = await packMonths();
   const chosenMonths = monthsFrom(params.month ?? "");
   const months = chosenMonths.length > 0 ? chosenMonths : [recorded.includes(lastMonth()) ? lastMonth() : (recorded[0] ?? lastMonth())];
-  /* "" is every company, "ours" One Eleven itself, otherwise one company: each has its own accountant. */
+  /*
+   * Which companies: none ticked is every company, "ours" is One Eleven itself,
+   * otherwise one or several companies. Each has its own accountant, so the
+   * address is filled in when exactly one is chosen.
+   */
   const companies = await packCompanies();
-  const rawCompany = String(params.company ?? "").trim();
-  const company = rawCompany === "ours" || companies.some((one) => one.id === rawCompany && one.id) ? rawCompany : "";
-  const companyId = company === "" ? null : company === "ours" ? "" : company;
-  const [items, to, history] = await Promise.all([papersFor(months, companyId), accountantFor(company), packHistory(8)]);
+  const picked = many(Array.isArray(params.company) ? params.company.join(",") : params.company).filter(
+    (one) => one === "ours" || companies.some((c) => c.id === one && c.id),
+  );
+  const company = picked.join(",");
+  const companyIds = picked.length === 0 ? null : picked.map((one) => (one === "ours" ? "" : one));
+  const [items, to, history] = await Promise.all([
+    papersFor(months, companyIds),
+    accountantFor(picked.length === 1 ? picked[0] : ""),
+    packHistory(8),
+  ]);
+  const companyName =
+    companyIds === null ? "" : companyIds.map((id) => companies.find((one) => one.id === id)?.name ?? "").filter(Boolean).join(", ");
   const tag = locale === "el" ? "el-GR" : "en-GB";
-  const companyName = companyId === null ? "" : (companies.find((one) => one.id === companyId)?.name ?? "");
 
   /* The months with papers, newest first, and any month asked for in the address. */
   const choices = monthsFrom([...recorded, ...months])
@@ -42,40 +56,31 @@ export default async function AccountantPage({ searchParams }: { searchParams: P
       <form action="/invoices/accountant" method="get" className="mb-4" data-pack-filters>
         <div className="flex flex-wrap items-end gap-2">
           {/* A dropdown with a tick for each month that has papers. */}
-          <div>
-            <span className="label">{t("pack.months")}</span>
-            <details className="relative" data-pack-months>
-              <summary className="select !w-72 cursor-pointer list-none truncate">{label}</summary>
-              <div className="absolute z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded border border-brand-line bg-white p-2 shadow-lg dark:bg-[color:var(--color-surface)]">
-                {choices.length === 0 ? (
-                  <p className="p-1 text-sm text-brand-graphite/60">{t("pack.nothing")}</p>
-                ) : (
-                  choices.map((one) => (
-                    <label key={one.value} className="flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-brand-surface">
-                      <input type="checkbox" name="month" value={one.value} defaultChecked={months.includes(one.value)} />
-                      {one.label}
-                    </label>
-                  ))
-                )}
-              </div>
-            </details>
-          </div>
-          <div>
-            <label className="label" htmlFor="packCompany">
-              {t("pack.company")}
-            </label>
-            <select id="packCompany" name="company" defaultValue={company} className="select !w-[28rem] max-w-full" data-pack-company>
-              <option value="">{t("pack.allCompanies")}</option>
-              {companies.map((one) => (
-                <option key={one.id || "ours"} value={one.id || "ours"}>
-                  {one.name} ({one.projects.length > 0 ? one.projects.join(", ") : t("pack.noProjects")})
-                </option>
-              ))}
-            </select>
-          </div>
+          <Pick
+            name="month"
+            label={t("pack.months")}
+            chosen={months}
+            anything={label}
+            choices={choices}
+          />
+          <Pick
+            name="company"
+            label={t("pack.company")}
+            chosen={picked}
+            anything={t("pack.allCompanies")}
+            choices={companies.map((one) => ({
+              value: one.id || "ours",
+              label: `${one.name} (${one.projects.length > 0 ? one.projects.join(", ") : t("pack.noProjects")})`,
+            }))}
+          />
           <button type="submit" className="btn btn-secondary">
             {t("pack.show")}
           </button>
+          {chosenMonths.length > 0 || picked.length > 0 ? (
+            <Link href="/invoices/accountant" className="btn btn-secondary" prefetch={false} data-reset>
+              {t("list.resetAll")}
+            </Link>
+          ) : null}
         </div>
         <p className="mt-1 text-xs text-brand-graphite/60">{t("pack.monthsHint")}</p>
       </form>

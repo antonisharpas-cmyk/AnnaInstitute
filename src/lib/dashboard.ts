@@ -26,9 +26,6 @@ export const PANEL_KEYS = [
   "payments",
   "birthdays",
   "activity",
-  "sales",
-  "overdue",
-  "upcoming",
 ] as const;
 
 export type PanelKey = (typeof PANEL_KEYS)[number];
@@ -44,8 +41,7 @@ export const WIDTHS: PanelWidth[] = [2, 3, 4, 6];
  * The screen everybody starts with, which is the one the office asked for:
  * what needs somebody first, at the top left, with the money beside it; the
  * apartments of every development; the year a month a row; then the payments
- * beside the leads, the birthdays and what happened lately. The monthly sales
- * chart and the two installment lists are put away, a click from coming back.
+ * beside the leads, the birthdays and what happened lately.
  */
 export const DEFAULT_LAYOUT: Panel[] = [
   { key: "attention", width: 4, shown: true },
@@ -56,9 +52,6 @@ export const DEFAULT_LAYOUT: Panel[] = [
   { key: "funnel", width: 2, shown: true },
   { key: "birthdays", width: 2, shown: true },
   { key: "activity", width: 4, shown: true },
-  { key: "sales", width: 2, shown: false },
-  { key: "overdue", width: 3, shown: false },
-  { key: "upcoming", width: 3, shown: false },
 ];
 
 /**
@@ -78,9 +71,6 @@ export const PANEL_TITLE: Record<PanelKey, MessageKey> = {
   payments: "dash.recentPayments",
   birthdays: "birthdays.thisWeek",
   activity: "dash.activity",
-  sales: "reports.monthlySales",
-  overdue: "dash.overdue",
-  upcoming: "dash.nextPayments",
 };
 
 /** One line saying what a panel is for, so a hidden one can be found again. */
@@ -93,9 +83,6 @@ export const PANEL_NOTE: Record<PanelKey, MessageKey> = {
   payments: "panel.note.payments",
   birthdays: "birthdays.panelNote",
   activity: "panel.note.activity",
-  sales: "panel.note.sales",
-  overdue: "panel.note.overdue",
-  upcoming: "panel.note.upcoming",
 };
 
 /**

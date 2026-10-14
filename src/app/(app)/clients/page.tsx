@@ -245,10 +245,7 @@ export default async function ClientsPage({
             label={t("clients.partner")}
             chosen={many(partner)}
             anything={t("common.all")}
-            choices={[
-              { value: "ours", label: t("clients.oursOnly") },
-              ...partnerList.map((company) => ({ value: company.id, label: company.name })),
-            ]}
+            choices={partnerList.map((company) => ({ value: company.id, label: company.name }))}
           />
 
           <Pick

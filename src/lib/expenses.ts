@@ -1,9 +1,10 @@
 import "server-only";
 import { choiceFilter } from "@/lib/choices/filter";
-import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { expenseLines, expenses, projects } from "@/db/schema";
 import { toCents } from "./money";
+import { many } from "./filters";
 
 /**
  * What the company pays.
@@ -61,26 +62,48 @@ export async function listExpenses({
       ) as SQL,
     );
   }
+  /*
+   * Every filter takes several, comma separated: several categories, statuses,
+   * directions or companies are any of them.
+   */
+  const anyOf = (parts: SQL[]) => {
+    if (parts.length === 1) filters.push(parts[0]);
+    else if (parts.length > 1) filters.push(or(...parts) as SQL);
+  };
+
   /* A built in category finds the office's own ones under it too, on any line of the invoice. */
-  const byCategory = category ? choiceFilter(expenses.category, expenses.categoryChoice, [category], EXPENSE_CATEGORIES) : null;
-  if (byCategory && category) {
-    filters.push(
-      or(
-        byCategory,
-        sql`exists (select 1 from expense_lines l where l.expense_id = ${expenses.id} and (l.category = ${category} or l.category_choice = ${category}))`,
-      ) as SQL,
-    );
-  }
-  if (["UNPAID", "PARTIALLY_PAID", "PAID"].includes(status)) {
-    filters.push(eq(expenses.status, status as "UNPAID"));
-  }
-  if (status === "RECEIPT_MISSING") filters.push(RECEIPT_MISSING_SQL);
+  anyOf(
+    many(category).flatMap((one) => {
+      const byCategory = choiceFilter(expenses.category, expenses.categoryChoice, [one], EXPENSE_CATEGORIES);
+      if (!byCategory) return [];
+      return [
+        or(
+          byCategory,
+          sql`exists (select 1 from expense_lines l where l.expense_id = ${expenses.id} and (l.category = ${one} or l.category_choice = ${one}))`,
+        ) as SQL,
+      ];
+    }),
+  );
+
+  const statusParts: SQL[] = [];
+  const plain = many(status).filter((one) => ["UNPAID", "PARTIALLY_PAID", "PAID"].includes(one)) as ("UNPAID" | "PARTIALLY_PAID" | "PAID")[];
+  if (plain.length > 0) statusParts.push(inArray(expenses.status, plain) as SQL);
+  if (many(status).includes("RECEIPT_MISSING")) statusParts.push(RECEIPT_MISSING_SQL);
   /* Past its due date and not fully paid: unpaid or part paid. The same rule as the "Invoices overdue" alert. */
-  if (status === "OVERDUE") filters.push(sql`(${expenses.dueDate} is not null and ${expenses.dueDate} < now() and ${expenses.status} <> 'PAID')`);
-  if (direction === "IN" || direction === "OUT") filters.push(eq(expenses.direction, direction));
-  if (company === "ours") filters.push(sql`coalesce(${expenses.ourCompanyId}, '') = ''`);
-  else if (company)
-    filters.push(sql`(${expenses.ourCompanyId} = ${company} or (${expenses.partyKind} = 'COMPANY' and ${expenses.partyId} = ${company}) or ${expenses.subownerId} = ${company})`);
+  if (many(status).includes("OVERDUE"))
+    statusParts.push(sql`(${expenses.dueDate} is not null and ${expenses.dueDate} < now() and ${expenses.status} <> 'PAID')`);
+  anyOf(statusParts);
+
+  const ways = many(direction).filter((one) => one === "IN" || one === "OUT");
+  if (ways.length === 1) filters.push(eq(expenses.direction, ways[0]));
+
+  anyOf(
+    many(company).map((one) =>
+      one === "ours"
+        ? (sql`coalesce(${expenses.ourCompanyId}, '') = ''` as SQL)
+        : (sql`(${expenses.ourCompanyId} = ${one} or (${expenses.partyKind} = 'COMPANY' and ${expenses.partyId} = ${one}) or ${expenses.subownerId} = ${one})` as SQL),
+    ),
+  );
   const where = filters.length > 0 ? and(...filters) : undefined;
 
   const [rows, [counted], sums] = await Promise.all([

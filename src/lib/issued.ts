@@ -18,6 +18,7 @@ import { toCents, fromCents } from "@/lib/money";
 import { buyersName, hasSecondBuyer } from "@/lib/buyers";
 import { nextCreditNoteNumber, nextInvoiceNumber } from "@/lib/receipts";
 import { issuerForProject } from "@/lib/issuer";
+import { many } from "@/lib/filters";
 import { creditNotePdf, invoicePdf, receiptPdfFrom, type IssuedSnapshot } from "@/lib/paymentPdf";
 import { modelOf, splitGross } from "@/lib/vatModel";
 import { saveUpload, resolveStored } from "@/lib/storage";
@@ -829,16 +830,34 @@ export async function listIssued(filters: IssuedFilters) {
   }
   if (filters.from) parts.push(gte(issuedDocuments.issuedOn, new Date(`${filters.from}T00:00:00`)));
   if (filters.to) parts.push(lte(issuedDocuments.issuedOn, new Date(`${filters.to}T23:59:59`)));
-  if (filters.project) parts.push(eq(units.projectId, filters.project));
-  if (filters.issuer) parts.push(eq(issuedDocuments.issuerId, filters.issuer === "one" ? "" : filters.issuer));
-  if (filters.kind === "INVOICE" || filters.kind === "RECEIPT" || filters.kind === "CREDIT_NOTE") {
-    parts.push(eq(issuedDocuments.kind, filters.kind));
-  }
-  if (filters.state === "void") parts.push(sql`${issuedDocuments.voidedAt} is not null`);
-  else if (filters.state === "credited") parts.push(sql`${issuedDocuments.creditedById} is not null`);
+  /* Every filter takes several, comma separated: any of them. */
+  const anyOf = (list: SQL[]) => {
+    if (list.length === 1) parts.push(list[0]);
+    else if (list.length > 1) parts.push(or(...list) as SQL);
+  };
+  const projectIds = many(filters.project);
+  if (projectIds.length > 0) parts.push(inArray(units.projectId, projectIds) as SQL);
+  const issuers = many(filters.issuer).map((one) => (one === "one" ? "" : one));
+  if (issuers.length > 0) parts.push(inArray(issuedDocuments.issuerId, issuers) as SQL);
+  const kinds = many(filters.kind).filter((one) => ["INVOICE", "RECEIPT", "CREDIT_NOTE"].includes(one));
+  if (kinds.length > 0) parts.push(inArray(issuedDocuments.kind, kinds) as SQL);
   /* A paper taken back is hidden, but an invoice cancelled by the reduced VAT and
      issued again stays in view, marked cancelled, beside the one that replaced it. */
-  else if (filters.state !== "all") parts.push(sql`(${issuedDocuments.voidedAt} is null or ${issuedDocuments.replacedById} is not null)`);
+  const LIVE = sql`(${issuedDocuments.voidedAt} is null or ${issuedDocuments.replacedById} is not null)` as SQL;
+  const states = many(filters.state);
+  if (states.length === 0) parts.push(LIVE);
+  else if (!states.includes("all"))
+    anyOf(
+      states.flatMap((one) =>
+        one === "void"
+          ? [sql`${issuedDocuments.voidedAt} is not null` as SQL]
+          : one === "credited"
+            ? [sql`${issuedDocuments.creditedById} is not null` as SQL]
+            : one === "live"
+              ? [LIVE]
+              : [],
+      ),
+    );
 
   const where = parts.length ? and(...parts) : undefined;
 

@@ -9,6 +9,8 @@ import SearchBox from "@/components/SearchBox";
 import Pagination, { paginate } from "@/components/Pagination";
 import ConfirmButton from "@/components/ConfirmButton";
 import { deleteAgent } from "./actions";
+import Pick from "@/components/Pick";
+import { many } from "@/lib/filters";
 
 const PER_PAGE = 10;
 
@@ -34,8 +36,10 @@ export default async function AgentsPage({
       ) as SQL,
     );
   }
-  if (active === "yes") filters.push(eq(agents.isActive, true));
-  if (active === "no") filters.push(eq(agents.isActive, false));
+  /* Both ticked is everybody, which is the same as neither. */
+  const states = many(active);
+  if (states.length === 1 && states[0] === "yes") filters.push(eq(agents.isActive, true));
+  if (states.length === 1 && states[0] === "no") filters.push(eq(agents.isActive, false));
   const where = filters.length > 0 ? and(...filters) : undefined;
 
   const [[counted], rows] = await Promise.all([
@@ -83,17 +87,19 @@ export default async function AgentsPage({
           placeholder={t("agents.searchPlaceholder")}
           searchLabel={t("common.search")}
           clearLabel={t("common.clear")}
+          filtered={Boolean(query || active)}
+          resetLabel={t("list.resetAll")}
         >
-          <div className="w-40">
-            <label className="label" htmlFor="active">
-              {t("common.status")}
-            </label>
-            <select id="active" name="active" defaultValue={active} className="select">
-              <option value="">{t("common.all")}</option>
-              <option value="yes">{t("agents.active")}</option>
-              <option value="no">{t("agents.inactive")}</option>
-            </select>
-          </div>
+          <Pick
+            name="active"
+            label={t("common.status")}
+            chosen={many(active)}
+            anything={t("common.all")}
+            choices={[
+              { value: "yes", label: t("agents.active") },
+              { value: "no", label: t("agents.inactive") },
+            ]}
+          />
         </SearchBox>
 
         <div className="mt-4 overflow-x-auto">

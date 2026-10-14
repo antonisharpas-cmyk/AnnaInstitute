@@ -1,21 +1,19 @@
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
-import { and, asc, eq, gte, isNotNull, lt, sql, type SQL } from "drizzle-orm";
+import { asc, eq, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { clients, contracts, installments, projects, units } from "@/db/schema";
+import { projects, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { formatAmount, toCents } from "@/lib/money";
 import { recentActivity } from "@/lib/activity";
 import { upcomingBirthdays } from "@/lib/automaticEmails";
 import { attention, attentionTotal, type AttentionGroup } from "@/lib/attention";
-import { MONEY_COLUMNS, MONTHLY_COLUMNS, monthlyTable, monthlyYears } from "@/lib/monthly";
+import { MONEY_COLUMNS, MONTHLY_COLUMNS, monthlyRows, monthlyTotal, type MonthlyRow } from "@/lib/monthly";
 import { recentMoney, type MoneyKind, type MoneyLine } from "@/lib/recentMoney";
 import {
   leadFunnel,
-  monthLabel,
   rangeFrom,
-  salesByMonth,
   projectsInScope,
   scopeChoices,
   scopeFrom,
@@ -29,11 +27,12 @@ import {
   readLayout,
   type PanelKey,
 } from "@/lib/dashboard";
-import { BarSeries, Funnel, SERIES } from "@/components/charts";
+import { Funnel, SERIES } from "@/components/charts";
 import { IconPlus } from "@/components/icons";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import DashboardArrange from "@/components/DashboardArrange";
 import PanelMenu from "@/components/PanelMenu";
+import Pick from "@/components/Pick";
 import {
   hidePanel,
   movePanel,
@@ -45,13 +44,6 @@ import {
 
 const day = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
-
-/** Due inside the fortnight, which is when the office starts chasing it. */
-const soon = (value: Date | null | undefined) => {
-  if (!value) return false;
-  const days = (new Date(value).getTime() - Date.now()) / 86_400_000;
-  return days >= 0 && days <= 14;
-};
 
 /** The first of the current month, which is where the month figures start. */
 function startOfMonth(): Date {
@@ -123,7 +115,7 @@ const PER_KIND = 5;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; partner?: string; year?: string }>;
+  searchParams: Promise<{ project?: string; partner?: string; years?: string | string[]; months?: string | string[] }>;
 }) {
   const params = await searchParams;
   const user = await requireUser(["ADMIN"]);
@@ -160,52 +152,23 @@ export default async function DashboardPage({
           select c.id from contracts c join units u on u.id = c.unit_id where u.project_id in ${mine}
         )`;
 
-  /* The year the monthly table is for: the one asked for, or this one. */
-  const askedYear = Number(params.year);
-  const tableYear =
-    Number.isInteger(askedYear) && askedYear > 2000 && askedYear <= now.getFullYear() + 1
-      ? askedYear
-      : now.getFullYear();
-
-  /**
-   * What is late, and what is next.
-   *
-   * An installment is owed by each apartment on its contract, so a line shows up
-   * once per apartment and counts as settled only when that apartment has paid
-   * it. `unpaidHere` is that test.
-   */
-  const unpaidHere = sql`coalesce((
-      select sum(p.amount) from payments p where p.installment_id = ${installments.id}
-    ), 0) < ${installments.totalAmount}`;
-
-  const dueSelection = {
-    installment: installments,
-    contract: contracts,
-    client: clients,
-    unit: units,
-    project: projects,
-  };
-
-  const dueQuery = () =>
-    db
-      .select(dueSelection)
-      .from(installments)
-      .innerJoin(contracts, eq(contracts.id, installments.contractId))
-      .leftJoin(units, eq(units.id, contracts.unitId))
-      .leftJoin(projects, eq(projects.id, units.projectId))
-      .leftJoin(clients, eq(clients.id, contracts.clientId));
+  /* The years and months ticked for the monthly table; nothing ticked is everything. */
+  const listOf = (value: string | string[] | undefined) =>
+    (Array.isArray(value) ? value : value ? [value] : [])
+      .flatMap((one) => one.split(","))
+      .filter(Boolean)
+      .map(Number)
+      .filter((one) => Number.isInteger(one));
+  const askedYears = listOf(params.years);
+  const askedMonths = listOf(params.months);
 
   const [
     moneyRows,
     groups,
     matrixRows,
-    monthly,
-    years,
-    overdue,
-    upcoming,
+    allMonths,
     recent,
     activity,
-    sales,
     funnel,
   ] = await Promise.all([
     /*
@@ -289,43 +252,9 @@ export default async function DashboardPage({
           .orderBy(asc(projects.name)),
       [],
     ),
-    when(on.has("monthly"), () => monthlyTable(tableYear, only), null),
-    when(on.has("monthly"), () => monthlyYears(), [] as number[]),
-    when(
-      on.has("overdue"),
-      () =>
-        dueQuery()
-          .where(
-            and(
-              isNotNull(installments.dueDate),
-              lt(installments.dueDate, now),
-              unpaidHere,
-              inScope(units.projectId),
-            ),
-          )
-          .orderBy(installments.dueDate)
-          .limit(8),
-      [],
-    ),
-    when(
-      on.has("upcoming"),
-      () =>
-        dueQuery()
-          .where(
-            and(
-              isNotNull(installments.dueDate),
-              gte(installments.dueDate, now),
-              unpaidHere,
-              inScope(units.projectId),
-            ),
-          )
-          .orderBy(installments.dueDate)
-          .limit(8),
-      [],
-    ),
+    when(on.has("monthly"), () => monthlyRows(only), [] as MonthlyRow[]),
     when(on.has("payments"), () => recentMoney(12, only), [] as MoneyLine[]),
     when(on.has("activity"), () => recentActivity(10), []),
-    when(on.has("sales"), () => salesByMonth(year, only), []),
     when(on.has("funnel"), () => leadFunnel(year), {
       arrived: 0,
       answered: 0,
@@ -345,7 +274,7 @@ export default async function DashboardPage({
   const waiting = groups.filter((group) => group.count > 0);
   const waitingTotal = attentionTotal(groups);
 
-  /* The matrix: developments across, statuses down, totals on the right and at the bottom. */
+  /* The matrix: developments down, statuses across, totals on the right and at the bottom. */
   const matrixProjects = [...new Map(matrixRows.map((row) => [row.projectId, row.name])).entries()].map(
     ([id, name]) => ({ id, name }),
   );
@@ -369,8 +298,24 @@ export default async function DashboardPage({
   /* The week's birthdays, read only when the panel is on show. */
   const birthdays = on.has("birthdays") ? await upcomingBirthdays(7) : [];
   const dayShort = (value: Date) => value.toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", { weekday: "short", day: "numeric", month: "short" });
+  const dateTag = locale === "el" ? "el-GR" : "en-GB";
   const monthName = (month: number) =>
-    new Date(tableYear, month, 1).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", { month: "long" });
+    new Date(2000, month - 1, 1).toLocaleDateString(dateTag, { month: "long" });
+  const monthAndYear = (row: MonthlyRow) =>
+    new Date(row.year, row.month - 1, 1).toLocaleDateString(dateTag, { month: "long", year: "numeric" });
+
+  /*
+   * The monthly table's filters offer only what has data: the years with a
+   * month in them, and the months of the years chosen. A year or month asked
+   * for in the address that has nothing is dropped rather than shown empty.
+   */
+  const yearChoices = [...new Set(allMonths.map((row) => row.year))].sort((a, b) => b - a);
+  const pickedYears = askedYears.filter((one) => yearChoices.includes(one));
+  const inYears = allMonths.filter((row) => pickedYears.length === 0 || pickedYears.includes(row.year));
+  const monthChoices = [...new Set(inYears.map((row) => row.month))].sort((a, b) => a - b);
+  const pickedMonths = askedMonths.filter((one) => monthChoices.includes(one));
+  const shownMonths = inYears.filter((row) => pickedMonths.length === 0 || pickedMonths.includes(row.month));
+  const monthsTotal = monthlyTotal(shownMonths);
 
   const seeAll = (href: string) => (
     <Link href={href} className="text-xs font-semibold text-brand-teal-dark">
@@ -397,14 +342,14 @@ export default async function DashboardPage({
           count={{ amount: thisMonth / 100, locale, money: true }}
           hint={`${money?.monthCount ?? 0} ${t("dash.paymentsWord")}. ${t("dash.vatInCashApart")}`}
           tone="good"
-          href="/reports/money"
+          href="/reports/apartments"
         />
         <Stat
           label={t("dash.collected")}
           value={formatAmount(collected, locale)}
           count={{ amount: collected / 100, locale, money: true }}
           hint={t("dash.vatInCashApart")}
-          href="/reports/money"
+          href="/reports/apartments"
         />
         <Stat
           label={t("dash.outstanding")}
@@ -412,14 +357,14 @@ export default async function DashboardPage({
           count={{ amount: stillToCome / 100, locale, money: true }}
           hint={t("dash.outstandingHint")}
           tone={late > 0 ? "bad" : "teal"}
-          href="/reports/money"
+          href="/reports/apartments"
         />
         <Stat
           label={t("dash.cashReceived")}
           value={formatAmount(cashIn, locale)}
           count={{ amount: cashIn / 100, locale, money: true }}
           hint={`${formatAmount(cashToCome, locale)} ${t("dash.cashToCome")}`}
-          href="/reports/money"
+          href="/reports/apartments"
         />
       </div>
     ),
@@ -494,7 +439,7 @@ export default async function DashboardPage({
     ),
 
     matrix: (
-      <Card title={t("dash.matrix")} flush action={seeAll("/reports/portfolio")}>
+      <Card title={t("dash.matrix")} flush action={seeAll("/reports/apartments")}>
         {matrixProjects.length === 0 ? (
           <Empty message={t("common.none")} />
         ) : (
@@ -502,37 +447,39 @@ export default async function DashboardPage({
             <table className="data">
               <thead>
                 <tr>
-                  <th>{t("common.status")}</th>
-                  {matrixProjects.map((project) => (
-                    <th key={project.id} className="num">
-                      <Link href={`/projects/${project.id}`} className="hover:underline">
-                        {project.name}
-                      </Link>
+                  <th>{t("projects.title")}</th>
+                  {STATUSES.map((status) => (
+                    <th key={status} className="num">
+                      {t(`units.status.${status}` as MessageKey)}
                     </th>
                   ))}
                   <th className="num">{t("common.total")}</th>
                 </tr>
               </thead>
               <tbody>
-                {STATUSES.map((status) => (
-                  <tr key={status}>
-                    <td>{t(`units.status.${status}` as MessageKey)}</td>
-                    {matrixProjects.map((project) => {
+                {matrixProjects.map((project) => (
+                  <tr key={project.id}>
+                    <td>
+                      <Link href={`/projects/${project.id}`} className="hover:underline">
+                        {project.name}
+                      </Link>
+                    </td>
+                    {STATUSES.map((status) => {
                       const value = cell(project.id, status);
                       return (
-                        <td key={project.id} className={`num ${value === 0 ? "text-brand-graphite/40" : ""}`}>
+                        <td key={status} className={`num ${value === 0 ? "text-brand-graphite/40" : ""}`}>
                           {value}
                         </td>
                       );
                     })}
-                    <td className="num font-semibold">{rowTotal(status)}</td>
+                    <td className="num font-semibold">{columnTotal(project.id)}</td>
                   </tr>
                 ))}
                 <tr className="font-semibold">
                   <td>{t("common.total")}</td>
-                  {matrixProjects.map((project) => (
-                    <td key={project.id} className="num">
-                      {columnTotal(project.id)}
+                  {STATUSES.map((status) => (
+                    <td key={status} className="num">
+                      {rowTotal(status)}
                     </td>
                   ))}
                   <td className="num">{grandTotal}</td>
@@ -546,31 +493,34 @@ export default async function DashboardPage({
 
     monthly: (
       <Card
-        title={`${t("dash.monthly")} ${tableYear}`}
+        title={t("dash.monthly")}
         flush
         action={
-          <form action="/" method="get" className="flex items-center gap-2">
+          <form action="/" method="get" className="flex flex-wrap items-end gap-2" data-monthly-filters>
             {scope.project ? <input type="hidden" name="project" value={scope.project} /> : null}
             {scope.partner ? <input type="hidden" name="partner" value={scope.partner} /> : null}
-            <select
-              name="year"
-              defaultValue={String(tableYear)}
-              className="select !w-24 !py-1 !text-xs"
-              aria-label={t("dash.year")}
-            >
-              {(years.includes(tableYear) ? years : [tableYear, ...years]).map((one) => (
-                <option key={one} value={one}>
-                  {one}
-                </option>
-              ))}
-            </select>
+            {/* Two dropdowns with a tick for each year and each month that has data. */}
+            <Pick
+              name="years"
+              label={t("dash.years")}
+              chosen={pickedYears.map(String)}
+              anything={t("dash.everyYear")}
+              choices={yearChoices.map((one) => ({ value: String(one), label: String(one) }))}
+            />
+            <Pick
+              name="months"
+              label={t("dash.months")}
+              chosen={pickedMonths.map(String)}
+              anything={t("dash.everyMonth")}
+              choices={monthChoices.map((one) => ({ value: String(one), label: monthName(one) }))}
+            />
             <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
               {t("reports.apply")}
             </button>
           </form>
         }
       >
-        {monthly === null ? (
+        {shownMonths.length === 0 ? (
           <Empty message={t("common.none")} />
         ) : (
           <div className="overflow-x-auto" data-dash-monthly>
@@ -586,16 +536,12 @@ export default async function DashboardPage({
                 </tr>
               </thead>
               <tbody>
-                {monthly.rows.map((row) => (
-                  <tr key={row.month} className={row.future ? "text-brand-graphite/40" : ""}>
-                    <td className="capitalize">{monthName(row.month)}</td>
+                {shownMonths.map((row) => (
+                  <tr key={row.key}>
+                    <td className="whitespace-nowrap">{monthAndYear(row)}</td>
                     {MONTHLY_COLUMNS.map((column) => (
-                      <td key={column} className={`num ${!row.future && row[column] === 0 ? "text-brand-graphite/40" : ""}`}>
-                        {row.future
-                          ? ""
-                          : MONEY_COLUMNS.includes(column)
-                            ? euros(row[column], locale)
-                            : row[column]}
+                      <td key={column} className={`num ${row[column] === 0 ? "text-brand-graphite/40" : ""}`}>
+                        {MONEY_COLUMNS.includes(column) ? euros(row[column], locale) : row[column]}
                       </td>
                     ))}
                   </tr>
@@ -605,8 +551,8 @@ export default async function DashboardPage({
                   {MONTHLY_COLUMNS.map((column) => (
                     <td key={column} className="num">
                       {MONEY_COLUMNS.includes(column)
-                        ? euros(monthly.total[column], locale)
-                        : monthly.total[column]}
+                        ? euros(monthsTotal[column], locale)
+                        : monthsTotal[column]}
                     </td>
                   ))}
                 </tr>
@@ -615,24 +561,6 @@ export default async function DashboardPage({
             <p className="px-4 py-2 text-xs text-brand-graphite/60">{t("dash.monthlyNote")}</p>
           </div>
         )}
-      </Card>
-    ),
-
-    sales: (
-      <Card title={t("reports.monthlySales")} action={seeAll("/reports/sales")}>
-        <BarSeries
-          height={160}
-          minWidth={420}
-          labels={sales.map((row) => monthLabel(row.month, locale))}
-          series={[
-            {
-              label: t("reports.signed"),
-              colour: SERIES.third,
-              values: sales.map((row) => row.count),
-              format: (value) => String(Math.round(value)),
-            },
-          ]}
-        />
       </Card>
     ),
 
@@ -703,94 +631,6 @@ export default async function DashboardPage({
               </li>
             ))}
           </ul>
-        )}
-      </Card>
-    ),
-
-    overdue: (
-      <Card title={t("dash.overdue")} flush action={seeAll("/reports/money")}>
-        {overdue.length === 0 ? (
-          <Empty message={t("common.none")} />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>{t("contracts.due")}</th>
-                  <th>{t("contracts.client")}</th>
-                  <th className="num">{t("common.total")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {overdue.map((r) => (
-                  <tr key={r.installment.id}>
-                    <td>
-                      <Pill tone="bad">{day(r.installment.dueDate)}</Pill>
-                    </td>
-                    <td>
-                      <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
-                        {r.client
-                          ? `${r.client.lastName} ${r.client.firstName}`
-                          : r.contract.reference}
-                      </Link>
-                      <div className="text-xs text-brand-graphite/60">
-                        {r.project?.name} {r.unit?.code} . {r.installment.label}
-                      </div>
-                    </td>
-                    <td className="num">
-                      {formatAmount(toCents(r.installment.totalAmount), locale)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-    ),
-
-    upcoming: (
-      <Card title={t("dash.nextPayments")} flush>
-        {upcoming.length === 0 ? (
-          <Empty message={t("common.none")} />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>{t("contracts.due")}</th>
-                  <th>{t("contracts.client")}</th>
-                  <th className="num">{t("common.total")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {upcoming.map((r) => (
-                  <tr key={r.installment.id}>
-                    <td>
-                      {soon(r.installment.dueDate) ? (
-                        <Pill tone="warn">{day(r.installment.dueDate)}</Pill>
-                      ) : (
-                        day(r.installment.dueDate)
-                      )}
-                    </td>
-                    <td>
-                      <Link href={`/contracts/${r.contract.id}`} className="hover:underline">
-                        {r.client
-                          ? `${r.client.lastName} ${r.client.firstName}`
-                          : r.contract.reference}
-                      </Link>
-                      <div className="text-xs text-brand-graphite/60">
-                        {r.project?.name} {r.unit?.code} . {r.installment.label}
-                      </div>
-                    </td>
-                    <td className="num">
-                      {formatAmount(toCents(r.installment.totalAmount), locale)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
       </Card>
     ),
@@ -892,49 +732,34 @@ export default async function DashboardPage({
         dashboard narrowed to one partnership says so at the top rather than
         leaving somebody to wonder why the numbers moved.
       */}
-      <form action="/" method="get" className="card mb-4 flex flex-wrap items-end gap-3 p-3">
-        <div>
-          <label className="label" htmlFor="project">
-            {t("projects.title")}
-          </label>
-          <select
-            id="project"
-            name="project"
-            defaultValue={scope.project}
-            className="select !w-48 !py-1 !text-xs"
-          >
-            <option value="">{t("reports.everyBuilding")}</option>
-            {choices.buildings.map((one) => (
-              <option key={one.id} value={one.id}>
-                {one.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="partner">
-            {t("clients.partner")}
-          </label>
-          <select
-            id="partner"
-            name="partner"
-            defaultValue={scope.partner}
-            className="select !w-48 !py-1 !text-xs"
-          >
-            <option value="">{t("reports.everyPartner")}</option>
-            <option value="ours">{t("reports.oursAlone")}</option>
-            {choices.partners.map((one) => (
-              <option key={one.id} value={one.id}>
-                {one.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <form action="/" method="get" className="card mb-4 flex flex-wrap items-end gap-3 p-3" data-dash-scope>
+        {pickedYears.length > 0 ? <input type="hidden" name="years" value={pickedYears.join(",")} /> : null}
+        {pickedMonths.length > 0 ? <input type="hidden" name="months" value={pickedMonths.join(",")} /> : null}
+        {/* Several developments and several companies, ticked in a dropdown that applies itself. */}
+        <Pick
+          name="project"
+          label={t("projects.title")}
+          chosen={scope.project ? scope.project.split(",") : []}
+          anything={t("reports.everyBuilding")}
+          choices={choices.buildings.map((one) => ({ value: one.id, label: one.name }))}
+        />
+        <Pick
+          name="partner"
+          label={t("clients.partner")}
+          chosen={scope.partner ? scope.partner.split(",") : []}
+          anything={t("reports.everyPartner")}
+          choices={choices.partners.map((one) => ({ value: one.id, label: one.name }))}
+        />
         <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
           {t("reports.apply")}
         </button>
-        {scope.project || scope.partner ? (
-          <span className="text-xs text-brand-graphite/60">{t("reports.narrowed")}</span>
+        {scope.project || scope.partner || pickedYears.length > 0 || pickedMonths.length > 0 ? (
+          <>
+            <Link href="/" className="btn btn-secondary !px-3 !py-1 !text-xs" prefetch={false} data-reset>
+              {t("list.resetAll")}
+            </Link>
+            <span className="text-xs text-brand-graphite/60">{t("reports.narrowed")}</span>
+          </>
         ) : null}
       </form>
 
