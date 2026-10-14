@@ -115,7 +115,7 @@ const PER_KIND = 5;
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; partner?: string; years?: string | string[]; months?: string | string[] }>;
+  searchParams: Promise<{ project?: string; partner?: string; holder?: string; years?: string | string[]; months?: string | string[] }>;
 }) {
   const params = await searchParams;
   const user = await requireUser(["ADMIN"]);
@@ -499,6 +499,7 @@ export default async function DashboardPage({
           <form action="/" method="get" className="flex flex-wrap items-end gap-2" data-monthly-filters>
             {scope.project ? <input type="hidden" name="project" value={scope.project} /> : null}
             {scope.partner ? <input type="hidden" name="partner" value={scope.partner} /> : null}
+            {scope.holder ? <input type="hidden" name="holder" value={scope.holder} /> : null}
             {/* Two dropdowns with a tick for each year and each month that has data. */}
             <Pick
               name="years"
@@ -735,7 +736,7 @@ export default async function DashboardPage({
       <form action="/" method="get" className="card mb-4 flex flex-wrap items-end gap-3 p-3" data-dash-scope>
         {pickedYears.length > 0 ? <input type="hidden" name="years" value={pickedYears.join(",")} /> : null}
         {pickedMonths.length > 0 ? <input type="hidden" name="months" value={pickedMonths.join(",")} /> : null}
-        {/* Several developments and several companies, ticked in a dropdown that applies itself. */}
+        {/* Several developments, companies and shareholders, ticked in a dropdown that applies itself. */}
         <Pick
           name="project"
           label={t("projects.title")}
@@ -750,10 +751,17 @@ export default async function DashboardPage({
           anything={t("reports.everyPartner")}
           choices={choices.partners.map((one) => ({ value: one.id, label: one.name }))}
         />
+        <Pick
+          name="holder"
+          label={t("reports.shareholdersFilter")}
+          chosen={scope.holder ? scope.holder.split(",") : []}
+          anything={t("reports.everyHolder")}
+          choices={choices.holders}
+        />
         <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
           {t("reports.apply")}
         </button>
-        {scope.project || scope.partner || pickedYears.length > 0 || pickedMonths.length > 0 ? (
+        {scope.project || scope.partner || scope.holder || pickedYears.length > 0 || pickedMonths.length > 0 ? (
           <>
             <Link href="/" className="btn btn-secondary !px-3 !py-1 !text-xs" prefetch={false} data-reset>
               {t("list.resetAll")}

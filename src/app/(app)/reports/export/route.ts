@@ -4,6 +4,7 @@ import { saleLines } from "@/lib/apartmentSales";
 import {
   ageing,
   cashByMonth,
+  commissionsAreOurs,
   costsByCategory,
   leadsBySource,
   projectsInScope,
@@ -47,6 +48,12 @@ export async function GET(request: Request) {
     from: url.searchParams.get("from") ?? undefined,
     to: url.searchParams.get("to") ?? undefined,
   });
+  /* Developments, companies and shareholders, the same as on the screen. */
+  const scope = scopeFrom({
+    project: url.searchParams.get("project") ?? undefined,
+    partner: url.searchParams.get("partner") ?? undefined,
+    holder: url.searchParams.get("holder") ?? undefined,
+  });
 
   let rows: (string | number)[][];
 
@@ -67,9 +74,7 @@ export async function GET(request: Request) {
         period === "all"
           ? { from: new Date(2000, 0, 1), to: new Date(2100, 0, 1) }
           : rangeFrom({ period, from: url.searchParams.get("from") ?? undefined, to: url.searchParams.get("to") ?? undefined }).range;
-      const only = await projectsInScope(
-        scopeFrom({ project: url.searchParams.get("project") ?? undefined, partner: url.searchParams.get("partner") ?? undefined }),
-      );
+      const only = await projectsInScope(scope);
       const lines = await saleLines(span, only);
       rows = [
         [
@@ -89,7 +94,7 @@ export async function GET(request: Request) {
     }
 
     case "agents": {
-      const agents = await salesByAgent(range);
+      const agents = await salesByAgent(range, await projectsInScope(scope), commissionsAreOurs(scope));
       rows = [
         ["Agent", "Company", "Rate", "Sales", "Sold for", "Commission generated", "Paid", "Owed"],
         ...agents.map((row) => [
@@ -141,7 +146,8 @@ export async function GET(request: Request) {
     }
 
     case "costs": {
-      const [income, costs] = await Promise.all([costsByCategory(range, null, "OUT"), costsByCategory(range, null, "IN")]);
+      const only = await projectsInScope(scope);
+      const [income, costs] = await Promise.all([costsByCategory(range, only, "OUT"), costsByCategory(range, only, "IN")]);
       rows = [
         ["Which", "Category", "Lines", "Billed", "Still owed"],
         ...income.map((row) => ["Income", row.category, row.count, money(row.billedCents), money(row.owedCents)]),

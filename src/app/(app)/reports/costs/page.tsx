@@ -33,6 +33,7 @@ export default async function CostsReportPage({
     to?: string;
     project?: string;
     partner?: string;
+    holder?: string;
     page?: string;
   }>;
 }) {

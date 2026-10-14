@@ -19,6 +19,7 @@ import {
 } from "@/db/schema";
 import { toCents } from "./money";
 import { many } from "./filters";
+import { holdings, shareForSelection, shareholderChoices, whoFrom, type Who } from "./ownership";
 
 const rowsOf = (result: unknown): Record<string, unknown>[] =>
   Array.isArray(result) ? (result as Record<string, unknown>[]) : (((result as { rows?: unknown[] })?.rows ?? []) as Record<string, unknown>[]);
@@ -49,19 +50,39 @@ export type Range = { from: Date; to: Date };
    --------------------------------------------------------------------------- */
 
 /**
- * Which developments and which companies, several of each.
+ * Which developments, which companies and which shareholders, several of each.
  *
- * Both travel in the address as comma separated lists, the same as every
- * other filter in the CRM: ?project=a,b&partner=c. Nothing chosen is the
- * whole book.
+ * All three travel in the address as comma separated lists, the same as every
+ * other filter in the CRM: ?project=a,b&partner=c&holder=oneEleven. A
+ * shareholder is "oneEleven" or "holder:" and the name, the name encoded so a
+ * comma in it cannot split the list. Nothing chosen is the whole book.
  */
-export type Scope = { project: string; partner: string };
+export type Scope = { project: string; partner: string; holder: string };
 
-export function scopeFrom(params: { project?: string; partner?: string }): Scope {
-  return { project: many(params.project).join(","), partner: many(params.partner).join(",") };
+export function scopeFrom(params: { project?: string; partner?: string; holder?: string }): Scope {
+  return {
+    project: many(params.project).join(","),
+    partner: many(params.partner).join(","),
+    holder: many(params.holder).join(","),
+  };
 }
 
-export const scopeIsOn = (scope: Scope) => Boolean(scope.project || scope.partner);
+export const scopeIsOn = (scope: Scope) => Boolean(scope.project || scope.partner || scope.holder);
+
+/** A shareholder as it travels in the address, and back. */
+export const holderValue = (value: string) =>
+  value.startsWith("holder:") ? `holder:${encodeURIComponent(value.slice(7))}` : value;
+export const holdersFrom = (scope: Pick<Scope, "holder">): Who[] =>
+  many(scope.holder)
+    .map((value) => {
+      if (!value.startsWith("holder:")) return whoFrom(value);
+      try {
+        return whoFrom(`holder:${decodeURIComponent(value.slice(7))}`);
+      } catch {
+        return whoFrom(value);
+      }
+    })
+    .filter((who): who is Who => who !== null);
 
 /**
  * The developments a scope covers, or null for all of them.
@@ -73,8 +94,12 @@ export const scopeIsOn = (scope: Scope) => Boolean(scope.project || scope.partne
  * silently showing the whole book.
  *
  * Several developments are any of them; several companies are the
- * developments any of them holds a share in; both at once is the developments
- * that are in both answers.
+ * developments any of them holds a share in; several shareholders are the
+ * developments any of them owns a part of, directly or through a company (and
+ * through the companies chosen, when companies are chosen too). Together it is
+ * the developments that are in every answer. Like the companies, a shareholder
+ * narrows to whole developments at their full value; the Shareholders report is
+ * where a share of the money is worked out.
  */
 export async function projectsInScope(scope: Scope): Promise<string[] | null> {
   if (!scopeIsOn(scope)) return null;
@@ -101,19 +126,32 @@ export async function projectsInScope(scope: Scope): Promise<string[] | null> {
     .select({ id: projects.id })
     .from(projects)
     .where(and(...parts));
-  return rows.map((row) => row.id);
+  const ids = rows.map((row) => row.id);
+
+  const holders = holdersFrom(scope);
+  if (holders.length === 0) return ids;
+  const named = companies.filter((one) => one !== "ours");
+  const owned = new Set(
+    (await holdings())
+      .filter((holding) => shareForSelection(holding, named, holders).share > 0)
+      .map((holding) => holding.projectId),
+  );
+  return ids.filter((id) => owned.has(id));
 }
 
 /** The developments themselves, for the pickers. */
 export async function scopeChoices() {
-  const [buildings, partners] = await Promise.all([
+  const [buildings, partners, people] = await Promise.all([
     db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
     db
       .select({ id: subowners.id, name: subowners.name })
       .from(subowners)
       .orderBy(asc(subowners.name)),
+    shareholderChoices(),
   ]);
-  return { buildings, partners };
+  /* The shareholders carry their value ready for the address. */
+  const holders = people.map((one) => ({ value: holderValue(one.value), label: one.label }));
+  return { buildings, partners, holders };
 }
 
 /*
@@ -327,16 +365,32 @@ export async function salesByAgent(
   only: string[] | null = null,
   withCommission = true,
 ) {
+  /*
+   * The commission follows the same filters as the sales: generated on the day
+   * it was generated and paid on the day it was paid, both within the period,
+   * and only on sales in the developments chosen.
+   */
+  const ids = only === null ? null : only.length > 0 ? only : [""];
+  const onSale = (alias: string) =>
+    ids === null
+      ? sql``
+      : sql`and ${sql.raw(alias)}.contract_id in (
+          select c2.id from contracts c2 join units u2 on u2.id = c2.unit_id where u2.project_id in ${ids}
+        )`;
   const rows = await db
     .select({
       agent: agents,
       sales: sql<number>`count(${contracts.id})::int`,
       value: sql<string>`coalesce(sum(${contracts.netPrice}), 0)`,
       generated: sql<string>`coalesce((
-        select sum(cm.amount) from commissions cm where cm.agent_id = agents.id and cm.status <> 'CANCELLED'
+        select sum(cm.amount) from commissions cm
+        where cm.agent_id = agents.id and cm.status <> 'CANCELLED'
+          and cm.created_at >= ${range.from} and cm.created_at <= ${range.to} ${onSale("cm")}
       ), 0)`,
       paid: sql<string>`coalesce((
-        select sum(cp.amount) from commission_payments cp where cp.agent_id = agents.id
+        select sum(cp.amount) from commission_payments cp
+        left join commissions pcm on pcm.id = cp.commission_id
+        where cp.agent_id = agents.id and cp.paid_on >= ${range.from} and cp.paid_on <= ${range.to} ${onSale("pcm")}
       ), 0)`,
     })
     .from(agents)

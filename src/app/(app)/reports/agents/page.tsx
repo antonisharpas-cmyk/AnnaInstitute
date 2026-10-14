@@ -9,7 +9,9 @@ import {
   scopeChoices,
   scopeFrom,
 } from "@/lib/reports";
-import { BackLink, Card, Empty, PageHeader } from "@/components/ui";
+import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
+import Pagination, { paginate } from "@/components/Pagination";
+import { commissionLines } from "@/lib/agentReport";
 import { Breakdown, Figure, SERIES } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
 import { periodLabels, periodQuery } from "../labels";
@@ -23,6 +25,8 @@ export default async function AgentsReportPage({
     to?: string;
     project?: string;
     partner?: string;
+    holder?: string;
+    page?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -35,7 +39,10 @@ export default async function AgentsReportPage({
   /* A commission is the partner company's expense, not One Eleven's, so a page
      narrowed to our own books shows the sales without it. */
   const ours = commissionsAreOurs(scope);
-  const rows = await salesByAgent(range, only, ours);
+  /* Every commission line at the end, ten to a page, newest first. */
+  const { page, perPage, offset } = paginate(params as Record<string, string | undefined>, 10);
+  const [rows, lines] = await Promise.all([salesByAgent(range, only, ours), commissionLines(range, only, perPage, offset)]);
+  const day = (value: Date) => value.toLocaleDateString(locale === "el" ? "el-GR" : "en-GB");
   const money = (cents: number) => formatAmount(cents, locale);
   const query = periodQuery(params);
 
@@ -144,6 +151,100 @@ export default async function AgentsReportPage({
           </div>
         )}
       </Card>
+
+      <div className="mt-4">
+        <Card title={`${t("reports.everyCommission")} (${lines.total})`} flush>
+          {lines.rows.length === 0 ? (
+            <Empty message={t("reports.noData")} />
+          ) : (
+            <div className="overflow-x-auto" data-commission-lines>
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t("common.date")}</th>
+                    <th>{t("reports.agentWord")}</th>
+                    <th>{t("reports.saleWord")}</th>
+                    <th>{t("reports.commissionWhat")}</th>
+                    <th>{t("common.status")}</th>
+                    <th>{t("reports.agentInvoice")}</th>
+                    <th>{t("reports.agentReceipt")}</th>
+                    <th className="num">{t("agents.generated")}</th>
+                    <th className="num">{t("agents.paidOut")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.rows.map((row) => {
+                    /* The agent's invoice is expected of every line that stands, the receipt once money was paid; nothing of history. */
+                    const paper = (has: boolean, expected: boolean) =>
+                      has ? (
+                        <Pill tone="good">{t("reports.paperIn")}</Pill>
+                      ) : expected && !row.history ? (
+                        <Pill tone="bad">{t("reports.paperMissing")}</Pill>
+                      ) : (
+                        <span className="text-brand-graphite/40">{t("reports.paperNotYet")}</span>
+                      );
+                    return (
+                      <tr key={row.id}>
+                        <td className="whitespace-nowrap">{day(row.at)}</td>
+                        <td>
+                          <Link href={`/agents/${row.agentId}`} className="hover:underline">
+                            {row.agent}
+                          </Link>
+                        </td>
+                        <td>
+                          {row.contractId ? (
+                            <Link href={`/contracts/${row.contractId}`} className="hover:underline">
+                              {[row.project, row.unit].filter(Boolean).join(" ")}
+                            </Link>
+                          ) : (
+                            ""
+                          )}
+                        </td>
+                        <td>
+                          {row.kind === "EXTRA" ? row.label || t("reports.commissionExtra") : t("reports.commissionRate")}
+                          {row.history ? (
+                            <span className="ml-1">
+                              <Pill>{t("history.pill")}</Pill>
+                            </span>
+                          ) : null}
+                        </td>
+                        <td>
+                          <Pill tone={row.standing === "PAID" ? "good" : row.standing === "CANCELLED" ? "neutral" : "warn"}>
+                            {row.standing === "PAID"
+                              ? t("commissions.paidFilter")
+                              : row.standing === "PARTIALLY_PAID"
+                                ? t("commissions.partiallyPaid")
+                                : row.standing === "CANCELLED"
+                                  ? t("commissions.cancelled")
+                                  : t("commissions.pending")}
+                          </Pill>
+                        </td>
+                        <td>{paper(row.hasInvoice, row.standing !== "CANCELLED")}</td>
+                        <td>{paper(row.hasReceipt, row.paid > 0)}</td>
+                        <td className="num whitespace-nowrap">{money(row.cents)}</td>
+                        <td className="num whitespace-nowrap">{money(row.paid)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="px-4 pb-3">
+            <Pagination
+              basePath="/reports/agents"
+              params={params as Record<string, string | undefined>}
+              info={{ page, perPage, total: lines.total }}
+              labels={{
+                previous: t("common.previous"),
+                next: t("common.next"),
+                showing: t("common.showing"),
+                of: t("common.of"),
+              }}
+            />
+          </div>
+        </Card>
+      </div>
     </>
   );
 }

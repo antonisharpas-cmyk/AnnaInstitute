@@ -32,7 +32,7 @@ const STAGE_TONE: Record<Stage, "neutral" | "good" | "warn" | "bad" | "teal"> = 
 export default async function ApartmentSalesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; from?: string; to?: string; project?: string; partner?: string }>;
+  searchParams: Promise<{ period?: string; from?: string; to?: string; project?: string; partner?: string; holder?: string }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();

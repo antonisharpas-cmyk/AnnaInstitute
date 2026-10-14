@@ -16,6 +16,8 @@ export function periodLabels(t: (key: MessageKey) => string) {
     partner: t("clients.partner"),
     everyBuilding: t("reports.everyBuilding"),
     everyPartner: t("reports.everyPartner"),
+    holder: t("reports.shareholdersFilter"),
+    everyHolder: t("reports.everyHolder"),
     reset: t("list.resetAll"),
   };
 }
@@ -27,6 +29,7 @@ export function periodQuery(params: {
   to?: string;
   project?: string;
   partner?: string;
+  holder?: string;
 }) {
   const search = new URLSearchParams();
   if (params.period) search.set("period", params.period);
@@ -36,5 +39,6 @@ export function periodQuery(params: {
      rather than the whole book under the name of one building. */
   if (params.project) search.set("project", params.project);
   if (params.partner) search.set("partner", params.partner);
+  if (params.holder) search.set("holder", params.holder);
   return search.toString();
 }
