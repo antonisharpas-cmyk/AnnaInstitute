@@ -616,6 +616,8 @@ export const contracts = pgTable("contracts", {
   status: contractStatusEnum("status").default("DRAFT").notNull(),
   statusChoice: text("status_choice"),
   notes: text("notes"),
+  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  history: boolean("history").default(false).notNull(),
   createdAt: created(),
   updatedAt: updated(),
 }, (t) => ({
@@ -716,6 +718,8 @@ export const payments = pgTable("payments", {
   recordedById: text("recorded_by_id").references(() => users.id, {
     onDelete: "set null",
   }),
+  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  history: boolean("history").default(false).notNull(),
   createdAt: created(),
 });
 
@@ -907,6 +911,8 @@ export const commissions = pgTable("commissions", {
    */
   completedAt: timestamp("completed_at", { withTimezone: true }),
   notes: text("notes"),
+  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  history: boolean("history").default(false).notNull(),
   createdAt: created(),
   updatedAt: updated(),
 });
@@ -923,6 +929,8 @@ export const commissionPayments = pgTable("commission_payments", {
   paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
   reference: text("reference"),
   notes: text("notes"),
+  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  history: boolean("history").default(false).notNull(),
   createdAt: created(),
 });
 
@@ -1513,6 +1521,8 @@ export const expenses = pgTable("expenses", {
   partyId: text("party_id"),
   partyEmail: text("party_email"),
   partyAddress: text("party_address"),
+  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  history: boolean("history").default(false).notNull(),
   createdAt: created(),
   updatedAt: updated(),
 });
@@ -1567,6 +1577,8 @@ export const expensePayments = pgTable("expense_payments", {
   emailedAt: timestamp("emailed_at", { withTimezone: true }),
   emailError: text("email_error"),
   recordedByEmail: text("recorded_by_email"),
+  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  history: boolean("history").default(false).notNull(),
   createdAt: created(),
 });
 
@@ -1690,6 +1702,8 @@ export const cashReceipts = pgTable("cash_receipts", {
   receivedOn: timestamp("received_on", { withTimezone: true }).notNull(),
   note: text("note"),
   recordedById: text("recorded_by_id").references(() => users.id, { onDelete: "set null" }),
+  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  history: boolean("history").default(false).notNull(),
   createdAt: created(),
 });
 
@@ -1801,6 +1815,8 @@ export const constructorPayments = pgTable("constructor_payments", {
   notes: text("notes"),
   recordedByEmail: text("recorded_by_email"),
   statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
+  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  history: boolean("history").default(false).notNull(),
   createdAt: created(),
   updatedAt: updated(),
 });

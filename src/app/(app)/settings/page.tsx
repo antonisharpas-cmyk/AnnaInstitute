@@ -8,6 +8,7 @@ import { diagnoseMail } from "@/lib/mailDiagnosis";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import EmailSwitch from "@/components/EmailSwitch";
+import HistorySwitch from "@/components/HistorySwitch";
 import { saveAppointmentSettings, saveCompanySettings, sendSummaryNow, sendTestEmail } from "./actions";
 
 /**
@@ -85,6 +86,7 @@ export default async function SettingsPage() {
       />
 
       <EmailSwitch />
+      <HistorySwitch />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">

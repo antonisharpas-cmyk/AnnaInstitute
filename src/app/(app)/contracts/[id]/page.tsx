@@ -7,6 +7,7 @@ import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
 import { contractStatusTone, getContract, landExchangeUnits } from "@/lib/contracts";
 import { nextReceiptNumber } from "@/lib/receipts";
+import { recordingHistory } from "@/lib/history";
 import { issuerIdOfContract } from "@/lib/issuer";
 import { STAGE_CHOICES } from "@/lib/vat";
 import { documentsByPayment, documentsForContract } from "@/lib/documents";
@@ -63,11 +64,13 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const theirApartments =
     detail.contract.kind === "LAND_EXCHANGE" ? await landExchangeUnits(id) : [];
 
+  const history = await recordingHistory();
   const [contractDocuments, paymentFiles, nextReceipt, cashLines] = await Promise.all([
     documentsForContract(id),
     documentsByPayment(id),
-    /* The number the next receipt will carry, so the form opens with it in. */
-    issuerIdOfContract(id).then((issuerId) => nextReceiptNumber(new Date(), issuerId)),
+    /* The number the next receipt will carry, so the form opens with it in.
+       Not while the office enters its history: the old receipt's own number is typed, or none. */
+    history ? "" : issuerIdOfContract(id).then((issuerId) => nextReceiptNumber(new Date(), issuerId)),
     cashLinesOf(id),
   ]);
 
@@ -734,6 +737,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             <PaymentForm
               action={recordPayment.bind(null, id)}
               nextReceipt={nextReceipt}
+              history={history ? { receipt: t("history.receiptNumber"), note: t("history.paymentNote") } : undefined}
               lines={lines.map((l) => {
                 const inParts = payments.filter((one) => one.installmentId === l.id && one.partsTotal);
                 return {
@@ -835,7 +839,14 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                           </div>
                         ) : null}
                       </td>
-                      <td>{p.receiptNumber ?? ""}</td>
+                      <td>
+                        {p.receiptNumber ?? ""}
+                        {p.history ? (
+                          <span className="ml-1">
+                            <Pill>{t("history.pill")}</Pill>
+                          </span>
+                        ) : null}
+                      </td>
                       <td>
                         {howPaid(p.method)}
                         {p.methodOther ? `: ${p.methodOther}` : ""}

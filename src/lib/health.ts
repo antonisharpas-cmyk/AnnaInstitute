@@ -403,6 +403,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the Mr, Mrs or Ms of an agent",
     migration: "0059",
   },
+  {
+    probe: "select history from payments limit 1",
+    what: "the mark on records entered as history",
+    migration: "0070",
+  },
 ];
 
 let answer: Missing[] | null = null;

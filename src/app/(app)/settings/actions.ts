@@ -132,6 +132,24 @@ export async function sendTestEmail(formData: FormData) {
   revalidatePath("/settings");
 }
 
+/**
+ * Recording history: on while the office enters its past records, so they get
+ * no papers, letters or alerts; off once they are in.
+ */
+export async function setRecordingHistory(on: boolean) {
+  const user = await requireUser(["ADMIN"]);
+  await writeSetting("history.mode", on ? "yes" : "no");
+  await recordAudit({
+    action: on ? "settings.historyOn" : "settings.historyOff",
+    entity: "settings",
+    detail: on ? "recording history switched on" : "recording history switched off",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(on ? "said.historyOn" : "said.historyOff", on ? "bad" : "good");
+  revalidatePath("/", "layout");
+}
+
 /** The master switch: every email from the CRM, on or off. */
 export async function setAllEmails(on: boolean) {
   const user = await requireUser(["ADMIN"]);

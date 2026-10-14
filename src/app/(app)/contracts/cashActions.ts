@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { fromCents, parseAmount } from "@/lib/money";
+import { recordingHistory } from "@/lib/history";
 
 /*
  * Cash received against the cash part of a sale, and taking a line back.
@@ -44,6 +45,7 @@ export async function recordCash(contractId: string, formData: FormData) {
       receivedOn: dayFrom(formData.get("receivedOn")),
       note: String(formData.get("note") ?? "").trim() || null,
       recordedById: user.id,
+      history: contract.history || (await recordingHistory()),
     })
     .returning({ id: cashReceipts.id });
 

@@ -17,9 +17,23 @@ import {
   installments,
   payments,
   projects,
+  settings,
   units,
 } from "@/db/schema";
 import { fromCents, toCents } from "./money";
+
+/**
+ * Is the office entering its history? Read straight from the settings table,
+ * because this module also runs from the command line, outside the app.
+ */
+async function enteringHistory(): Promise<boolean> {
+  try {
+    const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, "history.mode")).limit(1);
+    return row?.value === "yes";
+  } catch {
+    return false;
+  }
+}
 
 export type CommissionLine = {
   id: string;
@@ -416,6 +430,8 @@ export async function recalculateCommission(contractId: string) {
     baseAmount: fromCents(fullCents),
     rate: rate.toFixed(3),
     amount: fromCents(amountCents),
+    /* A past sale's commission is past too: its papers are not chased. */
+    history: contract.history || (await enteringHistory()),
   });
 }
 
@@ -514,6 +530,7 @@ export async function refreshCommissionPapers(commissionId: string): Promise<boo
       paidOn: new Date(),
       reference: null,
       notes: FROM_THE_RECEIPT,
+      history: line.history || (await enteringHistory()),
     });
   }
 

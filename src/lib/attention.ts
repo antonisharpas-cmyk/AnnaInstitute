@@ -5,6 +5,7 @@ import { db } from "@/db";
 import type { MessageKey } from "@/i18n";
 import { toCents } from "@/lib/money";
 import { stageFrom, stageNames } from "@/lib/choices/stages";
+import { recordingHistory } from "@/lib/history";
 
 /*
  * What needs somebody, in one list.
@@ -134,7 +135,7 @@ const PAID_ON = (alias: string) =>
   sql.raw(`coalesce((select sum(px.amount) from payments px where px.installment_id = ${alias}.id), 0)`);
 
 /** Installments past their date with money still owed, on contracts that stand. */
-async function late(): Promise<AttentionItem[]> {
+async function late(recording: boolean): Promise<AttentionItem[]> {
   const rows = await run(sql`
     select i.id, i.label, i.due_date, i.total_amount, ${PAID_ON("i")} as paid,
            c.id as contract_id, c.reference, cl.first_name, cl.last_name, u.code, p.name as project
@@ -145,6 +146,7 @@ async function late(): Promise<AttentionItem[]> {
     left join projects p on p.id = u.project_id
     where i.due_date is not null and i.due_date < now()
       and c.status <> 'CANCELLED'
+      ${recording ? sql`and not c.history` : sql``}
       and ${PAID_ON("i")} < i.total_amount
     order by i.due_date`);
   return rows.map((r) => ({
@@ -159,11 +161,12 @@ async function late(): Promise<AttentionItem[]> {
 }
 
 /** Company invoices, either way, past their date and not paid in full. */
-async function bills(): Promise<AttentionItem[]> {
+async function bills(recording: boolean): Promise<AttentionItem[]> {
   const rows = await run(sql`
     select e.id, e.supplier, e.reference, e.direction, e.due_date, e.total_amount, e.paid_amount
     from expenses e
     where e.due_date is not null and e.due_date < now() and e.status <> 'PAID'
+      ${recording ? sql`and not e.history` : sql``}
     order by e.due_date`);
   return rows.map((r) => ({
     id: str(r.id),
@@ -192,6 +195,7 @@ async function paperUnpaid(): Promise<AttentionItem[]> {
     left join projects p on p.id = u.project_id
     where sp.invoice_sent_at is not null
       and c.status <> 'CANCELLED'
+      and not c.history
       and ${PAID_ON("i")} < i.total_amount
     order by sp.invoice_sent_at`);
   return rows.map((r) => {
@@ -220,7 +224,8 @@ async function waitingLetters(): Promise<AttentionItem[]> {
     left join clients cl on cl.id = coalesce(ae.client_id, c.client_id)
     left join units u on u.id = c.unit_id
     left join projects p on p.id = u.project_id
-    where ae.status = 'WAITING' and (c.id is null or c.status <> 'CANCELLED')
+    where ae.status = 'WAITING' and (c.id is null or (c.status <> 'CANCELLED' and not c.history))
+      and not exists (select 1 from payments hp where hp.id = ae.payment_id and hp.history)
     order by ae.created_at`);
   return rows.map((r) => ({
     id: str(r.id),
@@ -250,6 +255,7 @@ async function worksPapers(): Promise<AttentionItem[]> {
     left join units u on u.id = c.unit_id
     left join projects p on p.id = u.project_id
     where c.status <> 'CANCELLED'
+      and not c.history
       and i.invoice_sent_at is null
       and i.due_date is not null and i.due_date < now() + interval '14 days'
       and ${PAID_ON("i")} < i.total_amount
@@ -290,7 +296,7 @@ async function commissionPapers(): Promise<AttentionItem[]> {
     left join contracts c on c.id = cm.contract_id
     left join units u on u.id = c.unit_id
     left join projects p on p.id = u.project_id
-    where cm.status <> 'CANCELLED' and cm.amount > 0
+    where cm.status <> 'CANCELLED' and cm.amount > 0 and not cm.history
     order by cm.created_at`);
   return rows
     .filter((r) => !r.has_invoice || !r.has_receipt)
@@ -322,7 +328,7 @@ async function buyerPapers(): Promise<AttentionItem[]> {
     left join clients cl on cl.id = c.client_id
     left join units u on u.id = c.unit_id
     left join projects p on p.id = u.project_id
-    where pm.kind = 'PAYMENT' and pm.amount > 0
+    where pm.kind = 'PAYMENT' and pm.amount > 0 and not pm.history
     order by pm.paid_on`);
   return rows
     .filter((r) => !r.has_invoice || !r.has_receipt)
@@ -352,9 +358,10 @@ async function companyPapers(): Promise<AttentionItem[]> {
     select e.id, e.supplier, e.reference, e.direction, e.issue_date, e.created_at, e.total_amount,
            exists (select 1 from documents d where d.expense_id = e.id) as has_paper,
            e.issued_document_id is not null as issued,
-           exists (select 1 from expense_payments ep where ep.expense_id = e.id and ep.receipt_document_id is null) as their_receipt_missing,
-           exists (select 1 from expense_payments ep where ep.expense_id = e.id and ep.issued_document_id is null) as our_receipt_missing
+           exists (select 1 from expense_payments ep where ep.expense_id = e.id and ep.receipt_document_id is null and not ep.history) as their_receipt_missing,
+           exists (select 1 from expense_payments ep where ep.expense_id = e.id and ep.issued_document_id is null and not ep.history) as our_receipt_missing
     from expenses e
+    where not e.history
     order by coalesce(e.issue_date, e.created_at)`);
   const out: AttentionItem[] = [];
   for (const r of rows) {
@@ -390,7 +397,7 @@ async function constructorPapers(): Promise<AttentionItem[]> {
     join constructor_projects cp on cp.id = cpay.constructor_project_id
     join constructors k on k.id = cp.constructor_id
     left join projects p on p.id = cp.project_id
-    where cpay.status = 'PAID'
+    where cpay.status = 'PAID' and not cpay.history
     order by cpay.paid_on`);
   return rows
     .filter((r) => !r.has_invoice || !r.has_receipt)
@@ -494,7 +501,7 @@ async function drafts(): Promise<AttentionItem[]> {
     left join clients cl on cl.id = c.client_id
     left join units u on u.id = c.unit_id
     left join projects p on p.id = u.project_id
-    where c.status = 'DRAFT'
+    where c.status = 'DRAFT' and not c.history
     order by c.created_at`);
   return rows.map((r) => ({
     id: str(r.id),
@@ -538,7 +545,14 @@ async function failedEmails(): Promise<AttentionItem[]> {
   }));
 }
 
-const FINDERS: Record<AttentionKind, () => Promise<AttentionItem[]>> = {
+/*
+ * Records entered as history never count as a paper missing. While the office
+ * is still entering them, their money is not counted as late either: an old
+ * contract whose payments are only half typed in is not an overdue buyer.
+ * Once Recording history is switched off, money that is really still owed on
+ * them shows like any other.
+ */
+const FINDERS: Record<AttentionKind, (recording: boolean) => Promise<AttentionItem[]>> = {
   late,
   bills,
   paperUnpaid,
@@ -561,10 +575,11 @@ const FINDERS: Record<AttentionKind, () => Promise<AttentionItem[]>> = {
  * is left out rather than taking the page down with it.
  */
 export const attention = cache(async (): Promise<AttentionGroup[]> => {
+  const recording = await recordingHistory();
   const found = await Promise.all(
     ATTENTION_KINDS.map(async (kind) => {
       try {
-        return { kind, items: await FINDERS[kind]() };
+        return { kind, items: await FINDERS[kind](recording) };
       } catch (error) {
         console.warn(`The "${kind}" alerts could not be worked out.`, error);
         return { kind, items: [] as AttentionItem[] };

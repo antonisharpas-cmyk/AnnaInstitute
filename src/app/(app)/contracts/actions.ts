@@ -45,6 +45,7 @@ import {
 } from "@/lib/contracts";
 import { followTheMoney, markUnitByHand } from "@/lib/statuses";
 import { recalculateCommission } from "@/lib/commissions";
+import { recordingHistory } from "@/lib/history";
 
 const detailsSchema = z.object({
   reference: z.string().min(1),
@@ -459,6 +460,8 @@ export async function createContract(
     .insert(contracts)
     .values({
       reference,
+      /* Entered while Recording history is on: one of the office's past sales. */
+      history: await recordingHistory(),
       kind: parsed.kind,
       kindChoice: parsed.kindChoice,
       unitId: parsed.unitId,
@@ -946,10 +949,17 @@ export async function recordPayment(contractId: string, formData: FormData) {
    * 0041 is what this receipt is, and the CRM is not the one to argue.
    */
   const typed = String(formData.get("receiptNumber") ?? "").trim();
+  /*
+   * A payment from the office's past is recorded as it was: the receipt number
+   * from their own book, if they typed one, and nothing taken from the CRM's
+   * running series, which belongs to the papers the CRM issues itself.
+   */
+  const history = await recordingHistory();
   /* Each company that holds a development has its own receipt book. */
   const issuerId = await issuerIdOfContract(contractId);
   let receipt = typed;
-  if (!receipt) receipt = await nextReceiptNumber(when, issuerId);
+  if (history) receipt = typed;
+  else if (!receipt) receipt = await nextReceiptNumber(when, issuerId);
   else if (looksGenerated(receipt) && (await receiptNumberTaken(receipt, issuerId))) {
     receipt = await nextReceiptNumber(when, issuerId);
   }
@@ -1004,10 +1014,11 @@ export async function recordPayment(contractId: string, formData: FormData) {
       paidOn: when,
       method,
       methodOther,
-      receiptNumber: receipt,
+      receiptNumber: receipt || null,
       reference: String(formData.get("reference") ?? "").trim() || null,
       notes: String(formData.get("notes") ?? "") || null,
       recordedById: user.id,
+      history,
     })
     .returning({ id: payments.id });
 
@@ -1020,7 +1031,7 @@ export async function recordPayment(contractId: string, formData: FormData) {
   if (files.length > 0) {
     await storeDocuments({
       files,
-      title: String(formData.get("fileTitle") ?? "").trim() || `Receipt ${receipt}`,
+      title: String(formData.get("fileTitle") ?? "").trim() || (receipt ? `Receipt ${receipt}` : "Receipt"),
       category: "RECEIPT",
       attachTo: { contractId, paymentId: inserted[0].id },
       user,
@@ -1035,6 +1046,27 @@ export async function recordPayment(contractId: string, formData: FormData) {
    * Numbered in the office's own series; see lib/issued. A failure here never
    * costs the office the payment, which is already safely recorded.
    */
+  /*
+   * History stops here: the money is on the record and the apartment and the
+   * commission follow it, but no invoice, receipt or letter of ours is made
+   * for a payment from the past.
+   */
+  if (history) {
+    await recordAudit({
+      action: "payment.history",
+      entity: "contract",
+      entityId: contractId,
+      detail: `${fromCents(amountCents)} recorded as history against installment ${installmentId ?? "unassigned"}`,
+      userId: user.id,
+      userEmail: user.email,
+    });
+    await flash("said.historyRecorded");
+    revalidatePath(`/contracts/${contractId}`);
+    await alsoTheBuyer(contractId);
+    revalidatePath("/contracts");
+    return;
+  }
+
   try {
     await issueForPayment(inserted[0].id, { id: user.id, name: user.name });
   } catch (error) {

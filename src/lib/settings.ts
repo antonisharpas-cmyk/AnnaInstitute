@@ -28,6 +28,12 @@ export const DEFAULTS = {
   "appointments.reminderHour": "10",
   /** The master switch for every email the CRM sends. */
   "mail.enabled": "yes",
+  /**
+   * Recording history: while it is "yes", payments, contracts, commissions and
+   * invoices are entered as the office's past, with no papers issued, no
+   * letters and no alerts. Switched off again once the old records are in.
+   */
+  "history.mode": "no",
   /** Where the tests from the Automatic emails page go. Empty means the signed in user. */
   "emails.testAddress": "",
   /** The office's own WhatsApp number, for trying a campaign on itself. */

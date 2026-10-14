@@ -13,6 +13,7 @@ import { paymentOf, jobOf, CONSTRUCTOR_STATUSES, type ConstructorStatus } from "
 import { removeDocument, storeDocument } from "@/lib/uploads";
 import { constructorPaymentLetter } from "@/lib/constructorLetter";
 import { emailConfigured, sendAndRecord } from "@/lib/messaging";
+import { recordingHistory } from "@/lib/history";
 
 const typed = (formData: FormData, name: string) => String(formData.get(name) ?? "").trim() || null;
 
@@ -157,6 +158,8 @@ export async function addConstructorPayment(jobId: string, formData: FormData) {
   }
   const day = String(formData.get("paidOn") ?? "").trim();
   const kind = typed(formData, "kind");
+  /* A payment from the past was paid: it goes in as Paid, with no papers asked of it. */
+  const history = await recordingHistory();
   const [row] = await db
     .insert(constructorPayments)
     .values({
@@ -164,7 +167,9 @@ export async function addConstructorPayment(jobId: string, formData: FormData) {
       paidOn: day ? new Date(`${day}T12:00:00`) : new Date(),
       kind,
       amount: fromCents(amount),
-      status: "PENDING",
+      status: history ? "PAID" : "PENDING",
+      history,
+      statusChangedAt: history ? new Date() : null,
       notes: typed(formData, "notes"),
       recordedByEmail: user.email,
     })

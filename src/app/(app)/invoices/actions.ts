@@ -21,6 +21,7 @@ import {
 import { asOurCompanyId, partyOf, splitParty } from "@/lib/parties";
 import { removeDocument, storeDocument, storeDocuments } from "@/lib/uploads";
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/expenses";
+import { recordingHistory } from "@/lib/history";
 
 /**
  * The form, read the same way for both kinds.
@@ -159,6 +160,8 @@ export async function createExpense(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const { lines, ...parsed } = await read(formData);
   const files = filesIn(formData);
+  /* An invoice from the past is entered as it was, without its file if the office has none to hand. */
+  const history = await recordingHistory();
   const problem =
     !parsed.supplier
       ? parsed.direction === "OUT"
@@ -166,7 +169,7 @@ export async function createExpense(formData: FormData) {
         : "Choose who the invoice is from."
       : lines.length === 0
         ? "Add at least one line with an amount."
-        : parsed.direction === "IN" && files.length === 0
+        : parsed.direction === "IN" && files.length === 0 && !history
           ? "Upload the invoice they sent us."
           : null;
   if (problem) {
@@ -177,7 +180,7 @@ export async function createExpense(formData: FormData) {
 
   const inserted = await db
     .insert(expenses)
-    .values({ ...parsed, reference: parsed.reference ?? null, recordedByEmail: user.email })
+    .values({ ...parsed, reference: parsed.reference ?? null, recordedByEmail: user.email, history })
     .returning({ id: expenses.id });
   const expenseId = inserted[0].id;
   await saveLines(expenseId, lines);
@@ -192,9 +195,13 @@ export async function createExpense(formData: FormData) {
     });
   }
 
-  /* Ours: numbered, drawn and filed now, in the series of the company it is from. */
+  /*
+   * Ours: numbered, drawn and filed now, in the series of the company it is
+   * from. Not one from the past, which already had its number in the office's
+   * own book: the reference typed is that number, and nothing is sent.
+   */
   let issued: string | null = null;
-  if (parsed.direction === "OUT") {
+  if (parsed.direction === "OUT" && !history) {
     issued = await issuePartnerInvoice(expenseId, { id: user.id, name: user.name });
   }
 
@@ -207,7 +214,8 @@ export async function createExpense(formData: FormData) {
     userEmail: user.email,
   });
 
-  await sayWhatWasSent(expenseId, issued);
+  if (history) await flash("said.historyRecorded");
+  else await sayWhatWasSent(expenseId, issued);
   revalidatePath("/invoices");
   redirect(`/invoices/${expenseId}`);
 }
@@ -322,9 +330,25 @@ export async function recordIncomePayment(expenseId: string, formData: FormData)
       methodOther: typed.methodOther,
       reference: typed.reference,
       recordedByEmail: user.email,
+      history: expense.history || (await recordingHistory()),
     })
     .returning();
   await settle(expenseId);
+  /* Money from the past: on the record, with no receipt of ours drawn and nothing emailed. */
+  if (payment.history) {
+    await recordAudit({
+      action: "expense.income.history",
+      entity: "expense",
+      entityId: expenseId,
+      detail: `${fromCents(typed.amountCents)} received, recorded as history`,
+      userId: user.id,
+      userEmail: user.email,
+    });
+    await flash("said.historyRecorded");
+    revalidatePath(`/invoices/${expenseId}`);
+    revalidatePath("/invoices");
+    return;
+  }
   const receipt = await issueIncomeReceipt(payment.id, { id: user.id, name: user.name });
   const mail = await emailIncomeReceipt(payment.id);
 
@@ -389,6 +413,7 @@ export async function recordExpensePayment(expenseId: string, formData: FormData
     reference: typed.reference,
     receiptDocumentId,
     recordedByEmail: user.email,
+    history: expense.history || (await recordingHistory()),
   });
   await settle(expenseId);
   await recordAudit({

@@ -25,6 +25,7 @@ import { whatGoesWithAgent } from "@/lib/deletes";
 import { letterForCommission } from "@/lib/automaticEmails";
 import { titleFrom } from "@/lib/titles";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
+import { recordingHistory } from "@/lib/history";
 
 const agentSchema = z.object({
   name: z.string().min(1),
@@ -234,6 +235,7 @@ export async function recordCommissionPayment(formData: FormData) {
     paidOn: paidOn ? new Date(paidOn) : new Date(),
     reference: String(formData.get("reference") ?? "") || null,
     notes: String(formData.get("notes") ?? "") || null,
+    history: await recordingHistory(),
   });
 
   if (commissionId) {
@@ -312,6 +314,7 @@ export async function addExtra(contractId: string, formData: FormData) {
     baseAmount: "0.00",
     rate: "0.000",
     amount: fromCents(amountCents),
+    history: contract.history || (await recordingHistory()),
   });
 
   await recordAudit({
@@ -383,6 +386,7 @@ export async function payLine(commissionId: string, agentId: string, formData: F
     amount: fromCents(due),
     paidOn: paidOn ? new Date(paidOn) : new Date(),
     reference: String(formData.get("reference") ?? "") || null,
+    history: line.history || (await recordingHistory()),
   });
 
   await db

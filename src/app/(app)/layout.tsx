@@ -5,6 +5,7 @@ import Link from "next/link";
 import { readFlash } from "@/lib/flash";
 import { attention, attentionTotal } from "@/lib/attention";
 import { readUndo } from "@/lib/undo";
+import { recordingHistory } from "@/lib/history";
 import { pressingFollowUpCount } from "@/lib/followUps";
 import { getTranslator, type MessageKey } from "@/i18n";
 import AppShell, { type Alert, type NavItem } from "@/components/AppShell";
@@ -54,6 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const mailOff = (await readSetting("mail.enabled")) === "no";
+  const history = await recordingHistory();
 
   /*
    * What needs somebody. The same list the dashboard shows as a table, so the
@@ -210,6 +212,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {mailOff ? (
           <div className="no-print mb-4 rounded border border-[color:var(--color-negative)] bg-brand-surface px-3 py-2 text-sm">
             {t("mailSwitch.banner")}{" "}
+            <Link href="/settings" className="font-semibold text-brand-teal-dark hover:underline" prefetch={false}>
+              {t("nav.settings")}
+            </Link>
+          </div>
+        ) : null}
+        {/* And while the office enters its past, so nobody forgets to switch it off. */}
+        {history ? (
+          <div className="no-print mb-4 rounded border border-[color:var(--color-warning)] bg-brand-surface px-3 py-2 text-sm" data-history-banner>
+            {t("history.banner")}{" "}
             <Link href="/settings" className="font-semibold text-brand-teal-dark hover:underline" prefetch={false}>
               {t("nav.settings")}
             </Link>

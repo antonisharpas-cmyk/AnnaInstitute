@@ -227,8 +227,8 @@ export const LISTS: ListDef[] = [
     ],
   },
   {
-    /* What a partner does. Other is off until the office wants it: the
-       categories the office adds of its own count as it. */
+    /* What a partner does, with Others for whoever fits none of the five.
+       The categories the office adds of its own count as Others too. */
     key: "partnerCategory",
     section: "partners",
     prefix: "partners.category",
@@ -238,7 +238,7 @@ export const LISTS: ListDef[] = [
       { code: "KITCHENS" },
       { code: "BATHROOMS" },
       { code: "MARKETING" },
-      { code: "OTHER", offByDefault: true },
+      { code: "OTHER" },
     ],
   },
 ];

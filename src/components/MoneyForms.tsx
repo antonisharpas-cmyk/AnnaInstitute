@@ -52,10 +52,17 @@ export function PaymentForm({
   nextReceipt,
   copies,
   labels,
+  history,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   lines: ScheduleLine[];
   copies?: PaymentCopies;
+  /**
+   * While the office enters its history: a box for the receipt number from
+   * their own book, a line saying nothing will be issued or sent, and no
+   * copies to choose, since no letter goes.
+   */
+  history?: { receipt: string; note: string };
   /**
    * The next number in this year's run, worked out on the server. It arrives in
    * the box already typed so the ordinary receipt is numbered without anybody
@@ -294,7 +301,16 @@ export function PaymentForm({
         and filed under Receipts and invoices, and both go to the client by
         email, so there is nothing to type or attach here.
       */}
-      {labels.copies ? (
+      {history ? (
+        <div className="space-y-1.5 sm:col-span-3" data-history-payment>
+          <label className="label" htmlFor="historyReceipt">
+            {history.receipt}
+          </label>
+          <input id="historyReceipt" name="receiptNumber" className="input sm:max-w-xs" />
+          <p className="text-xs text-brand-graphite/70">{history.note}</p>
+        </div>
+      ) : null}
+      {labels.copies && !history ? (
         <div className="space-y-1.5 sm:col-span-3" data-copies>
           <span className="label">{labels.copies}</span>
           {copies?.second ? (
