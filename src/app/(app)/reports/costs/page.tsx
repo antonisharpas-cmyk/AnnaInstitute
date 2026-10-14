@@ -4,6 +4,7 @@ import {
   costsByCategory,
   costsByMonth,
   incomeAndCostsByProject,
+  incomeExpenseLines,
   monthLabel,
   rangeFrom,
   projectsInScope,
@@ -11,7 +12,9 @@ import {
   scopeFrom,
 } from "@/lib/reports";
 import { expensesOwed } from "@/lib/expenses";
-import { BackLink, Card, PageHeader } from "@/components/ui";
+import Link from "next/link";
+import { BackLink, Card, PageHeader, Pill } from "@/components/ui";
+import Pagination, { paginate } from "@/components/Pagination";
 import { BarSeries, Breakdown, Figure, SERIES, shortMoney } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
 import { periodLabels, periodQuery } from "../labels";
@@ -30,6 +33,7 @@ export default async function CostsReportPage({
     to?: string;
     project?: string;
     partner?: string;
+    page?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -39,13 +43,16 @@ export default async function CostsReportPage({
   const scope = scopeFrom(params);
   const [only, choices] = await Promise.all([projectsInScope(scope), scopeChoices()]);
 
-  const [costMonths, incomeMonths, costCategories, incomeCategories, byProject, owed] = await Promise.all([
+  /* The invoices one by one at the end, ten to a page. */
+  const { page, perPage, offset } = paginate(params as Record<string, string | undefined>, 10);
+  const [costMonths, incomeMonths, costCategories, incomeCategories, byProject, owed, lines] = await Promise.all([
     costsByMonth(range, only, "IN"),
     costsByMonth(range, only, "OUT"),
     costsByCategory(range, only, "IN"),
     costsByCategory(range, only, "OUT"),
     incomeAndCostsByProject(range, only),
     expensesOwed(),
+    incomeExpenseLines(range, only, perPage, offset),
   ]);
 
   const money = (cents: number) => formatAmount(cents, locale);
@@ -71,15 +78,21 @@ export default async function CostsReportPage({
         exportHref={`/reports/export?report=costs${query ? `&${query}` : ""}`}
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-income-figures>
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-income-figures>
         <Figure label={t("invoices.income")} value={money(income)} hint={t("reports.inPeriod")} />
         <Figure label={t("invoices.expenses")} value={money(costs)} hint={t("reports.inPeriod")} />
         <Figure label={t("reports.incomeLessCosts")} value={money(result)} tone={result >= 0 ? "good" : "bad"} />
         <Figure
           label={t("invoices.toReceive")}
           value={money(owed.owedToUsCents)}
-          hint={`${t("invoices.toPay")}: ${money(owed.owedCents)}`}
-          tone={owed.overdueToUs > 0 || owed.overdue > 0 ? "warn" : undefined}
+          hint={owed.overdueToUs > 0 ? t("reports.overdueCount").replace("{n}", String(owed.overdueToUs)) : undefined}
+          tone={owed.overdueToUs > 0 ? "warn" : undefined}
+        />
+        <Figure
+          label={t("invoices.toPay")}
+          value={money(owed.owedCents)}
+          hint={owed.overdue > 0 ? t("reports.overdueCount").replace("{n}", String(owed.overdue)) : undefined}
+          tone={owed.overdue > 0 ? "warn" : undefined}
         />
       </div>
 
@@ -168,6 +181,68 @@ export default async function CostsReportPage({
           </div>
         )}
       </Card>
+
+      <div className="mt-4">
+        <Card title={`${t("reports.everyInvoice")} (${lines.total})`} flush>
+          {lines.rows.length === 0 ? (
+            <p className="p-4 text-sm text-brand-graphite/60">{t("reports.noData")}</p>
+          ) : (
+            <div className="overflow-x-auto" data-income-lines>
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t("common.date")}</th>
+                    <th>{t("reports.incomeOrExpense")}</th>
+                    <th>{t("invoices.from")} / {t("invoices.to")}</th>
+                    <th>{t("invoices.number")}</th>
+                    <th>{t("invoices.category")}</th>
+                    <th>{t("projects.title")}</th>
+                    <th className="num">{t("common.total")}</th>
+                    <th className="num">{t("reports.paidSoFar")}</th>
+                    <th className="num">{t("reports.stillOwed")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.rows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="whitespace-nowrap">{row.at.toLocaleDateString(locale === "el" ? "el-GR" : "en-GB")}</td>
+                      <td>
+                        <Pill tone={row.income ? "good" : "neutral"}>{row.income ? t("reports.kindIncome") : t("reports.kindExpense")}</Pill>
+                      </td>
+                      <td>
+                        <Link href={`/invoices/${row.id}`} className="hover:underline">
+                          {row.who}
+                        </Link>
+                      </td>
+                      <td className="whitespace-nowrap">{row.number}</td>
+                      <td>{row.category === "OTHER" && row.categoryOther ? row.categoryOther : category(row.category)}</td>
+                      <td className="text-xs">{row.developments || t("invoices.noProject")}</td>
+                      <td className="num whitespace-nowrap">{money(row.totalCents)}</td>
+                      <td className="num whitespace-nowrap">{money(row.paidCents)}</td>
+                      <td className={`num whitespace-nowrap ${row.owedCents > 0 ? "font-semibold" : "text-brand-graphite/40"}`}>
+                        {money(row.owedCents)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="px-4 pb-3">
+            <Pagination
+              basePath="/reports/costs"
+              params={params as Record<string, string | undefined>}
+              info={{ page, perPage, total: lines.total }}
+              labels={{
+                previous: t("common.previous"),
+                next: t("common.next"),
+                showing: t("common.showing"),
+                of: t("common.of"),
+              }}
+            />
+          </div>
+        </Card>
+      </div>
     </>
   );
 }

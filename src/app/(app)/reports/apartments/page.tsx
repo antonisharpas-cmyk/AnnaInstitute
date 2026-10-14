@@ -219,7 +219,7 @@ export default async function ApartmentSalesPage({
         </Card>
       </div>
 
-      <div className="mb-4 grid gap-4 xl:grid-cols-2">
+      <div className="mb-4 grid gap-4">
         <Card title={t("sales.money")} flush>
           <div className="overflow-x-auto" data-sales-money>
             <table className="data">

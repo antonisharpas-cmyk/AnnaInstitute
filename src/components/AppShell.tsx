@@ -478,25 +478,31 @@ export default function AppShell({
                   {alerts.length === 0 ? (
                     <p className="px-3 py-3 text-sm text-brand-graphite/60">{labels.noAlerts}</p>
                   ) : (
-                    alerts.map((alert) => (
-                      <Link
-                        key={alert.href + alert.label}
-                        href={alert.href}
-                        className="menuitem"
-                        prefetch={false}
-                      >
-                        <IconAlert
-                          size={15}
-                          className={
-                            alert.tone === "bad"
-                              ? "text-[color:var(--color-negative)]"
-                              : "text-[color:var(--color-warning)]"
-                          }
-                        />
-                        <span className="flex-1">{alert.label}</span>
-                        <span className="pill">{alert.count}</span>
-                      </Link>
-                    ))
+                    /* Three or four at a time; the rest are a scroll away inside the menu. */
+                    <div
+                      className="max-h-[17rem] overflow-y-auto overscroll-contain"
+                      data-alert-list
+                    >
+                      {alerts.map((alert) => (
+                        <Link
+                          key={alert.href + alert.label}
+                          href={alert.href}
+                          className="menuitem"
+                          prefetch={false}
+                        >
+                          <IconAlert
+                            size={15}
+                            className={
+                              alert.tone === "bad"
+                                ? "text-[color:var(--color-negative)]"
+                                : "text-[color:var(--color-warning)]"
+                            }
+                          />
+                          <span className="flex-1">{alert.label}</span>
+                          <span className="pill">{alert.count}</span>
+                        </Link>
+                      ))}
+                    </div>
                   )}
                 </div>
               ) : null}

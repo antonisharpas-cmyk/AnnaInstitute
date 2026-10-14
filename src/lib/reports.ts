@@ -20,6 +20,9 @@ import {
 import { toCents } from "./money";
 import { many } from "./filters";
 
+const rowsOf = (result: unknown): Record<string, unknown>[] =>
+  Array.isArray(result) ? (result as Record<string, unknown>[]) : (((result as { rows?: unknown[] })?.rows ?? []) as Record<string, unknown>[]);
+
 /**
  * What the CRM knows, counted.
  *
@@ -735,6 +738,61 @@ async function moneyLines(direction: "IN" | "OUT", only: string[] | null, range?
     totalCents: toCents(row.total),
     paidCents: toCents(row.paidShare),
   }));
+}
+
+/**
+ * Every invoice of the period under Company, one line each, newest first: what
+ * we charged (income) and what we were billed (expenses), a page at a time.
+ *
+ * Narrowed to developments, an invoice is in when any of its lines is, and its
+ * figures are the part of it that belongs to those developments, the same rule
+ * as the rest of the report.
+ */
+export async function incomeExpenseLines(range: Range, only: string[] | null, limit: number, offset: number) {
+  const ids = only === null ? null : only.length > 0 ? only : [""];
+  const when = sql`coalesce(e.issue_date, e.created_at)`;
+  const share =
+    ids === null
+      ? sql`e.total_amount`
+      : sql`(select coalesce(sum(l.total_amount), 0) from expense_lines l where l.expense_id = e.id and l.project_id in ${ids})`;
+  const where = sql`${when} >= ${range.from} and ${when} <= ${range.to}
+    ${ids === null ? sql`` : sql`and exists (select 1 from expense_lines l where l.expense_id = e.id and l.project_id in ${ids})`}`;
+  const rows = rowsOf(
+    await db.execute(sql`
+      select e.id, e.direction, e.supplier, e.reference, e.status, e.category, e.category_other,
+             ${when} as at, e.total_amount, e.paid_amount, ${share} as in_scope,
+             (select d.number from issued_documents d where d.id = e.issued_document_id) as our_number,
+             (select string_agg(distinct p.name, ', ') from expense_lines l join projects p on p.id = l.project_id where l.expense_id = e.id) as developments
+      from expenses e
+      where ${where}
+      order by ${when} desc, e.created_at desc
+      limit ${limit} offset ${offset}`),
+  );
+  const [counted] = rowsOf(await db.execute(sql`select count(*)::int as n from expenses e where ${where}`));
+  return {
+    total: Number(counted?.n ?? 0),
+    rows: rows.map((r) => {
+      const totalCents = toCents(String(r.total_amount ?? "0"));
+      const inScopeCents = toCents(String(r.in_scope ?? "0"));
+      const paidCents = toCents(String(r.paid_amount ?? "0"));
+      /* The paid part, in the same share as the total. */
+      const paidInScope = totalCents > 0 ? Math.round((paidCents * inScopeCents) / totalCents) : 0;
+      return {
+        id: String(r.id),
+        income: r.direction === "OUT",
+        at: new Date(String(r.at)),
+        who: String(r.supplier ?? ""),
+        number: String(r.our_number ?? r.reference ?? ""),
+        category: String(r.category ?? "OTHER"),
+        categoryOther: r.category_other ? String(r.category_other) : "",
+        status: String(r.status ?? ""),
+        developments: String(r.developments ?? ""),
+        totalCents: inScopeCents,
+        paidCents: paidInScope,
+        owedCents: Math.max(0, inScopeCents - paidInScope),
+      };
+    }),
+  };
 }
 
 /** By month: billed and paid. IN for what the company pays, OUT for what it charges. */

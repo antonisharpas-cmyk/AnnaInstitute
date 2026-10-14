@@ -9,6 +9,14 @@ import Pick from "@/components/Pick";
  * the one that does not. It is a plain GET form, so a period is an address that
  * can be bookmarked or sent to somebody else.
  */
+type Extra = {
+  name: string;
+  label: string;
+  chosen: string;
+  anything: string;
+  choices: { value: string; label: string }[];
+};
+
 export default function PeriodPicker({
   basePath,
   period,
@@ -18,6 +26,8 @@ export default function PeriodPicker({
   exportHref,
   scope,
   defaultPeriod = "12m",
+  extra,
+  extras,
 }: {
   basePath: string;
   period: string;
@@ -55,8 +65,18 @@ export default function PeriodPicker({
     partner: string;
     buildings: { id: string; name: string }[];
     partners: { id: string; name: string }[];
+    /** A report that is not narrowed by company leaves that dropdown out. */
+    noPartner?: boolean;
   };
+  /**
+   * One more filter of the report's own, beside the developments: the
+   * constructors, say. Several can be ticked, like every other filter.
+   */
+  extra?: Extra;
+  /** Several filters of the report's own, side by side. */
+  extras?: Extra[];
 }) {
+  const more = [...(extras ?? []), ...(extra ? [extra] : [])];
   const presets = [
     { key: "12m", label: labels.last12 },
     { key: "24m", label: labels.last24 },
@@ -66,11 +86,12 @@ export default function PeriodPicker({
 
   /* The period buttons keep whatever the scope is, so choosing a year does not
      quietly put the other four buildings back on the page. */
-  const keep = scope
-    ? `${scope.project ? `&project=${encodeURIComponent(scope.project)}` : ""}${
-        scope.partner ? `&partner=${encodeURIComponent(scope.partner)}` : ""
-      }`
-    : "";
+  const keep =
+    (scope
+      ? `${scope.project ? `&project=${encodeURIComponent(scope.project)}` : ""}${
+          scope.partner ? `&partner=${encodeURIComponent(scope.partner)}` : ""
+        }`
+      : "") + more.map((one) => (one.chosen ? `&${one.name}=${encodeURIComponent(one.chosen)}` : "")).join("");
 
   return (
     <div className="card mb-4 p-3">
@@ -100,6 +121,7 @@ export default function PeriodPicker({
               <input type="hidden" name="partner" value={scope.partner} />
             </>
           ) : null}
+          {more.map((one) => (one.chosen ? <input key={one.name} type="hidden" name={one.name} value={one.chosen} /> : null))}
           <div>
             <label className="label" htmlFor="from">
               {labels.fromDate}
@@ -123,26 +145,40 @@ export default function PeriodPicker({
           carries the period with it so the answer does not silently change
           year when somebody changes building.
         */}
-        {scope ? (
+        {scope || more.length > 0 ? (
           <form action={basePath} method="get" className="flex flex-wrap items-end gap-2" data-scope-form>
             <input type="hidden" name="period" value={period} />
             {from ? <input type="hidden" name="from" value={from} /> : null}
             {to ? <input type="hidden" name="to" value={to} /> : null}
             {/* Several of each, ticked in a dropdown that applies itself when it closes. */}
-            <Pick
-              name="project"
-              label={labels.building}
-              chosen={scope.project ? scope.project.split(",") : []}
-              anything={labels.everyBuilding}
-              choices={scope.buildings.map((one) => ({ value: one.id, label: one.name }))}
-            />
-            <Pick
-              name="partner"
-              label={labels.partner}
-              chosen={scope.partner ? scope.partner.split(",") : []}
-              anything={labels.everyPartner}
-              choices={scope.partners.map((one) => ({ value: one.id, label: one.name }))}
-            />
+            {scope ? (
+              <Pick
+                name="project"
+                label={labels.building}
+                chosen={scope.project ? scope.project.split(",") : []}
+                anything={labels.everyBuilding}
+                choices={scope.buildings.map((one) => ({ value: one.id, label: one.name }))}
+              />
+            ) : null}
+            {!scope || scope.noPartner ? null : (
+              <Pick
+                name="partner"
+                label={labels.partner}
+                chosen={scope.partner ? scope.partner.split(",") : []}
+                anything={labels.everyPartner}
+                choices={scope.partners.map((one) => ({ value: one.id, label: one.name }))}
+              />
+            )}
+            {more.map((one) => (
+              <Pick
+                key={one.name}
+                name={one.name}
+                label={one.label}
+                chosen={one.chosen ? one.chosen.split(",") : []}
+                anything={one.anything}
+                choices={one.choices}
+              />
+            ))}
             <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
               {labels.apply}
             </button>
@@ -150,7 +186,7 @@ export default function PeriodPicker({
         ) : null}
 
         {/* Back to the report as it opens: its own period, every development, every company. */}
-        {period !== defaultPeriod || from || to || scope?.project || scope?.partner ? (
+        {period !== defaultPeriod || from || to || scope?.project || scope?.partner || more.some((one) => one.chosen) ? (
           <Link href={basePath} className="btn btn-secondary !px-3 !py-1 !text-xs" prefetch={false} data-reset>
             {labels.reset}
           </Link>

@@ -143,3 +143,42 @@ export function whoFrom(raw: string | undefined): Who | null {
   if (raw.startsWith("company:")) return { kind: "company", id: raw.slice(8) };
   return null;
 }
+
+/**
+ * The part of one development that a choice of companies and shareholders
+ * holds, both several at once.
+ *
+ * The companies narrow which holdings count: only what reaches the
+ * development through those companies, and the part no company holds only
+ * when no company is chosen. The shareholders say whose part it is: their
+ * shares in each of those companies added together, One Eleven's direct part
+ * included when One Eleven is chosen. No shareholder chosen is the whole of
+ * what those companies hold, which with no company chosen either is the whole
+ * development.
+ */
+export function shareForSelection(holding: ProjectHolding, companyIds: string[], holders: Who[]): ShareOfProject {
+  const considered = companyIds.length > 0 ? holding.companies.filter((one) => companyIds.includes(one.id)) : holding.companies;
+  const companiesHeld = holding.companies.reduce((sum, one) => sum + one.share, 0);
+  const lines: ShareOfProject["lines"] = [];
+  let share = 0;
+  let commissionShare = 0;
+
+  for (const company of considered) {
+    const part =
+      holders.length === 0 ? 1 : Math.min(1, holders.reduce((sum, who) => sum + holderShare(company, who), 0));
+    if (part <= 0) continue;
+    const effective = company.share * part;
+    share += effective;
+    commissionShare += companiesHeld > 0 ? (company.share / companiesHeld) * part : 0;
+    lines.push({ via: company.name, companyShare: company.share, holderShare: part, share: effective });
+  }
+
+  const directCounts = companyIds.length === 0 && (holders.length === 0 || holders.some((who) => who.kind === "oneEleven"));
+  if (directCounts && holding.direct > 0) {
+    share += holding.direct;
+    if (holding.companies.length === 0) commissionShare += 1;
+    lines.unshift({ via: null, companyShare: holding.direct, holderShare: 1, share: holding.direct });
+  }
+
+  return { share: Math.min(1, share), commissionShare: Math.min(1, commissionShare), lines };
+}

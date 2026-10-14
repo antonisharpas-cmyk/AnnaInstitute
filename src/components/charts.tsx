@@ -206,7 +206,7 @@ export function BarSeries({
                         x={x + barWidth / 2}
                         y={padTop + plotHeight - barHeight - 4}
                         textAnchor="middle"
-                        fontSize="12"
+                        fontSize={series.length > 1 ? 10 : 12}
                         fontWeight="600"
                         fill={AXIS}
                         fontFamily="inherit"

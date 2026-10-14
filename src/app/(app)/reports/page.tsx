@@ -9,6 +9,7 @@ const REPORTS: { href: string; title: MessageKey }[] = [
   { href: "/reports/leads", title: "reports.leadsReport" },
   { href: "/reports/marketing", title: "reports.marketing" },
   { href: "/reports/costs", title: "reports.costs" },
+  { href: "/reports/constructors", title: "reports.constructors" },
   { href: "/reports/project", title: "projectReport.title" },
   { href: "/reports/shareholders", title: "reports.shareholders" },
 ];

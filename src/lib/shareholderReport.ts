@@ -1,19 +1,135 @@
 import "server-only";
-import { and, eq, gte, lte, sql, type SQL } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { cashReceipts, commissions, contracts, expenseLines, expenses, payments, units } from "@/db/schema";
 import { toCents } from "@/lib/money";
-import { holdings, shareOf, type Who } from "@/lib/ownership";
+import { holdings, shareForSelection, type Who } from "@/lib/ownership";
 import type { Range } from "@/lib/reports";
 
 /*
- * One shareholder's part of every development, or one company's.
+ * Shareholders and companies: the money of every development, and the part of
+ * it that belongs to the companies and shareholders chosen.
  *
- * Each figure is the development's own for the period, then its share of it:
- * sales signed before VAT, money received, cash received, the company's costs
- * and the agents' commissions. The full figure is shown beside the share, so
- * the office can check the arithmetic against the development's own page.
+ * Every figure is money that moved, on the day it moved, VAT included, so the
+ * columns add up to what is left: the Net Revenue.
+ *
+ *   in   money received from buyers, cash received from buyers, other income
+ *        received on our invoices
+ *   out  VAT credited back to buyers, refunds, delay penalties, payments to the
+ *        constructor, commissions paid to agents, expenses paid
+ *
+ * VAT. Buyers' payments, invoices under Company and the money paid back to
+ * buyers are recorded as the money itself, VAT included. A constructor payment
+ * is the amount paid, as entered. An agent's commission is recorded before
+ * VAT, so for an agent with a VAT number the 19% they charge on it is added.
+ * Cash carries no VAT.
+ *
+ * A fee one of our companies charged the company that holds a development is,
+ * for that development, money going out, so it counts as an expense there and
+ * not as income.
  */
+
+export const LEDGER_COLUMNS = [
+  "received",
+  "cash",
+  "credits",
+  "refunds",
+  "penalties",
+  "constructors",
+  "commissions",
+  "income",
+  "expenses",
+] as const;
+
+export type LedgerColumn = (typeof LEDGER_COLUMNS)[number];
+export type Ledger = Record<LedgerColumn, number>;
+
+/** Which way each column counts: money in is positive, money out negative. */
+export const LEDGER_SIGN: Record<LedgerColumn, 1 | -1> = {
+  received: 1,
+  cash: 1,
+  credits: -1,
+  refunds: -1,
+  penalties: -1,
+  constructors: -1,
+  commissions: -1,
+  income: 1,
+  expenses: -1,
+};
+
+/** The agent's VAT, added to a commission paid to an agent with a VAT number. */
+const AGENT_VAT = 1.19;
+
+const empty = (): Ledger => Object.fromEntries(LEDGER_COLUMNS.map((one) => [one, 0])) as Ledger;
+export const netOf = (ledger: Ledger) => LEDGER_COLUMNS.reduce((sum, one) => sum + ledger[one], 0);
+
+type Row = Record<string, unknown>;
+const rowsOf = (result: unknown): Row[] =>
+  Array.isArray(result) ? (result as Row[]) : (((result as { rows?: unknown[] })?.rows ?? []) as Row[]);
+const run = async (query: SQL): Promise<Row[]> => rowsOf(await db.execute(query));
+
+type Movement = { projectId: string; at: Date; column: LedgerColumn; cents: number };
+
+/** Every movement of money in the period, by development, with its sign. */
+async function movements(range: Range): Promise<Movement[]> {
+  const { from, to } = range;
+  const between = (column: string) => sql`${sql.raw(column)} >= ${from} and ${sql.raw(column)} <= ${to}`;
+  const [buyers, cash, back, builders, agents, company] = await Promise.all([
+    run(sql`
+      select u.project_id, pm.paid_on as at, pm.amount
+      from payments pm join contracts c on c.id = pm.contract_id join units u on u.id = c.unit_id
+      where pm.kind = 'PAYMENT' and ${between("pm.paid_on")}`),
+    run(sql`
+      select u.project_id, r.received_on as at, r.amount
+      from cash_receipts r join contracts c on c.id = r.contract_id join units u on u.id = c.unit_id
+      where ${between("r.received_on")}`),
+    run(sql`
+      select u.project_id, r.paid_on as at, r.amount, r.purpose
+      from refunds r join contracts c on c.id = r.contract_id join units u on u.id = c.unit_id
+      where ${between("r.paid_on")}`),
+    run(sql`
+      select cp.project_id, x.paid_on as at, x.amount
+      from constructor_payments x join constructor_projects cp on cp.id = x.constructor_project_id
+      where x.status = 'PAID' and ${between("x.paid_on")}`),
+    run(sql`
+      select u.project_id, p.paid_on as at,
+             p.amount * (case when coalesce(trim(a.vat_number), '') <> '' then ${sql.raw(String(AGENT_VAT))} else 1 end) as amount
+      from commission_payments p
+      join commissions cm on cm.id = p.commission_id
+      join contracts c on c.id = cm.contract_id
+      join units u on u.id = c.unit_id
+      join agents a on a.id = p.agent_id
+      where ${between("p.paid_on")}`),
+    /* Money in and out on invoices under Company, each payment split over the invoice's lines by their share. */
+    run(sql`
+      select coalesce(l.project_id, e.project_id) as project_id, ep.paid_on as at,
+             ep.amount * coalesce(l.total_amount / nullif(e.total_amount, 0), 1) as amount,
+             case when e.direction = 'IN'
+                    or (e.party_kind = 'COMPANY' and e.party_id in (
+                          select pp.subowner_id from project_partners pp where pp.project_id = coalesce(l.project_id, e.project_id)))
+                  then 'expenses' else 'income' end as col
+      from expense_payments ep
+      join expenses e on e.id = ep.expense_id
+      left join expense_lines l on l.expense_id = e.id
+      where coalesce(l.project_id, e.project_id) is not null and ${between("ep.paid_on")}`),
+  ]);
+
+  const out: Movement[] = [];
+  const add = (rows: Row[], column: (row: Row) => LedgerColumn | null) => {
+    for (const row of rows) {
+      const which = column(row);
+      if (!which || !row.project_id) continue;
+      const cents = toCents(String(row.amount ?? "0"));
+      out.push({ projectId: String(row.project_id), at: new Date(String(row.at)), column: which, cents: LEDGER_SIGN[which] * Math.abs(cents) });
+    }
+  };
+  add(buyers, () => "received");
+  add(cash, () => "cash");
+  add(back, (row) => (row.purpose === "VAT_CHANGE" ? "credits" : row.purpose === "PENALTY" ? "penalties" : "refunds"));
+  add(builders, () => "constructors");
+  add(agents, () => "commissions");
+  add(company, (row) => (row.col === "expenses" ? "expenses" : "income"));
+  return out;
+}
 
 export type ShareRow = {
   projectId: string;
@@ -21,123 +137,55 @@ export type ShareRow = {
   share: number;
   commissionShare: number;
   via: { via: string | null; companyShare: number; holderShare: number; share: number }[];
-  full: { signed: number; received: number; cash: number; income: number; costs: number; commissions: number };
-  part: { signed: number; received: number; cash: number; income: number; costs: number; commissions: number };
+  full: Ledger;
+  part: Ledger;
 };
 
-const within = (column: SQL | unknown, range: Range) =>
-  and(gte(column as never, range.from), lte(column as never, range.to)) as SQL;
+export type MonthRow = { key: string; year: number; month: number; part: Ledger };
 
-async function byProject(query: Promise<{ projectId: string | null; total: string }[]>) {
-  const rows = await query;
-  return new Map(rows.filter((row) => row.projectId).map((row) => [row.projectId as string, toCents(row.total)]));
-}
-
-export async function shareholderReport(who: Who, range: Range) {
-  const chargedToHolder = sql`(${expenses.direction} = 'OUT' and ${expenses.partyKind} = 'COMPANY' and ${expenses.partyId} in (select pp.subowner_id from project_partners pp where pp.project_id = ${expenseLines.projectId}))`;
-  const [held, signed, received, cash, costs, income, paidOut] = await Promise.all([
-    holdings(),
-    byProject(
-      db
-        .select({ projectId: units.projectId, total: sql<string>`coalesce(sum(${contracts.netPrice}), 0)` })
-        .from(contracts)
-        .innerJoin(units, eq(units.id, contracts.unitId))
-        .where(and(eq(contracts.kind, "SALE"), within(contracts.contractDate, range)))
-        .groupBy(units.projectId),
-    ),
-    byProject(
-      db
-        .select({ projectId: units.projectId, total: sql<string>`coalesce(sum(${payments.amount}), 0)` })
-        .from(payments)
-        .innerJoin(contracts, eq(contracts.id, payments.contractId))
-        .innerJoin(units, eq(units.id, contracts.unitId))
-        .where(and(eq(payments.kind, "PAYMENT"), within(payments.paidOn, range)))
-        .groupBy(units.projectId),
-    ),
-    byProject(
-      db
-        .select({ projectId: units.projectId, total: sql<string>`coalesce(sum(${cashReceipts.amount}), 0)` })
-        .from(cashReceipts)
-        .innerJoin(contracts, eq(contracts.id, cashReceipts.contractId))
-        .innerJoin(units, eq(units.id, contracts.unitId))
-        .where(within(cashReceipts.receivedOn, range))
-        .groupBy(units.projectId),
-    ),
-    /*
-     * Each line of an invoice under Company counts for its own development. A
-     * cost is an invoice the company was billed, and also a fee one of our
-     * companies charged to the company that holds the development: for that
-     * development it is money going out.
-     */
-    byProject(
-      db
-        .select({ projectId: expenseLines.projectId, total: sql<string>`coalesce(sum(${expenseLines.totalAmount}), 0)` })
-        .from(expenseLines)
-        .innerJoin(expenses, eq(expenses.id, expenseLines.expenseId))
-        .where(and(sql`(${expenses.direction} = 'IN' or ${chargedToHolder})`, within(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range)))
-        .groupBy(expenseLines.projectId),
-    ),
-    /* Other income: what our companies charged anybody else for the development. */
-    byProject(
-      db
-        .select({ projectId: expenseLines.projectId, total: sql<string>`coalesce(sum(${expenseLines.totalAmount}), 0)` })
-        .from(expenseLines)
-        .innerJoin(expenses, eq(expenses.id, expenseLines.expenseId))
-        .where(and(sql`(${expenses.direction} = 'OUT' and not ${chargedToHolder})`, within(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, range)))
-        .groupBy(expenseLines.projectId),
-    ),
-    byProject(
-      db
-        .select({ projectId: units.projectId, total: sql<string>`coalesce(sum(${commissions.amount}), 0)` })
-        .from(commissions)
-        .innerJoin(contracts, eq(contracts.id, commissions.contractId))
-        .innerJoin(units, eq(units.id, contracts.unitId))
-        .where(within(commissions.createdAt, range))
-        .groupBy(units.projectId),
-    ),
-  ]);
+export async function shareholderReport(range: Range, companyIds: string[], holders: Who[]) {
+  const [held, moved] = await Promise.all([holdings(), movements(range)]);
 
   const rows: ShareRow[] = [];
+  const shareBy = new Map<string, { share: number; commissionShare: number }>();
   for (const holding of held) {
-    const of = shareOf(holding, who);
+    const of = shareForSelection(holding, companyIds, holders);
     if (of.share <= 0 && of.commissionShare <= 0) continue;
-    const full = {
-      signed: signed.get(holding.projectId) ?? 0,
-      received: received.get(holding.projectId) ?? 0,
-      cash: cash.get(holding.projectId) ?? 0,
-      income: income.get(holding.projectId) ?? 0,
-      costs: costs.get(holding.projectId) ?? 0,
-      commissions: paidOut.get(holding.projectId) ?? 0,
-    };
-    const times = (cents: number, share: number) => Math.round(cents * share);
+    shareBy.set(holding.projectId, of);
     rows.push({
       projectId: holding.projectId,
       projectName: holding.projectName,
       share: of.share,
       commissionShare: of.commissionShare,
       via: of.lines,
-      full,
-      part: {
-        signed: times(full.signed, of.share),
-        received: times(full.received, of.share),
-        cash: times(full.cash, of.share),
-        income: times(full.income, of.share),
-        costs: times(full.costs, of.share),
-        commissions: times(full.commissions, of.commissionShare),
-      },
+      full: empty(),
+      part: empty(),
     });
   }
 
-  const sum = (pick: (row: ShareRow) => number) => rows.reduce((total, row) => total + pick(row), 0);
+  const byProject = new Map(rows.map((row) => [row.projectId, row]));
+  const byMonth = new Map<string, MonthRow>();
+  for (const one of moved) {
+    const row = byProject.get(one.projectId);
+    const share = shareBy.get(one.projectId);
+    if (!row || !share) continue;
+    /* A commission is the holding companies' expense, so it is shared by their part, not by the whole. */
+    const part = Math.round(one.cents * (one.column === "commissions" ? share.commissionShare : share.share));
+    row.full[one.column] += one.cents;
+    row.part[one.column] += part;
+    if (part === 0) continue;
+    const key = `${one.at.getFullYear()}-${String(one.at.getMonth() + 1).padStart(2, "0")}`;
+    const month = byMonth.get(key) ?? { key, year: one.at.getFullYear(), month: one.at.getMonth() + 1, part: empty() };
+    month.part[one.column] += part;
+    byMonth.set(key, month);
+  }
+
+  const totals = empty();
+  for (const row of rows) for (const column of LEDGER_COLUMNS) totals[column] += row.part[column];
+
   return {
     rows,
-    totals: {
-      signed: sum((row) => row.part.signed),
-      received: sum((row) => row.part.received),
-      cash: sum((row) => row.part.cash),
-      income: sum((row) => row.part.income),
-      costs: sum((row) => row.part.costs),
-      commissions: sum((row) => row.part.commissions),
-    },
+    totals,
+    months: [...byMonth.values()].sort((a, b) => a.key.localeCompare(b.key)),
   };
 }
