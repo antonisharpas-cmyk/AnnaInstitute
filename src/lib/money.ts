@@ -136,3 +136,14 @@ export function withVat(
   const vatCents = Math.round((netCents * percent) / 100);
   return { netCents, rate: percent, vatCents, totalCents: netCents + vatCents };
 }
+
+/**
+ * A VAT rate as somebody types it, "19", "19%" or "5,5", or the fallback when
+ * the box was left empty or holds something that is not a rate.
+ */
+export function vatRateFrom(value: unknown, fallback: number): number {
+  const text = String(value ?? "").replace("%", "").replace(",", ".").trim();
+  if (!text) return fallback;
+  const rate = Number(text);
+  return Number.isFinite(rate) && rate >= 0 && rate <= 100 ? Math.round(rate * 1000) / 1000 : fallback;
+}

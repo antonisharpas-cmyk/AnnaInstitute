@@ -38,7 +38,10 @@ export async function constructorPaymentLetter(paymentId: string) {
   const hasReceipt = papers.some((row) => row.category === "RECEIPT");
 
   const money = (cents: number) => formatAmount(cents, "en");
-  const amount = money(toCents(found.payment.amount));
+  /* The money paid, VAT included, with the VAT named when there is any. */
+  const amount = money(toCents(found.payment.totalAmount));
+  const vatCents = toCents(found.payment.vatAmount);
+  const madeUp = vatCents > 0 ? ` (${money(toCents(found.payment.amount))} plus VAT ${Number(found.payment.vatRate)}%, ${money(vatCents)})` : "";
   const day = new Date(found.payment.paidOn).toLocaleDateString("en-GB");
   const project = job.project.name;
   const kind = found.payment.kind?.trim();
@@ -46,7 +49,7 @@ export async function constructorPaymentLetter(paymentId: string) {
   const lines = [
     `Dear ${who.contactName?.trim() || who.name},`,
     "",
-    `We confirm that we have paid you ${amount} on ${day} for ${project}.`,
+    `We confirm that we have paid you ${amount}${madeUp} on ${day} for ${project}.`,
     ...(kind ? ["", `What it is for: ${kind}`] : []),
     "",
     `Paid to you so far for ${project}: ${money(job.paidCents)} of the agreed ${money(job.agreedCents)}. Remaining: ${money(job.remainingCents)}.`,

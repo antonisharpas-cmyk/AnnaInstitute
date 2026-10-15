@@ -19,7 +19,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
-import { fromCents, toCents } from "@/lib/money";
+import { fromCents, toCents, vatRateFrom } from "@/lib/money";
 import { recalculateCommission, refreshCommissionPapers } from "@/lib/commissions";
 import { whatGoesWithAgent } from "@/lib/deletes";
 import { letterForCommission } from "@/lib/automaticEmails";
@@ -76,6 +76,8 @@ export async function createAgent(formData: FormData) {
       email: parsed.email || null,
       phone: parsed.phone,
       commissionRate: Number(parsed.commissionRate || 0).toFixed(3),
+      /* 19% unless the office says otherwise. */
+      vatRate: vatRateFrom(formData.get("vatRate"), 19).toFixed(3),
       address: parsed.address,
       country: parsed.country,
       vatNumber: parsed.vatNumber,
@@ -133,6 +135,7 @@ export async function saveAgentProfile(
       email: String(formData.get("email") ?? "").trim() || null,
       phone: String(formData.get("phone") ?? "").trim() || null,
       commissionRate: rate.toFixed(3),
+      ...(formData.has("vatRate") ? { vatRate: vatRateFrom(formData.get("vatRate"), 19).toFixed(3) } : {}),
       address: String(formData.get("address") ?? "").trim() || null,
       country: String(formData.get("country") ?? "").trim() || null,
       vatNumber: String(formData.get("vatNumber") ?? "").trim() || null,
@@ -183,6 +186,7 @@ export async function updateAgent(agentId: string, formData: FormData) {
       email: parsed.email || null,
       phone: parsed.phone ?? null,
       commissionRate: Number(parsed.commissionRate || 0).toFixed(3),
+      ...(formData.has("vatRate") ? { vatRate: vatRateFrom(formData.get("vatRate"), 19).toFixed(3) } : {}),
       address: parsed.address ?? null,
       country: parsed.country ?? null,
       vatNumber: parsed.vatNumber ?? null,
@@ -228,10 +232,18 @@ export async function recordCommissionPayment(formData: FormData) {
 
   if (!agentId || amountCents <= 0) throw new Error("Choose an agent and an amount above zero.");
 
+  /* The VAT as typed; left empty, the line's own rate, or the agent's. */
+  const [line] = commissionId
+    ? await db.select({ vatRate: commissions.vatRate }).from(commissions).where(eq(commissions.id, commissionId)).limit(1)
+    : [];
+  const [who] = await db.select({ vatRate: agents.vatRate }).from(agents).where(eq(agents.id, agentId)).limit(1);
+  const vatRate = vatRateFrom(formData.get("vatRate"), Number(line?.vatRate ?? who?.vatRate ?? 19));
+
   await db.insert(commissionPayments).values({
     agentId,
     commissionId,
     amount: fromCents(amountCents),
+    vatRate: vatRate.toFixed(3),
     paidOn: paidOn ? new Date(paidOn) : new Date(),
     reference: String(formData.get("reference") ?? "") || null,
     notes: String(formData.get("notes") ?? "") || null,
@@ -263,7 +275,7 @@ export async function recordCommissionPayment(formData: FormData) {
     action: "commission.payment",
     entity: "agent",
     entityId: agentId,
-    detail: fromCents(amountCents),
+    detail: `${fromCents(amountCents)} before VAT, VAT ${vatRate}%`,
     userId: user.id,
     userEmail: user.email,
   });
@@ -306,6 +318,9 @@ export async function addExtra(contractId: string, formData: FormData) {
   if (!contract) throw new Error("Contract not found");
   if (!contract.agentId) throw new Error("This sale has no agent on it yet.");
 
+  const [who] = await db.select({ vatRate: agents.vatRate }).from(agents).where(eq(agents.id, contract.agentId)).limit(1);
+  const vatRate = vatRateFrom(formData.get("vatRate"), Number(who?.vatRate ?? 19));
+
   await db.insert(commissions).values({
     contractId,
     agentId: contract.agentId,
@@ -314,6 +329,7 @@ export async function addExtra(contractId: string, formData: FormData) {
     baseAmount: "0.00",
     rate: "0.000",
     amount: fromCents(amountCents),
+    vatRate: vatRate.toFixed(3),
     history: contract.history || (await recordingHistory()),
   });
 
@@ -321,7 +337,7 @@ export async function addExtra(contractId: string, formData: FormData) {
     action: "commission.extra",
     entity: "contract",
     entityId: contractId,
-    detail: `${label}, ${fromCents(amountCents)}`,
+    detail: `${label}, ${fromCents(amountCents)} before VAT, VAT ${vatRate}%`,
     userId: user.id,
     userEmail: user.email,
   });
@@ -384,6 +400,7 @@ export async function payLine(commissionId: string, agentId: string, formData: F
     agentId: line.agentId,
     commissionId,
     amount: fromCents(due),
+    vatRate: line.vatRate,
     paidOn: paidOn ? new Date(paidOn) : new Date(),
     reference: String(formData.get("reference") ?? "") || null,
     history: line.history || (await recordingHistory()),
@@ -403,6 +420,32 @@ export async function payLine(commissionId: string, agentId: string, formData: F
     userEmail: user.email,
   });
 
+  revalidatePath(`/agents/${agentId}`);
+  revalidatePath("/commissions");
+}
+
+/**
+ * The VAT on one commission line, when it is not the agent's usual rate.
+ *
+ * The payments made against the line follow it, since they were paid on the
+ * same invoice, so the line and what was paid on it never disagree about VAT.
+ */
+export async function setLineVatRate(commissionId: string, agentId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const [line] = await db.select().from(commissions).where(eq(commissions.id, commissionId)).limit(1);
+  if (!line) return;
+  const vatRate = vatRateFrom(formData.get("vatRate"), Number(line.vatRate));
+  await db.update(commissions).set({ vatRate: vatRate.toFixed(3), updatedAt: new Date() }).where(eq(commissions.id, commissionId));
+  await db.update(commissionPayments).set({ vatRate: vatRate.toFixed(3) }).where(eq(commissionPayments.commissionId, commissionId));
+  await recordAudit({
+    action: "commission.vat",
+    entity: "agent",
+    entityId: agentId,
+    detail: `${line.label ?? line.kind} VAT ${Number(line.vatRate)}% to ${vatRate}%`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
   revalidatePath(`/agents/${agentId}`);
   revalidatePath("/commissions");
 }

@@ -50,9 +50,13 @@ export type ConstructorJob = {
   job: typeof constructorProjects.$inferSelect;
   project: { id: string; name: string };
   agreedCents: number;
+  /** Before VAT, which is what is set against the amount agreed. */
   paidCents: number;
   pendingCents: number;
   remainingCents: number;
+  /** The money itself, VAT included. */
+  paidTotalCents: number;
+  pendingTotalCents: number;
   payments: PaymentWithPapers[];
 };
 
@@ -86,6 +90,8 @@ async function jobsWhere(where: SQL): Promise<ConstructorJob[]> {
       }));
     const sum = (status: ConstructorStatus) =>
       mine.filter((one) => one.status === status).reduce((a, one) => a + toCents(one.amount), 0);
+    const withVat = (status: ConstructorStatus) =>
+      mine.filter((one) => one.status === status).reduce((a, one) => a + toCents(one.totalAmount), 0);
     const agreedCents = toCents(job.agreedAmount);
     const paidCents = sum("PAID");
     return {
@@ -95,6 +101,8 @@ async function jobsWhere(where: SQL): Promise<ConstructorJob[]> {
       paidCents,
       pendingCents: sum("PENDING"),
       remainingCents: agreedCents - paidCents,
+      paidTotalCents: withVat("PAID"),
+      pendingTotalCents: withVat("PENDING"),
       payments: mine,
     };
   });

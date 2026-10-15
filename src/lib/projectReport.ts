@@ -305,8 +305,8 @@ export async function projectReportPdf(data: NonNullable<ProjectReport>, forName
   if (c) {
     table(
       [
-        { title: "Contract with the constructor (€)", width: 1.4, align: "center" },
-        { title: "Paid to the constructor (€)", width: 1.3, align: "center" },
+        { title: "Contract with the constructor, before VAT (€)", width: 1.4, align: "center" },
+        { title: "Paid to the constructor, before VAT (€)", width: 1.3, align: "center" },
         { title: "Pending (€)", width: 1, align: "center" },
         { title: "Still to pay (€)", width: 1.1, align: "center" },
         { title: "Paid of the contract", width: 1, align: "center" },
@@ -400,11 +400,16 @@ export async function projectReportPdf(data: NonNullable<ProjectReport>, forName
     heading(`Payments to the constructor, ${builderName(c.constructor)}`);
     /* A cancelled payment never happened, so the shareholders do not see it. */
     const shown = [...c.payments].reverse().filter((pay) => pay.status !== "CANCELLED");
+    /* Each payment before VAT, its VAT and the money with it; the contract is set against the amounts before VAT. */
+    const withVat = (status: string) =>
+      c.payments.filter((pay) => pay.status === status).reduce((a, pay) => a + toCents(pay.totalAmount), 0);
     table(
       [
         { title: "Date", width: 1, align: "center" },
-        { title: "Kind of payment", width: 2.4 },
-        { title: "Amount (€)", width: 1.2, align: "right" },
+        { title: "Kind of payment", width: 2 },
+        { title: "Before VAT (€)", width: 1.1, align: "right" },
+        { title: "VAT (€)", width: 0.9, align: "right" },
+        { title: "With VAT (€)", width: 1.1, align: "right" },
         { title: "Status", width: 1, align: "center" },
       ],
       shown.length > 0
@@ -412,19 +417,21 @@ export async function projectReportPdf(data: NonNullable<ProjectReport>, forName
             { text: day(new Date(pay.paidOn).toISOString()) },
             { text: [pay.kind, pay.notes].filter(Boolean).join(", ") },
             { text: eur(toCents(pay.amount)) },
+            { text: `${eur(toCents(pay.vatAmount))}${Number(pay.vatRate) > 0 ? ` (${Number(pay.vatRate)}%)` : ""}` },
+            { text: eur(toCents(pay.totalAmount)) },
             {
               text: pay.status === "PAID" ? "PAID" : pay.status === "CANCELLED" ? "CANCELLED" : "PENDING",
               bold: true,
               color: pay.status === "PAID" ? GOOD : pay.status === "CANCELLED" ? BAD : WARN,
             },
           ])
-        : [[{ text: "" }, { text: "No payments yet" }, { text: "" }, { text: "" }]],
+        : [[{ text: "" }, { text: "No payments yet" }, { text: "" }, { text: "" }, { text: "" }, { text: "" }]],
       {
         foot: [
-          [{ text: "" }, { text: "Paid", bold: true }, { text: eur(c.paidCents), bold: true }, { text: "" }],
-          [{ text: "" }, { text: "Pending", bold: true }, { text: eur(c.pendingCents), bold: true }, { text: "" }],
-          [{ text: "" }, { text: "Contract with the constructor", bold: true }, { text: eur(c.agreedCents), bold: true }, { text: "" }],
-          [{ text: "" }, { text: "Still to pay", bold: true }, { text: eur(c.remainingCents), bold: true }, { text: "" }],
+          [{ text: "" }, { text: "Paid", bold: true }, { text: eur(c.paidCents), bold: true }, { text: "" }, { text: eur(withVat("PAID")), bold: true }, { text: "" }],
+          [{ text: "" }, { text: "Pending", bold: true }, { text: eur(c.pendingCents), bold: true }, { text: "" }, { text: eur(withVat("PENDING")), bold: true }, { text: "" }],
+          [{ text: "" }, { text: "Contract with the constructor", bold: true }, { text: eur(c.agreedCents), bold: true }, { text: "" }, { text: "" }, { text: "" }],
+          [{ text: "" }, { text: "Still to pay", bold: true }, { text: eur(c.remainingCents), bold: true }, { text: "" }, { text: "" }, { text: "" }],
         ],
       },
     );

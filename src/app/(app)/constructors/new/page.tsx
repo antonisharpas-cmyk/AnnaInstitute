@@ -30,6 +30,13 @@ export default async function NewConstructorPage() {
               {box("email", t("common.email"), "email")}
               {box("phone", t("common.phone"))}
               {box("vatNumber", t("constructors.vat"))}
+              <div>
+                <label className="label" htmlFor="vatRate">
+                  {t("constructors.vatRate")}
+                </label>
+                <input id="vatRate" name="vatRate" inputMode="decimal" defaultValue="0" className="input" />
+                <p className="mt-1 text-xs text-brand-graphite/60">{t("constructors.vatRateHint")}</p>
+              </div>
               {box("registryNumber", t("constructors.registry"))}
               {box("address", t("constructors.address"), "text", false, true)}
               <div className="sm:col-span-2">

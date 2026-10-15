@@ -382,6 +382,16 @@ export async function salesByAgent(
       agent: agents,
       sales: sql<number>`count(${contracts.id})::int`,
       value: sql<string>`coalesce(sum(${contracts.netPrice}), 0)`,
+      generatedTotal: sql<string>`coalesce((
+        select sum(cm.total_amount) from commissions cm
+        where cm.agent_id = agents.id and cm.status <> 'CANCELLED'
+          and cm.created_at >= ${range.from} and cm.created_at <= ${range.to} ${onSale("cm")}
+      ), 0)`,
+      paidTotal: sql<string>`coalesce((
+        select sum(cp.total_amount) from commission_payments cp
+        left join commissions pcm on pcm.id = cp.commission_id
+        where cp.agent_id = agents.id and cp.paid_on >= ${range.from} and cp.paid_on <= ${range.to} ${onSale("pcm")}
+      ), 0)`,
       generated: sql<string>`coalesce((
         select sum(cm.amount) from commissions cm
         where cm.agent_id = agents.id and cm.status <> 'CANCELLED'
@@ -415,6 +425,10 @@ export async function salesByAgent(
     generatedCents: withCommission ? toCents(row.generated) : 0,
     paidCents: withCommission ? toCents(row.paid) : 0,
     owedCents: withCommission ? toCents(row.generated) - toCents(row.paid) : 0,
+    /* The same three with the agent's VAT on them: what is invoiced, paid and still owed. */
+    generatedTotalCents: withCommission ? toCents(row.generatedTotal) : 0,
+    paidTotalCents: withCommission ? toCents(row.paidTotal) : 0,
+    owedTotalCents: withCommission ? toCents(row.generatedTotal) - toCents(row.paidTotal) : 0,
   }));
 }
 
@@ -809,12 +823,17 @@ export async function incomeExpenseLines(range: Range, only: string[] | null, li
     ids === null
       ? sql`e.total_amount`
       : sql`(select coalesce(sum(l.total_amount), 0) from expense_lines l where l.expense_id = e.id and l.project_id in ${ids})`;
+  /* The VAT on the same part of the invoice. */
+  const vatShare =
+    ids === null
+      ? sql`e.vat_amount`
+      : sql`(select coalesce(sum(l.vat_amount), 0) from expense_lines l where l.expense_id = e.id and l.project_id in ${ids})`;
   const where = sql`${when} >= ${range.from} and ${when} <= ${range.to}
     ${ids === null ? sql`` : sql`and exists (select 1 from expense_lines l where l.expense_id = e.id and l.project_id in ${ids})`}`;
   const rows = rowsOf(
     await db.execute(sql`
       select e.id, e.direction, e.supplier, e.reference, e.status, e.category, e.category_other,
-             ${when} as at, e.total_amount, e.paid_amount, ${share} as in_scope,
+             ${when} as at, e.total_amount, e.paid_amount, ${share} as in_scope, ${vatShare} as vat_in_scope, e.vat_rate,
              (select d.number from issued_documents d where d.id = e.issued_document_id) as our_number,
              (select string_agg(distinct p.name, ', ') from expense_lines l join projects p on p.id = l.project_id where l.expense_id = e.id) as developments
       from expenses e
@@ -842,6 +861,10 @@ export async function incomeExpenseLines(range: Range, only: string[] | null, li
         status: String(r.status ?? ""),
         developments: String(r.developments ?? ""),
         totalCents: inScopeCents,
+        vatCents: toCents(String(r.vat_in_scope ?? "0")),
+        netCents: inScopeCents - toCents(String(r.vat_in_scope ?? "0")),
+        /* One rate for the whole invoice, or none when its lines differ. */
+        vatRate: r.vat_rate === null || r.vat_rate === undefined ? null : Number(r.vat_rate),
         paidCents: paidInScope,
         owedCents: Math.max(0, inScopeCents - paidInScope),
       };

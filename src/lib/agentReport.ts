@@ -27,9 +27,10 @@ export async function commissionLines(range: Range, only: string[] | null, limit
     left join units u on u.id = c.unit_id
     left join projects p on p.id = u.project_id`;
   const rows = await run(sql`
-    select cm.id, cm.created_at, cm.kind, cm.label, cm.amount, cm.status, cm.history,
+    select cm.id, cm.created_at, cm.kind, cm.label, cm.amount, cm.vat_rate, cm.vat_amount, cm.total_amount, cm.status, cm.history,
            a.id as agent_id, a.name as agent, p.name as project, u.code, c.id as contract_id,
            (select coalesce(sum(x.amount), 0) from commission_payments x where x.commission_id = cm.id) as paid,
+           (select coalesce(sum(x.total_amount), 0) from commission_payments x where x.commission_id = cm.id) as paid_total,
            exists (select 1 from documents d where d.commission_id = cm.id and d.category = 'AGENT_INVOICE') as has_invoice,
            exists (select 1 from documents d where d.commission_id = cm.id and d.category = 'AGENT_RECEIPT') as has_receipt
     ${from}
@@ -52,6 +53,11 @@ export async function commissionLines(range: Range, only: string[] | null, limit
         label: str(r.label),
         cents,
         paid,
+        /* The VAT the agent charges on the line, the line with it, and what was paid with its VAT. */
+        vatRate: Number(str(r.vat_rate) || "0"),
+        vatCents: toCents(str(r.vat_amount) || "0"),
+        totalCents: toCents(str(r.total_amount) || "0"),
+        paidTotal: toCents(str(r.paid_total) || "0"),
         standing: standing as "CANCELLED" | "PENDING" | "PARTIALLY_PAID" | "PAID",
         history: Boolean(r.history),
         agentId: str(r.agent_id),

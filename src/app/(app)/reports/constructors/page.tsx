@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslator, type MessageKey } from "@/i18n";
-import { formatAmount } from "@/lib/money";
+import { formatAmount, formatPercent } from "@/lib/money";
 import { monthLabel, projectsInScope, rangeFrom, scopeChoices, scopeFrom } from "@/lib/reports";
 import { constructorChoices, constructorJobs, constructorMonths, constructorPaymentLines } from "@/lib/constructorReport";
 import { many } from "@/lib/filters";
@@ -54,6 +54,9 @@ export default async function ConstructorReportPage({
   const pending = sum((job) => job.pending);
   const remaining = sum((job) => job.remaining);
   const missing = sum((job) => job.papersMissing);
+  const paidTotal = sum((job) => job.paidTotal);
+  const pendingTotal = sum((job) => job.pendingTotal);
+  const withVat = (cents: number) => `${money(cents)} ${t("vat.withVatShort")}`;
   const day = (value: Date) => value.toLocaleDateString(locale === "el" ? "el-GR" : "en-GB");
 
   return (
@@ -80,8 +83,13 @@ export default async function ConstructorReportPage({
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-constructor-figures>
         <Figure label={t("constructors.agreed")} value={money(agreed)} hint={`${jobs.length} ${t("reports.agreements")}`} />
-        <Figure label={t("constructors.paid")} value={money(paid)} hint={share(paid, agreed) ? `${share(paid, agreed)} ${t("reports.ofAgreed")}` : undefined} tone="good" />
-        <Figure label={t("constructors.pending")} value={money(pending)} tone={pending > 0 ? "warn" : undefined} />
+        <Figure
+          label={t("constructors.paid")}
+          value={money(paid)}
+          hint={`${share(paid, agreed) ? `${share(paid, agreed)} ${t("reports.ofAgreed")} . ` : ""}${withVat(paidTotal)}`}
+          tone="good"
+        />
+        <Figure label={t("constructors.pending")} value={money(pending)} hint={withVat(pendingTotal)} tone={pending > 0 ? "warn" : undefined} />
         <Figure label={t("constructors.remaining")} value={money(remaining)} />
         <Figure label={t("reports.papersMissing")} value={String(missing)} tone={missing > 0 ? "bad" : undefined} hint={t("reports.papersMissingHint")} />
       </div>
@@ -113,6 +121,7 @@ export default async function ConstructorReportPage({
                     <th className="num">{t("constructors.agreed")}</th>
                     <th className="num">{t("constructors.paid")}</th>
                     <th className="num">%</th>
+                    <th className="num">{t("reports.paidWithVat")}</th>
                     <th className="num">{t("constructors.pending")}</th>
                     <th className="num">{t("constructors.remaining")}</th>
                     <th className="num">{t("reports.papersMissing")}</th>
@@ -130,6 +139,7 @@ export default async function ConstructorReportPage({
                       <td className="num whitespace-nowrap">{money(job.agreed)}</td>
                       <td className="num whitespace-nowrap">{money(job.paid)}</td>
                       <td className="num">{share(job.paid, job.agreed)}</td>
+                      <td className="num whitespace-nowrap">{money(job.paidTotal)}</td>
                       <td className={`num whitespace-nowrap ${job.pending > 0 ? "font-semibold" : "text-brand-graphite/40"}`}>{money(job.pending)}</td>
                       <td className="num whitespace-nowrap">{money(job.remaining)}</td>
                       <td className={`num ${job.papersMissing > 0 ? "font-semibold text-[color:var(--color-negative)]" : "text-brand-graphite/40"}`}>
@@ -142,6 +152,7 @@ export default async function ConstructorReportPage({
                     <td className="num whitespace-nowrap">{money(agreed)}</td>
                     <td className="num whitespace-nowrap">{money(paid)}</td>
                     <td className="num">{share(paid, agreed)}</td>
+                    <td className="num whitespace-nowrap">{money(paidTotal)}</td>
                     <td className="num whitespace-nowrap">{money(pending)}</td>
                     <td className="num whitespace-nowrap">{money(remaining)}</td>
                     <td className="num">{missing}</td>
@@ -168,7 +179,9 @@ export default async function ConstructorReportPage({
                   <th>{t("common.status")}</th>
                   <th>{t("constructors.invoice")}</th>
                   <th>{t("constructors.receipt")}</th>
-                  <th className="num">{t("constructors.amount")}</th>
+                  <th className="num">{t("vat.beforeVat")}</th>
+                  <th className="num">{t("vat.vat")}</th>
+                  <th className="num">{t("vat.withVat")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,6 +221,11 @@ export default async function ConstructorReportPage({
                       <td>{paper(row.hasInvoice)}</td>
                       <td>{paper(row.hasReceipt)}</td>
                       <td className="num whitespace-nowrap">{money(row.cents)}</td>
+                      <td className="num whitespace-nowrap">
+                        {money(row.vatCents)}
+                        <div className="text-xs text-brand-graphite/60">{formatPercent(row.vatRate, locale)}</div>
+                      </td>
+                      <td className="num whitespace-nowrap font-semibold">{money(row.totalCents)}</td>
                     </tr>
                   );
                 })}

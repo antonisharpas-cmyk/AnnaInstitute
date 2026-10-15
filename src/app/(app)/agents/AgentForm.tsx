@@ -13,6 +13,7 @@ type AgentRecord = {
   phone: string | null;
   birthDate?: string | null;
   commissionRate: string;
+  vatRate?: string;
   campaignChannel?: string | null;
   isActive: boolean;
   notes: string | null;
@@ -108,6 +109,21 @@ export default function AgentForm({
             defaultValue={agent ? Number(agent.commissionRate) : 3}
             className="input"
           />
+        </div>
+
+        {/* The VAT the agent charges on a commission: 19% unless changed, and each commission can still differ. */}
+        <div>
+          <label className="label" htmlFor="vatRate">
+            {t("agents.vatRate")}
+          </label>
+          <input
+            id="vatRate"
+            name="vatRate"
+            inputMode="decimal"
+            defaultValue={agent?.vatRate !== undefined ? Number(agent.vatRate) : 19}
+            className="input"
+          />
+          <p className="mt-1 text-xs text-brand-graphite/60">{t("agents.vatRateHint")}</p>
         </div>
 
         {/* How campaigns reach them. One campaign never goes to them both ways. */}

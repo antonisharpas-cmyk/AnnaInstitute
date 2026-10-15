@@ -55,8 +55,9 @@ export default async function AgentsPage({
            A subquery rather than a join, because joining a second table to a
            grouped count would multiply the sales by the leads. */
         leads: sql<number>`(select count(*) from leads l where l.agent_id = ${agents.id} and l.deleted_at is null)::int`,
-        generated: sql<string>`coalesce(sum(${commissions.amount}) filter (where ${commissions.status} <> 'CANCELLED'), 0)`,
-        paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.agent_id = ${agents.id}), 0)`,
+        /* What the agent invoices and was paid, with the VAT they charge. */
+        generated: sql<string>`coalesce(sum(${commissions.totalAmount}) filter (where ${commissions.status} <> 'CANCELLED'), 0)`,
+        paid: sql<string>`coalesce((select sum(cp.total_amount) from commission_payments cp where cp.agent_id = ${agents.id}), 0)`,
       })
       .from(agents)
       .leftJoin(commissions, eq(commissions.agentId, agents.id))
@@ -114,8 +115,12 @@ export default async function AgentsPage({
                   <th className="ctr">{t("agents.rate")}</th>
                   <th className="ctr">{t("leads.title")}</th>
                   <th className="ctr">{t("agents.sales")}</th>
-                  <th className="ctr">{t("agents.generated")}</th>
-                  <th className="ctr">{t("agents.paidOut")}</th>
+                  <th className="ctr">
+                    {t("agents.generated")} <span className="font-normal normal-case">({t("vat.withVatShort")})</span>
+                  </th>
+                  <th className="ctr">
+                    {t("agents.paidOut")} <span className="font-normal normal-case">({t("vat.withVatShort")})</span>
+                  </th>
                   <th className="ctr">{t("agents.owed")}</th>
                   <th className="ctr">{t("common.status")}</th>
                   <th>{t("common.actions")}</th>

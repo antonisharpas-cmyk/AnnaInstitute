@@ -408,6 +408,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the mark on records entered as history",
     migration: "0070",
   },
+  {
+    probe: "select category_other from partners limit 1",
+    what: "the kind typed for a partner under Others",
+    migration: "0072",
+  },
+  {
+    probe: "select total_amount from constructor_payments limit 1",
+    what: "the VAT on commissions and on payments to agents and constructors",
+    migration: "0073",
+  },
 ];
 
 let answer: Missing[] | null = null;

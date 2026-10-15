@@ -287,7 +287,7 @@ async function worksPapers(): Promise<AttentionItem[]> {
 /** A commission generated, with the agent's invoice or our receipt not on it. */
 async function commissionPapers(): Promise<AttentionItem[]> {
   const rows = await run(sql`
-    select cm.id, cm.amount, cm.label, cm.created_at, a.id as agent_id, a.name as agent,
+    select cm.id, cm.total_amount as amount, cm.label, cm.created_at, a.id as agent_id, a.name as agent,
            c.reference, u.code, p.name as project,
            exists (select 1 from documents d where d.commission_id = cm.id and d.category = 'AGENT_INVOICE') as has_invoice,
            exists (select 1 from documents d where d.commission_id = cm.id and d.category = 'AGENT_RECEIPT') as has_receipt
@@ -390,7 +390,7 @@ async function companyPapers(): Promise<AttentionItem[]> {
 /** A payment to the constructor marked paid, without their invoice or receipt on it. */
 async function constructorPapers(): Promise<AttentionItem[]> {
   const rows = await run(sql`
-    select cpay.id, cpay.kind, cpay.amount, cpay.paid_on, k.id as constructor_id, k.name, p.name as project,
+    select cpay.id, cpay.kind, cpay.total_amount as amount, cpay.paid_on, k.id as constructor_id, k.name, p.name as project,
            exists (select 1 from documents d where d.constructor_payment_id = cpay.id and d.category = 'INVOICE') as has_invoice,
            exists (select 1 from documents d where d.constructor_payment_id = cpay.id and d.category = 'RECEIPT') as has_receipt
     from constructor_payments cpay

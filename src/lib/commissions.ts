@@ -41,9 +41,18 @@ export type CommissionLine = {
   label: string | null;
   baseCents: number;
   rate: number;
+  /** The commission before VAT. */
   amountCents: number;
+  /** The VAT the agent charges on this line, and the line with it. */
+  vatRate: number;
+  vatCents: number;
+  totalCents: number;
+  /** Paid before VAT, which is what settles the line, and the money with its VAT. */
   paidCents: number;
+  paidTotalCents: number;
   outstandingCents: number;
+  /** Still to pay, VAT included. */
+  outstandingTotalCents: number;
   status: "PENDING" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
   /** The day the buyer's payment brought this commission into being. */
   generatedAt: Date;
@@ -83,6 +92,7 @@ export async function salesOfAgent(agentId: string) {
           // from one table drizzle emits a bare "id", which inside this
           // subquery would bind to commission_payments and never match.
           paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.commission_id = commissions.id), 0)`,
+          paidTotal: sql<string>`coalesce((select sum(cp.total_amount) from commission_payments cp where cp.commission_id = commissions.id), 0)`,
         })
         .from(commissions)
         .where(inArray(commissions.contractId, contractIds))
@@ -90,9 +100,11 @@ export async function salesOfAgent(agentId: string) {
     : [];
 
   const byContract = new Map<string, CommissionLine[]>();
-  for (const { line, paid } of lines) {
+  for (const { line, paid, paidTotal } of lines) {
     const amountCents = toCents(line.amount);
     const paidCents = toCents(paid);
+    const totalCents = toCents(line.totalAmount);
+    const paidTotalCents = toCents(paidTotal);
     const entry: CommissionLine = {
       id: line.id,
       kind: line.kind,
@@ -100,8 +112,13 @@ export async function salesOfAgent(agentId: string) {
       baseCents: toCents(line.baseAmount),
       rate: Number(line.rate),
       amountCents,
+      vatRate: Number(line.vatRate),
+      vatCents: toCents(line.vatAmount),
+      totalCents,
       paidCents,
+      paidTotalCents,
       outstandingCents: amountCents - paidCents,
+      outstandingTotalCents: totalCents - paidTotalCents,
       status: line.status,
       generatedAt: line.createdAt,
       completedAt: line.completedAt,
@@ -118,6 +135,10 @@ export async function salesOfAgent(agentId: string) {
       .filter((l) => l.status !== "CANCELLED")
       .reduce((a, l) => a + l.amountCents, 0);
     const paidCents = own.reduce((a, l) => a + l.paidCents, 0);
+    const generatedTotalCents = own
+      .filter((l) => l.status !== "CANCELLED")
+      .reduce((a, l) => a + l.totalCents, 0);
+    const paidTotalCents = own.reduce((a, l) => a + l.paidTotalCents, 0);
 
     // What the apartment was priced at against what it actually went for. A
     // positive difference is the usual reason for an extra line.
@@ -132,6 +153,9 @@ export async function salesOfAgent(agentId: string) {
       generatedCents,
       paidCents,
       outstandingCents: generatedCents - paidCents,
+      generatedTotalCents,
+      paidTotalCents,
+      outstandingTotalCents: generatedTotalCents - paidTotalCents,
       listPriceCents,
       soldCents,
       differenceCents: soldCents - listPriceCents,
@@ -150,6 +174,7 @@ export async function allCommissionLines() {
       project: projects,
       client: clients,
       paid: sql<string>`coalesce((select sum(cp.amount) from commission_payments cp where cp.commission_id = ${commissions.id}), 0)`,
+      paidTotal: sql<string>`coalesce((select sum(cp.total_amount) from commission_payments cp where cp.commission_id = ${commissions.id}), 0)`,
       /* When the last money to the agent against this line was recorded. */
       paidAt: sql<Date | null>`(select max(cp.created_at) from commission_payments cp where cp.commission_id = ${commissions.id})`,
     })
@@ -165,19 +190,35 @@ export async function allCommissionLines() {
 /** What an agent is owed in total, without listing the sales. */
 export async function commissionTotals(agentId: string) {
   const [generated] = await db
-    .select({ total: sql<string>`coalesce(sum(${commissions.amount}), 0)` })
+    .select({
+      total: sql<string>`coalesce(sum(${commissions.amount}), 0)`,
+      withVat: sql<string>`coalesce(sum(${commissions.totalAmount}), 0)`,
+    })
     .from(commissions)
     /* A commission taken back is not generated. */
     .where(and(eq(commissions.agentId, agentId), sql`${commissions.status} <> 'CANCELLED'`));
 
   const [paid] = await db
-    .select({ total: sql<string>`coalesce(sum(${commissionPayments.amount}), 0)` })
+    .select({
+      total: sql<string>`coalesce(sum(${commissionPayments.amount}), 0)`,
+      withVat: sql<string>`coalesce(sum(${commissionPayments.totalAmount}), 0)`,
+    })
     .from(commissionPayments)
     .where(eq(commissionPayments.agentId, agentId));
 
   const generatedCents = toCents(generated?.total ?? "0");
   const paidCents = toCents(paid?.total ?? "0");
-  return { generatedCents, paidCents, outstandingCents: generatedCents - paidCents };
+  const generatedTotalCents = toCents(generated?.withVat ?? "0");
+  const paidTotalCents = toCents(paid?.withVat ?? "0");
+  return {
+    generatedCents,
+    paidCents,
+    outstandingCents: generatedCents - paidCents,
+    /* The same three with the agent's VAT on them: what the agent invoices and is paid. */
+    generatedTotalCents,
+    paidTotalCents,
+    outstandingTotalCents: generatedTotalCents - paidTotalCents,
+  };
 }
 
 /* ---------------------------------------------------------------------------
@@ -409,11 +450,15 @@ export async function recalculateCommission(contractId: string) {
     .set({ agentId: contract.agentId })
     .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "EXTRA")));
 
+  /* The line carries the agent's VAT rate from the day it is made; a new agent on the sale brings theirs. */
+  const agentVat = agentRows[0]?.vatRate ?? "19";
+
   if (existing[0]) {
     await db
       .update(commissions)
       .set({
         agentId: contract.agentId,
+        ...(existing[0].agentId !== contract.agentId ? { vatRate: agentVat } : {}),
         baseAmount: fromCents(fullCents),
         rate: rate.toFixed(3),
         amount: fromCents(amountCents),
@@ -430,6 +475,7 @@ export async function recalculateCommission(contractId: string) {
     baseAmount: fromCents(fullCents),
     rate: rate.toFixed(3),
     amount: fromCents(amountCents),
+    vatRate: agentVat,
     /* A past sale's commission is past too: its papers are not chased. */
     history: contract.history || (await enteringHistory()),
   });
@@ -527,6 +573,7 @@ export async function refreshCommissionPapers(commissionId: string): Promise<boo
       agentId: line.agentId,
       commissionId,
       amount: fromCents(owedCents),
+      vatRate: line.vatRate,
       paidOn: new Date(),
       reference: null,
       notes: FROM_THE_RECEIPT,

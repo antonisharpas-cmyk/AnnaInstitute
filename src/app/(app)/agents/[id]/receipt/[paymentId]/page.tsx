@@ -64,11 +64,15 @@ export default async function AgentReceiptPage({
           {
             label: t("commissions.sale"),
             value: receipt.commission
-              ? `${formatAmount(toCents(receipt.commission.amount), locale)} . ${Number(
-                  receipt.commission.rate,
-                )}%`
+              ? `${formatAmount(toCents(receipt.commission.amount), locale)} ${t("vat.beforeVatShort")} . ${formatAmount(
+                  toCents(receipt.commission.totalAmount),
+                  locale,
+                )} ${t("vat.withVatShort")}`
               : "",
           },
+          { label: t("vat.beforeVat"), value: formatAmount(receipt.netCents, locale) },
+          { label: `${t("vat.vat")} ${receipt.vatRate}%`, value: formatAmount(receipt.vatCents, locale) },
+          { label: t("vat.withVat"), value: formatAmount(receipt.amountCents, locale) },
           { label: t("commissions.reference"), value: receipt.number },
         ].filter((line) => line.value)}
         totals={[

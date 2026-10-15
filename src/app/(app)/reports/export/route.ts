@@ -96,16 +96,24 @@ export async function GET(request: Request) {
     case "agents": {
       const agents = await salesByAgent(range, await projectsInScope(scope), commissionsAreOurs(scope));
       rows = [
-        ["Agent", "Company", "Rate", "Sales", "Sold for", "Commission generated", "Paid", "Owed"],
+        [
+          "Agent", "Company", "Rate", "VAT rate", "Sales", "Sold for",
+          "Commission generated before VAT", "Commission generated with VAT",
+          "Paid before VAT", "Paid with VAT", "Owed before VAT", "Owed with VAT",
+        ],
         ...agents.map((row) => [
           row.agent.name,
           row.agent.company ?? "",
           Number(row.agent.commissionRate),
+          Number(row.agent.vatRate),
           row.sales,
           money(row.valueCents),
           money(row.generatedCents),
+          money(row.generatedTotalCents),
           money(row.paidCents),
+          money(row.paidTotalCents),
           money(row.owedCents),
+          money(row.owedTotalCents),
         ]),
       ];
       break;

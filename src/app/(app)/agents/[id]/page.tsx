@@ -9,6 +9,7 @@ import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { amountForInput } from "@/lib/money";
 import { commissionTotals, papersFor, salesOfAgent, salesWithoutAnAgent } from "@/lib/commissions";
 import CommissionRecord from "./CommissionRecord";
+import VatFields from "@/components/VatFields";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
@@ -28,6 +29,7 @@ import {
   recordSale,
   removeCommissionLine,
   removeCommissionPaper,
+  setLineVatRate,
   setSaleRate,
   uploadCommissionPaper,
 } from "../actions";
@@ -96,9 +98,22 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           label={t("agents.sales")}
           value={String(sales.filter((sale) => sale.contract.status !== "CANCELLED").length)}
         />
-        <Stat label={t("agents.generated")} value={formatAmount(totals.generatedCents, locale)} />
-        <Stat label={t("agents.paidOut")} value={formatAmount(totals.paidCents, locale)} />
-        <Stat label={t("agents.owed")} value={formatAmount(totals.outstandingCents, locale)} />
+        {/* What the agent invoices and is paid, VAT included, with the figure before VAT under it. */}
+        <Stat
+          label={t("agents.generated")}
+          value={formatAmount(totals.generatedTotalCents, locale)}
+          hint={`${formatAmount(totals.generatedCents, locale)} ${t("vat.beforeVatShort")}`}
+        />
+        <Stat
+          label={t("agents.paidOut")}
+          value={formatAmount(totals.paidTotalCents, locale)}
+          hint={`${formatAmount(totals.paidCents, locale)} ${t("vat.beforeVatShort")}`}
+        />
+        <Stat
+          label={t("agents.owed")}
+          value={formatAmount(totals.outstandingTotalCents, locale)}
+          hint={`${formatAmount(totals.outstandingCents, locale)} ${t("vat.beforeVatShort")}`}
+        />
       </div>
 
       {/* One column, top to bottom: the agent, the sales, what was paid. */}
@@ -147,6 +162,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 value: String(Number(agent.commissionRate)),
                 display: formatPercent(Number(agent.commissionRate), locale),
                 kind: "number",
+              },
+              {
+                name: "vatRate",
+                label: t("agents.vatRate"),
+                value: String(Number(agent.vatRate)),
+                display: formatPercent(Number(agent.vatRate), locale),
+                kind: "number",
+                hint: t("agents.vatRateHint"),
               },
               { name: "address", label: t("clients.address"), value: agent.address ?? "" },
               { name: "country", label: t("clients.country"), value: agent.country ?? "" },
@@ -357,11 +380,13 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                         </span>
                         <span>
                           <span className="text-xs text-brand-graphite/60">{t("agents.generated")} </span>
-                          <span className="font-semibold">{formatAmount(sale.generatedCents, locale)}</span>
+                          <span className="font-semibold">{formatAmount(sale.generatedTotalCents, locale)}</span>
+                          <span className="text-xs text-brand-graphite/60"> {t("vat.withVatShort")}</span>
                         </span>
                         <span>
                           <span className="text-xs text-brand-graphite/60">{t("agents.paidOut")} </span>
-                          <span className="font-semibold">{formatAmount(sale.paidCents, locale)}</span>
+                          <span className="font-semibold">{formatAmount(sale.paidTotalCents, locale)}</span>
+                          <span className="text-xs text-brand-graphite/60"> {t("vat.withVatShort")}</span>
                         </span>
                         {sale.lines.every((l) => papers.get(l.id)?.complete) ? (
                           <Pill tone="good">{t("commissions.completed")}</Pill>
@@ -388,7 +413,10 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                             <th>{t("commissions.line")}</th>
                             <th className="ctr">{t("commissions.base")}</th>
                             <th className="ctr">{t("agents.rate")}</th>
-                            <th className="ctr">{t("contracts.amount")}</th>
+                            <th className="ctr">{t("vat.beforeVat")}</th>
+                            <th className="ctr">{t("vat.rate")}</th>
+                            <th className="ctr">{t("vat.vat")}</th>
+                            <th className="ctr">{t("vat.withVat")}</th>
                             <th className="ctr">{t("agents.paidOut")}</th>
                             <th className="ctr">{t("common.status")}</th>
                             <th className="ctr">{t("common.actions")}</th>
@@ -408,10 +436,26 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                               <td className="ctr">
                                 {line.kind === "RATE" ? formatPercent(line.rate, locale) : ""}
                               </td>
-                              <td className="ctr font-semibold">
-                                {formatAmount(line.amountCents, locale)}
+                              <td className="ctr">{formatAmount(line.amountCents, locale)}</td>
+                              <td className="ctr">
+                                {/* The VAT on this line, the agent's rate unless changed here. */}
+                                <form action={setLineVatRate.bind(null, line.id, id)} className="flex items-center justify-center gap-1">
+                                  <input
+                                    name="vatRate"
+                                    defaultValue={line.vatRate}
+                                    inputMode="decimal"
+                                    aria-label={t("vat.rate")}
+                                    className="input !w-14 !px-1 !py-0.5 text-center !text-xs"
+                                    data-line-vat
+                                  />
+                                  <button type="submit" className="btn btn-secondary !px-1.5 !py-0.5 !text-xs">
+                                    {t("common.save")}
+                                  </button>
+                                </form>
                               </td>
-                              <td className="ctr">{formatAmount(line.paidCents, locale)}</td>
+                              <td className="ctr">{formatAmount(line.vatCents, locale)}</td>
+                              <td className="ctr font-semibold">{formatAmount(line.totalCents, locale)}</td>
+                              <td className="ctr">{formatAmount(line.paidTotalCents, locale)}</td>
                               <td className="ctr">
                                 {/*
                                   One meaning of finished, not two. The papers
@@ -455,12 +499,13 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                         <tfoot>
                           <tr>
                             <td colSpan={3}>{t("agents.generated")}</td>
-                            <td className="ctr font-semibold">
-                              {formatAmount(sale.generatedCents, locale)}
-                            </td>
-                            <td className="ctr">{formatAmount(sale.paidCents, locale)}</td>
+                            <td className="ctr">{formatAmount(sale.generatedCents, locale)}</td>
+                            <td />
+                            <td className="ctr">{formatAmount(sale.generatedTotalCents - sale.generatedCents, locale)}</td>
+                            <td className="ctr font-semibold">{formatAmount(sale.generatedTotalCents, locale)}</td>
+                            <td className="ctr">{formatAmount(sale.paidTotalCents, locale)}</td>
                             <td className="ctr" colSpan={2}>
-                              {t("agents.owed")} {formatAmount(sale.outstandingCents, locale)}
+                              {t("agents.owed")} {formatAmount(sale.outstandingTotalCents, locale)}
                             </td>
                           </tr>
                         </tfoot>
@@ -499,11 +544,17 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                                 )} . ${t("commissions.fullValue").toLowerCase()} . ${formatAmount(
                                   line.amountCents,
                                   locale,
-                                )}`
+                                )} ${t("vat.beforeVatShort")} + ${t("vat.vat")} ${formatPercent(line.vatRate, locale)} ${formatAmount(
+                                  line.vatCents,
+                                  locale,
+                                )} = ${formatAmount(line.totalCents, locale)}`
                               : `${line.label ?? t("commissions.extra")} . ${formatAmount(
                                   line.amountCents,
                                   locale,
-                                )}`
+                                )} ${t("vat.beforeVatShort")} + ${t("vat.vat")} ${formatPercent(line.vatRate, locale)} ${formatAmount(
+                                  line.vatCents,
+                                  locale,
+                                )} = ${formatAmount(line.totalCents, locale)}`
                           }
                           madeUpOf={
                             line.kind === "RATE" && sale.value.cashCents > 0
@@ -566,22 +617,19 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                               className="input !w-64 !py-1 !text-xs"
                             />
                           </div>
-                          <div>
-                            <label className="label" htmlFor={`extra-${sale.contract.id}`}>
-                              {t("contracts.amount")}
-                            </label>
-                            <input
-                              id={`extra-${sale.contract.id}`}
-                              name="amount"
-                              required
-                              defaultValue={
-                                sale.differenceCents > 0
-                                  ? amountForInput(sale.differenceCents / 100)
-                                  : ""
-                              }
-                              className="input !w-28 !py-1 !text-xs"
-                            />
-                          </div>
+                          <VatFields
+                            idPrefix={`extra-${sale.contract.id}`}
+                            compact
+                            locale={locale}
+                            defaultAmount={sale.differenceCents > 0 ? amountForInput(sale.differenceCents / 100) : ""}
+                            defaultRate={Number(agent.vatRate)}
+                            labels={{
+                              amount: t("vat.amountBeforeVat"),
+                              rate: t("vat.rate"),
+                              vat: t("vat.vat"),
+                              total: t("vat.withVat"),
+                            }}
+                          />
                           <button type="submit" className="btn btn-primary !px-3 !py-1 !text-xs">
                             {t("common.add")}
                           </button>
@@ -622,17 +670,24 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                                 ? `${sale.project.name} ${sale.unit.code}`
                                 : sale.contract.reference}{" "}
                               . {l.kind === "RATE" ? t("commissions.onThePrice") : (l.label ?? "")}{" "}
-                              . {formatAmount(l.outstandingCents, locale)}
+                              . {formatAmount(l.outstandingCents, locale)} {t("vat.beforeVatShort")}
                             </option>
                           )),
                       )}
                     </select>
                   </div>
-                  <div>
-                    <label className="label" htmlFor="amount">
-                      {t("contracts.amount")}
-                    </label>
-                    <input id="amount" name="amount" required className="input" />
+                  <div className="grid gap-3 sm:col-span-2 sm:grid-cols-4">
+                    <VatFields
+                      idPrefix="pay"
+                      locale={locale}
+                      defaultRate={Number(agent.vatRate)}
+                      labels={{
+                        amount: t("vat.amountBeforeVat"),
+                        rate: t("vat.rate"),
+                        vat: t("vat.vat"),
+                        total: t("vat.withVat"),
+                      }}
+                    />
                   </div>
                   <div>
                     <label className="label" htmlFor="paidOn">
@@ -663,7 +718,9 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                   <tr>
                     <th>{t("common.date")}</th>
                     <th>{t("credits.recordedOn")}</th>
-                    <th className="ctr">{t("contracts.amount")}</th>
+                    <th className="ctr">{t("vat.beforeVat")}</th>
+                    <th className="ctr">{t("vat.vat")}</th>
+                    <th className="ctr">{t("vat.withVat")}</th>
                     <th>{t("commissions.reference")}</th>
                     <th className="ctr">{t("common.actions")}</th>
                   </tr>
@@ -674,6 +731,11 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                       <td>{day(p.paidOn)}</td>
                       <td className="nowrap text-xs">{dayAndTime(p.createdAt, locale)}</td>
                       <td className="ctr">{formatAmount(toCents(p.amount), locale)}</td>
+                      <td className="ctr nowrap">
+                        {formatAmount(toCents(p.vatAmount), locale)}{" "}
+                        <span className="text-xs text-brand-graphite/60">{formatPercent(Number(p.vatRate), locale)}</span>
+                      </td>
+                      <td className="ctr font-semibold">{formatAmount(toCents(p.totalAmount), locale)}</td>
                       <td>{p.reference ?? ""}</td>
                       <td className="ctr">
                         <div className="flex flex-wrap items-center justify-center gap-1">

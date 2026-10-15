@@ -106,7 +106,9 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
                       </Link>
                     </td>
                     <td className="nowrap">
-                      <Pill tone="teal">{word(row.category)}</Pill>
+                      <Pill tone="teal">
+                        {row.category === "OTHER" && row.categoryOther ? `${word(row.category)}: ${row.categoryOther}` : word(row.category)}
+                      </Pill>
                     </td>
                     <td>
                       {row.email ? (

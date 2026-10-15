@@ -1,5 +1,5 @@
 import { getTranslator, type MessageKey } from "@/i18n";
-import { formatAmount } from "@/lib/money";
+import { formatAmount, formatPercent } from "@/lib/money";
 import {
   costsByCategory,
   costsByMonth,
@@ -198,7 +198,9 @@ export default async function CostsReportPage({
                     <th>{t("invoices.number")}</th>
                     <th>{t("invoices.category")}</th>
                     <th>{t("projects.title")}</th>
-                    <th className="num">{t("common.total")}</th>
+                    <th className="num">{t("vat.beforeVat")}</th>
+                    <th className="num">{t("vat.vat")}</th>
+                    <th className="num">{t("vat.withVat")}</th>
                     <th className="num">{t("reports.paidSoFar")}</th>
                     <th className="num">{t("reports.stillOwed")}</th>
                   </tr>
@@ -218,7 +220,14 @@ export default async function CostsReportPage({
                       <td className="whitespace-nowrap">{row.number}</td>
                       <td>{row.category === "OTHER" && row.categoryOther ? row.categoryOther : category(row.category)}</td>
                       <td className="text-xs">{row.developments || t("invoices.noProject")}</td>
-                      <td className="num whitespace-nowrap">{money(row.totalCents)}</td>
+                      <td className="num whitespace-nowrap">{money(row.netCents)}</td>
+                      <td className="num whitespace-nowrap">
+                        {money(row.vatCents)}
+                        {row.vatRate !== null ? (
+                          <div className="text-xs text-brand-graphite/60">{formatPercent(row.vatRate, locale)}</div>
+                        ) : null}
+                      </td>
+                      <td className="num whitespace-nowrap font-semibold">{money(row.totalCents)}</td>
                       <td className="num whitespace-nowrap">{money(row.paidCents)}</td>
                       <td className={`num whitespace-nowrap ${row.owedCents > 0 ? "font-semibold" : "text-brand-graphite/40"}`}>
                         {money(row.owedCents)}

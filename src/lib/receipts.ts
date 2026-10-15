@@ -267,13 +267,14 @@ export async function agentReceipt(paymentId: string) {
 
   if (!row) return null;
 
+  /* The agent's balance with the VAT on it, which is what they invoice and are paid. */
   const [earned] = await db
-    .select({ total: sql<string>`coalesce(sum(${commissions.amount}), 0)` })
+    .select({ total: sql<string>`coalesce(sum(${commissions.totalAmount}), 0)` })
     .from(commissions)
     .where(and(eq(commissions.agentId, row.agent.id), sql`${commissions.status} <> 'CANCELLED'`));
 
   const [paidSoFar] = await db
-    .select({ total: sql<string>`coalesce(sum(${commissionPayments.amount}), 0)` })
+    .select({ total: sql<string>`coalesce(sum(${commissionPayments.totalAmount}), 0)` })
     .from(commissionPayments)
     .where(eq(commissionPayments.agentId, row.agent.id));
 
@@ -286,7 +287,11 @@ export async function agentReceipt(paymentId: string) {
     /** The agent's own invoice number, as typed when the payment was recorded. */
     invoiceNumber: row.payment.reference?.trim() || null,
     paidOn: row.payment.paidOn,
-    amountCents: toCents(row.payment.amount),
+    /* The money that went to the agent, VAT included, and how it is made up. */
+    amountCents: toCents(row.payment.totalAmount),
+    netCents: toCents(row.payment.amount),
+    vatRate: Number(row.payment.vatRate),
+    vatCents: toCents(row.payment.vatAmount),
     notes: row.payment.notes,
     agent: row.agent,
     commission: row.commission,
@@ -359,7 +364,9 @@ export function agentReceiptEmail(receipt: NonNullable<AgentReceipt>, ...ignored
   const lines = [
     `Dear ${greeting},`,
     "",
-    `We confirm the payment of ${formatAmount(receipt.amountCents, locale)} ${regarding}.`,
+    receipt.vatCents > 0
+      ? `We confirm the payment of ${formatAmount(receipt.amountCents, locale)} (${formatAmount(receipt.netCents, locale)} plus VAT ${receipt.vatRate}%, ${formatAmount(receipt.vatCents, locale)}) ${regarding}.`
+      : `We confirm the payment of ${formatAmount(receipt.amountCents, locale)} ${regarding}.`,
     "",
     "Please send us the related receipt.",
     "",

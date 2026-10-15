@@ -41,6 +41,7 @@ const run = async (query: SQL): Promise<Row[]> => {
 const str = (value: unknown) => (value === null || value === undefined ? "" : String(value));
 const joined = (...parts: unknown[]) => parts.map(str).filter(Boolean).join(", ");
 
+/* Money paid out to agents and constructors is the money itself, VAT included, like every other line here. */
 export async function recentMoney(limit: number, only: string[] | null): Promise<MoneyLine[]> {
   const ids = only === null ? null : only.length > 0 ? only : [""];
   const unitIn = (alias: string) => (ids === null ? sql`true` : sql`${sql.raw(alias)}.project_id in ${ids}`);
@@ -71,7 +72,7 @@ export async function recentMoney(limit: number, only: string[] | null): Promise
       where ${ids === null ? sql`true` : sql`u.project_id in ${ids}`}
       order by cr.received_on desc, cr.created_at desc limit ${limit}`),
     run(sql`
-      select cp.id, cp.paid_on as at, cp.amount, cp.reference as paid_ref, a.id as agent_id, a.name,
+      select cp.id, cp.paid_on as at, cp.total_amount as amount, cp.reference as paid_ref, a.id as agent_id, a.name,
              c.reference, u.code, p.name as project
       from commission_payments cp
       join agents a on a.id = cp.agent_id
@@ -88,7 +89,7 @@ export async function recentMoney(limit: number, only: string[] | null): Promise
       where ${expenseIn}
       order by ep.paid_on desc, ep.created_at desc limit ${limit}`),
     run(sql`
-      select cpay.id, cpay.paid_on as at, cpay.amount, cpay.kind, k.id as constructor_id, k.name, p.name as project
+      select cpay.id, cpay.paid_on as at, cpay.total_amount as amount, cpay.kind, k.id as constructor_id, k.name, p.name as project
       from constructor_payments cpay
       join constructor_projects cp on cp.id = cpay.constructor_project_id
       join constructors k on k.id = cp.constructor_id

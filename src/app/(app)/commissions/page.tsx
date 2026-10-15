@@ -108,6 +108,10 @@ export default async function CommissionsPage({
   const live = matching.filter((r) => r.line.status !== "CANCELLED");
   const generated = live.reduce((a, r) => a + toCents(r.line.amount), 0);
   const settled = live.reduce((a, r) => a + toCents(r.paid), 0);
+  /* The same with the agents' VAT on it: what they invoice and what went to them. */
+  const generatedWithVat = live.reduce((a, r) => a + toCents(r.line.totalAmount), 0);
+  const settledWithVat = live.reduce((a, r) => a + toCents(r.paidTotal), 0);
+  const beforeVat = (cents: number) => `${formatAmount(cents, locale)} ${t("vat.beforeVatShort")}`;
 
   const pill = (standing: Standing) => {
     switch (standing) {
@@ -152,9 +156,13 @@ export default async function CommissionsPage({
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Stat label={t("agents.generated")} value={formatAmount(generated, locale)} />
-        <Stat label={t("agents.paidOut")} value={formatAmount(settled, locale)} />
-        <Stat label={t("agents.owed")} value={formatAmount(generated - settled, locale)} />
+        <Stat label={t("agents.generated")} value={formatAmount(generatedWithVat, locale)} hint={beforeVat(generated)} />
+        <Stat label={t("agents.paidOut")} value={formatAmount(settledWithVat, locale)} hint={beforeVat(settled)} />
+        <Stat
+          label={t("agents.owed")}
+          value={formatAmount(generatedWithVat - settledWithVat, locale)}
+          hint={beforeVat(generated - settled)}
+        />
       </div>
 
       <Card>
@@ -222,6 +230,8 @@ export default async function CommissionsPage({
                   <th>{t("contracts.agent")}</th>
                   <th>{t("commissions.sale")}</th>
                   <th>{t("commissions.line")}</th>
+                  <th className="ctr">{t("vat.beforeVat")}</th>
+                  <th className="ctr">{t("vat.vat")}</th>
                   <th className="ctr">{t("agents.generated")}</th>
                   <th className="ctr">{t("agents.paidOut")}</th>
                   <th>{t("commissions.generatedOn")}</th>
@@ -234,7 +244,6 @@ export default async function CommissionsPage({
                 {rows.map((r) => {
                   const standing = standingOf(r);
                   const mine = papers.get(r.line.id);
-                  const paidCents = toCents(r.paid);
                   return (
                     <tr key={r.line.id}>
                       <td>
@@ -278,14 +287,19 @@ export default async function CommissionsPage({
                           </div>
                         ) : null}
                       </td>
+                      <td className="ctr nowrap">{formatAmount(toCents(r.line.amount), locale)}</td>
+                      <td className="ctr nowrap">
+                        {formatAmount(toCents(r.line.vatAmount), locale)}
+                        <div className="text-xs text-brand-graphite/60">{formatPercent(Number(r.line.vatRate), locale)}</div>
+                      </td>
                       <td
                         className={`ctr nowrap font-semibold ${
                           standing === "CANCELLED" ? "line-through text-brand-graphite/50" : ""
                         }`}
                       >
-                        {formatAmount(toCents(r.line.amount), locale)}
+                        {formatAmount(toCents(r.line.totalAmount), locale)}
                       </td>
-                      <td className="ctr nowrap">{formatAmount(Math.max(0, paidCents), locale)}</td>
+                      <td className="ctr nowrap">{formatAmount(Math.max(0, toCents(r.paidTotal)), locale)}</td>
                       <td className="nowrap text-xs">{dayAndTime(r.line.createdAt, locale)}</td>
                       <td className="nowrap text-xs">
                         {r.paidAt ? dayAndTime(r.paidAt, locale) : ""}

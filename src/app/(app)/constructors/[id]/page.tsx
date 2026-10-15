@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { constructorStatusTone, constructorWithJobs, projectsWithoutConstructor } from "@/lib/constructors";
-import { formatAmount, toCents } from "@/lib/money";
+import { formatAmount, formatPercent, toCents } from "@/lib/money";
+import VatFields from "@/components/VatFields";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import ProfileCard from "@/components/ProfileCard";
 import Disclosure from "@/components/Disclosure";
@@ -17,6 +18,7 @@ import {
   deleteConstructorPayment,
   removeConstructorProject,
   setConstructorPaymentStatus,
+  setConstructorPaymentVat,
   updateConstructor,
   updateConstructorProject,
   uploadConstructorPapers,
@@ -48,8 +50,18 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label={t("constructors.agreed")} value={money(sum((job) => job.agreedCents))} />
-        <Stat label={t("constructors.paid")} value={money(sum((job) => job.paidCents))} tone="good" />
-        <Stat label={t("constructors.pending")} value={money(sum((job) => job.pendingCents))} tone="warn" />
+        <Stat
+          label={t("constructors.paid")}
+          value={money(sum((job) => job.paidCents))}
+          hint={`${money(sum((job) => job.paidTotalCents))} ${t("vat.withVatShort")}`}
+          tone="good"
+        />
+        <Stat
+          label={t("constructors.pending")}
+          value={money(sum((job) => job.pendingCents))}
+          hint={`${money(sum((job) => job.pendingTotalCents))} ${t("vat.withVatShort")}`}
+          tone="warn"
+        />
         <Stat label={t("constructors.remaining")} value={money(sum((job) => job.remainingCents))} />
       </div>
 
@@ -65,6 +77,14 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
             { name: "email", label: t("common.email"), value: who.email ?? "", kind: "email" },
             { name: "phone", label: t("common.phone"), value: who.phone ?? "", kind: "tel" },
             { name: "vatNumber", label: t("constructors.vat"), value: who.vatNumber ?? "" },
+            {
+              name: "vatRate",
+              label: t("constructors.vatRate"),
+              value: String(Number(who.vatRate)),
+              display: formatPercent(Number(who.vatRate), locale),
+              kind: "number",
+              hint: t("constructors.vatRateHint"),
+            },
             { name: "registryNumber", label: t("constructors.registry"), value: who.registryNumber ?? "" },
             { name: "address", label: t("constructors.address"), value: who.address ?? "" },
             {
@@ -128,6 +148,10 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
                         {t("constructors.agreed")} {money(job.agreedCents)} . {t("constructors.paid")} {money(job.paidCents)} .{" "}
                         {t("constructors.pending")} {money(job.pendingCents)} . {t("constructors.remaining")}{" "}
                         <span className="font-semibold">{money(job.remainingCents)}</span>
+                        <span className="block">
+                          {t("vat.allBeforeVat")} {t("constructors.paid")} {money(job.paidTotalCents)} {t("vat.withVatShort")} .{" "}
+                          {t("constructors.pending")} {money(job.pendingTotalCents)} {t("vat.withVatShort")}
+                        </span>
                       </p>
                     </div>
                     <form action={updateConstructorProject.bind(null, job.job.id)} className="flex flex-wrap items-end gap-2">
@@ -162,10 +186,17 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
                           <label className="label">{t("constructors.kind")}</label>
                           <input name="kind" className="input" placeholder={t("constructors.kindHint")} />
                         </div>
-                        <div>
-                          <label className="label">{t("constructors.amount")}</label>
-                          <input name="amount" inputMode="decimal" required className="input" />
-                        </div>
+                        <VatFields
+                          idPrefix={`cpay-${job.job.id}`}
+                          locale={locale}
+                          defaultRate={Number(who.vatRate)}
+                          labels={{
+                            amount: t("vat.amountBeforeVat"),
+                            rate: t("vat.rate"),
+                            vat: t("vat.vat"),
+                            total: t("vat.withVat"),
+                          }}
+                        />
                         <div>
                           <label className="label">{t("common.notes")}</label>
                           <input name="notes" className="input" />
@@ -195,7 +226,10 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
                           <tr>
                             <th>{t("common.date")}</th>
                             <th>{t("constructors.kind")}</th>
-                            <th className="ctr">{t("constructors.amount")}</th>
+                            <th className="ctr">{t("vat.beforeVat")}</th>
+                            <th className="ctr">{t("vat.rate")}</th>
+                            <th className="ctr">{t("vat.vat")}</th>
+                            <th className="ctr">{t("vat.withVat")}</th>
                             <th>{t("common.status")}</th>
                             <th>{t("constructors.invoice")} / {t("constructors.receipt")}</th>
                             <th>{t("common.actions")}</th>
@@ -210,6 +244,22 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
                                 {pay.notes ? <div className="text-brand-graphite/60">{pay.notes}</div> : null}
                               </td>
                               <td className="ctr nowrap">{money(toCents(pay.amount))}</td>
+                              <td className="ctr">
+                                {/* The VAT on this payment, the constructor's rate unless changed here. */}
+                                <form action={setConstructorPaymentVat.bind(null, pay.id)} className="flex items-center justify-center gap-1">
+                                  <input
+                                    name="vatRate"
+                                    defaultValue={Number(pay.vatRate)}
+                                    inputMode="decimal"
+                                    aria-label={t("vat.rate")}
+                                    className="input !w-14 !px-1 !py-0.5 text-center !text-xs"
+                                    data-payment-vat
+                                  />
+                                  <SubmitButton className="btn btn-secondary !px-1.5 !py-0.5 !text-xs">{t("common.save")}</SubmitButton>
+                                </form>
+                              </td>
+                              <td className="ctr nowrap">{money(toCents(pay.vatAmount))}</td>
+                              <td className="ctr nowrap font-semibold">{money(toCents(pay.totalAmount))}</td>
                               <td>
                                 <Pill tone={constructorStatusTone(pay.status) as "good" | "warn" | "bad"}>
                                   {t(`constructors.status.${pay.status}` as MessageKey)}

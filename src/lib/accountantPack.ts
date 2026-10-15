@@ -273,7 +273,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
   const holders = await issuerOfProjects();
   for (const one of built) {
     const holder = one.project ? (holders.get(one.project.id) ?? "") : "";
-    const totalCents = toCents(one.payment.amount);
+    /* Before VAT, the constructor's VAT, and the money with it. */
+    const totalCents = toCents(one.payment.totalAmount);
     items.push({
       key: `c:${one.payment.id}`,
       group: "constructor",
@@ -282,8 +283,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
       date: new Date(one.payment.paidOn).toISOString(),
       party: one.who.company?.trim() || one.who.name,
       about: [one.project?.name, one.payment.kind].filter(Boolean).join(", "),
-      netCents: totalCents,
-      vatCents: 0,
+      netCents: toCents(one.payment.amount),
+      vatCents: toCents(one.payment.vatAmount),
       totalCents,
       state: one.payment.status === "PAID" ? "" : "pending",
       files: builtFiles.find((f) => f.paymentId === one.payment.id)?.n ?? 0,
@@ -317,7 +318,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
     : [];
   for (const one of paidAgents) {
     const holder = one.project ? (holders.get(one.project.id) ?? "") : "";
-    const totalCents = toCents(one.payment.amount);
+    /* Before VAT, the agent's VAT, and the money with it. */
+    const totalCents = toCents(one.payment.totalAmount);
     const sale = one.project ? `${one.project.name} ${one.unit?.code ?? ""}`.trim() : "";
     items.push({
       key: `a:${one.payment.id}`,
@@ -328,8 +330,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
       date: new Date(one.payment.paidOn).toISOString(),
       party: one.agent.company?.trim() ? `${one.agent.name}, ${one.agent.company.trim()}` : one.agent.name,
       about: ["Commission", sale, one.contract?.reference].filter(Boolean).join(", "),
-      netCents: totalCents,
-      vatCents: 0,
+      netCents: toCents(one.payment.amount),
+      vatCents: toCents(one.payment.vatAmount),
       totalCents,
       state: "",
       files: one.payment.commissionId ? (commissionFiles.find((f) => f.commissionId === one.payment.commissionId)?.n ?? 0) : 0,

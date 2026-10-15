@@ -2,10 +2,12 @@ import Link from "next/link";
 import type { MessageKey } from "@/i18n";
 import type { Option } from "@/lib/choices";
 import SubmitButton from "@/components/SubmitButton";
+import CategoryField from "./CategoryField";
 
 type PartnerRecord = {
   name: string;
   category: string;
+  categoryOther?: string | null;
   email: string | null;
   mobile: string | null;
   locationUrl?: string | null;
@@ -35,21 +37,18 @@ export default function PartnerForm({
           </label>
           <input id="name" name="name" required defaultValue={partner?.name ?? ""} className="input" autoComplete="off" />
         </div>
-        <div>
-          <label className="label" htmlFor="category">
-            {t("partners.categoryLabel")} *
-          </label>
-          <select id="category" name="category" required defaultValue={partner?.category ?? defaultCategory ?? ""} className="select">
-            <option value="" disabled>
-              {t("partners.pickCategory")}
-            </option>
-            {categories.map((one) => (
-              <option key={one.value} value={one.value}>
-                {one.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <CategoryField
+          categories={categories}
+          defaultCategory={partner?.category ?? defaultCategory ?? ""}
+          defaultOther={partner?.categoryOther ?? ""}
+          labels={{
+            category: t("partners.categoryLabel"),
+            pick: t("partners.pickCategory"),
+            other: t("partners.otherKind"),
+            otherHint: t("partners.otherKindHint"),
+            otherPlaceholder: t("partners.otherKindPlaceholder"),
+          }}
+        />
         <div>
           <label className="label" htmlFor="email">
             {t("partners.email")}

@@ -131,11 +131,12 @@ export async function monthlyRows(only: string[] | null): Promise<MonthlyRow[]> 
       select 'received', cr.received_on, cr.amount
       from cash_receipts cr join contracts c on c.id = cr.contract_id
       where c.status <> 'CANCELLED' and c.kind = 'SALE' and ${contractIn("c.id")}`),
+    /* Commission, and money paid to agents and constructors, with the VAT they charge on it. */
     run(sql`
-      select cm.created_at as at, cm.amount from commissions cm
+      select cm.created_at as at, cm.total_amount as amount from commissions cm
       where cm.status <> 'CANCELLED' and cm.created_at >= ${from} and cm.created_at < ${to} and ${contractIn("cm.contract_id")}`),
     run(sql`
-      select cp.paid_on as at, cp.amount from commission_payments cp
+      select cp.paid_on as at, cp.total_amount as amount from commission_payments cp
       left join commissions cm on cm.id = cp.commission_id
       where cp.paid_on >= ${from} and cp.paid_on < ${to}
         ${ids === null ? sql`` : sql`and ${contractIn("cm.contract_id")}`}`),
@@ -144,7 +145,7 @@ export async function monthlyRows(only: string[] | null): Promise<MonthlyRow[]> 
       from expense_payments ep join expenses e on e.id = ep.expense_id
       where ep.paid_on >= ${from} and ep.paid_on < ${to}`),
     run(sql`
-      select cpay.paid_on as at, cpay.amount from constructor_payments cpay
+      select cpay.paid_on as at, cpay.total_amount as amount from constructor_payments cpay
       join constructor_projects cp on cp.id = cpay.constructor_project_id
       where cpay.status = 'PAID' and cpay.paid_on >= ${from} and cpay.paid_on < ${to}
         ${ids === null ? sql`` : sql`and cp.project_id in ${ids}`}`),

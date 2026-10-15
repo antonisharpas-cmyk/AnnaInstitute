@@ -19,7 +19,8 @@ const fold = (value: string | null | undefined) =>
 
 /**
  * Every partner, in the order of the categories as the Builder has them, then
- * by name. The search looks at the name, the email, the mobile and the notes;
+ * by name. The search looks at the name, the kind typed under Others, the
+ * email, the mobile and the notes;
  * a mobile is matched on its digits, so "99 123" finds "+357 99123456".
  */
 export async function listPartners(search = ""): Promise<PartnerRow[]> {
@@ -34,7 +35,7 @@ export async function listPartners(search = ""): Promise<PartnerRow[]> {
   return rows
     .filter((row) => {
       if (words.length === 0) return true;
-      const hay = fold([row.name, row.email, row.mobile, row.notes].join(" "));
+      const hay = fold([row.name, row.categoryOther, row.email, row.mobile, row.notes].join(" "));
       if (words.every((word) => hay.includes(word))) return true;
       return digits.length >= 3 && (row.mobile ?? "").replace(/\D/g, "").includes(digits);
     })

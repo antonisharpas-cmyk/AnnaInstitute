@@ -8,7 +8,7 @@ import { constructorPayments, constructorProjects, constructors, documents } fro
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
-import { fromCents, parseAmount } from "@/lib/money";
+import { fromCents, parseAmount, vatRateFrom } from "@/lib/money";
 import { paymentOf, jobOf, CONSTRUCTOR_STATUSES, type ConstructorStatus } from "@/lib/constructors";
 import { removeDocument, storeDocument } from "@/lib/uploads";
 import { constructorPaymentLetter } from "@/lib/constructorLetter";
@@ -26,6 +26,8 @@ function read(formData: FormData) {
     phone: typed(formData, "phone"),
     address: typed(formData, "address"),
     vatNumber: typed(formData, "vatNumber"),
+    /* 0% unless the office says otherwise. */
+    vatRate: vatRateFrom(formData.get("vatRate"), 0).toFixed(3),
     registryNumber: typed(formData, "registryNumber"),
     notes: typed(formData, "notes"),
     isActive: String(formData.get("isActive") ?? "") === "on",
@@ -158,6 +160,9 @@ export async function addConstructorPayment(jobId: string, formData: FormData) {
   }
   const day = String(formData.get("paidOn") ?? "").trim();
   const kind = typed(formData, "kind");
+  /* The VAT as typed; left empty, the constructor's own rate. */
+  const [builder] = await db.select({ vatRate: constructors.vatRate }).from(constructors).where(eq(constructors.id, job.constructorId)).limit(1);
+  const vatRate = vatRateFrom(formData.get("vatRate"), Number(builder?.vatRate ?? 0));
   /* A payment from the past was paid: it goes in as Paid, with no papers asked of it. */
   const history = await recordingHistory();
   const [row] = await db
@@ -167,6 +172,7 @@ export async function addConstructorPayment(jobId: string, formData: FormData) {
       paidOn: day ? new Date(`${day}T12:00:00`) : new Date(),
       kind,
       amount: fromCents(amount),
+      vatRate: vatRate.toFixed(3),
       status: history ? "PAID" : "PENDING",
       history,
       statusChangedAt: history ? new Date() : null,
@@ -175,9 +181,28 @@ export async function addConstructorPayment(jobId: string, formData: FormData) {
     })
     .returning({ id: constructorPayments.id });
   const papers = await filePapers(row.id, formData, user, kind ?? fromCents(amount));
-  await recordAudit({ action: "constructor.payment", entity: "constructor", entityId: job.constructorId, detail: `${kind ?? ""} ${fromCents(amount)}`.trim(), userId: user.id, userEmail: user.email });
+  await recordAudit({ action: "constructor.payment", entity: "constructor", entityId: job.constructorId, detail: `${kind ?? ""} ${fromCents(amount)} before VAT, VAT ${vatRate}%`.trim(), userId: user.id, userEmail: user.email });
   await sayPapers(papers, "said.saved");
   back(job.constructorId);
+}
+
+/** The VAT on one payment, when it is not the constructor's usual rate. */
+export async function setConstructorPaymentVat(paymentId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const found = await paymentOf(paymentId);
+  if (!found) return;
+  const vatRate = vatRateFrom(formData.get("vatRate"), Number(found.payment.vatRate));
+  await db.update(constructorPayments).set({ vatRate: vatRate.toFixed(3), updatedAt: new Date() }).where(eq(constructorPayments.id, paymentId));
+  await recordAudit({
+    action: "constructor.payment.vat",
+    entity: "constructor",
+    entityId: found.job.constructorId,
+    detail: `${found.payment.kind ?? ""} VAT ${Number(found.payment.vatRate)}% to ${vatRate}%`.trim(),
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
+  back(found.job.constructorId);
 }
 
 /** Paid, Cancelled, or back to Pending. */

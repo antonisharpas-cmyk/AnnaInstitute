@@ -20,6 +20,8 @@ async function read(formData: FormData) {
   const values = {
     name: String(formData.get("name") ?? "").trim(),
     category: String(formData.get("category") ?? "").trim(),
+    /* The kind typed under Others, kept only while Others is the category. */
+    categoryOther: String(formData.get("category") ?? "").trim() === "OTHER" ? typed(formData, "categoryOther")?.slice(0, 80) ?? null : null,
     email: typed(formData, "email")?.toLowerCase() ?? null,
     mobile: typed(formData, "mobile"),
     locationUrl: link(typed(formData, "locationUrl")),
@@ -27,6 +29,7 @@ async function read(formData: FormData) {
   };
   if (!values.name) return { error: "partners.needName" as const, values };
   if (!values.category || !(await isAllowed("partnerCategory", values.category))) return { error: "partners.needCategory" as const, values };
+  if (values.category === "OTHER" && !values.categoryOther) return { error: "partners.needOtherKind" as const, values };
   return { error: null, values };
 }
 
@@ -38,7 +41,7 @@ export async function createPartner(formData: FormData) {
     redirect("/partners/new");
   }
   const [row] = await db.insert(partners).values(values).returning({ id: partners.id });
-  await recordAudit({ action: "partner.create", entity: "partner", entityId: row.id, detail: `${values.name}, ${values.category}`, userId: user.id, userEmail: user.email });
+  await recordAudit({ action: "partner.create", entity: "partner", entityId: row.id, detail: `${values.name}, ${values.category}${values.categoryOther ? ` (${values.categoryOther})` : ""}`, userId: user.id, userEmail: user.email });
   await flash("said.saved");
   revalidatePath("/partners");
   redirect("/partners");
@@ -53,7 +56,7 @@ export async function updatePartner(id: string, formData: FormData) {
     return;
   }
   await db.update(partners).set({ ...values, updatedAt: new Date() }).where(eq(partners.id, id));
-  await recordAudit({ action: "partner.update", entity: "partner", entityId: id, detail: `${values.name}, ${values.category}`, userId: user.id, userEmail: user.email });
+  await recordAudit({ action: "partner.update", entity: "partner", entityId: id, detail: `${values.name}, ${values.category}${values.categoryOther ? ` (${values.categoryOther})` : ""}`, userId: user.id, userEmail: user.email });
   await flash("said.saved");
   revalidatePath("/partners");
   redirect("/partners");

@@ -498,6 +498,20 @@
       "when": 1793740347383,
       "tag": "0071_paper_letter_subjects",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1793826747383,
+      "tag": "0072_partner_other_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1793913147383,
+      "tag": "0073_vat_on_every_payment",
+      "breakpoints": true
     }
   ]
 }

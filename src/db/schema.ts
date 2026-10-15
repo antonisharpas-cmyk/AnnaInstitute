@@ -16,6 +16,16 @@ import { createId } from "@/lib/id";
 const id = () => text("id").primaryKey().$defaultFn(createId);
 const money = (name: string) => numeric(name, { precision: 14, scale: 2 });
 const rate = (name: string) => numeric(name, { precision: 6, scale: 3 });
+/**
+ * The VAT on an amount before VAT, and the amount with it, worked out by the
+ * database from the amount and its rate, so no path that saves a payment can
+ * leave them out of step.
+ */
+const vatOn = (amount: string, rateColumn = "vat_rate") =>
+  money("vat_amount").generatedAlwaysAs(sql.raw(`round(${amount} * ${rateColumn} / 100, 2)`));
+const totalWithVat = (amount: string, rateColumn = "vat_rate") =>
+  money("total_amount").generatedAlwaysAs(sql.raw(`${amount} + round(${amount} * ${rateColumn} / 100, 2)`));
+
 const created = () => timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
 const updated = () => timestamp("updated_at", { withTimezone: true }).defaultNow().notNull();
 
@@ -175,6 +185,8 @@ export const agents = pgTable("agents", {
   address: text("address"),
   country: text("country"),
   vatNumber: text("vat_number"),
+  /** The VAT the agent charges on a commission, 19% unless the office changes it. Each commission line keeps its own. */
+  vatRate: rate("vat_rate").default("19").notNull(),
   licenceNumber: text("licence_number"),
   website: text("website"),
   /** The birthday, as the day is written: 1985-03-14. A wish goes on the day. */
@@ -898,7 +910,13 @@ export const commissions = pgTable("commissions", {
   label: text("label"),
   baseAmount: money("base_amount").notNull(),
   rate: rate("rate").notNull(),
+  /** The commission before VAT. */
   amount: money("amount").notNull(),
+  /** The VAT the agent charges on it, from the agent's rate when the line was made, and editable. */
+  vatRate: rate("vat_rate").default("19").notNull(),
+  vatAmount: vatOn("amount"),
+  /** What the agent invoices: the commission with its VAT. */
+  totalAmount: totalWithVat("amount"),
   status: commissionStatusEnum("status").default("PENDING").notNull(),
   /**
    * When the paperwork was complete, which is when the agent was settled.
@@ -925,7 +943,12 @@ export const commissionPayments = pgTable("commission_payments", {
   commissionId: text("commission_id").references(() => commissions.id, {
     onDelete: "set null",
   }),
+  /** What was paid before VAT, set against the commission before VAT. */
   amount: money("amount").notNull(),
+  vatRate: rate("vat_rate").default("19").notNull(),
+  vatAmount: vatOn("amount"),
+  /** The money that actually went to the agent, VAT included. */
+  totalAmount: totalWithVat("amount"),
   paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
   reference: text("reference"),
   notes: text("notes"),
@@ -1748,6 +1771,8 @@ export const constructors = pgTable("constructors", {
   phone: text("phone"),
   address: text("address"),
   vatNumber: text("vat_number"),
+  /** The VAT the constructor charges on a payment, 0% unless the office changes it. Each payment keeps its own. */
+  vatRate: rate("vat_rate").default("0").notNull(),
   registryNumber: text("registry_number"),
   notes: text("notes"),
   isActive: boolean("is_active").default(true).notNull(),
@@ -1767,6 +1792,8 @@ export const partners = pgTable("partners", {
   id: id(),
   name: text("name").notNull(),
   category: text("category").notNull(),
+  /** Under Others, what kind of partner they are, as the office typed it. */
+  categoryOther: text("category_other"),
   email: text("email"),
   mobile: text("mobile"),
   /** A Google Maps link to their showroom or office. */
@@ -1809,7 +1836,12 @@ export const constructorPayments = pgTable("constructor_payments", {
     .references(() => constructorProjects.id, { onDelete: "cascade" }),
   paidOn: timestamp("paid_on", { withTimezone: true }).notNull(),
   kind: text("kind"),
+  /** The payment before VAT, which is what is set against the amount agreed. */
   amount: money("amount").default("0").notNull(),
+  vatRate: rate("vat_rate").default("0").notNull(),
+  vatAmount: vatOn("amount"),
+  /** The money paid to the constructor, VAT included. */
+  totalAmount: totalWithVat("amount"),
   /** PENDING, PAID or CANCELLED. */
   status: text("status").default("PENDING").notNull(),
   notes: text("notes"),

@@ -18,9 +18,9 @@ import type { Range } from "@/lib/reports";
  *        constructor, commissions paid to agents, expenses paid
  *
  * VAT. Buyers' payments, invoices under Company and the money paid back to
- * buyers are recorded as the money itself, VAT included. A constructor payment
- * is the amount paid, as entered. An agent's commission is recorded before
- * VAT, so for an agent with a VAT number the 19% they charge on it is added.
+ * buyers are recorded as the money itself, VAT included. A payment to an
+ * agent or a constructor is recorded before VAT with its own rate, and the
+ * report takes it with that VAT on it: the money that actually went out.
  * Cash carries no VAT.
  *
  * A fee one of our companies charged the company that holds a development is,
@@ -56,9 +56,6 @@ export const LEDGER_SIGN: Record<LedgerColumn, 1 | -1> = {
   expenses: -1,
 };
 
-/** The agent's VAT, added to a commission paid to an agent with a VAT number. */
-const AGENT_VAT = 1.19;
-
 const empty = (): Ledger => Object.fromEntries(LEDGER_COLUMNS.map((one) => [one, 0])) as Ledger;
 export const netOf = (ledger: Ledger) => LEDGER_COLUMNS.reduce((sum, one) => sum + ledger[one], 0);
 
@@ -87,17 +84,15 @@ async function movements(range: Range): Promise<Movement[]> {
       from refunds r join contracts c on c.id = r.contract_id join units u on u.id = c.unit_id
       where ${between("r.paid_on")}`),
     run(sql`
-      select cp.project_id, x.paid_on as at, x.amount
+      select cp.project_id, x.paid_on as at, x.total_amount as amount
       from constructor_payments x join constructor_projects cp on cp.id = x.constructor_project_id
       where x.status = 'PAID' and ${between("x.paid_on")}`),
     run(sql`
-      select u.project_id, p.paid_on as at,
-             p.amount * (case when coalesce(trim(a.vat_number), '') <> '' then ${sql.raw(String(AGENT_VAT))} else 1 end) as amount
+      select u.project_id, p.paid_on as at, p.total_amount as amount
       from commission_payments p
       join commissions cm on cm.id = p.commission_id
       join contracts c on c.id = cm.contract_id
       join units u on u.id = c.unit_id
-      join agents a on a.id = p.agent_id
       where ${between("p.paid_on")}`),
     /* Money in and out on invoices under Company, each payment split over the invoice's lines by their share. */
     run(sql`

@@ -49,6 +49,10 @@ export default async function AgentsReportPage({
   const sold = rows.reduce((a, row) => a + row.valueCents, 0);
   const generated = rows.reduce((a, row) => a + row.generatedCents, 0);
   const paid = rows.reduce((a, row) => a + row.paidCents, 0);
+  /* With the agents' VAT on them, which is what is invoiced and what went out. */
+  const generatedTotal = rows.reduce((a, row) => a + row.generatedTotalCents, 0);
+  const paidTotal = rows.reduce((a, row) => a + row.paidTotalCents, 0);
+  const beforeVat = (cents: number) => `${money(cents)} ${t("vat.beforeVatShort")}`;
 
   return (
     <>
@@ -76,12 +80,13 @@ export default async function AgentsReportPage({
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Figure label={t("reports.signedValue")} value={money(sold)} />
-        <Figure label={t("agents.generated")} value={money(generated)} />
-        <Figure label={t("agents.paidOut")} value={money(paid)} />
+        <Figure label={t("agents.generated")} value={money(generatedTotal)} hint={beforeVat(generated)} />
+        <Figure label={t("agents.paidOut")} value={money(paidTotal)} hint={beforeVat(paid)} />
         <Figure
           label={t("agents.owed")}
-          value={money(generated - paid)}
-          tone={generated - paid > 0 ? "warn" : "good"}
+          value={money(generatedTotal - paidTotal)}
+          hint={beforeVat(generated - paid)}
+          tone={generatedTotal - paidTotal > 0 ? "warn" : "good"}
         />
       </div>
 
@@ -95,9 +100,9 @@ export default async function AgentsReportPage({
               .sort((a, b) => b.generatedCents - a.generatedCents)
               .map((row) => ({
                 label: row.agent.name,
-                value: row.generatedCents,
-                display: money(row.generatedCents),
-                note: `${money(row.owedCents)} ${t("agents.owed").toLowerCase()}`,
+                value: row.generatedTotalCents,
+                display: money(row.generatedTotalCents),
+                note: `${money(row.owedTotalCents)} ${t("agents.owed").toLowerCase()}`,
               }))}
           />
         </Card>
@@ -113,6 +118,7 @@ export default async function AgentsReportPage({
                 <tr>
                   <th>{t("common.name")}</th>
                   <th className="ctr">{t("agents.rate")}</th>
+                  <th className="ctr">{t("agents.vatRate")}</th>
                   <th className="ctr">{t("agents.sales")}</th>
                   <th className="ctr">{t("reports.signedValue")}</th>
                   <th className="ctr">{t("agents.generated")}</th>
@@ -139,11 +145,20 @@ export default async function AgentsReportPage({
                     <td className="ctr">
                       {formatPercent(Number(row.agent.commissionRate), locale)}
                     </td>
+                    <td className="ctr">{formatPercent(Number(row.agent.vatRate), locale)}</td>
                     <td className="ctr">{row.sales}</td>
                     <td className="ctr">{money(row.valueCents)}</td>
-                    <td className="ctr">{money(row.generatedCents)}</td>
-                    <td className="ctr">{money(row.paidCents)}</td>
-                    <td className="ctr font-semibold">{money(row.owedCents)}</td>
+                    {/* With VAT, and before VAT under it. */}
+                    {[
+                      [row.generatedTotalCents, row.generatedCents],
+                      [row.paidTotalCents, row.paidCents],
+                      [row.owedTotalCents, row.owedCents],
+                    ].map(([withVat, before], index) => (
+                      <td key={index} className={`ctr whitespace-nowrap${index === 2 ? " font-semibold" : ""}`}>
+                        {money(withVat)}
+                        <div className="text-xs font-normal text-brand-graphite/60">{beforeVat(before)}</div>
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -168,7 +183,9 @@ export default async function AgentsReportPage({
                     <th>{t("common.status")}</th>
                     <th>{t("reports.agentInvoice")}</th>
                     <th>{t("reports.agentReceipt")}</th>
-                    <th className="num">{t("agents.generated")}</th>
+                    <th className="num">{t("vat.beforeVat")}</th>
+                    <th className="num">{t("vat.vat")}</th>
+                    <th className="num">{t("vat.withVat")}</th>
                     <th className="num">{t("agents.paidOut")}</th>
                   </tr>
                 </thead>
@@ -222,7 +239,12 @@ export default async function AgentsReportPage({
                         <td>{paper(row.hasInvoice, row.standing !== "CANCELLED")}</td>
                         <td>{paper(row.hasReceipt, row.paid > 0)}</td>
                         <td className="num whitespace-nowrap">{money(row.cents)}</td>
-                        <td className="num whitespace-nowrap">{money(row.paid)}</td>
+                        <td className="num whitespace-nowrap">
+                          {money(row.vatCents)}
+                          <div className="text-xs text-brand-graphite/60">{formatPercent(row.vatRate, locale)}</div>
+                        </td>
+                        <td className="num whitespace-nowrap font-semibold">{money(row.totalCents)}</td>
+                        <td className="num whitespace-nowrap">{money(row.paidTotal)}</td>
                       </tr>
                     );
                   })}

@@ -57,6 +57,8 @@ export async function constructorJobs(filter: ConstructorFilter) {
            (select coalesce(sum(x.amount), 0) from constructor_payments x where x.constructor_project_id = cp.id and x.status = 'PAID'
               and x.paid_on >= ${from} and x.paid_on <= ${to}) as paid_period,
            (select coalesce(sum(x.amount), 0) from constructor_payments x where x.constructor_project_id = cp.id and x.status = 'PENDING') as pending,
+           (select coalesce(sum(x.total_amount), 0) from constructor_payments x where x.constructor_project_id = cp.id and x.status = 'PAID') as paid_total,
+           (select coalesce(sum(x.total_amount), 0) from constructor_payments x where x.constructor_project_id = cp.id and x.status = 'PENDING') as pending_total,
            (select count(*)::int from constructor_payments x where x.constructor_project_id = cp.id and x.status = 'PAID' and not x.history
               and (not exists (select 1 from documents d where d.constructor_payment_id = x.id and d.category = 'INVOICE')
                 or not exists (select 1 from documents d where d.constructor_payment_id = x.id and d.category = 'RECEIPT'))) as papers_missing
@@ -78,6 +80,9 @@ export async function constructorJobs(filter: ConstructorFilter) {
       paid,
       paidInPeriod: cents(r.paid_period),
       pending: cents(r.pending),
+      /* The same money with the constructor's VAT on it. */
+      paidTotal: cents(r.paid_total),
+      pendingTotal: cents(r.pending_total),
       remaining: Math.max(0, agreed - paid),
       papersMissing: Number(r.papers_missing ?? 0),
     };
@@ -109,7 +114,7 @@ export async function constructorPaymentLines(filter: ConstructorFilter, limit: 
   const { from, to } = filter.range;
   const where = sql`x.paid_on >= ${from} and x.paid_on <= ${to} and ${narrowed(filter, "cp")}`;
   const rows = await run(sql`
-    select x.id, x.paid_on, x.kind, x.amount, x.status, x.notes, x.history,
+    select x.id, x.paid_on, x.kind, x.amount, x.vat_rate, x.vat_amount, x.total_amount, x.status, x.notes, x.history,
            cp.constructor_id, k.name as builder, p.name as project,
            exists (select 1 from documents d where d.constructor_payment_id = x.id and d.category = 'INVOICE') as has_invoice,
            exists (select 1 from documents d where d.constructor_payment_id = x.id and d.category = 'RECEIPT') as has_receipt
@@ -131,6 +136,9 @@ export async function constructorPaymentLines(filter: ConstructorFilter, limit: 
       at: new Date(str(r.paid_on)),
       kind: str(r.kind),
       cents: cents(r.amount),
+      vatRate: Number(str(r.vat_rate) || "0"),
+      vatCents: cents(r.vat_amount),
+      totalCents: cents(r.total_amount),
       status: str(r.status),
       history: Boolean(r.history),
       constructorId: str(r.constructor_id),
