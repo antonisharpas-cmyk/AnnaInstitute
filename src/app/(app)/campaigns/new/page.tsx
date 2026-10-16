@@ -196,6 +196,8 @@ export default async function NewCampaignPage({
               agentsBothVia: t("campaigns.agentsBothVia"),
               agentsFallback: t("campaigns.agentsFallback"),
               agentsAll: t("campaigns.agentsAll"),
+              howToSendOthers: t("campaigns.howToSendOthers"),
+              agentsOnlyNote: t("campaigns.agentsOnlyNote"),
               agentsChosen: t("campaigns.agentsChosen"),
               bothWays: t("campaigns.bothWays"),
               onlyAgentsEmail: t("campaigns.onlyAgentsEmail"),

@@ -123,8 +123,16 @@ export default function CampaignForm({
     : agentWays;
   const agentsNeedEmail = toAgents && (ways.email > 0 || (ways.both > 0 && bothVia !== "WHATSAPP"));
   const agentsNeedWhatsapp = toAgents && (ways.whatsapp > 0 || (ways.both > 0 && bothVia !== "EMAIL"));
-  const showEmail = viaEmail || agentsNeedEmail;
-  const showWhatsapp = viaWhatsapp || agentsNeedWhatsapp;
+  /*
+   * A campaign to the agents alone needs no "how it goes out": each agent
+   * already said how, and the office only chooses for the agents who take
+   * either way. The ways then follow the agents.
+   */
+  const onlyAgents = toAgents && !toClients && !toSubowners && !toLeads && !toBuyers;
+  const sendEmail = onlyAgents ? agentsNeedEmail : viaEmail;
+  const sendWhatsapp = onlyAgents ? agentsNeedWhatsapp : viaWhatsapp;
+  const showEmail = sendEmail || agentsNeedEmail;
+  const showWhatsapp = sendWhatsapp || agentsNeedWhatsapp;
   const agentWords = agentTerm.toLowerCase().split(/\s+/).filter(Boolean);
   const agentsShown = agentChoices.filter((one) =>
     agentWords.every((word) => `${one.label} ${one.hint}`.toLowerCase().includes(word)),
@@ -533,32 +541,39 @@ export default function CampaignForm({
         </fieldset>
       ) : null}
 
-      <fieldset className="rounded border border-brand-line p-3">
-        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
-          {labels.howToSend}
-        </legend>
-        <div className="flex flex-wrap gap-5">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="viaEmail"
-              checked={viaEmail}
-              onChange={(e) => setViaEmail(e.target.checked)}
-            />
-            <span>{labels.email}</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="viaWhatsapp"
-              checked={viaWhatsapp}
-              onChange={(e) => setViaWhatsapp(e.target.checked)}
-            />
-            <span>{labels.whatsapp}</span>
-          </label>
-        </div>
-        <p className="mt-2 text-xs text-brand-graphite/60">{labels.bothNote}</p>
-      </fieldset>
+      {onlyAgents ? (
+        <>
+          {sendEmail ? <input type="hidden" name="viaEmail" value="on" /> : null}
+          {sendWhatsapp ? <input type="hidden" name="viaWhatsapp" value="on" /> : null}
+        </>
+      ) : (
+        <fieldset className="rounded border border-brand-line p-3" data-how-to-send>
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
+            {toAgents ? labels.howToSendOthers : labels.howToSend}
+          </legend>
+          <div className="flex flex-wrap gap-5">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="viaEmail"
+                checked={viaEmail}
+                onChange={(e) => setViaEmail(e.target.checked)}
+              />
+              <span>{labels.email}</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="viaWhatsapp"
+                checked={viaWhatsapp}
+                onChange={(e) => setViaWhatsapp(e.target.checked)}
+              />
+              <span>{labels.whatsapp}</span>
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-brand-graphite/60">{labels.bothNote}</p>
+        </fieldset>
+      )}
 
       {/*
         The agents, each the way they chose. An agent who wants both is never
@@ -590,7 +605,7 @@ export default function CampaignForm({
               </label>
             </div>
           ) : null}
-          <p className="mt-2 text-xs text-brand-graphite/60">{labels.agentsFallback}</p>
+          <p className="mt-2 text-xs text-brand-graphite/60">{onlyAgents ? labels.agentsOnlyNote : labels.agentsFallback}</p>
         </fieldset>
       ) : null}
 
@@ -599,7 +614,7 @@ export default function CampaignForm({
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
             {labels.theEmail}
           </legend>
-          {!viaEmail ? <p className="mb-2 text-xs font-semibold text-brand-teal-dark">{labels.onlyAgentsEmail}</p> : null}
+          {!onlyAgents && !viaEmail ? <p className="mb-2 text-xs font-semibold text-brand-teal-dark">{labels.onlyAgentsEmail}</p> : null}
           <div className="space-y-3">
             <div>
               <label className="label" htmlFor="subject">
@@ -641,7 +656,7 @@ export default function CampaignForm({
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
             {labels.theWhatsapp}
           </legend>
-          {!viaWhatsapp ? <p className="mb-2 text-xs font-semibold text-brand-teal-dark">{labels.onlyAgentsWhatsapp}</p> : null}
+          {!onlyAgents && !viaWhatsapp ? <p className="mb-2 text-xs font-semibold text-brand-teal-dark">{labels.onlyAgentsWhatsapp}</p> : null}
           <label className="label" htmlFor="bodyWhatsapp">
             {labels.body}
           </label>
