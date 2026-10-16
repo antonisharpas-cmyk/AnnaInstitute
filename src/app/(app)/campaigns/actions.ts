@@ -3,7 +3,7 @@
 import { sameEmail, samePhone } from "@/lib/samePerson";
 
 import { aboutFromChoices } from "@/lib/campaignAbout";
-import { agentWay } from "@/lib/agentWay";
+import { agentChannels } from "@/lib/agentWay";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
@@ -117,9 +117,14 @@ export async function createCampaign(formData: FormData) {
 
   const viaEmail = String(formData.get("viaEmail") ?? "") === "on";
   const viaWhatsapp = String(formData.get("viaWhatsapp") ?? "") === "on";
-  /* For the agents who want both, the one way this campaign reaches them. */
+  /* For the agents who take either way: email, WhatsApp, or both. */
   const bothRaw = String(formData.get("agentsBothVia") ?? "");
-  const agentsBothVia = toAgents && (bothRaw === "EMAIL" || bothRaw === "WHATSAPP") ? bothRaw : null;
+  const agentsBothVia = toAgents && (bothRaw === "EMAIL" || bothRaw === "WHATSAPP" || bothRaw === "BOTH") ? bothRaw : null;
+  /* Every active agent, or only the ones ticked. */
+  const agentIds =
+    toAgents && String(formData.get("agentMode") ?? "all") === "chosen"
+      ? formData.getAll("agentIds").map(String).filter(Boolean)
+      : [];
   if (!viaEmail && !viaWhatsapp) {
     throw new Error("Choose at least one way to send it, email or WhatsApp.");
   }
@@ -138,6 +143,7 @@ export async function createCampaign(formData: FormData) {
       viaEmail,
       viaWhatsapp,
       agentsBothVia,
+      agentIds: agentIds.length > 0 ? JSON.stringify(agentIds) : null,
       audience,
       toClients,
       toAgents,
@@ -200,6 +206,8 @@ export type CampaignGroups = {
   toAgents?: boolean;
   toSubowners?: boolean;
   toLeads?: boolean;
+  /** JSON list of the agents chosen by hand; empty is every active agent. */
+  agentIds?: string | null;
   /** JSON list of the leads chosen by hand; empty is every lead. */
   leadIds?: string | null;
   /** The buyers of what the campaign is about, every one or the ones chosen. */
@@ -271,10 +279,12 @@ export async function audienceFor(groups: CampaignGroups) {
   }
 
   if (wantsAgents) {
+    /* Every active agent, or the ones the office ticked. */
+    const chosenAgents = idsOf(groups.agentIds);
     const rows = await db
       .select()
       .from(agents)
-      .where(eq(agents.isActive, true))
+      .where(and(eq(agents.isActive, true), chosenAgents.length > 0 ? inArray(agents.id, chosenAgents) : undefined))
       .orderBy(asc(agents.name));
 
     for (const a of rows) {
@@ -510,10 +520,13 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
     /* Every letter to go, worked out first, so the page can say how many. */
     const plan: { recipient: (typeof recipients)[number]; channel: "EMAIL" | "WHATSAPP" }[] = [];
     for (const recipient of recipients) {
-      /* An agent hears once, the way they chose; everybody else on every way ticked. */
-      const way = recipient.group === "AGENTS" ? agentWay(recipient.agentChannel, campaign) : null;
-      if (campaign.viaEmail && (way === null || way === "EMAIL")) plan.push({ recipient, channel: "EMAIL" });
-      if (campaign.viaWhatsapp && (way === null || way === "WHATSAPP")) plan.push({ recipient, channel: "WHATSAPP" });
+      /* An agent hears the way they chose, both ways when the office said so; everybody else on every way ticked. */
+      if (recipient.group === "AGENTS") {
+        for (const channel of agentChannels(recipient.agentChannel, campaign)) plan.push({ recipient, channel });
+        continue;
+      }
+      if (campaign.viaEmail) plan.push({ recipient, channel: "EMAIL" });
+      if (campaign.viaWhatsapp) plan.push({ recipient, channel: "WHATSAPP" });
     }
     const todo = plan.filter((one) => !done.has(whoKey(one.channel, one.recipient)));
     startRun(campaignId, todo.length);

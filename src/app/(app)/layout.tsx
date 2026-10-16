@@ -119,6 +119,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       children: [
         { href: "/invoices/clients", label: t("nav.invoicesClients") },
         { href: "/invoices", label: t("nav.invoicesCompany"), count: bills?.total ?? 0 },
+        /* Cash paid or received outside the invoices: a record only, never sent to the accountant. */
+        { href: "/invoices/cash", label: t("nav.invoicesCash") },
         { href: "/invoices/accountant", label: t("nav.invoicesAccountant") },
       ],
     },

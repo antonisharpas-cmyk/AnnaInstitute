@@ -809,6 +809,42 @@ async function moneyLines(direction: "IN" | "OUT", only: string[] | null, range?
 }
 
 /**
+ * Cash paid and received outside the invoices, in the period, narrowed to the
+ * developments chosen like the invoices are. IN is cash received, OUT is cash paid.
+ */
+export async function cashEntryLines(range: Range, only: string[] | null) {
+  const ids = only === null ? null : only.length > 0 ? only : [""];
+  const rows = rowsOf(
+    await db.execute(sql`
+      select c.direction, c.entry_date as at, c.amount, c.project_id, c.category
+      from cash_entries c
+      where c.entry_date >= ${range.from} and c.entry_date <= ${range.to}
+        ${ids === null ? sql`` : sql`and c.project_id in ${ids}`}`),
+  );
+  return rows.map((row) => ({
+    income: row.direction === "IN",
+    when: new Date(String(row.at)),
+    projectId: row.project_id ? String(row.project_id) : null,
+    category: String(row.category ?? "OTHER"),
+    cents: toCents(String(row.amount ?? "0")),
+  }));
+}
+
+/** Cash received and paid, month by month, for the chart beside the invoices. */
+export async function cashEntriesByMonth(range: Range, only: string[] | null) {
+  const rows = await cashEntryLines(range, only);
+  const months = monthsIn(range);
+  const inMap = new Map(months.map((m) => [m, 0]));
+  const outMap = new Map(months.map((m) => [m, 0]));
+  for (const row of rows) {
+    const key = monthKey(row.when);
+    const target = row.income ? inMap : outMap;
+    if (target.has(key)) target.set(key, (target.get(key) ?? 0) + row.cents);
+  }
+  return months.map((month) => ({ month, inCents: inMap.get(month) ?? 0, outCents: outMap.get(month) ?? 0 }));
+}
+
+/**
  * Every invoice of the period under Company, one line each, newest first: what
  * we charged (income) and what we were billed (expenses), a page at a time.
  *
@@ -830,18 +866,33 @@ export async function incomeExpenseLines(range: Range, only: string[] | null, li
       : sql`(select coalesce(sum(l.vat_amount), 0) from expense_lines l where l.expense_id = e.id and l.project_id in ${ids})`;
   const where = sql`${when} >= ${range.from} and ${when} <= ${range.to}
     ${ids === null ? sql`` : sql`and exists (select 1 from expense_lines l where l.expense_id = e.id and l.project_id in ${ids})`}`;
+  /* Cash paid and received outside the invoices, in the same list: no number, no VAT, paid in full. */
+  const cashWhere = sql`c.entry_date >= ${range.from} and c.entry_date <= ${range.to}
+    ${ids === null ? sql`` : sql`and c.project_id in ${ids}`}`;
+  const both = sql`
+    select 'invoice' as kind, e.id, (e.direction = 'OUT') as income, e.supplier as who, e.status, e.category::text as category, e.category_other,
+           ${when} as at, e.created_at, e.total_amount, e.paid_amount, ${share} as in_scope, ${vatShare} as vat_in_scope, e.vat_rate,
+           (select d.number from issued_documents d where d.id = e.issued_document_id) as our_number, e.reference,
+           (select string_agg(distinct p.name, ', ') from expense_lines l join projects p on p.id = l.project_id where l.expense_id = e.id) as developments
+    from expenses e
+    where ${where}
+    union all
+    select 'cash' as kind, c.id, (c.direction = 'IN') as income, c.party as who, 'PAID' as status, c.category, c.category_other,
+           c.entry_date as at, c.created_at, c.amount as total_amount, c.amount as paid_amount, c.amount as in_scope, 0::numeric as vat_in_scope, null::numeric as vat_rate,
+           null as our_number, null as reference,
+           (select p.name from projects p where p.id = c.project_id) as developments
+    from cash_entries c
+    where ${cashWhere}`;
   const rows = rowsOf(
     await db.execute(sql`
-      select e.id, e.direction, e.supplier, e.reference, e.status, e.category, e.category_other,
-             ${when} as at, e.total_amount, e.paid_amount, ${share} as in_scope, ${vatShare} as vat_in_scope, e.vat_rate,
-             (select d.number from issued_documents d where d.id = e.issued_document_id) as our_number,
-             (select string_agg(distinct p.name, ', ') from expense_lines l join projects p on p.id = l.project_id where l.expense_id = e.id) as developments
-      from expenses e
-      where ${where}
-      order by ${when} desc, e.created_at desc
+      select * from (${both}) as everything
+      order by at desc, created_at desc
       limit ${limit} offset ${offset}`),
   );
-  const [counted] = rowsOf(await db.execute(sql`select count(*)::int as n from expenses e where ${where}`));
+  const [counted] = rowsOf(
+    await db.execute(sql`select
+      (select count(*) from expenses e where ${where}) + (select count(*) from cash_entries c where ${cashWhere}) as n`),
+  );
   return {
     total: Number(counted?.n ?? 0),
     rows: rows.map((r) => {
@@ -852,9 +903,11 @@ export async function incomeExpenseLines(range: Range, only: string[] | null, li
       const paidInScope = totalCents > 0 ? Math.round((paidCents * inScopeCents) / totalCents) : 0;
       return {
         id: String(r.id),
-        income: r.direction === "OUT",
+        /* An invoice under Company, or cash recorded outside the invoices. */
+        cash: r.kind === "cash",
+        income: r.income === true || r.income === "t",
         at: new Date(String(r.at)),
-        who: String(r.supplier ?? ""),
+        who: String(r.who ?? ""),
         number: String(r.our_number ?? r.reference ?? ""),
         category: String(r.category ?? "OTHER"),
         categoryOther: r.category_other ? String(r.category_other) : "",
@@ -907,20 +960,31 @@ export async function costsByCategory(range: Range, only: string[] | null = null
 
 /** By development: what was charged, what was billed to us, and the difference. */
 export async function incomeAndCostsByProject(range: Range, only: string[] | null = null) {
-  const [income, costs, names] = await Promise.all([
+  const [income, costs, cash, names] = await Promise.all([
     moneyLines("OUT", only, range),
     moneyLines("IN", only, range),
+    cashEntryLines(range, only),
     db.select({ id: projects.id, name: projects.name }).from(projects),
   ]);
-  const by = new Map<string, { projectId: string; name: string; incomeCents: number; costCents: number }>();
-  const add = (projectId: string | null, field: "incomeCents" | "costCents", cents: number) => {
+  type Row = { projectId: string; name: string; incomeCents: number; costCents: number; cashInCents: number; cashOutCents: number };
+  const by = new Map<string, Row>();
+  const add = (projectId: string | null, field: "incomeCents" | "costCents" | "cashInCents" | "cashOutCents", cents: number) => {
     const key = projectId ?? "";
-    const one = by.get(key) ?? { projectId: key, name: names.find((p) => p.id === projectId)?.name ?? "", incomeCents: 0, costCents: 0 };
+    const one = by.get(key) ?? {
+      projectId: key,
+      name: names.find((p) => p.id === projectId)?.name ?? "",
+      incomeCents: 0,
+      costCents: 0,
+      cashInCents: 0,
+      cashOutCents: 0,
+    };
     one[field] += cents;
     by.set(key, one);
   };
   for (const row of income) add(row.projectId, "incomeCents", row.totalCents);
   for (const row of costs) add(row.projectId, "costCents", row.totalCents);
+  /* Cash beside the invoices, in its own columns. */
+  for (const row of cash) add(row.projectId, row.income ? "cashInCents" : "cashOutCents", row.cents);
   return [...by.values()].sort((a, b) => (a.projectId === "" ? 1 : b.projectId === "" ? -1 : a.name.localeCompare(b.name)));
 }
 

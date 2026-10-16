@@ -6,6 +6,7 @@ import CategoryField from "./CategoryField";
 
 type PartnerRecord = {
   name: string;
+  company?: string | null;
   category: string;
   categoryOther?: string | null;
   email: string | null;
@@ -36,6 +37,12 @@ export default function PartnerForm({
             {t("partners.name")} *
           </label>
           <input id="name" name="name" required defaultValue={partner?.name ?? ""} className="input" autoComplete="off" />
+        </div>
+        <div>
+          <label className="label" htmlFor="company">
+            {t("partners.company")}
+          </label>
+          <input id="company" name="company" defaultValue={partner?.company ?? ""} className="input" autoComplete="off" />
         </div>
         <CategoryField
           categories={categories}

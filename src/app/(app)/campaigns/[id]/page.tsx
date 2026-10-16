@@ -3,7 +3,7 @@ import { runOf } from "@/lib/campaignProgress";
 import { emailFilesWithin } from "@/lib/campaignFiles";
 import AboutPicker from "@/components/AboutPicker";
 import { aboutOf } from "@/lib/campaignAbout";
-import { agentWay } from "@/lib/agentWay";
+import { agentChannels } from "@/lib/agentWay";
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -70,10 +70,13 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const seenEmail = new Set<string>();
   const seenPhone = new Set<string>();
   for (const recipient of recipients) {
-    /* An agent is sent one way only, the way they chose. */
-    const way = recipient.group === "AGENTS" ? agentWay(recipient.agentChannel, campaign) : null;
-    const emailAddress = campaign.viaEmail && (way === null || way === "EMAIL") ? addressFor("EMAIL", recipient) : null;
-    const phoneAddress = campaign.viaWhatsapp && (way === null || way === "WHATSAPP") ? addressFor("WHATSAPP", recipient) : null;
+    /* An agent is sent the way they chose, or both ways when the campaign says so. */
+    const ways = recipient.group === "AGENTS" ? agentChannels(recipient.agentChannel, campaign) : null;
+    const way = ways ? (ways.length > 1 ? "BOTH" : ways[0] ?? null) : null;
+    const byEmail = ways ? ways.includes("EMAIL") : campaign.viaEmail;
+    const byWhatsapp = ways ? ways.includes("WHATSAPP") : campaign.viaWhatsapp;
+    const emailAddress = byEmail ? addressFor("EMAIL", recipient) : null;
+    const phoneAddress = byWhatsapp ? addressFor("WHATSAPP", recipient) : null;
     const emailKey = sameEmail(emailAddress);
     const phoneKey = samePhone(phoneAddress);
     const emailTwin = Boolean(emailKey && seenEmail.has(emailKey));
@@ -83,6 +86,8 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     checked.push({
       ...recipient,
       way,
+      byEmail,
+      byWhatsapp,
       emailAddress: emailTwin ? null : emailAddress,
       phoneAddress: phoneTwin ? null : phoneAddress,
       emailTwin,
@@ -92,13 +97,16 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     });
   }
 
+  /* Email or WhatsApp is in play when the campaign was ticked for it, or when an agent takes it that way. */
+  const usesEmail = campaign.viaEmail || checked.some((r) => r.byEmail);
+  const usesWhatsapp = campaign.viaWhatsapp || checked.some((r) => r.byWhatsapp);
   const willGetEmail = checked.filter((r) => r.emailAddress && !r.emailSuppressed);
   const willGetWhatsapp = checked.filter((r) => r.phoneAddress && !r.phoneSuppressed);
   const sendable = [...new Set([...willGetEmail, ...willGetWhatsapp])];
 
   const channelReady =
-    (!campaign.viaEmail || emailConfigured()) &&
-    (!campaign.viaWhatsapp || channelConfigured("WHATSAPP"));
+    (!usesEmail || emailConfigured()) &&
+    (!usesWhatsapp || channelConfigured("WHATSAPP"));
   const alreadySent = campaign.status !== "DRAFT";
   /* Sending now in this CRM, and how far; and what an email of it carries. */
   const running = runOf(id);
@@ -145,7 +153,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       />
       <PageHeader
         title={campaign.title}
-        subtitle={`${[campaign.viaEmail ? "email" : null, campaign.viaWhatsapp ? "whatsapp" : null]
+        subtitle={`${[usesEmail ? "email" : null, usesWhatsapp ? "whatsapp" : null]
           .filter(Boolean)
           .join(" and ")} . ${[
           groupsOf(campaign).clients ? t("campaigns.groupClients").toLowerCase() : null,
@@ -248,7 +256,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
               <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("common.save")}</SubmitButton>
             </form>
             <div className="flex flex-col gap-2 md:border-l md:border-brand-line md:pl-4">
-              {campaign.viaEmail ? (
+              {usesEmail ? (
                 <form action={sendCampaignTest.bind(null, id)}>
                   <SubmitButton className="btn btn-primary w-full">{t("campaigns.test.email")}</SubmitButton>
                   <p className="mt-1 text-xs text-brand-graphite/60">
@@ -289,7 +297,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card title="The message as one recipient will see it">
-            {campaign.viaEmail ? (
+            {usesEmail ? (
               <div className="mb-4">
                 <p className="label">{t("campaigns.theEmail")}</p>
                 {campaign.subject ? (
@@ -300,7 +308,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 </pre>
               </div>
             ) : null}
-            {campaign.viaWhatsapp && previewWhatsapp ? (
+            {usesWhatsapp && previewWhatsapp ? (
               <div className="mb-2 border-t border-brand-line pt-3">
                 <p className="label">{t("campaigns.theWhatsapp")}</p>
                 <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
@@ -368,10 +376,12 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                       </div>
                     </td>
                     <td className="break-all text-xs">
-                      {!campaign.viaEmail ? (
-                        <span className="text-brand-graphite/40">not on this campaign</span>
-                      ) : r.way === "WHATSAPP" ? (
-                        <span className="text-brand-graphite/40" data-not-their-way>{t("campaigns.theirWayWhatsapp")}</span>
+                      {!r.byEmail ? (
+                        r.way === "WHATSAPP" ? (
+                          <span className="text-brand-graphite/40" data-not-their-way>{t("campaigns.theirWayWhatsapp")}</span>
+                        ) : (
+                          <span className="text-brand-graphite/40">not on this campaign</span>
+                        )
                       ) : r.emailTwin ? (
                         <span className="text-brand-graphite/50" data-same-person>{t("campaigns.samePerson")}</span>
                       ) : r.emailSuppressed ? (
@@ -383,10 +393,12 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                       )}
                     </td>
                     <td className="break-all text-xs">
-                      {!campaign.viaWhatsapp ? (
-                        <span className="text-brand-graphite/40">not on this campaign</span>
-                      ) : r.way === "EMAIL" ? (
-                        <span className="text-brand-graphite/40" data-not-their-way>{t("campaigns.theirWayEmail")}</span>
+                      {!r.byWhatsapp ? (
+                        r.way === "EMAIL" ? (
+                          <span className="text-brand-graphite/40" data-not-their-way>{t("campaigns.theirWayEmail")}</span>
+                        ) : (
+                          <span className="text-brand-graphite/40">not on this campaign</span>
+                        )
                       ) : r.phoneTwin ? (
                         <span className="text-brand-graphite/50" data-same-person>{t("campaigns.samePerson")}</span>
                       ) : r.phoneSuppressed ? (

@@ -91,6 +91,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
               <thead>
                 <tr>
                   <th>{t("partners.name")}</th>
+                  <th>{t("partners.company")}</th>
                   <th>{t("partners.categoryLabel")}</th>
                   <th>{t("partners.email")}</th>
                   <th>{t("partners.mobile")}</th>
@@ -105,6 +106,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
                         {row.name}
                       </Link>
                     </td>
+                    <td>{row.company ?? ""}</td>
                     <td className="nowrap">
                       <Pill tone="teal">
                         {row.category === "OTHER" && row.categoryOther ? `${word(row.category)}: ${row.categoryOther}` : word(row.category)}

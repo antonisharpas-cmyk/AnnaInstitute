@@ -512,6 +512,20 @@
       "when": 1793913147383,
       "tag": "0073_vat_on_every_payment",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1793999547383,
+      "tag": "0074_partner_company_campaign_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1794085947383,
+      "tag": "0075_cash_entries",
+      "breakpoints": true
     }
   ]
 }

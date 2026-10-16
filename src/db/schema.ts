@@ -1086,8 +1086,10 @@ export const campaigns = pgTable("campaigns", {
   channel: messageChannelEnum("channel").notNull(),
   viaEmail: boolean("via_email").default(true).notNull(),
   viaWhatsapp: boolean("via_whatsapp").default(false).notNull(),
-  /** For the agents who want campaigns both ways, the one way this campaign reaches them. */
+  /** For the agents who take campaigns either way: EMAIL, WHATSAPP, or BOTH to send them both. */
   agentsBothVia: text("agents_both_via"),
+  /** The agents chosen by hand, as a JSON list of ids. Empty means every active agent. */
+  agentIds: text("agent_ids"),
   /** Kept for older campaigns; the three flags below are what the send reads. */
   audience: campaignAudienceEnum("audience").notNull(),
   toClients: boolean("to_clients").default(false).notNull(),
@@ -1605,6 +1607,37 @@ export const expensePayments = pgTable("expense_payments", {
   createdAt: created(),
 });
 
+/**
+ * Money that changed hands in cash, outside the invoices.
+ *
+ * A record only: who, what for, which development and which of our companies,
+ * how much and when. No invoice, no receipt, no VAT, and it never goes to the
+ * accountant. IN is cash we received, OUT is cash we paid. The cash a buyer
+ * pays beside their contract is not here: it is kept on the contract.
+ */
+export const cashEntries = pgTable("cash_entries", {
+  id: id(),
+  /** IN, cash received; OUT, cash paid. */
+  direction: text("direction").notNull(),
+  entryDate: timestamp("entry_date", { withTimezone: true }).notNull(),
+  amount: money("amount").notNull(),
+  /** Who paid us, or who we paid, as the office writes it. */
+  party: text("party").notNull(),
+  /** What it was for: a category from the Builder's list, as on the invoices. */
+  category: text("category").default("OTHER").notNull(),
+  categoryChoice: text("category_choice"),
+  categoryOther: text("category_other"),
+  /** The development it belongs to, when it belongs to one. */
+  projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+  /** Which of our companies: empty is One Eleven itself. */
+  ourCompanyId: text("our_company_id").default("").notNull(),
+  description: text("description"),
+  notes: text("notes"),
+  recordedByEmail: text("recorded_by_email"),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
 /* ---------------------------------------------------------------------------
    APPOINTMENTS
 
@@ -1790,7 +1823,10 @@ export const constructors = pgTable("constructors", {
  */
 export const partners = pgTable("partners", {
   id: id(),
+  /** The person the office speaks to. */
   name: text("name").notNull(),
+  /** Their company, which is what the category describes. */
+  company: text("company"),
   category: text("category").notNull(),
   /** Under Others, what kind of partner they are, as the office typed it. */
   categoryOther: text("category_other"),

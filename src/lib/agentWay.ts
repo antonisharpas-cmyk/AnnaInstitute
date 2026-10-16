@@ -1,25 +1,45 @@
 /**
- * The one way a campaign reaches an agent.
+ * How a campaign reaches an agent.
  *
- * Their own choice, and for an agent who wants both, the way the campaign says.
- * A way the campaign was not written for falls back to the one it was, so an
- * agent who prefers WhatsApp still hears about an email only campaign.
+ * Every agent hears the way they chose: an agent who wants email gets the
+ * email, one who wants WhatsApp gets the WhatsApp message, whatever the
+ * campaign was ticked for the other groups. An agent who takes either way gets
+ * the way the campaign says for them: email unless the office chose otherwise,
+ * or both, when the office wants them to have it both ways.
+ *
+ * A way the campaign has no message for falls back to the one it has, so an
+ * agent who prefers WhatsApp still hears about a campaign written only as an
+ * email.
  */
-export function agentWay(
-  preference: string | undefined,
-  campaign: { viaEmail: boolean; viaWhatsapp: boolean; agentsBothVia: string | null },
-): "EMAIL" | "WHATSAPP" {
-  const wanted =
-    preference === "BOTH"
-      ? campaign.agentsBothVia === "WHATSAPP" || campaign.agentsBothVia === "EMAIL"
-        ? campaign.agentsBothVia
-        : campaign.viaEmail
-          ? "EMAIL"
-          : "WHATSAPP"
-      : preference === "WHATSAPP"
-        ? "WHATSAPP"
-        : "EMAIL";
-  if (wanted === "EMAIL" && !campaign.viaEmail) return "WHATSAPP";
-  if (wanted === "WHATSAPP" && !campaign.viaWhatsapp) return "EMAIL";
-  return wanted;
+export type AgentCampaign = {
+  viaEmail: boolean;
+  viaWhatsapp: boolean;
+  agentsBothVia: string | null;
+  /** An email was written: the campaign goes by email, or it has a subject for the agents who want email. */
+  subject?: string | null;
+  /** A WhatsApp message was written, for everyone or only for the agents who want WhatsApp. */
+  bodyWhatsapp?: string | null;
+};
+
+export function agentChannels(preference: string | undefined, campaign: AgentCampaign): ("EMAIL" | "WHATSAPP")[] {
+  const emailReady = campaign.viaEmail || Boolean(campaign.subject?.trim());
+  const whatsappReady = campaign.viaWhatsapp || Boolean(campaign.bodyWhatsapp?.trim());
+  const wanted: ("EMAIL" | "WHATSAPP")[] =
+    preference === "WHATSAPP"
+      ? ["WHATSAPP"]
+      : preference === "BOTH"
+        ? campaign.agentsBothVia === "BOTH"
+          ? ["EMAIL", "WHATSAPP"]
+          : campaign.agentsBothVia === "WHATSAPP"
+            ? ["WHATSAPP"]
+            : ["EMAIL"]
+        : ["EMAIL"];
+  const ready = wanted.filter((way) => (way === "EMAIL" ? emailReady : whatsappReady));
+  if (ready.length > 0) return ready;
+  return emailReady ? ["EMAIL"] : whatsappReady ? ["WHATSAPP"] : [];
+}
+
+/** The one way, for what still reads one: the first of the agent's ways. */
+export function agentWay(preference: string | undefined, campaign: AgentCampaign): "EMAIL" | "WHATSAPP" {
+  return agentChannels(preference, campaign)[0] ?? "EMAIL";
 }

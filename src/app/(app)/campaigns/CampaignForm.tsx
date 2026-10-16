@@ -48,8 +48,11 @@ export default function CampaignForm({
   projectsDefault = [],
   leadsDefault = [],
   buyerChoices = [],
+  agentChoices = [],
   labels,
 }: {
+  /** Every active agent, to tick one by one, with the way each wants campaigns: EMAIL, WHATSAPP or BOTH. */
+  agentChoices?: { id: string; label: string; hint: string; channel: string }[];
   /** Every buyer, to tick one by one; the list follows what the campaign is about. */
   buyerChoices?: BuyerChoice[];
   /** Leads already chosen, when the campaign was started from one. */
@@ -94,14 +97,44 @@ export default function CampaignForm({
 
   const [viaEmail, setViaEmail] = useState(true);
   const [viaWhatsapp, setViaWhatsapp] = useState(Boolean(picked?.bodyWhatsapp));
-  const [bothVia, setBothVia] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
+  const [bothVia, setBothVia] = useState<"EMAIL" | "WHATSAPP" | "BOTH">("EMAIL");
+  const [agentMode, setAgentMode] = useState<"all" | "chosen">("all");
+  const [chosenAgents, setChosenAgents] = useState<string[]>([]);
+  const [agentTerm, setAgentTerm] = useState("");
   const [aboutValues, setAboutValues] = useState<string[]>(aboutDefault);
+
+  /*
+   * The agents this campaign goes to, every one or the ones ticked, and how
+   * each wants it. An agent always hears the way they chose, so a way nobody
+   * else gets this time still needs its message, for them.
+   */
+  const agentsInPlay =
+    agentChoices.length > 0
+      ? agentMode === "chosen" && chosenAgents.length > 0
+        ? agentChoices.filter((one) => chosenAgents.includes(one.id))
+        : agentChoices
+      : null;
+  const ways = agentsInPlay
+    ? {
+        email: agentsInPlay.filter((one) => one.channel !== "WHATSAPP" && one.channel !== "BOTH").length,
+        whatsapp: agentsInPlay.filter((one) => one.channel === "WHATSAPP").length,
+        both: agentsInPlay.filter((one) => one.channel === "BOTH").length,
+      }
+    : agentWays;
+  const agentsNeedEmail = toAgents && (ways.email > 0 || (ways.both > 0 && bothVia !== "WHATSAPP"));
+  const agentsNeedWhatsapp = toAgents && (ways.whatsapp > 0 || (ways.both > 0 && bothVia !== "EMAIL"));
+  const showEmail = viaEmail || agentsNeedEmail;
+  const showWhatsapp = viaWhatsapp || agentsNeedWhatsapp;
+  const agentWords = agentTerm.toLowerCase().split(/\s+/).filter(Boolean);
+  const agentsShown = agentChoices.filter((one) =>
+    agentWords.every((word) => `${one.label} ${one.hint}`.toLowerCase().includes(word)),
+  );
 
   /*
    * The placeholders that need the development or the apartment. Said on the
    * form, before saving, rather than found in a client's inbox.
    */
-  const words = `${viaEmail ? `${subject} ${body}` : ""} ${viaWhatsapp ? whatsapp : ""}`;
+  const words = `${showEmail ? `${subject} ${body}` : ""} ${showWhatsapp ? whatsapp : ""}`;
   const needsProject = /\{\{\s*(project|location|details|completion|residences)\s*\}\}/i.test(words);
   const needsUnit = /\{\{\s*(unit|price)\s*\}\}/i.test(words);
   /* A letter to the buyers takes each buyer's own apartment and development. */
@@ -153,7 +186,7 @@ export default function CampaignForm({
   const reach =
     (toBuyers ? buyersReach : 0) +
     (toClients ? counts.clients : 0) +
-    (toAgents ? counts.agents : 0) +
+    (toAgents ? (agentsInPlay ? agentsInPlay.length : counts.agents) : 0) +
     (toSubowners ? counts.subowners : 0) +
     (toLeads ? (leadMode === "chosen" && chosenLeads.length > 0 ? chosenLeads.length : (counts.leads ?? 0)) : 0);
 
@@ -344,6 +377,64 @@ export default function CampaignForm({
           </div>
         ) : null}
 
+        {/* Every active agent, or only the ones ticked here. */}
+        {toAgents && agentChoices.length > 0 ? (
+          <div className="mt-3 rounded border border-brand-line bg-brand-surface p-3" data-agent-picker>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="radio" name="agentMode" value="all" checked={agentMode === "all"} onChange={() => setAgentMode("all")} />
+                {labels.agentsAll} ({agentChoices.length})
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="agentMode"
+                  value="chosen"
+                  checked={agentMode === "chosen"}
+                  onChange={() => setAgentMode("chosen")}
+                />
+                {labels.agentsChosen}
+                {agentMode === "chosen" ? (
+                  <span className="text-xs text-brand-graphite/60">
+                    ({chosenAgents.length} {labels.leadsPicked})
+                  </span>
+                ) : null}
+              </label>
+            </div>
+            {agentMode === "chosen" ? (
+              <>
+                <input
+                  value={agentTerm}
+                  onChange={(event) => setAgentTerm(event.target.value)}
+                  placeholder={labels.leadsSearch}
+                  className="input mt-2"
+                  data-agent-search
+                />
+                <ul className="mt-2 max-h-56 overflow-y-auto rounded border border-brand-line bg-white text-sm">
+                  {agentsShown.map((one) => (
+                    <li key={one.id} className="border-b border-brand-line last:border-0">
+                      <label className="flex cursor-pointer items-center gap-2 px-2 py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={chosenAgents.includes(one.id)}
+                          onChange={(event) => setChosenAgents(toggle(chosenAgents, one.id, event.target.checked))}
+                          data-agent={one.label}
+                        />
+                        <span className="font-medium">{one.label}</span>
+                        <span className="text-xs text-brand-graphite/60">{one.hint}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                {/* Ticked ones stay chosen while the search hides them. */}
+                {chosenAgents.map((id) => (
+                  <input key={id} type="hidden" name="agentIds" value={id} />
+                ))}
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
         {/* Every enquiry, or only the ones ticked here. */}
         {toLeads ? (
           <div className="mt-3 rounded border border-brand-line bg-brand-surface p-3" data-lead-picker>
@@ -479,10 +570,10 @@ export default function CampaignForm({
             {labels.agentsWays}
           </legend>
           <p className="text-sm">
-            {labels.agentsByEmail} <strong>{agentWays.email}</strong> . {labels.agentsByWhatsapp}{" "}
-            <strong>{agentWays.whatsapp}</strong> . {labels.agentsBoth} <strong>{agentWays.both}</strong>
+            {labels.agentsByEmail} <strong>{ways.email}</strong> . {labels.agentsByWhatsapp}{" "}
+            <strong>{ways.whatsapp}</strong> . {labels.agentsBoth} <strong>{ways.both}</strong>
           </p>
-          {agentWays.both > 0 ? (
+          {ways.both > 0 ? (
             <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
               <span>{labels.agentsBothVia}</span>
               <label className="flex items-center gap-2">
@@ -493,17 +584,22 @@ export default function CampaignForm({
                 <input type="radio" name="agentsBothVia" value="WHATSAPP" checked={bothVia === "WHATSAPP"} onChange={() => setBothVia("WHATSAPP")} />
                 {labels.whatsapp}
               </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="agentsBothVia" value="BOTH" checked={bothVia === "BOTH"} onChange={() => setBothVia("BOTH")} />
+                {labels.bothWays}
+              </label>
             </div>
           ) : null}
           <p className="mt-2 text-xs text-brand-graphite/60">{labels.agentsFallback}</p>
         </fieldset>
       ) : null}
 
-      {viaEmail ? (
-        <fieldset className="rounded border border-brand-line p-3">
+      {showEmail ? (
+        <fieldset className="rounded border border-brand-line p-3" data-email-box>
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
             {labels.theEmail}
           </legend>
+          {!viaEmail ? <p className="mb-2 text-xs font-semibold text-brand-teal-dark">{labels.onlyAgentsEmail}</p> : null}
           <div className="space-y-3">
             <div>
               <label className="label" htmlFor="subject">
@@ -512,7 +608,7 @@ export default function CampaignForm({
               <input
                 id="subject"
                 name="subject"
-                required={viaEmail}
+                required={showEmail}
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}
                 placeholder={labels.subjectPlaceholder}
@@ -527,7 +623,7 @@ export default function CampaignForm({
                 id="body"
                 name="body"
                 rows={10}
-                required={viaEmail}
+                required={showEmail}
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
                 placeholder={labels.bodyPlaceholder}
@@ -540,11 +636,12 @@ export default function CampaignForm({
         <input type="hidden" name="body" value="" />
       )}
 
-      {viaWhatsapp ? (
-        <fieldset className="rounded border border-brand-line p-3">
+      {showWhatsapp ? (
+        <fieldset className="rounded border border-brand-line p-3" data-whatsapp-box>
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
             {labels.theWhatsapp}
           </legend>
+          {!viaWhatsapp ? <p className="mb-2 text-xs font-semibold text-brand-teal-dark">{labels.onlyAgentsWhatsapp}</p> : null}
           <label className="label" htmlFor="bodyWhatsapp">
             {labels.body}
           </label>
@@ -552,7 +649,7 @@ export default function CampaignForm({
             id="bodyWhatsapp"
             name="bodyWhatsapp"
             rows={5}
-            required={viaWhatsapp}
+            required={showWhatsapp}
             value={whatsapp}
             onChange={(event) => setWhatsapp(event.target.value)}
             placeholder={labels.whatsappPlaceholder}

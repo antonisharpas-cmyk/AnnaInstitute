@@ -418,6 +418,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the VAT on commissions and on payments to agents and constructors",
     migration: "0073",
   },
+  {
+    probe: "select company from partners limit 1",
+    what: "a partner's company and the agents chosen for a campaign",
+    migration: "0074",
+  },
+  {
+    probe: "select party from cash_entries limit 1",
+    what: "the cash paid and received outside the invoices",
+    migration: "0075",
+  },
 ];
 
 let answer: Missing[] | null = null;

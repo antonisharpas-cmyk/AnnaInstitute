@@ -19,6 +19,7 @@ const link = (value: string | null) => (value ? (/^https?:\/\//i.test(value) ? v
 async function read(formData: FormData) {
   const values = {
     name: String(formData.get("name") ?? "").trim(),
+    company: typed(formData, "company"),
     category: String(formData.get("category") ?? "").trim(),
     /* The kind typed under Others, kept only while Others is the category. */
     categoryOther: String(formData.get("category") ?? "").trim() === "OTHER" ? typed(formData, "categoryOther")?.slice(0, 80) ?? null : null,

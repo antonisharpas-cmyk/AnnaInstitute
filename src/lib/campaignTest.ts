@@ -127,9 +127,10 @@ async function aboutExtras(campaign: Campaign, month: string): Promise<Record<st
 export async function unfilledIn(campaign: Campaign): Promise<string[]> {
   const values = await testValues(campaign);
   return placeholdersLeft(
-    campaign.viaEmail ? fillPlaceholders(campaign.subject ?? "", values) : "",
-    campaign.viaEmail ? fillPlaceholders(campaign.body, values) : "",
-    campaign.viaWhatsapp ? fillPlaceholders(campaign.bodyWhatsapp ?? campaign.body, values) : "",
+    /* An email or a WhatsApp written only for the agents who take it that way is checked too. */
+    campaign.viaEmail || campaign.subject ? fillPlaceholders(campaign.subject ?? "", values) : "",
+    campaign.viaEmail || campaign.subject ? fillPlaceholders(campaign.body, values) : "",
+    campaign.viaWhatsapp || campaign.bodyWhatsapp ? fillPlaceholders(campaign.bodyWhatsapp ?? campaign.body, values) : "",
   );
 }
 
@@ -165,7 +166,7 @@ export async function testValues(campaign: Campaign) {
  * yourself shows exactly what a client would see, links and all.
  */
 export async function whatsappTest(campaign: Campaign): Promise<{ text: string; link: string; phone: string } | null> {
-  if (!campaign.viaWhatsapp) return null;
+  if (!campaign.viaWhatsapp && !campaign.bodyWhatsapp) return null;
   const values = await testValues(campaign);
   const hasFiles = (await campaignAttachments(campaign.id)).length > 0;
 

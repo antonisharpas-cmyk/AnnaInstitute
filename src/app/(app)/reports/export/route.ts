@@ -1,9 +1,12 @@
 import { getSessionUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { saleLines } from "@/lib/apartmentSales";
+import { many } from "@/lib/filters";
+import { vatReport } from "@/lib/vatReport";
 import {
   ageing,
   cashByMonth,
+  cashEntryLines,
   commissionsAreOurs,
   costsByCategory,
   leadsBySource,
@@ -93,6 +96,27 @@ export async function GET(request: Request) {
       break;
     }
 
+    case "vat": {
+      /* One Eleven's own books travel as "oneEleven", every other company by its id. */
+      const companies = many(url.searchParams.get("companies") ?? undefined).map((one) => (one === "oneEleven" ? "" : one));
+      const vat = await vatReport(range, companies);
+      rows = [
+        [
+          "Month", "VAT on invoices to buyers", "VAT on our company invoices", "VAT on credit notes", "VAT charged",
+          "VAT on bills received", "VAT to constructors", "VAT to agents", "VAT paid", "Balance (to pay if positive, to claim back if negative)",
+        ],
+        ...vat.months.map((row) => [
+          row.month, money(row.sales), money(row.companyInvoices), money(-row.credits), money(row.charged),
+          money(row.bills), money(row.constructors), money(row.agents), money(row.paid), money(row.balance),
+        ]),
+        [
+          "Total", money(vat.totals.sales), money(vat.totals.companyInvoices), money(-vat.totals.credits), money(vat.totals.charged),
+          money(vat.totals.bills), money(vat.totals.constructors), money(vat.totals.agents), money(vat.totals.paid), money(vat.totals.balance),
+        ],
+      ];
+      break;
+    }
+
     case "agents": {
       const agents = await salesByAgent(range, await projectsInScope(scope), commissionsAreOurs(scope));
       rows = [
@@ -155,11 +179,28 @@ export async function GET(request: Request) {
 
     case "costs": {
       const only = await projectsInScope(scope);
-      const [income, costs] = await Promise.all([costsByCategory(range, only, "OUT"), costsByCategory(range, only, "IN")]);
+      const [income, costs, cash] = await Promise.all([
+        costsByCategory(range, only, "OUT"),
+        costsByCategory(range, only, "IN"),
+        cashEntryLines(range, only),
+      ]);
+      /* Cash paid and received outside the invoices, by category, paid in full. */
+      const cashBy = (incoming: boolean) => {
+        const by = new Map<string, { count: number; cents: number }>();
+        for (const row of cash.filter((one) => one.income === incoming)) {
+          const one = by.get(row.category) ?? { count: 0, cents: 0 };
+          one.count += 1;
+          one.cents += row.cents;
+          by.set(row.category, one);
+        }
+        return [...by.entries()];
+      };
       rows = [
         ["Which", "Category", "Lines", "Billed", "Still owed"],
         ...income.map((row) => ["Income", row.category, row.count, money(row.billedCents), money(row.owedCents)]),
         ...costs.map((row) => ["Expense", row.category, row.count, money(row.billedCents), money(row.owedCents)]),
+        ...cashBy(true).map(([category, row]) => ["Cash income", category, row.count, money(row.cents), money(0)]),
+        ...cashBy(false).map(([category, row]) => ["Cash expense", category, row.count, money(row.cents), money(0)]),
       ];
       break;
     }

@@ -58,6 +58,17 @@ export default async function NewCampaignPage({
     whatsapp: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel === "WHATSAPP").length,
     both: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel === "BOTH").length,
   };
+  /* The agents, to choose from one by one, each with the way they want campaigns. */
+  const wayWord = (channel: string | undefined) =>
+    channel === "WHATSAPP" ? t("campaigns.agentsByWhatsapp") : channel === "BOTH" ? t("campaigns.agentsBoth") : t("campaigns.agentsByEmail");
+  const agentChoices = everyone
+    .filter((r) => r.group === "AGENTS" && r.agentId)
+    .map((r) => ({
+      id: r.agentId as string,
+      label: r.name,
+      hint: [wayWord(r.agentChannel), r.email ?? r.phone ?? ""].filter(Boolean).join(" . "),
+      channel: r.agentChannel ?? "EMAIL",
+    }));
   /* The leads, to choose from one by one. */
   const leadChoices = everyone
     .filter((r) => r.group === "LEADS" && r.leadId)
@@ -128,6 +139,7 @@ export default async function NewCampaignPage({
             chosenTemplate={params.template}
             counts={counts}
             agentWays={agentWays}
+            agentChoices={agentChoices}
             groups={groups}
             about={about}
             aboutDefault={aboutDefault}
@@ -183,6 +195,11 @@ export default async function NewCampaignPage({
               agentsBoth: t("campaigns.agentsBoth"),
               agentsBothVia: t("campaigns.agentsBothVia"),
               agentsFallback: t("campaigns.agentsFallback"),
+              agentsAll: t("campaigns.agentsAll"),
+              agentsChosen: t("campaigns.agentsChosen"),
+              bothWays: t("campaigns.bothWays"),
+              onlyAgentsEmail: t("campaigns.onlyAgentsEmail"),
+              onlyAgentsWhatsapp: t("campaigns.onlyAgentsWhatsapp"),
               theEmail: t("campaigns.theEmail"),
               theWhatsapp: t("campaigns.theWhatsapp"),
               subject: t("campaigns.subject"),

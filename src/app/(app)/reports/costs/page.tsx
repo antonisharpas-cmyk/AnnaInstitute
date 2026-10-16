@@ -1,6 +1,7 @@
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent } from "@/lib/money";
 import {
+  cashEntriesByMonth,
   costsByCategory,
   costsByMonth,
   incomeAndCostsByProject,
@@ -46,7 +47,7 @@ export default async function CostsReportPage({
 
   /* The invoices one by one at the end, ten to a page. */
   const { page, perPage, offset } = paginate(params as Record<string, string | undefined>, 10);
-  const [costMonths, incomeMonths, costCategories, incomeCategories, byProject, owed, lines] = await Promise.all([
+  const [costMonths, incomeMonths, costCategories, incomeCategories, byProject, owed, lines, cashMonths] = await Promise.all([
     costsByMonth(range, only, "IN"),
     costsByMonth(range, only, "OUT"),
     costsByCategory(range, only, "IN"),
@@ -54,15 +55,22 @@ export default async function CostsReportPage({
     incomeAndCostsByProject(range, only),
     expensesOwed(),
     incomeExpenseLines(range, only, perPage, offset),
+    cashEntriesByMonth(range, only),
   ]);
 
   const money = (cents: number) => formatAmount(cents, locale);
   const sum = (rows: { billedCents: number }[]) => rows.reduce((a, row) => a + row.billedCents, 0);
   const income = sum(incomeMonths);
   const costs = sum(costMonths);
-  const result = income - costs;
+  /* Cash paid and received outside the invoices, counted beside them. */
+  const cashIn = cashMonths.reduce((a, row) => a + row.inCents, 0);
+  const cashOut = cashMonths.reduce((a, row) => a + row.outCents, 0);
+  const result = income + cashIn - costs - cashOut;
   const query = periodQuery(params);
   const category = (code: string) => t(`invoices.category.${code}` as MessageKey);
+  /* A development's Net Revenue: invoices and cash in, less invoices and cash out. */
+  const net = (row: { incomeCents: number; costCents: number; cashInCents: number; cashOutCents: number }) =>
+    row.incomeCents + row.cashInCents - row.costCents - row.cashOutCents;
 
   return (
     <>
@@ -79,10 +87,12 @@ export default async function CostsReportPage({
         exportHref={`/reports/export?report=costs${query ? `&${query}` : ""}`}
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-income-figures>
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-income-figures>
         <Figure label={t("invoices.income")} value={money(income)} hint={t("reports.inPeriod")} />
+        <Figure label={t("reports.cashIncome")} value={money(cashIn)} hint={t("reports.inPeriod")} />
         <Figure label={t("invoices.expenses")} value={money(costs)} hint={t("reports.inPeriod")} />
-        <Figure label={t("reports.incomeLessCosts")} value={money(result)} tone={result >= 0 ? "good" : "bad"} />
+        <Figure label={t("reports.cashExpenses")} value={money(cashOut)} hint={t("reports.inPeriod")} />
+        <Figure label={t("reports.incomeLessCosts")} value={money(result)} hint={t("reports.withCash")} tone={result >= 0 ? "good" : "bad"} />
         <Figure
           label={t("invoices.toReceive")}
           value={money(owed.owedToUsCents)}
@@ -115,6 +125,13 @@ export default async function CostsReportPage({
                 values: costMonths.map((row) => row.billedCents),
                 format: shortMoney,
               },
+              /* Cash beside the invoices, each its own bar. */
+              ...(cashIn > 0 || cashOut > 0
+                ? [
+                    { label: t("reports.cashIncome"), colour: SERIES.third, values: cashMonths.map((row) => row.inCents), format: shortMoney },
+                    { label: t("reports.cashExpenses"), colour: SERIES.fourth, values: cashMonths.map((row) => row.outCents), format: shortMoney },
+                  ]
+                : []),
             ]}
           />
         </Card>
@@ -156,7 +173,9 @@ export default async function CostsReportPage({
                 <tr>
                   <th>{t("projects.title")}</th>
                   <th className="ctr">{t("invoices.income")}</th>
+                  <th className="ctr">{t("reports.cashIncome")}</th>
                   <th className="ctr">{t("invoices.expenses")}</th>
+                  <th className="ctr">{t("reports.cashExpenses")}</th>
                   <th className="ctr">{t("reports.incomeLessCosts")}</th>
                 </tr>
               </thead>
@@ -165,17 +184,21 @@ export default async function CostsReportPage({
                   <tr key={row.projectId || "company"}>
                     <td>{row.name || t("invoices.noProject")}</td>
                     <td className="ctr">{money(row.incomeCents)}</td>
+                    <td className="ctr">{money(row.cashInCents)}</td>
                     <td className="ctr">{money(row.costCents)}</td>
-                    <td className={`ctr font-semibold ${row.incomeCents - row.costCents < 0 ? "text-[color:var(--color-negative)]" : ""}`}>
-                      {money(row.incomeCents - row.costCents)}
+                    <td className="ctr">{money(row.cashOutCents)}</td>
+                    <td className={`ctr font-semibold ${net(row) < 0 ? "text-[color:var(--color-negative)]" : ""}`}>
+                      {money(net(row))}
                     </td>
                   </tr>
                 ))}
                 <tr>
                   <td className="font-semibold">{t("invoices.total")}</td>
                   <td className="ctr font-semibold">{money(byProject.reduce((a, row) => a + row.incomeCents, 0))}</td>
+                  <td className="ctr font-semibold">{money(byProject.reduce((a, row) => a + row.cashInCents, 0))}</td>
                   <td className="ctr font-semibold">{money(byProject.reduce((a, row) => a + row.costCents, 0))}</td>
-                  <td className="ctr font-semibold">{money(byProject.reduce((a, row) => a + row.incomeCents - row.costCents, 0))}</td>
+                  <td className="ctr font-semibold">{money(byProject.reduce((a, row) => a + row.cashOutCents, 0))}</td>
+                  <td className="ctr font-semibold">{money(byProject.reduce((a, row) => a + net(row), 0))}</td>
                 </tr>
               </tbody>
             </table>
@@ -210,10 +233,18 @@ export default async function CostsReportPage({
                     <tr key={row.id}>
                       <td className="whitespace-nowrap">{row.at.toLocaleDateString(locale === "el" ? "el-GR" : "en-GB")}</td>
                       <td>
-                        <Pill tone={row.income ? "good" : "neutral"}>{row.income ? t("reports.kindIncome") : t("reports.kindExpense")}</Pill>
+                        <Pill tone={row.income ? "good" : "neutral"}>
+                          {row.cash
+                            ? row.income
+                              ? t("reports.kindCashIncome")
+                              : t("reports.kindCashExpense")
+                            : row.income
+                              ? t("reports.kindIncome")
+                              : t("reports.kindExpense")}
+                        </Pill>
                       </td>
                       <td>
-                        <Link href={`/invoices/${row.id}`} className="hover:underline">
+                        <Link href={row.cash ? `/invoices/cash/${row.id}` : `/invoices/${row.id}`} className="hover:underline">
                           {row.who}
                         </Link>
                       </td>
