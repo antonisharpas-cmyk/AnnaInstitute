@@ -88,4 +88,25 @@ test("Twilio: errors are explained in words the office can act on", async () => 
   assert.match(explainTwilioError(401, JSON.stringify({ code: 20003, message: "Authenticate" })), /TWILIO_AUTH_TOKEN/);
   assert.match(explainTwilioError(400, JSON.stringify({ code: 21408, message: "Permission" })), /Geo permissions/);
   assert.match(explainTwilioError(503, "down"), /Try again/);
+  assert.match(explainTwilioError(401, JSON.stringify({ code: 20003, message: "Primary compliance profile is not approved. Please complete the KYC process in Trust Hub" })), /Trust Hub/);
+});
+
+test("campaign ways: clients and leads are texted their own way, agents theirs", async () => {
+  const { campaignWays } = await import("../agentWay");
+  const both = { viaEmail: true, viaWhatsapp: true, agentsBothVia: null, subject: "Hi", bodyWhatsapp: "Hi" };
+  assert.deepEqual(campaignWays({ group: "CLIENTS", textChannel: "SMS" }, both), ["EMAIL", "SMS"]);
+  assert.deepEqual(campaignWays({ group: "LEADS", textChannel: "WHATSAPP" }, both), ["EMAIL", "WHATSAPP"]);
+  assert.deepEqual(campaignWays({ group: "BUYERS", textChannel: "SMS" }, { ...both, viaEmail: false }), ["SMS"]);
+  assert.deepEqual(campaignWays({ group: "SUBOWNERS" }, both), ["EMAIL", "WHATSAPP"]);
+  assert.deepEqual(campaignWays({ group: "AGENTS", agentChannel: "WHATSAPP" }, both), ["WHATSAPP"]);
+  assert.deepEqual(campaignWays({ group: "CLIENTS", textChannel: "WHATSAPP" }, { ...both, viaWhatsapp: false }), ["EMAIL"]);
+});
+
+test("text channel: anything but WhatsApp is SMS", async () => {
+  const { textChannelOf, agentTextChannel } = await import("../textChannel");
+  assert.equal(textChannelOf("WHATSAPP"), "WHATSAPP");
+  assert.equal(textChannelOf("whatever"), "SMS");
+  assert.equal(textChannelOf(null), "SMS");
+  assert.equal(agentTextChannel("BOTH"), "WHATSAPP");
+  assert.equal(agentTextChannel("EMAIL"), "SMS");
 });

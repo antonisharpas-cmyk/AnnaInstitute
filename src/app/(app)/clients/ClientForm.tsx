@@ -100,6 +100,15 @@ export default function ClientForm({
           />
         </div>
         <div>
+          <label className="label" htmlFor="textChannel">
+            {t("people.textBy")}
+          </label>
+          <select id="textChannel" name="textChannel" defaultValue={client?.textChannel ?? "SMS"} className="select">
+            <option value="SMS">SMS</option>
+            <option value="WHATSAPP">WhatsApp</option>
+          </select>
+        </div>
+        <div>
           <label className="label" htmlFor="idType">
             {t("clients.idType")}
           </label>

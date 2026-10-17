@@ -568,10 +568,13 @@ export default function CampaignForm({
                 checked={viaWhatsapp}
                 onChange={(e) => setViaWhatsapp(e.target.checked)}
               />
-              <span>{labels.whatsapp}</span>
+              <span>{toClients || toLeads || toBuyers ? labels.textByChoice : labels.whatsapp}</span>
             </label>
           </div>
           <p className="mt-2 text-xs text-brand-graphite/60">{labels.bothNote}</p>
+          {(toClients || toLeads || toBuyers) && viaWhatsapp ? (
+            <p className="mt-1 text-xs text-brand-graphite/60" data-text-by-choice>{labels.textByChoiceNote}</p>
+          ) : null}
         </fieldset>
       )}
 

@@ -3,7 +3,7 @@ import { runOf } from "@/lib/campaignProgress";
 import { emailFilesWithin } from "@/lib/campaignFiles";
 import AboutPicker from "@/components/AboutPicker";
 import { aboutOf } from "@/lib/campaignAbout";
-import { agentChannels } from "@/lib/agentWay";
+import { campaignWays } from "@/lib/agentWay";
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -70,11 +70,15 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const seenEmail = new Set<string>();
   const seenPhone = new Set<string>();
   for (const recipient of recipients) {
-    /* An agent is sent the way they chose, or both ways when the campaign says so. */
-    const ways = recipient.group === "AGENTS" ? agentChannels(recipient.agentChannel, campaign) : null;
-    const way = ways ? (ways.length > 1 ? "BOTH" : ways[0] ?? null) : null;
-    const byEmail = ways ? ways.includes("EMAIL") : campaign.viaEmail;
-    const byWhatsapp = ways ? ways.includes("WHATSAPP") : campaign.viaWhatsapp;
+    /* An agent is sent the way they chose, or both ways when the campaign says so;
+       a client, buyer or lead is texted by SMS or WhatsApp as their buttons say. */
+    const ways = campaignWays(recipient, campaign);
+    const agentWays = recipient.group === "AGENTS" ? ways : null;
+    const way = agentWays ? (agentWays.length > 1 ? "BOTH" : agentWays[0] ?? null) : null;
+    const byEmail = ways.includes("EMAIL");
+    const textVia = ways.includes("WHATSAPP") ? "WHATSAPP" : ways.includes("SMS") ? "SMS" : null;
+    /* "byWhatsapp" is any text, by WhatsApp or by SMS: the column shows which. */
+    const byWhatsapp = textVia !== null;
     const emailAddress = byEmail ? addressFor("EMAIL", recipient) : null;
     const phoneAddress = byWhatsapp ? addressFor("WHATSAPP", recipient) : null;
     const emailKey = sameEmail(emailAddress);
@@ -88,6 +92,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       way,
       byEmail,
       byWhatsapp,
+      textVia,
       emailAddress: emailTwin ? null : emailAddress,
       phoneAddress: phoneTwin ? null : phoneAddress,
       emailTwin,
@@ -99,14 +104,16 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
   /* Email or WhatsApp is in play when the campaign was ticked for it, or when an agent takes it that way. */
   const usesEmail = campaign.viaEmail || checked.some((r) => r.byEmail);
-  const usesWhatsapp = campaign.viaWhatsapp || checked.some((r) => r.byWhatsapp);
+  const usesWhatsapp = checked.some((r) => r.textVia === "WHATSAPP") || (campaign.viaWhatsapp && checked.length === 0);
+  const usesSms = checked.some((r) => r.textVia === "SMS");
   const willGetEmail = checked.filter((r) => r.emailAddress && !r.emailSuppressed);
   const willGetWhatsapp = checked.filter((r) => r.phoneAddress && !r.phoneSuppressed);
   const sendable = [...new Set([...willGetEmail, ...willGetWhatsapp])];
 
   const channelReady =
     (!usesEmail || emailConfigured()) &&
-    (!usesWhatsapp || channelConfigured("WHATSAPP"));
+    (!usesWhatsapp || channelConfigured("WHATSAPP")) &&
+    (!usesSms || channelConfigured("SMS"));
   const alreadySent = campaign.status !== "DRAFT";
   /* Sending now in this CRM, and how far; and what an email of it carries. */
   const running = runOf(id);
@@ -153,7 +160,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       />
       <PageHeader
         title={campaign.title}
-        subtitle={`${[usesEmail ? "email" : null, usesWhatsapp ? "whatsapp" : null]
+        subtitle={`${[usesEmail ? "email" : null, usesWhatsapp ? "whatsapp" : null, usesSms ? "sms" : null]
           .filter(Boolean)
           .join(" and ")} . ${[
           groupsOf(campaign).clients ? t("campaigns.groupClients").toLowerCase() : null,
@@ -283,9 +290,13 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         <Stat label="In the audience" value={String(checked.length)} />
         <Stat label="Emails" value={String(willGetEmail.length)} hint="address, not suppressed" />
         <Stat
-          label="WhatsApp"
+          label={usesSms ? (usesWhatsapp ? "SMS or WhatsApp" : "SMS") : "WhatsApp"}
           value={String(willGetWhatsapp.length)}
-          hint="number, not suppressed"
+          hint={
+            usesSms && usesWhatsapp
+              ? `${willGetWhatsapp.filter((r) => r.textVia === "SMS").length} by SMS, ${willGetWhatsapp.filter((r) => r.textVia === "WHATSAPP").length} by WhatsApp`
+              : "number, not suppressed"
+          }
         />
         <Stat
           label="Skipped"
@@ -308,7 +319,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 </pre>
               </div>
             ) : null}
-            {usesWhatsapp && previewWhatsapp ? (
+            {(usesWhatsapp || usesSms) && previewWhatsapp ? (
               <div className="mb-2 border-t border-brand-line pt-3">
                 <p className="label">{t("campaigns.theWhatsapp")}</p>
                 <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
@@ -321,8 +332,11 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 {campaign.viaEmail
                   ? "An unsubscribe link is added to every email automatically. "
                   : ""}
-                {campaign.viaWhatsapp
-                  ? "Reply STOP to opt out is added to every WhatsApp message, and a reply of stop suppresses that number for good."
+                {usesWhatsapp
+                  ? "Reply STOP to opt out is added to every WhatsApp message, and a reply of stop suppresses that number for good. "
+                  : ""}
+                {usesSms
+                  ? "Every SMS carries a link to unsubscribe, since a text sent by name cannot be answered."
                   : ""}
               </p>
             ) : null}
@@ -355,7 +369,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 <tr>
                   <th>{t("common.name")}</th>
                   <th>{t("campaigns.email")}</th>
-                  <th>{t("campaigns.whatsapp")}</th>
+                  <th>{t("campaigns.textColumn")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -404,7 +418,16 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                       ) : r.phoneSuppressed ? (
                         <Pill tone="bad">suppressed</Pill>
                       ) : r.phoneAddress ? (
-                        r.phoneAddress
+                        <>
+                          {r.phoneAddress}
+                          {r.group === "CLIENTS" || r.group === "LEADS" || r.group === "BUYERS" ? (
+                            <div className="text-brand-graphite/50" data-text-via={r.textVia ?? ""}>
+                              {r.textVia === "SMS" ? t("campaigns.textWaySms") : t("campaigns.textWayWhatsapp")}
+                            </div>
+                          ) : r.textVia === "SMS" ? (
+                            <div className="text-brand-graphite/50">SMS</div>
+                          ) : null}
+                        </>
                       ) : (
                         <Pill tone="warn">no number</Pill>
                       )}

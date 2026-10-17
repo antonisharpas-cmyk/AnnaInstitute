@@ -327,6 +327,11 @@ export const clients = pgTable("clients", {
    * their follow ups go to first. Carried over from the lead they came from.
    */
   assignedToId: text("assigned_to_id").references(() => teamMembers.id, { onDelete: "set null" }),
+  /**
+   * How the office texts them: SMS or WHATSAPP. The appointment messages and
+   * the text part of a campaign go this way; email goes as before.
+   */
+  textChannel: text("text_channel").default("SMS").notNull(),
   // Marketing consent. The campaign module may never send to anyone without it.
   marketingOptIn: boolean("marketing_opt_in").default(false).notNull(),
   marketingOptInAt: timestamp("marketing_opt_in_at", { withTimezone: true }),
@@ -1308,6 +1313,8 @@ export const leads = pgTable("leads", {
   }),
   /** The client this lead became, once the office accepted it. */
   clientId: text("client_id").references(() => clients.id, { onDelete: "set null" }),
+  /** How the office texts them: SMS or WHATSAPP. Carried to the client when the lead becomes one. */
+  textChannel: text("text_channel").default("SMS").notNull(),
   notes: text("notes"),
   /** The whole payload as it arrived, so nothing the website sends is ever lost. */
   payload: text("payload"),

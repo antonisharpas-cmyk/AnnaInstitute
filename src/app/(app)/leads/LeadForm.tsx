@@ -36,6 +36,8 @@ export default function LeadForm({
     lastName: string;
     email: string;
     phone: string;
+    /** How the lead is texted: SMS or WhatsApp. */
+    textBy: string;
     source: string;
     sourceOther: string;
     sourceOtherHint: string;
@@ -122,6 +124,15 @@ export default function LeadForm({
             {labels.phone}
           </label>
           <input id="phone" name="phone" defaultValue={was.phone ?? ""} className="input" />
+        </div>
+        <div>
+          <label className="label" htmlFor="textChannel">
+            {labels.textBy}
+          </label>
+          <select id="textChannel" name="textChannel" defaultValue="SMS" className="select">
+            <option value="SMS">SMS</option>
+            <option value="WHATSAPP">WhatsApp</option>
+          </select>
         </div>
       </div>
 

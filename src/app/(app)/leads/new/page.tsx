@@ -39,6 +39,7 @@ export default async function NewLeadPage() {
               lastName: t("common.surname"),
               email: t("leads.email"),
               phone: t("leads.phone"),
+              textBy: t("people.textBy"),
               source: t("leads.camefrom"),
               sourceOther: t("leads.sourceOther"),
               sourceOtherHint: t("leads.sourceOtherHint"),

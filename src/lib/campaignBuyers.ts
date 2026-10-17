@@ -27,6 +27,8 @@ export type Buyer = {
   title: string;
   email: string | null;
   phone: string | null;
+  /** How they are texted: SMS or WHATSAPP. */
+  textChannel: string;
   /** Their apartments in what the campaign is about. */
   units: { unitId: string; code: string; projectId: string; projectName: string }[];
   /** {{unit}} and {{project}} for this buyer. */
@@ -69,6 +71,7 @@ export async function buyersOf(campaign: { aboutIds?: string | null; projectId: 
         title: titleWord(row.client.title),
         email: row.client.email,
         phone: row.client.phone,
+        textChannel: row.client.textChannel,
         units: [],
         own: {},
       };

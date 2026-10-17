@@ -43,3 +43,24 @@ export function agentChannels(preference: string | undefined, campaign: AgentCam
 export function agentWay(preference: string | undefined, campaign: AgentCampaign): "EMAIL" | "WHATSAPP" {
   return agentChannels(preference, campaign)[0] ?? "EMAIL";
 }
+
+/**
+ * Every way one campaign reaches one person.
+ *
+ * An agent hears the way they chose (above). Everybody else gets the email
+ * when the campaign is ticked for email, and the text when it is ticked for
+ * WhatsApp: a client, a buyer or a lead by SMS or by WhatsApp as their own
+ * buttons say, a partner by WhatsApp as before.
+ */
+export type CampaignWay = "EMAIL" | "WHATSAPP" | "SMS";
+
+export function campaignWays(
+  recipient: { group: string; agentChannel?: string; textChannel?: string },
+  campaign: AgentCampaign,
+): CampaignWay[] {
+  if (recipient.group === "AGENTS") return agentChannels(recipient.agentChannel, campaign);
+  const ways: CampaignWay[] = [];
+  if (campaign.viaEmail) ways.push("EMAIL");
+  if (campaign.viaWhatsapp) ways.push(recipient.textChannel === "SMS" ? "SMS" : "WHATSAPP");
+  return ways;
+}

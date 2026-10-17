@@ -526,6 +526,13 @@
       "when": 1794085947383,
       "tag": "0075_cash_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1794172347383,
+      "tag": "0076_text_channel",
+      "breakpoints": true
     }
   ]
 }

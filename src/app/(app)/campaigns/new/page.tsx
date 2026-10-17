@@ -210,6 +210,8 @@ export default async function NewCampaignPage({
               bodyPlaceholder: t("campaigns.bodyPlaceholder"),
               whatsappPlaceholder: t("campaigns.whatsappPlaceholder"),
               whatsappNote: t("campaigns.whatsappNote"),
+              textByChoice: t("campaigns.textByChoice"),
+              textByChoiceNote: t("campaigns.textByChoiceNote"),
               files: t("common.files"),
               filesNote: t("campaigns.filesNote"),
               priceList: t("campaigns.priceList"),

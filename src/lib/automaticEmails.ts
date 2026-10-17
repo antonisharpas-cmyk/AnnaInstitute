@@ -1,4 +1,5 @@
 import "server-only";
+import { agentTextChannel, textChannelOf } from "@/lib/textChannel";
 import { stageFrom, stageNames } from "@/lib/choices/stages";
 import { englishWord, shownCode } from "@/lib/choices";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
@@ -683,14 +684,23 @@ export async function letterForAppointment(
     });
   }
 
-  /* And the same news by SMS, short, to the mobile on the record. The place is
-     given without the map link, which would make the text run long. */
+  /* And the same news as a text, short, to the mobile on the record: by SMS or
+     by WhatsApp, as the client or lead is set to be texted (an agent who takes
+     campaigns by WhatsApp gets WhatsApp). The place is given without the map
+     link, which would make the text run long. */
+  const textBy = row.client
+    ? textChannelOf(row.client.textChannel)
+    : row.lead
+      ? textChannelOf(row.lead.textChannel)
+      : row.agent
+        ? agentTextChannel(row.agent.campaignChannel)
+        : "SMS";
   let text: Awaited<ReturnType<typeof sendAndRecord>> | null = null;
   const short = (template.bodyWhatsapp ?? "").trim();
   if (phone && short) {
     text = await sendAndRecord({
-      channel: "SMS",
-      recipient: { name: to.name, phone, clientId: to.clientId ?? undefined },
+      channel: textBy,
+      recipient: { name: to.name, phone, clientId: to.clientId ?? undefined, leadId: row.lead?.id ?? undefined },
       body: fill(short, { ...values, place: row.appointment.place }),
       withOptOut: false,
     });
@@ -704,7 +714,8 @@ export async function letterForAppointment(
         : one.status === "SIMULATED"
           ? `${what} not set up, nothing went`
           : `${what} did not go: ${one.error ?? one.status}`;
-  const reason = [said(email, "Email"), said(text, "SMS")].filter(Boolean).join(". ") + ".";
+  const textWord = (text?.usedChannel ?? textBy) === "WHATSAPP" ? "WhatsApp" : "SMS";
+  const reason = [said(email, "Email"), said(text, textWord)].filter(Boolean).join(". ") + ".";
   const anySent = email?.status === "SENT" || text?.status === "SENT";
   const anyFailed = email?.status === "FAILED" || text?.status === "FAILED";
   await note(anySent ? "SENT" : anyFailed ? "FAILED" : "SKIPPED", reason);

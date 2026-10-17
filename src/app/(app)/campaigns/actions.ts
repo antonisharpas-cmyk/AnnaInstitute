@@ -3,7 +3,7 @@
 import { sameEmail, samePhone } from "@/lib/samePerson";
 
 import { aboutFromChoices } from "@/lib/campaignAbout";
-import { agentChannels } from "@/lib/agentWay";
+import { campaignWays, type CampaignWay } from "@/lib/agentWay";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
@@ -248,6 +248,8 @@ export async function audienceFor(groups: CampaignGroups) {
     group: "CLIENTS" | "AGENTS" | "SUBOWNERS" | "LEADS" | "BUYERS";
     /** An agent's own choice of how campaigns reach them: EMAIL, WHATSAPP or BOTH. */
     agentChannel?: string;
+    /** A client's, buyer's or lead's own choice of how they are texted: SMS or WHATSAPP. */
+    textChannel?: string;
   }[] = [];
 
   if (wantsClients) {
@@ -274,6 +276,7 @@ export async function audienceFor(groups: CampaignGroups) {
         agentId: null,
         subownerId: null,
         group: "CLIENTS",
+        textChannel: c.textChannel,
       });
     }
   }
@@ -352,6 +355,7 @@ export async function audienceFor(groups: CampaignGroups) {
         subownerId: null,
         leadId: l.id,
         group: "LEADS",
+        textChannel: l.textChannel,
       });
     }
   }
@@ -373,6 +377,7 @@ export async function audienceFor(groups: CampaignGroups) {
         agentId: null,
         subownerId: null,
         group: "BUYERS",
+        textChannel: b.textChannel,
       });
     }
     /* A buyer who is also on the clients list gets the buyer's letter, with their own apartment in it. */
@@ -518,15 +523,10 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
     );
 
     /* Every letter to go, worked out first, so the page can say how many. */
-    const plan: { recipient: (typeof recipients)[number]; channel: "EMAIL" | "WHATSAPP" }[] = [];
+    const plan: { recipient: (typeof recipients)[number]; channel: CampaignWay }[] = [];
     for (const recipient of recipients) {
-      /* An agent hears the way they chose, both ways when the office said so; everybody else on every way ticked. */
-      if (recipient.group === "AGENTS") {
-        for (const channel of agentChannels(recipient.agentChannel, campaign)) plan.push({ recipient, channel });
-        continue;
-      }
-      if (campaign.viaEmail) plan.push({ recipient, channel: "EMAIL" });
-      if (campaign.viaWhatsapp) plan.push({ recipient, channel: "WHATSAPP" });
+      /* An agent hears the way they chose; a client, buyer or lead is texted by SMS or WhatsApp as their buttons say. */
+      for (const channel of campaignWays(recipient, campaign)) plan.push({ recipient, channel });
     }
     const todo = plan.filter((one) => !done.has(whoKey(one.channel, one.recipient)));
     startRun(campaignId, todo.length);
@@ -576,7 +576,7 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
         } else {
           await sendAndRecord({
             campaignId,
-            channel: "WHATSAPP",
+            channel,
             recipient,
             body: fillPlaceholders(withFilesLink, values),
             /* A letter to a buyer about their own home is a service letter, not marketing. */

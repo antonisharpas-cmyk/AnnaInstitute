@@ -36,6 +36,8 @@ import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
 import PersonalInfo from "./PersonalInfo";
+import TextChannelSwitch from "@/components/TextChannelSwitch";
+import { textChannelOf } from "@/lib/textChannel";
 import { LoanCard, SecondBuyerCard } from "./BuyerCards";
 import { extrasLabels } from "@/lib/buyerLabels";
 import { buyersName, hasSecondBuyer, mainName, secondName } from "@/lib/buyers";
@@ -45,6 +47,7 @@ import ConfirmButton from "@/components/ConfirmButton";
 import {
   assignApartment,
   assignClient,
+  setClientTextChannel,
   closeClient,
   deleteClientDocument,
   reopenClient,
@@ -410,6 +413,13 @@ export default async function ClientPage({
             birthDate: t("clients.birthDate"),
             birthDateHint: t("clients.birthDateHint"),
           }}
+        />
+
+        {/* How the office texts this client: the appointment messages and campaigns follow it. */}
+        <TextChannelSwitch
+          action={setClientTextChannel.bind(null, client.id)}
+          current={textChannelOf(client.textChannel)}
+          labels={{ title: t("people.textBy"), hint: t("people.textByHint"), sms: "SMS", whatsapp: "WhatsApp" }}
         />
 
         {/* Who in the office looks after this client. */}

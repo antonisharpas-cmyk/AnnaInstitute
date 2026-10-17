@@ -22,6 +22,7 @@ import { LEAD_SOURCES, LEAD_STATUSES, OLD_LEAD_SOURCES, listLeads } from "@/lib/
 import { englishWord, isAllowed, listEntries, shownCode, splitChoice } from "@/lib/choices";
 import { removeDocument } from "@/lib/uploads";
 import { createApiKey, revokeApiKey } from "@/lib/apiKeys";
+import { textChannelOf } from "@/lib/textChannel";
 
 /* One list of statuses and one list of sources for the whole CRM, kept where
    the leads themselves are described rather than copied into each page. */
@@ -208,6 +209,7 @@ export async function createLead(
       lastName,
       email,
       phone,
+      textChannel: textChannelOf(String(formData.get("textChannel") ?? "")),
       message: note,
       sourceKind,
       sourceChoice: sourceKind === pickedSource.base ? sourceChoice : null,
@@ -427,6 +429,8 @@ async function makeClient(
       agentId: lead.agentId ?? null,
       /* Whoever was looking after the lead goes on looking after the client. */
       assignedToId: lead.assignedToId ?? null,
+      /* Texted the way the lead was. */
+      textChannel: textChannelOf(lead.textChannel),
       marketingOptIn: optIn,
       marketingOptInAt: optIn ? new Date() : null,
       marketingOptInSource: optIn ? (lead.consentText ?? "the lead") : null,
@@ -1065,5 +1069,23 @@ export async function remindLead(leadId: string) {
     userEmail: user.email,
   });
   await flash(`${result.ok ? "said.reminderSent" : "said.reminderNotSent"}|${result.said}`, result.ok ? "good" : "bad");
+  revalidatePath(`/leads/${leadId}`);
+}
+
+/** How the office texts this lead, set with the SMS and WhatsApp buttons on their page. */
+export async function setLeadTextChannel(leadId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  if (await refuseForClient(leadId)) return;
+  const textChannel = textChannelOf(String(formData.get("channel") ?? ""));
+  await db.update(leads).set({ textChannel, updatedAt: new Date() }).where(eq(leads.id, leadId));
+  await recordAudit({
+    action: "lead.textChannel",
+    entity: "lead",
+    entityId: leadId,
+    detail: textChannel === "WHATSAPP" ? "texted by WhatsApp" : "texted by SMS",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
   revalidatePath(`/leads/${leadId}`);
 }

@@ -19,7 +19,7 @@ export function plainNumber(value: string): string {
  * The code and Twilio's own message are kept at the end, for us.
  */
 const MEANINGS: Record<number, string> = {
-  20003: "Twilio does not accept the Account SID and Auth Token. Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN.",
+  20003: "Twilio does not accept the sign in. Check TWILIO_ACCOUNT_SID, and TWILIO_API_KEY_SID with TWILIO_API_KEY_SECRET (or TWILIO_AUTH_TOKEN).",
   20404: "Twilio cannot find this account. Check TWILIO_ACCOUNT_SID.",
   21211: "The telephone number is not a valid mobile number.",
   21212: "The sender is not valid. Check TWILIO_SMS_FROM: up to 11 letters and digits, with at least one letter, or a Twilio number.",
@@ -47,7 +47,11 @@ export function explainTwilioError(status: number, body: string): string {
   } catch {
     message = body.slice(0, 300);
   }
-  const plain = MEANINGS[code] ?? (status === 401 ? MEANINGS[20003] : status >= 500 ? "Twilio did not answer properly. Try again in a few minutes." : "");
+  /* 20003 is also how Twilio says the account's business profile is not approved yet; the keys are fine then. */
+  const compliance = /compliance|KYC|Trust Hub/i.test(message)
+    ? "The Twilio account's business profile is not approved yet. Complete the Primary Customer Profile in Twilio under Trust Hub and wait for approval; the keys themselves are fine."
+    : "";
+  const plain = compliance || MEANINGS[code] || (status === 401 ? MEANINGS[20003] : status >= 500 ? "Twilio did not answer properly. Try again in a few minutes." : "");
   const detail = [code ? String(code) : "", message].filter(Boolean).join(": ").slice(0, 300);
   return [plain, detail ? `(Twilio says ${detail})` : `(Twilio answered ${status})`].filter(Boolean).join(" ");
 }

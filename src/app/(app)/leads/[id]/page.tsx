@@ -16,10 +16,13 @@ import { optionsFor, shownCode } from "@/lib/choices";
 import DateField from "@/components/DateField";
 import TimeField from "@/components/TimeField";
 import ConfirmButton from "@/components/ConfirmButton";
+import TextChannelSwitch from "@/components/TextChannelSwitch";
+import { textChannelOf } from "@/lib/textChannel";
 import {
   addFollowUp,
   addLeadNote,
   assignLead,
+  setLeadTextChannel,
   convertLead,
   deleteFollowUp,
   deleteLead,
@@ -451,6 +454,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         <div className="space-y-4">
           {locked ? null : (
           <>
+          {/* How the office texts this lead: the appointment messages and campaigns follow it. */}
+          <TextChannelSwitch
+            action={setLeadTextChannel.bind(null, id)}
+            current={textChannelOf(lead.textChannel)}
+            labels={{ title: t("people.textBy"), hint: t("people.textByHint"), sms: "SMS", whatsapp: "WhatsApp" }}
+          />
+
           {/* Whose enquiry this is. Changed here without opening the form. */}
           <Card title={t("appointments.assignedTo")}>
             <form action={assignLead.bind(null, id)} className="flex flex-wrap gap-2">

@@ -54,6 +54,9 @@ export function twilioSetup() {
   };
 }
 
+/* The WhatsApp refusals that mean "this person, this way, not now", worth an SMS instead. */
+const WHATSAPP_TO_SMS = new Set([63015, 63016, 63024, 63032]);
+
 export async function sendViaTwilio(options: { channel: Channel; to: string; body: string }): Promise<SendResult> {
   const fallback = String(process.env.MESSAGING_FALLBACK_TO_SMS ?? "true") === "true";
   let channel = options.channel;
@@ -98,6 +101,24 @@ export async function sendViaTwilio(options: { channel: Channel; to: string; bod
     );
     const text = await response.text();
     if (!response.ok) {
+      /*
+       * A WhatsApp that cannot go to this person (not on WhatsApp, outside the
+       * 24 hours without a template, not in the sandbox) goes by SMS instead,
+       * when the office allows the fallback, so the news still arrives.
+       */
+      const code = (() => {
+        try {
+          return Number((JSON.parse(text) as { code?: number }).code ?? 0);
+        } catch {
+          return 0;
+        }
+      })();
+      if (channel === "WHATSAPP" && fallback && WHATSAPP_TO_SMS.has(code) && twilioChannelConfigured("SMS")) {
+        const sms = await sendViaTwilio({ channel: "SMS", to: options.to, body: options.body });
+        return sms.status === "SENT"
+          ? { ...sms, error: `Sent by SMS: ${explainTwilioError(response.status, text)}` }
+          : sms;
+      }
       return { status: "FAILED", error: explainTwilioError(response.status, text), usedChannel: channel };
     }
     const payload = JSON.parse(text) as { sid?: string };

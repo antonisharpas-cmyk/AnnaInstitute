@@ -428,6 +428,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the cash paid and received outside the invoices",
     migration: "0075",
   },
+  {
+    probe: "select text_channel from clients limit 1",
+    what: "how each client and lead is texted, SMS or WhatsApp",
+    migration: "0076",
+  },
 ];
 
 let answer: Missing[] | null = null;

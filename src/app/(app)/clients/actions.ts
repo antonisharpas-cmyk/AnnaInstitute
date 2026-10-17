@@ -17,6 +17,7 @@ import { matchingClientIds } from "@/lib/clients";
 import { splitChoice } from "@/lib/choices/lists";
 import { cleanBirthDate, emailList } from "@/lib/buyers";
 import { titleFrom } from "@/lib/titles";
+import { textChannelOf } from "@/lib/textChannel";
 
 const clientSchema = z.object({
   firstName: z.string().min(1),
@@ -155,6 +156,7 @@ export async function createClient(formData: FormData) {
       ...second,
       ...loan,
       email: parsed.email || null,
+      textChannel: textChannelOf(String(formData.get("textChannel") ?? "")),
       /* Who in the office looks after them, from the start. */
       assignedToId: String(formData.get("assignedToId") ?? "") || null,
     })
@@ -1033,4 +1035,21 @@ export async function assignClient(clientId: string, formData: FormData) {
   await flash("said.saved");
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/clients");
+}
+
+/** How the office texts this client, set with the SMS and WhatsApp buttons on their page. */
+export async function setClientTextChannel(clientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const textChannel = textChannelOf(String(formData.get("channel") ?? ""));
+  await db.update(clients).set({ textChannel, updatedAt: new Date() }).where(eq(clients.id, clientId));
+  await recordAudit({
+    action: "client.textChannel",
+    entity: "client",
+    entityId: clientId,
+    detail: textChannel === "WHATSAPP" ? "texted by WhatsApp" : "texted by SMS",
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
+  revalidatePath(`/clients/${clientId}`);
 }
