@@ -701,15 +701,15 @@ export default function CampaignForm({
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="data text-sm">
+              <table className="data w-full text-sm" data-nosort="true">
                 <thead>
                   <tr>
                     <th>{labels.summaryGroup}</th>
-                    <th className="num">{labels.summaryPeople}</th>
-                    <th className="num">{labels.email}</th>
-                    <th className="num">SMS</th>
-                    <th className="num">WhatsApp</th>
-                    <th className="num">{labels.summaryNone}</th>
+                    <th className="ctr">{labels.summaryPeople}</th>
+                    <th className="ctr">{labels.email}</th>
+                    <th className="ctr">SMS</th>
+                    <th className="ctr">WhatsApp</th>
+                    <th className="ctr">{labels.summaryNone}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -723,21 +723,21 @@ export default function CampaignForm({
                           </div>
                         ) : null}
                       </td>
-                      <td className="num">{row.people}</td>
-                      <td className="num">{row.email || "."}</td>
-                      <td className="num">{row.sms || "."}</td>
-                      <td className="num">{row.whatsapp || "."}</td>
-                      <td className={`num ${row.none ? "text-[color:var(--color-warning,#b7791f)]" : ""}`}>{row.none || "."}</td>
+                      <td className="ctr">{row.people}</td>
+                      <td className="ctr">{row.email}</td>
+                      <td className="ctr">{row.sms}</td>
+                      <td className="ctr">{row.whatsapp}</td>
+                      <td className={`ctr ${row.none ? "text-[color:var(--color-warning,#b7791f)]" : ""}`}>{row.none}</td>
                     </tr>
                   ))}
                   {summary.length > 1 ? (
                     <tr className="font-semibold" data-summary-row="total">
                       <td>{labels.summaryTotal}</td>
-                      <td className="num">{total.people}</td>
-                      <td className="num">{total.email || "."}</td>
-                      <td className="num">{total.sms || "."}</td>
-                      <td className="num">{total.whatsapp || "."}</td>
-                      <td className="num">{total.none || "."}</td>
+                      <td className="ctr">{total.people}</td>
+                      <td className="ctr">{total.email}</td>
+                      <td className="ctr">{total.sms}</td>
+                      <td className="ctr">{total.whatsapp}</td>
+                      <td className="ctr">{total.none}</td>
                     </tr>
                   ) : null}
                 </tbody>

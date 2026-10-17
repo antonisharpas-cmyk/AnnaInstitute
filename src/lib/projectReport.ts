@@ -120,11 +120,18 @@ export async function projectReportData(projectId: string) {
 /** Who can be sent a development's report: the shareholders of the companies that hold it. */
 export async function reportRecipients(projectId: string) {
   const rows = await db
-    .select({ holder: subownerShares.holder, email: subownerShares.email, company: subowners.name })
+    .select({
+      holder: subownerShares.holder,
+      email: subownerShares.email,
+      company: subowners.name,
+      subownerId: subowners.id,
+      share: subownerShares.sharePercent,
+    })
     .from(projectPartners)
     .innerJoin(subowners, eq(subowners.id, projectPartners.subownerId))
     .innerJoin(subownerShares, eq(subownerShares.subownerId, subowners.id))
-    .where(eq(projectPartners.projectId, projectId))
+    /* One Eleven's own line is the office itself, which sends the report rather than receives it. */
+    .where(and(eq(projectPartners.projectId, projectId), eq(subownerShares.isOneEleven, false)))
     .orderBy(asc(subownerShares.holder));
   const seen = new Set<string>();
   return rows
@@ -134,7 +141,15 @@ export async function reportRecipients(projectId: string) {
       seen.add(key);
       return true;
     })
-    .map((one) => ({ name: one.holder, email: one.email?.trim() || "", company: one.company }));
+    .map((one) => ({
+      /* Which one, for the form: the company and the address together. */
+      key: `${one.subownerId}|${(one.email ?? "").trim().toLowerCase()}|${one.holder}`,
+      name: one.holder,
+      email: one.email?.trim() || "",
+      company: one.company,
+      subownerId: one.subownerId,
+      share: one.share,
+    }));
 }
 
 /* ---------------------------------------------------------------------------

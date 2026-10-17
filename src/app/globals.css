@@ -2599,10 +2599,12 @@ table.data thead th[data-sorted="desc"]::after {
 }
 
 /* A table kept in an order of its own, the Builder's lists, sorts by nothing. */
-table.data[data-nosort="true"] thead th {
+table.data[data-nosort="true"] thead th,
+table.data[data-nosort="true"] thead th:not(.pick):not(:has(a[data-sort])) {
   cursor: default;
 }
-table.data[data-nosort="true"] thead th::after {
+table.data[data-nosort="true"] thead th::after,
+table.data[data-nosort="true"] thead th:not(.pick):not(:has(a[data-sort]))::after {
   content: none;
 }
 

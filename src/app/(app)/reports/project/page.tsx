@@ -4,18 +4,23 @@ import { projects } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { projectReportData } from "@/lib/projectReport";
+import { REPORT_BODY, REPORT_BODY_EL, REPORT_SUBJECT, REPORT_SUBJECT_EL } from "@/lib/projectReportMail";
+import { emailConfigured } from "@/lib/messaging";
+import { emailProjectReport } from "./actions";
+import ReportMailer from "./ReportMailer";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 
-/** A development's status, as a PDF to look at or download. The office sends it itself. */
+/** A development's status, as a PDF to look at or download, and to email to its shareholders. */
 export const dynamic = "force-dynamic";
 
 export default async function ProjectReportPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   await requireUser(["ADMIN"]);
   const params = await searchParams;
-  const { t } = await getTranslator();
+  const { t, locale } = await getTranslator();
   const list = await db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name));
   const projectId = params.project && list.some((one) => one.id === params.project) ? params.project : (list[0]?.id ?? "");
   const data = projectId ? await projectReportData(projectId) : null;
+  const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
 
   return (
     <>
@@ -57,6 +62,48 @@ export default async function ProjectReportPage({ searchParams }: { searchParams
                 {t("projectReport.download")}
               </a>
             </div>
+          </Card>
+
+          {/* Emailed to whoever the office writes in, each by their own name. */}
+          <Card title={t("projectReport.mailTitle")}>
+            <p className="mb-3 max-w-prose text-xs text-brand-graphite/60">{t("projectReport.mailNote")}</p>
+            {emailConfigured() ? null : (
+              <p className="mb-3 max-w-prose rounded border border-[color:var(--color-warning)] bg-brand-surface px-3 py-2 text-xs">
+                {t("projectReport.mailNotSetUp")}
+              </p>
+            )}
+            <ReportMailer
+              key={projectId}
+              action={emailProjectReport.bind(null, projectId)}
+              project={data.project.name}
+              defaults={{
+                subject: locale === "el" ? REPORT_SUBJECT_EL : REPORT_SUBJECT,
+                body: locale === "el" ? REPORT_BODY_EL : REPORT_BODY,
+                date: today,
+              }}
+              labels={{
+                to: t("projectReport.mailTo"),
+                namePlaceholder: t("projectReport.mailNamePlaceholder"),
+                nameLabel: t("projectReport.mailNameLabel"),
+                emailPlaceholder: t("projectReport.mailEmailPlaceholder"),
+                emailLabel: t("projectReport.mailEmailLabel"),
+                remove: t("projectReport.mailRemove"),
+                addPerson: t("projectReport.mailAddPerson"),
+                readyCount: t("projectReport.mailReadyCount"),
+                eachOwn: t("projectReport.mailEachOwn"),
+                subject: t("campaigns.subject"),
+                body: t("projectReport.mailBody"),
+                nameHint: t("projectReport.mailNameHint"),
+                nameMissing: t("projectReport.mailNameMissing"),
+                preview: t("projectReport.mailPreview"),
+                attached: t("projectReport.mailAttached"),
+                theirName: t("projectReport.mailTheirName"),
+                sendOne: t("projectReport.mailSendOne"),
+                sendMany: t("projectReport.mailSendMany"),
+                sending: t("projectReport.mailSending"),
+                pickSomeone: t("projectReport.mailPickSomeone"),
+              }}
+            />
           </Card>
         </div>
       ) : null}
