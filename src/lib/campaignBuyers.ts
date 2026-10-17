@@ -106,13 +106,19 @@ export function chosenBuyers(all: Buyer[], buyerIds: string | null | undefined):
  * Every buyer, with every apartment they hold, for the form: the buyers shown
  * follow what the campaign is about as it is chosen.
  */
-export async function buyerChoices(): Promise<{ id: string; label: string; hint: string; about: string[] }[]> {
+export async function buyerChoices(): Promise<
+  { id: string; label: string; hint: string; about: string[]; email: boolean; phone: boolean; textChannel: string }[]
+> {
   const all = await buyersOf({ aboutIds: null, projectId: null, unitId: null });
   return all.map((one) => ({
     id: one.clientId,
     label: one.name,
     hint: one.units.map((u) => `${u.projectName} ${u.code}`).join(", "),
     about: [...new Set(one.units.flatMap((u) => [`project:${u.projectId}`, `unit:${u.unitId}`]))],
+    /* Whether they can be reached, and how they are texted, for the form's "who gets it and how". */
+    email: Boolean(one.email?.trim()),
+    phone: Boolean(one.phone?.trim()),
+    textChannel: one.textChannel,
   }));
 }
 

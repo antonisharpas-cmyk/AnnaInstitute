@@ -69,6 +69,16 @@ export default async function NewCampaignPage({
       hint: [wayWord(r.agentChannel), r.email ?? r.phone ?? ""].filter(Boolean).join(" . "),
       channel: r.agentChannel ?? "EMAIL",
     }));
+  /* Everybody who can be in a campaign, with whether they have an email address and a
+     mobile and how they are texted, so the form can say who gets it and how. */
+  const reach = everyone.map((r) => ({
+    group: r.group,
+    id: r.clientId ?? r.agentId ?? r.subownerId ?? r.leadId ?? "",
+    email: Boolean(r.email?.trim()),
+    phone: Boolean(r.phone?.trim()),
+    textChannel: r.textChannel,
+    agentChannel: r.agentChannel,
+  }));
   /* The leads, to choose from one by one. */
   const leadChoices = everyone
     .filter((r) => r.group === "LEADS" && r.leadId)
@@ -140,6 +150,7 @@ export default async function NewCampaignPage({
             counts={counts}
             agentWays={agentWays}
             agentChoices={agentChoices}
+            reach={reach}
             groups={groups}
             about={about}
             aboutDefault={aboutDefault}
@@ -169,6 +180,23 @@ export default async function NewCampaignPage({
               groupSubowners: t("campaigns.groupSubowners"),
               groupLeads: t("campaigns.groupLeads"),
               groupBuyers: t("campaigns.groupBuyers"),
+              groupClientsHint: t("campaigns.groupClientsHint"),
+              groupBuyersHint: t("campaigns.groupBuyersHint"),
+              groupLeadsHint: t("campaigns.groupLeadsHint"),
+              groupAgentsHint: t("campaigns.groupAgentsHint"),
+              groupSubownersHint: t("campaigns.groupSubownersHint"),
+              summaryTitle: t("campaigns.summaryTitle"),
+              summaryEmpty: t("campaigns.summaryEmpty"),
+              summaryGroup: t("campaigns.summaryGroup"),
+              summaryPeople: t("campaigns.summaryPeople"),
+              summaryNone: t("campaigns.summaryNone"),
+              summaryTotal: t("campaigns.summaryTotal"),
+              summaryAlsoBuyers: t("campaigns.summaryAlsoBuyers"),
+              summaryRuleClients: t("campaigns.summaryRuleClients"),
+              summaryRuleAgents: t("campaigns.summaryRuleAgents"),
+              summaryRuleSubowners: t("campaigns.summaryRuleSubowners"),
+              summaryRuleNone: t("campaigns.summaryRuleNone"),
+              summaryRuleOnce: t("campaigns.summaryRuleOnce"),
               buyersAll: t("campaigns.buyersAll"),
               buyersChosen: t("campaigns.buyersChosen"),
               buyersNote: t("campaigns.buyersNote"),

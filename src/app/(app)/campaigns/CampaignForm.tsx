@@ -4,6 +4,7 @@ import { useState } from "react";
 import AboutPicker from "@/components/AboutPicker";
 import Link from "next/link";
 import SubmitButton from "@/components/SubmitButton";
+import { campaignWays } from "@/lib/agentWay";
 
 export type TemplateChoice = {
   key: string;
@@ -22,7 +23,25 @@ export type TemplateChoice = {
 export type GroupCounts = { clients: number; agents: number; subowners: number; leads?: number };
 
 /** A buyer, with the developments and apartments they hold as "project:<id>" and "unit:<id>". */
-export type BuyerChoice = { id: string; label: string; hint: string; about: string[] };
+export type BuyerChoice = {
+  id: string;
+  label: string;
+  hint: string;
+  about: string[];
+  email?: boolean;
+  phone?: boolean;
+  textChannel?: string;
+};
+
+/** One person who can be in a campaign: whether they have an email and a mobile, and how they take texts. */
+export type Reach = {
+  group: string;
+  id: string;
+  email: boolean;
+  phone: boolean;
+  textChannel?: string;
+  agentChannel?: string;
+};
 
 /**
  * Writing a campaign.
@@ -49,8 +68,11 @@ export default function CampaignForm({
   leadsDefault = [],
   buyerChoices = [],
   agentChoices = [],
+  reach: everyone = [],
   labels,
 }: {
+  /** Everybody in the clients, agents, partners and leads lists, for "who gets it and how". */
+  reach?: Reach[];
   /** Every active agent, to tick one by one, with the way each wants campaigns: EMAIL, WHATSAPP or BOTH. */
   agentChoices?: { id: string; label: string; hint: string; channel: string }[];
   /** Every buyer, to tick one by one; the list follows what the campaign is about. */
@@ -198,6 +220,115 @@ export default function CampaignForm({
     (toSubowners ? counts.subowners : 0) +
     (toLeads ? (leadMode === "chosen" && chosenLeads.length > 0 ? chosenLeads.length : (counts.leads ?? 0)) : 0);
 
+  /*
+   * Who gets it, and how: worked out live from what is ticked, group by
+   * group, with the same rule the sending uses. An agent their own way; a
+   * client, buyer or lead by email and by SMS or WhatsApp as their page says.
+   */
+  const way = { viaEmail: sendEmail, viaWhatsapp: sendWhatsapp, agentsBothVia: bothVia, subject, bodyWhatsapp: whatsapp };
+  const tally = (people: Reach[]) => {
+    const row = { people: people.length, email: 0, sms: 0, whatsapp: 0, none: 0 };
+    for (const person of people) {
+      const ways = campaignWays(person, way);
+      const byEmail = ways.includes("EMAIL") && person.email;
+      const bySms = ways.includes("SMS") && person.phone;
+      const byWhatsapp = ways.includes("WHATSAPP") && person.phone;
+      if (byEmail) row.email += 1;
+      if (bySms) row.sms += 1;
+      if (byWhatsapp) row.whatsapp += 1;
+      if (!byEmail && !bySms && !byWhatsapp) row.none += 1;
+    }
+    return row;
+  };
+  const inGroup = (group: string) => everyone.filter((one) => one.group === group);
+  const buyersPicked =
+    buyerMode === "chosen" && chosenBuyers.length > 0
+      ? buyersInScope.filter((one) => chosenBuyers.includes(one.id))
+      : buyersInScope;
+  const buyerIds = new Set(toBuyers ? buyersPicked.map((one) => one.id) : []);
+  const summary = everyone.length
+    ? [
+        toClients
+          ? {
+              key: "clients",
+              name: labels.groupClients,
+              /* A client who is also a buyer gets the buyer's letter instead. */
+              ...tally(inGroup("CLIENTS").filter((one) => !buyerIds.has(one.id))),
+              alsoBuyers: inGroup("CLIENTS").filter((one) => buyerIds.has(one.id)).length,
+            }
+          : null,
+        toBuyers
+          ? {
+              key: "buyers",
+              name: labels.groupBuyers,
+              ...tally(
+                buyersPicked.map((one) => ({
+                  group: "BUYERS",
+                  id: one.id,
+                  email: Boolean(one.email),
+                  phone: Boolean(one.phone),
+                  textChannel: one.textChannel,
+                })),
+              ),
+            }
+          : null,
+        toAgents
+          ? {
+              key: "agents",
+              name: labels.groupAgents,
+              ...tally(
+                inGroup("AGENTS").filter((one) => !agentsInPlay || agentsInPlay.some((chosen) => chosen.id === one.id)),
+              ),
+            }
+          : null,
+        toSubowners ? { key: "subowners", name: labels.groupSubowners, ...tally(inGroup("SUBOWNERS")) } : null,
+        toLeads
+          ? {
+              key: "leads",
+              name: labels.groupLeads,
+              ...tally(
+                inGroup("LEADS").filter(
+                  (one) => leadMode !== "chosen" || chosenLeads.length === 0 || chosenLeads.includes(one.id),
+                ),
+              ),
+            }
+          : null,
+      ].filter((one): one is NonNullable<typeof one> => one !== null)
+    : [];
+  const total = summary.reduce(
+    (sum, row) => ({
+      people: sum.people + row.people,
+      email: sum.email + row.email,
+      sms: sum.sms + row.sms,
+      whatsapp: sum.whatsapp + row.whatsapp,
+      none: sum.none + row.none,
+    }),
+    { people: 0, email: 0, sms: 0, whatsapp: 0, none: 0 },
+  );
+
+  /* One group, as a tile: tick, name, how many, and in one line who they are. */
+  const groupTile = (
+    name: string,
+    checked: boolean,
+    onChange: (on: boolean) => void,
+    title: string,
+    count: number,
+    hint: string,
+  ) => (
+    <label
+      className={`flex cursor-pointer items-start gap-2 rounded border p-3 text-sm ${
+        checked ? "border-brand-teal bg-brand-surface" : "border-brand-line"
+      }`}
+      data-group-tile={name}
+    >
+      <input type="checkbox" name={name} checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-0.5" />
+      <span>
+        <span className="font-semibold">{title}</span> <span className="text-brand-graphite/60">({count})</span>
+        <span className="mt-0.5 block text-xs text-brand-graphite/60">{hint}</span>
+      </span>
+    </label>
+  );
+
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="templateKey" value={templateKey} />
@@ -262,64 +393,12 @@ export default function CampaignForm({
         <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
           {labels.whoGetsIt}
         </legend>
-        <div className="flex flex-wrap gap-5">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="toClients"
-              checked={toClients}
-              onChange={(event) => setToClients(event.target.checked)}
-            />
-            <span>
-              {labels.groupClients}{" "}
-              <span className="text-brand-graphite/60">({counts.clients})</span>
-            </span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="toAgents"
-              checked={toAgents}
-              onChange={(event) => setToAgents(event.target.checked)}
-            />
-            <span>
-              {labels.groupAgents} <span className="text-brand-graphite/60">({counts.agents})</span>
-            </span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="toSubowners"
-              checked={toSubowners}
-              onChange={(event) => setToSubowners(event.target.checked)}
-            />
-            <span>
-              {labels.groupSubowners}{" "}
-              <span className="text-brand-graphite/60">({counts.subowners})</span>
-            </span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="toLeads"
-              checked={toLeads}
-              onChange={(event) => setToLeads(event.target.checked)}
-            />
-            <span>
-              {labels.groupLeads} <span className="text-brand-graphite/60">({counts.leads ?? 0})</span>
-            </span>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="toBuyers"
-              checked={toBuyers}
-              onChange={(event) => setToBuyers(event.target.checked)}
-            />
-            <span>
-              {labels.groupBuyers} <span className="text-brand-graphite/60">({buyersInScope.length})</span>
-            </span>
-          </label>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {groupTile("toClients", toClients, setToClients, labels.groupClients, counts.clients, labels.groupClientsHint)}
+          {groupTile("toBuyers", toBuyers, setToBuyers, labels.groupBuyers, buyersInScope.length, labels.groupBuyersHint)}
+          {groupTile("toLeads", toLeads, setToLeads, labels.groupLeads, counts.leads ?? 0, labels.groupLeadsHint)}
+          {groupTile("toAgents", toAgents, setToAgents, labels.groupAgents, counts.agents, labels.groupAgentsHint)}
+          {groupTile("toSubowners", toSubowners, setToSubowners, labels.groupSubowners, counts.subowners, labels.groupSubownersHint)}
         </div>
 
         {/* The buyers of what the campaign is about, every one or only the ones ticked. */}
@@ -508,7 +587,7 @@ export default function CampaignForm({
         ) : null}
 
         <p className="mt-2 text-xs text-brand-graphite/60">
-          {reach} {labels.willReceive}. {labels.groupsNote}
+          {summary.length > 0 ? total.people - total.none : reach} {labels.willReceive}. {labels.groupsNote}
         </p>
       </fieldset>
 
@@ -611,6 +690,69 @@ export default function CampaignForm({
           <p className="mt-2 text-xs text-brand-graphite/60">{onlyAgents ? labels.agentsOnlyNote : labels.agentsFallback}</p>
         </fieldset>
       ) : null}
+
+      {/* Who gets it, and how: a table that follows every tick above. */}
+      <fieldset className="rounded border border-brand-teal p-3" data-reach-summary>
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-teal-dark">
+          {labels.summaryTitle}
+        </legend>
+        {summary.length === 0 ? (
+          <p className="text-sm text-brand-graphite/60">{labels.summaryEmpty}</p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="data text-sm">
+                <thead>
+                  <tr>
+                    <th>{labels.summaryGroup}</th>
+                    <th className="num">{labels.summaryPeople}</th>
+                    <th className="num">{labels.email}</th>
+                    <th className="num">SMS</th>
+                    <th className="num">WhatsApp</th>
+                    <th className="num">{labels.summaryNone}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.map((row) => (
+                    <tr key={row.key} data-summary-row={row.key}>
+                      <td className="font-medium">
+                        {row.name}
+                        {"alsoBuyers" in row && row.alsoBuyers ? (
+                          <div className="text-xs font-normal text-brand-graphite/60">
+                            {row.alsoBuyers} {labels.summaryAlsoBuyers}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="num">{row.people}</td>
+                      <td className="num">{row.email || "."}</td>
+                      <td className="num">{row.sms || "."}</td>
+                      <td className="num">{row.whatsapp || "."}</td>
+                      <td className={`num ${row.none ? "text-[color:var(--color-warning,#b7791f)]" : ""}`}>{row.none || "."}</td>
+                    </tr>
+                  ))}
+                  {summary.length > 1 ? (
+                    <tr className="font-semibold" data-summary-row="total">
+                      <td>{labels.summaryTotal}</td>
+                      <td className="num">{total.people}</td>
+                      <td className="num">{total.email || "."}</td>
+                      <td className="num">{total.sms || "."}</td>
+                      <td className="num">{total.whatsapp || "."}</td>
+                      <td className="num">{total.none || "."}</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-brand-graphite/60">
+              <li>{labels.summaryRuleClients}</li>
+              {toAgents ? <li>{labels.summaryRuleAgents}</li> : null}
+              {toSubowners ? <li>{labels.summaryRuleSubowners}</li> : null}
+              <li>{labels.summaryRuleNone}</li>
+              <li>{labels.summaryRuleOnce}</li>
+            </ul>
+          </>
+        )}
+      </fieldset>
 
       {showEmail ? (
         <fieldset className="rounded border border-brand-line p-3" data-email-box>
