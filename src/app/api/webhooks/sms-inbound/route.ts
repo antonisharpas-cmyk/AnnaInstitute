@@ -2,21 +2,25 @@ import { NextResponse } from "next/server";
 import { looksLikeStop } from "@/lib/messaging/text";
 import { suppressAndMarkClients } from "@/lib/suppression";
 import { recordAudit } from "@/lib/audit";
+import { plainNumber } from "@/lib/messaging/twilioParts";
 
 /**
- * Inbound text messages from SMS.to.
+ * Inbound text messages, from Twilio (WhatsApp replies) or SMS.to.
  *
  * This is what makes "reply STOP to opt out" a real promise rather than a
  * sentence in a message. Point the inbound webhook of the SMS.to account at:
  *
- *   POST {APP_URL}/api/webhooks/sms-inbound?secret={SMSTO_CALLBACK_SECRET}
+ *   POST {APP_URL}/api/webhooks/sms-inbound?secret={MESSAGING_WEBHOOK_SECRET}
+ *
+ * For Twilio that address goes in "A message comes in" on the WhatsApp sender
+ * (or the sandbox settings). SMS.to's older SMSTO_CALLBACK_SECRET still works.
  *
  * The payload is treated as data only. Nothing in it is followed as an
  * instruction: the number is normalised, the text is checked against a list of
  * stop words, and that is all that happens.
  */
 function authorised(request: Request): boolean {
-  const expected = process.env.SMSTO_CALLBACK_SECRET;
+  const expected = process.env.MESSAGING_WEBHOOK_SECRET || process.env.SMSTO_CALLBACK_SECRET;
   if (!expected) return false;
   const url = new URL(request.url);
   const given = url.searchParams.get("secret") ?? request.headers.get("x-webhook-secret") ?? "";
@@ -25,18 +29,30 @@ function authorised(request: Request): boolean {
 
 function readPayload(payload: Record<string, unknown>) {
   const from =
+    (payload.From as string) ??
     (payload.from as string) ??
     (payload.sender as string) ??
     (payload.msisdn as string) ??
     (payload.originator as string) ??
     "";
   const text =
+    (payload.Body as string) ??
     (payload.message as string) ??
     (payload.text as string) ??
     (payload.body as string) ??
     (payload.content as string) ??
     "";
-  return { from: String(from ?? ""), text: String(text ?? "") };
+  /* Twilio writes a WhatsApp number as whatsapp:+357..., which is not part of the number. */
+  return { from: plainNumber(String(from ?? "")), text: String(text ?? "") };
+}
+
+/* Twilio expects an answer in its own XML; an empty one means "no reply". */
+const fromTwilio = (request: Request) => request.headers.has("x-twilio-signature");
+function answer(request: Request, json: Record<string, unknown>, status = 200) {
+  if (fromTwilio(request) && status === 200) {
+    return new NextResponse("<Response></Response>", { status, headers: { "Content-Type": "text/xml" } });
+  }
+  return NextResponse.json(json, { status });
 }
 
 export async function POST(request: Request) {
@@ -66,7 +82,7 @@ export async function POST(request: Request) {
       detail: `${from}: ${text.slice(0, 140)}`,
       userEmail: "sms webhook",
     });
-    return NextResponse.json({ ok: true, action: "logged" });
+    return answer(request, { ok: true, action: "logged" });
   }
 
   const result = await suppressAndMarkClients({
@@ -76,7 +92,7 @@ export async function POST(request: Request) {
     source: "sms webhook",
   });
 
-  return NextResponse.json({
+  return answer(request, {
     ok: true,
     action: "suppressed",
     clientsMarked: result.clientsMarked,

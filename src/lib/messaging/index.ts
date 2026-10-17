@@ -4,12 +4,35 @@ import { messages } from "@/db/schema";
 import { isSuppressed } from "../suppression";
 import { leadUnsubscribeUrl, unsubscribeUrl } from "../unsubscribe";
 import { emailConfigured, sendEmail, type EmailAttachment } from "./email";
-import { channelConfigured, sendViaSmsTo, smsConfigured } from "./smsto";
+import * as smsTo from "./smsto";
+import { sendViaTwilio, twilioChannelConfigured, twilioStarted } from "./twilio";
 export { fillPlaceholders, looksLikeStop, normalisePhone, placeholdersLeft } from "./text";
 import type { Channel, SendResult } from "./types";
 
 export type { Channel, SendResult } from "./types";
-export { emailConfigured, smsConfigured, channelConfigured };
+export { emailConfigured };
+
+/*
+ * The text channels go through Twilio once its account is set, and through
+ * SMS.to otherwise, so the office can move between them without a change here.
+ */
+export function smsConfigured(): boolean {
+  return twilioStarted() ? twilioChannelConfigured("SMS") : smsTo.smsConfigured();
+}
+
+export function channelConfigured(channel: Channel): boolean {
+  if (channel === "EMAIL") return emailConfigured();
+  return twilioStarted() ? twilioChannelConfigured(channel) : smsTo.channelConfigured(channel);
+}
+
+/** Which service carries the texts, for the notes on the pages. */
+export function textProvider(): "twilio" | "smsto" {
+  return twilioStarted() ? "twilio" : "smsto";
+}
+
+function sendText(options: { channel: Channel; to: string; body: string }): Promise<SendResult> {
+  return twilioStarted() ? sendViaTwilio(options) : smsTo.sendViaSmsTo(options);
+}
 
 export type Recipient = {
   name: string;
@@ -123,6 +146,14 @@ export async function sendAndRecord(options: {
       const url = recipient.clientId ? unsubscribeUrl(recipient.clientId) : leadUnsubscribeUrl(recipient.leadId as string);
       html += `<hr style="margin:24px 0 12px;border:none;border-top:1px solid #e3e5e8"><p style="font-family:'Times New Roman',Times,serif;font-size:9pt;color:#6b7280">If you would rather not receive these, <a href="${url}" style="color:#3d8397">unsubscribe here</a>.</p>`;
       body = `${body}\n\nIf you would rather not receive these, unsubscribe here: ${url}`;
+    } else if (twilioStarted() && (channel === "SMS" || !twilioChannelConfigured(channel))) {
+      /*
+       * Phones in Cyprus cannot answer a text sent by name, so "reply STOP"
+       * would be a promise nobody could keep. The text carries the same one
+       * click link as the email instead. WhatsApp replies do arrive.
+       */
+      const url = recipient.clientId ? unsubscribeUrl(recipient.clientId) : leadUnsubscribeUrl(recipient.leadId as string);
+      if (!body.includes(url)) body = `${body}\nTo stop these messages: ${url}`;
     } else if (!/reply stop/i.test(body)) {
       body = `${body}\nReply STOP to opt out.`;
     }
@@ -138,7 +169,7 @@ export async function sendAndRecord(options: {
           attachments: options.attachments,
           cc,
         })
-      : await sendViaSmsTo({ channel, to, body });
+      : await sendText({ channel, to, body });
 
   const messageId = await record(result.status, body, result);
   return { ...result, messageId };

@@ -72,3 +72,20 @@ test("a placeholder with no value stays, so it can be caught before sending", ()
   assert.equal(filled, "{{unit}} at {{project}}");
   assert.deepEqual(placeholdersLeft(filled), ["{{unit}}", "{{project}}"]);
 });
+
+test("Twilio: WhatsApp addresses and incoming numbers", async () => {
+  const { whatsappAddress, plainNumber } = await import("./twilioParts");
+  assert.equal(whatsappAddress("99123456"), "whatsapp:+35799123456");
+  assert.equal(whatsappAddress("whatsapp:+14155238886"), "whatsapp:+14155238886");
+  assert.equal(plainNumber("whatsapp:+35799123456"), "+35799123456");
+  assert.equal(plainNumber("+35799123456"), "+35799123456");
+});
+
+test("Twilio: errors are explained in words the office can act on", async () => {
+  const { explainTwilioError } = await import("./twilioParts");
+  assert.match(explainTwilioError(400, JSON.stringify({ code: 21608, message: "unverified" })), /verified numbers/);
+  assert.match(explainTwilioError(400, JSON.stringify({ code: 63015, message: "x" })), /sandbox/);
+  assert.match(explainTwilioError(401, JSON.stringify({ code: 20003, message: "Authenticate" })), /TWILIO_AUTH_TOKEN/);
+  assert.match(explainTwilioError(400, JSON.stringify({ code: 21408, message: "Permission" })), /Geo permissions/);
+  assert.match(explainTwilioError(503, "down"), /Try again/);
+});

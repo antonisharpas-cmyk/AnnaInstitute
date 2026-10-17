@@ -9,7 +9,8 @@ import { Card, Empty, PageHeader } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import EmailSwitch from "@/components/EmailSwitch";
 import HistorySwitch from "@/components/HistorySwitch";
-import { saveAppointmentSettings, saveCompanySettings, sendSummaryNow, sendTestEmail } from "./actions";
+import { saveAppointmentSettings, saveCompanySettings, sendSummaryNow, sendTestEmail, sendTestText } from "./actions";
+import { channelConfigured, textProvider } from "@/lib/messaging";
 
 /**
  * The admin panel, which is one panel so far.
@@ -302,6 +303,47 @@ export default async function SettingsPage() {
                 <SubmitButton className="btn btn-secondary">{t("settings.testSend")}</SubmitButton>
               </form>
               <p className="mt-2 max-w-prose text-xs text-brand-graphite/55">{t("settings.testHint")}</p>
+            </Card>
+          </div>
+
+          {/* SMS and WhatsApp, and a button that proves they work. */}
+          <div className="mt-4">
+            <Card title={t("settings.texts")}>
+              {channelConfigured("SMS") || channelConfigured("WHATSAPP") ? (
+                <p className="mb-3 text-sm" data-texts-setup>
+                  {t("settings.textsVia")} <span className="font-semibold">{textProvider() === "twilio" ? "Twilio" : "SMS.to"}</span>: SMS{" "}
+                  <span className={channelConfigured("SMS") ? "text-[color:var(--color-positive,#2f855a)]" : "text-brand-graphite/50"}>
+                    {channelConfigured("SMS") ? t("settings.textReady") : t("settings.textNotReady")}
+                  </span>
+                  , WhatsApp{" "}
+                  <span className={channelConfigured("WHATSAPP") ? "text-[color:var(--color-positive,#2f855a)]" : "text-brand-graphite/50"}>
+                    {channelConfigured("WHATSAPP") ? t("settings.textReady") : t("settings.textNotReady")}
+                  </span>
+                </p>
+              ) : (
+                <p className="mb-3 max-w-prose rounded border border-[color:var(--color-warning)] bg-brand-surface px-3 py-2 text-xs">
+                  {t("settings.noTextsYet")}
+                </p>
+              )}
+              <form action={sendTestText} className="flex flex-wrap items-end gap-2" data-test-text>
+                <div className="min-w-56 flex-1">
+                  <label className="label" htmlFor="testTextTo">
+                    {t("settings.testTextTo")}
+                  </label>
+                  <input id="testTextTo" name="to" type="tel" required placeholder={t("settings.testTextToHint")} className="input" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="testChannel">
+                    {t("settings.testChannel")}
+                  </label>
+                  <select id="testChannel" name="channel" className="input">
+                    <option value="SMS">SMS</option>
+                    <option value="WHATSAPP">WhatsApp</option>
+                  </select>
+                </div>
+                <SubmitButton className="btn btn-secondary">{t("settings.testTextSend")}</SubmitButton>
+              </form>
+              <p className="mt-2 max-w-prose text-xs text-brand-graphite/55">{t("settings.testTextHint")}</p>
             </Card>
           </div>
 

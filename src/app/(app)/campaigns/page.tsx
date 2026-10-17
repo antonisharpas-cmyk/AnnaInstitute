@@ -55,9 +55,9 @@ export default async function CampaignsPage() {
     {
       label: t("campaigns.whatsapp"),
       ready: channelConfigured("WHATSAPP"),
-      note: "SMSTO_API_KEY and SMSTO_WHATSAPP_PATH",
+      note: "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM",
     },
-    { label: "SMS", ready: channelConfigured("SMS"), note: "SMSTO_API_KEY" },
+    { label: "SMS", ready: channelConfigured("SMS"), note: "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_SMS_FROM" },
   ];
 
   const audienceLine = (name: "CLIENTS" | "AGENTS" | "SUBOWNERS", label: string) => {

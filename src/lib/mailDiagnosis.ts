@@ -127,7 +127,7 @@ export function diagnoseMail(): MailDiagnosis {
     hints.push(".env.local has no SMTP_HOST line. Add the SMTP lines to it.");
   }
   if (!hostLoaded && local?.keys.some((key) => MAIL_KEYS.host.includes(key.key as never) && !key.hasValue)) {
-    hints.push(".env.local has SMTP_HOST with nothing after the = sign. Fill in smtp.gmail.com, or delete the empty line if the value is in another file, because an empty line in .env.local hides the value in .env.");
+    hints.push(".env.local has SMTP_HOST with nothing after the = sign. Fill in the mail server, for example email-smtp.eu-north-1.amazonaws.com for Amazon SES, or delete the empty line if the value is in another file, because an empty line in .env.local hides the value in .env.");
   }
   if (example?.keys.some((key) => MAIL_KEYS.host.includes(key.key as never) && key.hasValue) && !hostLoaded) {
     hints.push("The SMTP settings are filled in .env.example, which the CRM never reads. Copy those lines into .env.local.");
@@ -139,7 +139,7 @@ export function diagnoseMail(): MailDiagnosis {
   const passwordMissing = !settings.find((one) => one.setting === "password")?.foundAs;
   const userSet = Boolean(settings.find((one) => one.setting === "user")?.foundAs);
   if (hostLoaded && userSet && passwordMissing) {
-    hints.push("SMTP_HOST is set but there is no SMTP_PASSWORD. For Google Workspace it is the 16 letter app password.");
+    hints.push("SMTP_HOST is set but there is no SMTP_PASSWORD. For Amazon SES it is the SMTP password from the credentials file, for Google Workspace the 16 letter app password.");
   }
   /*
    * A value that is not the one in .env.local came from somewhere else, and
@@ -152,7 +152,12 @@ export function diagnoseMail(): MailDiagnosis {
       `The CRM is not using the ${differ.map((one) => one.foundAs).join(", ")} written in .env.local. A value set in Windows (System, Environment variables) or in the terminal the CRM was started from wins over the file. Remove it there, close the terminal, open a new one and start the CRM again.`,
     );
   }
-  if (pass && (pass.length !== 16 || !pass.lettersOnly)) {
+  /* Only a Google app password has a known shape; Amazon SES, Microsoft or any other server's password can be anything. */
+  const host = (() => {
+    const key = MAIL_KEYS.host.find((one) => running(one));
+    return key ? running(key).toLowerCase() : "";
+  })();
+  if (pass && /gmail|google/.test(host) && (pass.length !== 16 || !pass.lettersOnly)) {
     hints.push(
       `The password the CRM reads has ${pass.length} characters${pass.lettersOnly ? "" : " and not only letters"}. A Google app password is 16 letters. Your normal Gmail password does not work here.`,
     );

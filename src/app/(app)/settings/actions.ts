@@ -7,7 +7,7 @@ import { recordAudit } from "@/lib/audit";
 import { writeSetting } from "@/lib/settings";
 import { sendDailySummary } from "@/lib/appointmentSummary";
 import { sendEmail } from "@/lib/messaging/email";
-import { letterHtml } from "@/lib/messaging";
+import { letterHtml, sendAndRecord } from "@/lib/messaging";
 
 /**
  * The few things the office sets once.
@@ -127,6 +127,41 @@ export async function sendTestEmail(formData: FormData) {
     result.status === "SENT"
       ? `said.testEmailSent|${to}`
       : `said.testEmailFailed|${String(result.error ?? "no answer").slice(0, 200)}`,
+    result.status === "SENT" ? "good" : "bad",
+  );
+  revalidatePath("/settings");
+}
+
+/**
+ * A test SMS or WhatsApp to one number, to prove the text channels work.
+ * Recorded with the other messages, so it shows what went out and when.
+ */
+export async function sendTestText(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const to = String(formData.get("to") ?? "").trim();
+  const channel = formData.get("channel") === "WHATSAPP" ? "WHATSAPP" : "SMS";
+  if (!to) {
+    await flash("said.testTextFailed|no number", "bad");
+    return;
+  }
+  const result = await sendAndRecord({
+    channel,
+    recipient: { name: "Test", phone: to },
+    body: "This is a test from the One Eleven CRM. If you are reading it, the texts can go out.",
+    withOptOut: false,
+  });
+  const used = result.usedChannel ?? channel;
+  await recordAudit({
+    action: "settings.testText",
+    entity: "settings",
+    detail: `${used} ${to}: ${result.status}${result.error ? `, ${result.error}` : ""}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(
+    result.status === "SENT"
+      ? `said.testTextSent|${used === "WHATSAPP" ? "WhatsApp" : "SMS"} ${to}`
+      : `said.testTextFailed|${String(result.error ?? "no answer").slice(0, 300)}`,
     result.status === "SENT" ? "good" : "bad",
   );
   revalidatePath("/settings");
