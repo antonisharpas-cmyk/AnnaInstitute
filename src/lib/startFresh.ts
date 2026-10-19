@@ -29,27 +29,32 @@ import { recordAudit } from "@/lib/audit";
 const CLEARED: { table: string; what: string; where?: string }[] = [
   { table: "automatic_emails", what: "automatic emails sent" },
   { table: "messages", what: "emails and messages sent" },
-  { table: "campaign_documents", what: "campaign attachments" },
-  { table: "campaigns", what: "campaigns" },
   { table: "suppressions", what: "unsubscribe list" },
   { table: "signing_papers", what: "Reservations and Contracts of Sale being signed" },
   { table: "issued_documents", what: "invoices and receipts issued" },
+  /* Before the campaign attachments go, since the files a campaign carried are found through them. */
   {
     table: "documents",
-    what: "files of clients, contracts, payments and invoices",
+    what: "files of clients, contracts, payments, invoices and campaigns",
     where:
-      "client_id is not null or contract_id is not null or change_request_id is not null or payment_id is not null or commission_id is not null or expense_id is not null or constructor_payment_id is not null",
+      "client_id is not null or contract_id is not null or change_request_id is not null or payment_id is not null or commission_id is not null or expense_id is not null or constructor_payment_id is not null or id in (select document_id from campaign_documents)",
   },
+  { table: "campaign_documents", what: "campaign attachments" },
+  { table: "campaigns", what: "campaigns" },
+  /* Every link handed out: the price lists sent to agents and the campaign file links. */
+  { table: "share_links", what: "price list and campaign links" },
   { table: "commission_payments", what: "commission payments" },
   { table: "commissions", what: "commissions" },
   { table: "refunds", what: "refunds and penalties" },
   { table: "cash_receipts", what: "cash received" },
+  { table: "cash_entries", what: "cash book entries" },
   { table: "vat_changes", what: "VAT changes" },
   { table: "change_requests", what: "change requests" },
   { table: "payments", what: "payments" },
   { table: "installments", what: "payment stages" },
   { table: "contract_units", what: "apartments on contracts" },
   { table: "contracts", what: "contracts" },
+  { table: "expense_payments", what: "payments of invoices and costs" },
   { table: "expense_lines", what: "invoice lines" },
   { table: "expenses", what: "invoices, fees and costs" },
   { table: "appointments", what: "appointments" },
@@ -72,7 +77,11 @@ export const KEPT = [
   "companies, shareholders and directors",
   "team members and logins",
   "agents",
-  "settings, number series, email templates and lists",
+  "partners (the suppliers list)",
+  "team for appointments",
+  "website lead keys",
+  "settings, email templates and lists",
+  "number series: invoices and receipts start again from the starting numbers you set",
 ];
 
 const rowsOf = (result: unknown): Record<string, unknown>[] =>
