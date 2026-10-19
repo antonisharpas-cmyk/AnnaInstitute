@@ -1082,7 +1082,7 @@ export async function setLeadTextChannel(leadId: string, formData: FormData) {
     action: "lead.textChannel",
     entity: "lead",
     entityId: leadId,
-    detail: textChannel === "WHATSAPP" ? "texted by WhatsApp" : "texted by SMS",
+    detail: textChannel === "WHATSAPP" ? "texted by WhatsApp" : textChannel === "NONE" ? "no texts" : "texted by SMS",
     userId: user.id,
     userEmail: user.email,
   });

@@ -433,6 +433,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "how each client and lead is texted, SMS or WhatsApp",
     migration: "0076",
   },
+  {
+    probe: "select client_ids from campaigns limit 1",
+    what: "the clients and companies chosen one by one for a campaign",
+    migration: "0077",
+  },
 ];
 
 let answer: Missing[] | null = null;

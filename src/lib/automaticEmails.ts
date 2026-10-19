@@ -697,7 +697,8 @@ export async function letterForAppointment(
         : "SMS";
   let text: Awaited<ReturnType<typeof sendAndRecord>> | null = null;
   const short = (template.bodyWhatsapp ?? "").trim();
-  if (phone && short) {
+  /* A client or lead set to no texts hears by email only. */
+  if (phone && short && textBy !== "NONE") {
     text = await sendAndRecord({
       channel: textBy,
       recipient: { name: to.name, phone, clientId: to.clientId ?? undefined, leadId: row.lead?.id ?? undefined },
@@ -715,7 +716,8 @@ export async function letterForAppointment(
           ? `${what} not set up, nothing went`
           : `${what} did not go: ${one.error ?? one.status}`;
   const textWord = (text?.usedChannel ?? textBy) === "WHATSAPP" ? "WhatsApp" : "SMS";
-  const reason = [said(email, "Email"), said(text, textWord)].filter(Boolean).join(". ") + ".";
+  const noTexts = textBy === "NONE" && phone && short ? "No text, as they are set to no texts" : null;
+  const reason = [said(email, "Email"), said(text, textWord), noTexts].filter(Boolean).join(". ") + ".";
   const anySent = email?.status === "SENT" || text?.status === "SENT";
   const anyFailed = email?.status === "FAILED" || text?.status === "FAILED";
   await note(anySent ? "SENT" : anyFailed ? "FAILED" : "SKIPPED", reason);

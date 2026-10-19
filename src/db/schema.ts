@@ -1104,6 +1104,10 @@ export const campaigns = pgTable("campaigns", {
   toLeads: boolean("to_leads").default(false).notNull(),
   /** The leads chosen by hand, as a JSON list of ids. Empty means every lead. */
   leadIds: text("lead_ids"),
+  /** The clients with consent chosen by hand, as a JSON list of ids. Empty means every one. */
+  clientIds: text("client_ids"),
+  /** The partner companies chosen by hand, as a JSON list of ids. Empty means every active one. */
+  subownerIds: text("subowner_ids"),
   /**
    * The buyers of what the campaign is about: the clients holding a reserved,
    * sold or delivered apartment there. Service letters about their own home,

@@ -38,6 +38,8 @@ export default function LeadForm({
     phone: string;
     /** How the lead is texted: SMS or WhatsApp. */
     textBy: string;
+    /** "None": no texts at all. */
+    textNone: string;
     source: string;
     sourceOther: string;
     sourceOtherHint: string;
@@ -132,6 +134,7 @@ export default function LeadForm({
           <select id="textChannel" name="textChannel" defaultValue="SMS" className="select">
             <option value="SMS">SMS</option>
             <option value="WHATSAPP">WhatsApp</option>
+            <option value="NONE">{labels.textNone}</option>
           </select>
         </div>
       </div>

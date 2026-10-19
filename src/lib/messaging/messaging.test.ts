@@ -98,6 +98,8 @@ test("campaign ways: clients and leads are texted their own way, agents theirs",
   assert.deepEqual(campaignWays({ group: "LEADS", textChannel: "WHATSAPP" }, both), ["EMAIL", "WHATSAPP"]);
   assert.deepEqual(campaignWays({ group: "BUYERS", textChannel: "SMS" }, { ...both, viaEmail: false }), ["SMS"]);
   assert.deepEqual(campaignWays({ group: "SUBOWNERS" }, both), ["EMAIL", "WHATSAPP"]);
+  assert.deepEqual(campaignWays({ group: "CLIENTS", textChannel: "NONE" }, both), ["EMAIL"]);
+  assert.deepEqual(campaignWays({ group: "LEADS", textChannel: "NONE" }, { ...both, viaEmail: false }), []);
   assert.deepEqual(campaignWays({ group: "AGENTS", agentChannel: "WHATSAPP" }, both), ["WHATSAPP"]);
   assert.deepEqual(campaignWays({ group: "CLIENTS", textChannel: "WHATSAPP" }, { ...both, viaWhatsapp: false }), ["EMAIL"]);
 });
@@ -107,6 +109,7 @@ test("text channel: anything but WhatsApp is SMS", async () => {
   assert.equal(textChannelOf("WHATSAPP"), "WHATSAPP");
   assert.equal(textChannelOf("whatever"), "SMS");
   assert.equal(textChannelOf(null), "SMS");
+  assert.equal(textChannelOf("NONE"), "NONE");
   assert.equal(agentTextChannel("BOTH"), "WHATSAPP");
   assert.equal(agentTextChannel("EMAIL"), "SMS");
 });

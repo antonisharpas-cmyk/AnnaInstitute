@@ -79,6 +79,13 @@ export default async function NewCampaignPage({
     textChannel: r.textChannel,
     agentChannel: r.agentChannel,
   }));
+  /* The clients with consent and the companies, to choose from one by one. */
+  const clientChoices = everyone
+    .filter((r) => r.group === "CLIENTS" && r.clientId)
+    .map((r) => ({ id: r.clientId as string, label: r.name, hint: [r.email, r.phone].filter(Boolean).join(" . ") }));
+  const subownerChoices = everyone
+    .filter((r) => r.group === "SUBOWNERS" && r.subownerId)
+    .map((r) => ({ id: r.subownerId as string, label: r.name, hint: [r.email, r.phone].filter(Boolean).join(" . ") }));
   /* The leads, to choose from one by one. */
   const leadChoices = everyone
     .filter((r) => r.group === "LEADS" && r.leadId)
@@ -151,6 +158,8 @@ export default async function NewCampaignPage({
             agentWays={agentWays}
             agentChoices={agentChoices}
             reach={reach}
+            clientChoices={clientChoices}
+            subownerChoices={subownerChoices}
             groups={groups}
             about={about}
             aboutDefault={aboutDefault}
@@ -202,6 +211,11 @@ export default async function NewCampaignPage({
               buyersNote: t("campaigns.buyersNote"),
               buyersNone: t("campaigns.buyersNone"),
               leadsAll: t("campaigns.leadsAll"),
+              clientsAll: t("campaigns.clientsAll"),
+              clientsChosen: t("campaigns.clientsChosen"),
+              subownersAll: t("campaigns.subownersAll"),
+              subownersChosen: t("campaigns.subownersChosen"),
+              subownersSearch: t("campaigns.subownersSearch"),
               leadsChosen: t("campaigns.leadsChosen"),
               leadsSearch: t("campaigns.leadsSearch"),
               leadsPicked: t("campaigns.leadsPicked"),

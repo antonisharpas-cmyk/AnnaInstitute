@@ -108,6 +108,15 @@ export async function createCampaign(formData: FormData) {
     toLeads && String(formData.get("leadMode") ?? "all") === "chosen"
       ? formData.getAll("leadIds").map(String).filter(Boolean)
       : [];
+  /* Every client with consent, or only the ones ticked; every company, or only the ones ticked. */
+  const clientIds =
+    toClients && String(formData.get("clientMode") ?? "all") === "chosen"
+      ? formData.getAll("clientIds").map(String).filter(Boolean)
+      : [];
+  const subownerIds =
+    toSubowners && String(formData.get("subownerMode") ?? "all") === "chosen"
+      ? formData.getAll("subownerIds").map(String).filter(Boolean)
+      : [];
   const projectIds = formData.getAll("projectIds").map(String).filter(Boolean);
   /* Every buyer of what it is about, or only the ones ticked. */
   const buyerIds =
@@ -150,6 +159,8 @@ export async function createCampaign(formData: FormData) {
       toSubowners,
       toLeads,
       leadIds: leadIds.length > 0 ? JSON.stringify(leadIds) : null,
+      clientIds: clientIds.length > 0 ? JSON.stringify(clientIds) : null,
+      subownerIds: subownerIds.length > 0 ? JSON.stringify(subownerIds) : null,
       toBuyers,
       buyerIds: buyerIds.length > 0 ? JSON.stringify(buyerIds) : null,
       projectIds: projectIds.length > 0 ? JSON.stringify(projectIds) : null,
@@ -210,6 +221,9 @@ export type CampaignGroups = {
   agentIds?: string | null;
   /** JSON list of the leads chosen by hand; empty is every lead. */
   leadIds?: string | null;
+  /** JSON lists of the clients with consent and the companies chosen by hand; empty is every one. */
+  clientIds?: string | null;
+  subownerIds?: string | null;
   /** The buyers of what the campaign is about, every one or the ones chosen. */
   toBuyers?: boolean;
   buyerIds?: string | null;
@@ -261,6 +275,7 @@ export async function audienceFor(groups: CampaignGroups) {
           eq(clients.marketingOptIn, true),
           isNull(clients.unsubscribedAt),
           isNull(clients.deletedAt),
+          idsOf(groups.clientIds).length > 0 ? inArray(clients.id, idsOf(groups.clientIds)) : undefined,
         ),
       )
       .orderBy(asc(clients.lastName));
@@ -309,7 +324,13 @@ export async function audienceFor(groups: CampaignGroups) {
     const rows = await db
       .select()
       .from(subowners)
-      .where(and(eq(subowners.isActive, true), isNull(subowners.unsubscribedAt)))
+      .where(
+        and(
+          eq(subowners.isActive, true),
+          isNull(subowners.unsubscribedAt),
+          idsOf(groups.subownerIds).length > 0 ? inArray(subowners.id, idsOf(groups.subownerIds)) : undefined,
+        ),
+      )
       .orderBy(asc(subowners.name));
 
     for (const s of rows) {

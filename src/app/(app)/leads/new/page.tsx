@@ -40,6 +40,7 @@ export default async function NewLeadPage() {
               email: t("leads.email"),
               phone: t("leads.phone"),
               textBy: t("people.textBy"),
+              textNone: t("people.textNone"),
               source: t("leads.camefrom"),
               sourceOther: t("leads.sourceOther"),
               sourceOtherHint: t("leads.sourceOtherHint"),

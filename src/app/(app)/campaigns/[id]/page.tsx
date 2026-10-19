@@ -408,7 +408,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                     </td>
                     <td className="break-all text-xs">
                       {!r.byWhatsapp ? (
-                        r.way === "EMAIL" ? (
+                        r.textChannel === "NONE" && campaign.viaWhatsapp ? (
+                          <span className="text-brand-graphite/40" data-text-via="NONE">{t("campaigns.textWayNone")}</span>
+                        ) : r.way === "EMAIL" ? (
                           <span className="text-brand-graphite/40" data-not-their-way>{t("campaigns.theirWayEmail")}</span>
                         ) : (
                           <span className="text-brand-graphite/40">not on this campaign</span>

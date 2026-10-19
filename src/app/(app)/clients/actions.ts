@@ -1046,7 +1046,7 @@ export async function setClientTextChannel(clientId: string, formData: FormData)
     action: "client.textChannel",
     entity: "client",
     entityId: clientId,
-    detail: textChannel === "WHATSAPP" ? "texted by WhatsApp" : "texted by SMS",
+    detail: textChannel === "WHATSAPP" ? "texted by WhatsApp" : textChannel === "NONE" ? "no texts" : "texted by SMS",
     userId: user.id,
     userEmail: user.email,
   });

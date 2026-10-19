@@ -1,7 +1,8 @@
 import type { TextChannel } from "@/lib/textChannel";
 
 /**
- * Two buttons, SMS and WhatsApp: how the office texts this person.
+ * Three buttons, SMS, WhatsApp and None: how the office texts this person, or
+ * that it does not text them at all.
  *
  * The one in use is filled in; pressing the other saves it at once. The
  * appointment messages and the text part of every campaign follow it.
@@ -13,7 +14,7 @@ export default function TextChannelSwitch({
 }: {
   action: (formData: FormData) => Promise<void>;
   current: TextChannel;
-  labels: { title: string; hint: string; sms: string; whatsapp: string };
+  labels: { title: string; hint: string; sms: string; whatsapp: string; none: string };
 }) {
   const button = (value: TextChannel, label: string) => {
     const on = current === value;
@@ -41,6 +42,7 @@ export default function TextChannelSwitch({
         <form action={action} className="flex gap-2">
           {button("SMS", labels.sms)}
           {button("WHATSAPP", labels.whatsapp)}
+          {button("NONE", labels.none)}
         </form>
       </div>
     </div>

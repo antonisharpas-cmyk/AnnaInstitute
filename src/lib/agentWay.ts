@@ -61,6 +61,7 @@ export function campaignWays(
   if (recipient.group === "AGENTS") return agentChannels(recipient.agentChannel, campaign);
   const ways: CampaignWay[] = [];
   if (campaign.viaEmail) ways.push("EMAIL");
-  if (campaign.viaWhatsapp) ways.push(recipient.textChannel === "SMS" ? "SMS" : "WHATSAPP");
+  /* Set to no texts: the email only, whatever the campaign. */
+  if (campaign.viaWhatsapp && recipient.textChannel !== "NONE") ways.push(recipient.textChannel === "SMS" ? "SMS" : "WHATSAPP");
   return ways;
 }

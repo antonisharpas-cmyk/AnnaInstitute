@@ -69,8 +69,14 @@ export default function CampaignForm({
   buyerChoices = [],
   agentChoices = [],
   reach: everyone = [],
+  clientChoices = [],
+  subownerChoices = [],
   labels,
 }: {
+  /** Every client with consent, to tick one by one. */
+  clientChoices?: { id: string; label: string; hint: string }[];
+  /** Every active partner company, to tick one by one. */
+  subownerChoices?: { id: string; label: string; hint: string }[];
   /** Everybody in the clients, agents, partners and leads lists, for "who gets it and how". */
   reach?: Reach[];
   /** Every active agent, to tick one by one, with the way each wants campaigns: EMAIL, WHATSAPP or BOTH. */
@@ -109,6 +115,10 @@ export default function CampaignForm({
   const [toSubowners, setToSubowners] = useState(picked ? picked.toSubowners : groups.subowners);
   const [toLeads, setToLeads] = useState(picked ? Boolean(picked.toLeads) : Boolean(groups.leads));
   const [leadMode, setLeadMode] = useState<"all" | "chosen">(leadsDefault.length > 0 ? "chosen" : "all");
+  const [clientMode, setClientMode] = useState<"all" | "chosen">("all");
+  const [chosenClients, setChosenClients] = useState<string[]>([]);
+  const [subownerMode, setSubownerMode] = useState<"all" | "chosen">("all");
+  const [chosenSubowners, setChosenSubowners] = useState<string[]>([]);
   const [chosenLeads, setChosenLeads] = useState<string[]>(leadsDefault);
   const [leadTerm, setLeadTerm] = useState("");
   const [shownProjects, setShownProjects] = useState<string[]>(projectsDefault);
@@ -215,9 +225,9 @@ export default function CampaignForm({
 
   const reach =
     (toBuyers ? buyersReach : 0) +
-    (toClients ? counts.clients : 0) +
+    (toClients ? (clientMode === "chosen" && chosenClients.length > 0 ? chosenClients.length : counts.clients) : 0) +
     (toAgents ? (agentsInPlay ? agentsInPlay.length : counts.agents) : 0) +
-    (toSubowners ? counts.subowners : 0) +
+    (toSubowners ? (subownerMode === "chosen" && chosenSubowners.length > 0 ? chosenSubowners.length : counts.subowners) : 0) +
     (toLeads ? (leadMode === "chosen" && chosenLeads.length > 0 ? chosenLeads.length : (counts.leads ?? 0)) : 0);
 
   /*
@@ -246,6 +256,9 @@ export default function CampaignForm({
       ? buyersInScope.filter((one) => chosenBuyers.includes(one.id))
       : buyersInScope;
   const buyerIds = new Set(toBuyers ? buyersPicked.map((one) => one.id) : []);
+  const clientsPicked = inGroup("CLIENTS").filter(
+    (one) => clientMode !== "chosen" || chosenClients.length === 0 || chosenClients.includes(one.id),
+  );
   const summary = everyone.length
     ? [
         toClients
@@ -253,8 +266,8 @@ export default function CampaignForm({
               key: "clients",
               name: labels.groupClients,
               /* A client who is also a buyer gets the buyer's letter instead. */
-              ...tally(inGroup("CLIENTS").filter((one) => !buyerIds.has(one.id))),
-              alsoBuyers: inGroup("CLIENTS").filter((one) => buyerIds.has(one.id)).length,
+              ...tally(clientsPicked.filter((one) => !buyerIds.has(one.id))),
+              alsoBuyers: clientsPicked.filter((one) => buyerIds.has(one.id)).length,
             }
           : null,
         toBuyers
@@ -281,7 +294,17 @@ export default function CampaignForm({
               ),
             }
           : null,
-        toSubowners ? { key: "subowners", name: labels.groupSubowners, ...tally(inGroup("SUBOWNERS")) } : null,
+        toSubowners
+          ? {
+              key: "subowners",
+              name: labels.groupSubowners,
+              ...tally(
+                inGroup("SUBOWNERS").filter(
+                  (one) => subownerMode !== "chosen" || chosenSubowners.length === 0 || chosenSubowners.includes(one.id),
+                ),
+              ),
+            }
+          : null,
         toLeads
           ? {
               key: "leads",
@@ -400,6 +423,32 @@ export default function CampaignForm({
           {groupTile("toAgents", toAgents, setToAgents, labels.groupAgents, counts.agents, labels.groupAgentsHint)}
           {groupTile("toSubowners", toSubowners, setToSubowners, labels.groupSubowners, counts.subowners, labels.groupSubownersHint)}
         </div>
+
+        {/* Every client with consent, or only the ones ticked here. */}
+        {toClients ? (
+          <ChoosePeople
+            name="client"
+            mode={clientMode}
+            setMode={setClientMode}
+            chosen={chosenClients}
+            setChosen={setChosenClients}
+            choices={clientChoices}
+            labels={{ all: `${labels.clientsAll} (${clientChoices.length})`, chosen: labels.clientsChosen, picked: labels.leadsPicked, search: labels.leadsSearch }}
+          />
+        ) : null}
+
+        {/* Every company, or only the ones ticked here. */}
+        {toSubowners ? (
+          <ChoosePeople
+            name="subowner"
+            mode={subownerMode}
+            setMode={setSubownerMode}
+            chosen={chosenSubowners}
+            setChosen={setChosenSubowners}
+            choices={subownerChoices}
+            labels={{ all: `${labels.subownersAll} (${subownerChoices.length})`, chosen: labels.subownersChosen, picked: labels.leadsPicked, search: labels.subownersSearch }}
+          />
+        ) : null}
 
         {/* The buyers of what the campaign is about, every one or only the ones ticked. */}
         {toBuyers ? (
@@ -858,5 +907,77 @@ export default function CampaignForm({
         </Link>
       </div>
     </form>
+  );
+}
+
+/**
+ * Every one of a group, or only the ones ticked: the same two choices and the
+ * searchable list for the clients and the companies. Ticked ones stay chosen
+ * while the search hides them.
+ */
+function ChoosePeople({
+  name,
+  mode,
+  setMode,
+  chosen,
+  setChosen,
+  choices,
+  labels,
+}: {
+  name: "client" | "subowner";
+  mode: "all" | "chosen";
+  setMode: (mode: "all" | "chosen") => void;
+  chosen: string[];
+  setChosen: (ids: string[]) => void;
+  choices: { id: string; label: string; hint: string }[];
+  labels: { all: string; chosen: string; picked: string; search: string };
+}) {
+  const [term, setTerm] = useState("");
+  const words = term.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = choices.filter((one) => words.every((word) => `${one.label} ${one.hint}`.toLowerCase().includes(word)));
+  return (
+    <div className="mt-3 rounded border border-brand-line bg-brand-surface p-3" data-picker={name}>
+      <div className="flex flex-wrap gap-4 text-sm">
+        <label className="flex items-center gap-2">
+          <input type="radio" name={`${name}Mode`} value="all" checked={mode === "all"} onChange={() => setMode("all")} />
+          {labels.all}
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="radio" name={`${name}Mode`} value="chosen" checked={mode === "chosen"} onChange={() => setMode("chosen")} />
+          {labels.chosen}
+          {mode === "chosen" ? (
+            <span className="text-xs text-brand-graphite/60">
+              ({chosen.length} {labels.picked})
+            </span>
+          ) : null}
+        </label>
+      </div>
+      {mode === "chosen" ? (
+        <>
+          <input value={term} onChange={(event) => setTerm(event.target.value)} placeholder={labels.search} className="input mt-2" />
+          <ul className="mt-2 max-h-56 overflow-y-auto rounded border border-brand-line bg-white text-sm">
+            {shown.map((one) => (
+              <li key={one.id} className="border-b border-brand-line last:border-0">
+                <label className="flex cursor-pointer items-center gap-2 px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={chosen.includes(one.id)}
+                    onChange={(event) =>
+                      setChosen(event.target.checked ? [...new Set([...chosen, one.id])] : chosen.filter((id) => id !== one.id))
+                    }
+                    data-pick={one.label}
+                  />
+                  <span className="font-medium">{one.label}</span>
+                  <span className="text-xs text-brand-graphite/60">{one.hint}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {chosen.map((id) => (
+            <input key={id} type="hidden" name={`${name}Ids`} value={id} />
+          ))}
+        </>
+      ) : null}
+    </div>
   );
 }
