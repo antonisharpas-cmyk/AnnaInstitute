@@ -113,3 +113,22 @@ test("text channel: anything but WhatsApp is SMS", async () => {
   assert.equal(agentTextChannel("BOTH"), "WHATSAPP");
   assert.equal(agentTextChannel("EMAIL"), "SMS");
 });
+
+test("every email carries the One Eleven signature after the letter, above the unsubscribe line", async () => {
+  const { withSignature, SIGNATURE_MARK, LOGO_CID } = await import("./signature");
+  const letter = `<div>Kind regards,<br>One Eleven</div>${SIGNATURE_MARK}<hr><p>If you would rather not receive these, unsubscribe here.</p>`;
+  const text = "Kind regards,\nOne Eleven\n\nIf you would rather not receive these, unsubscribe here: https://x";
+  const signed = withSignature({ html: letter, text });
+  assert.ok(signed.html.indexOf("data-signature") > signed.html.indexOf("One Eleven</div>"));
+  assert.ok(signed.html.indexOf("data-signature") < signed.html.indexOf("<hr>"));
+  assert.ok(signed.html.includes(`cid:${LOGO_CID}`));
+  assert.ok(!signed.html.includes(SIGNATURE_MARK));
+  assert.ok(signed.text.indexOf("Phone: +357 99 858 784") > signed.text.indexOf("One Eleven"));
+  assert.ok(signed.text.indexOf("Phone: +357 99 858 784") < signed.text.indexOf("If you would rather"));
+
+  /* HTML made without letterHtml still gets it, at the end; without the logo file, no picture. */
+  const plain = withSignature({ html: "<p>Hello</p>", text: "Hello\n" }, false);
+  assert.ok(plain.html.startsWith("<p>Hello</p>") && plain.html.includes("www.oneeleven.com.cy"));
+  assert.ok(!plain.html.includes("<img"));
+  assert.ok(plain.text.endsWith("www.oneeleven.com.cy"));
+});

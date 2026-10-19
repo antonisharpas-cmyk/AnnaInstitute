@@ -8,6 +8,7 @@ import * as smsTo from "./smsto";
 import { sendViaTwilio, twilioChannelConfigured, twilioStarted } from "./twilio";
 export { fillPlaceholders, looksLikeStop, normalisePhone, placeholdersLeft } from "./text";
 import type { Channel, SendResult } from "./types";
+import { SIGNATURE_MARK } from "./signature";
 
 export type { Channel, SendResult } from "./types";
 export { emailConfigured };
@@ -65,13 +66,16 @@ const escapeHtml = (value: string) =>
 /** The look of every letter the CRM sends: Times New Roman, 11 points, as the office writes its own. */
 export const LETTER_FONT = "font-family:'Times New Roman',Times,serif;font-size:11pt";
 
-/** A letter's text as the email's HTML, the same for every letter the CRM sends. */
+/**
+ * A letter's text as the email's HTML, the same for every letter the CRM sends.
+ * The mark at the end is where the One Eleven signature goes when it is sent.
+ */
 export function letterHtml(body: string): string {
   return `<div style="${LETTER_FONT};line-height:1.45;color:#121111">${escapeHtml(
     body,
   )
     .split("\n")
-    .join("<br>")}</div>`;
+    .join("<br>")}</div>${SIGNATURE_MARK}`;
 }
 
 export async function sendAndRecord(options: {

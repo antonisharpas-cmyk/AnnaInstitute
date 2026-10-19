@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
 import type { SendResult } from "./types";
+import { LOGO_CID, signatureLogo, withSignature } from "./signature";
 
 /**
  * Email goes out over SMTP, which works with Google Workspace, Microsoft 365 or
@@ -149,6 +150,16 @@ export async function sendEmail(options: {
     };
   }
 
+  /* Every email ends with the One Eleven signature, its logo carried inside the email. */
+  const picture = signatureLogo();
+  const signed = withSignature({ html: options.html, text: options.text }, Boolean(picture));
+  const attachments = [
+    ...(options.attachments ?? []),
+    ...(picture
+      ? [{ filename: "oneeleven-logo.png", content: picture, contentType: "image/png", cid: LOGO_CID, contentDisposition: "inline" as const }]
+      : []),
+  ];
+
   try {
     const info = await getTransport().sendMail({
       from: mailFrom(),
@@ -156,9 +167,9 @@ export async function sendEmail(options: {
       to: options.to,
       cc: options.cc && options.cc.length > 0 ? options.cc : undefined,
       subject: options.subject,
-      text: options.text,
-      html: options.html,
-      attachments: options.attachments,
+      text: signed.text,
+      html: signed.html,
+      attachments,
     });
     return { status: "SENT", providerId: info.messageId };
   } catch (error) {
