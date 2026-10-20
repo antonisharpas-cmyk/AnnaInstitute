@@ -22,7 +22,7 @@ export default async function NewCampaignPage({
   searchParams: Promise<{ audience?: string; template?: string; unit?: string; project?: string; leads?: string }>;
 }) {
   const params = await searchParams;
-  const { locale, t } = await getTranslator();
+  const { t } = await getTranslator();
 
   const [links, everyone, templates, buyers] = await Promise.all([
     activePriceListLinks(),
@@ -95,30 +95,28 @@ export default async function NewCampaignPage({
   // development. The person placeholders are left alone: they are filled per
   // recipient at the moment of sending.
   const extras = params.unit
-    ? await detailsForUnit(params.unit, locale)
+    ? await detailsForUnit(params.unit, "en")
     : params.project
-      ? await detailsForProject(params.project, locale)
+      ? await detailsForProject(params.project, "en")
       : null;
 
   /* The month is known whatever the campaign was started from: the price list
      is sent without an apartment or a development, and its subject names the month. */
-  const month = new Date().toLocaleDateString(locale === "el" ? "el-GR" : "en-GB", { month: "long", year: "numeric" });
+  const month = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   /* The words about the development or the apartment stay as placeholders,
      {{project}}, {{details}} and the rest, and are filled from what the campaign
      is about when it is tested and sent. Started from one development and then
      about two, the letter then speaks of both, not only the first. */
   const fill = (text: string) => text.replaceAll("{{month}}", month);
 
-  const greek = locale === "el";
+  /* Every campaign goes out in English, whatever language the office has the CRM in. */
   const choices: TemplateChoice[] = templates.map((template) => ({
     key: template.key,
     name: template.name,
     description: template.description,
-    subject: fill((greek ? template.subjectEl : template.subject) ?? template.subject ?? ""),
-    body: fill((greek ? template.bodyEl : template.body) ?? template.body),
-    bodyWhatsapp: fill(
-      (greek ? template.bodyWhatsappEl : template.bodyWhatsapp) ?? template.bodyWhatsapp ?? "",
-    ),
+    subject: fill(template.subject ?? ""),
+    body: fill(template.body),
+    bodyWhatsapp: fill(template.bodyWhatsapp ?? ""),
     toClients: template.toClients,
     toAgents: template.toAgents,
     toSubowners: template.toSubowners,

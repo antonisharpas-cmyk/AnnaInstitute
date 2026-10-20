@@ -4,7 +4,7 @@ import { projects } from "@/db/schema";
 import { getTranslator } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { projectReportData } from "@/lib/projectReport";
-import { REPORT_BODY, REPORT_BODY_EL, REPORT_SUBJECT, REPORT_SUBJECT_EL } from "@/lib/projectReportMail";
+import { REPORT_BODY, REPORT_SUBJECT } from "@/lib/projectReportMail";
 import { emailConfigured } from "@/lib/messaging";
 import { emailProjectReport } from "./actions";
 import ReportMailer from "./ReportMailer";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function ProjectReportPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   await requireUser(["ADMIN"]);
   const params = await searchParams;
-  const { t, locale } = await getTranslator();
+  const { t } = await getTranslator();
   const list = await db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name));
   const projectId = params.project && list.some((one) => one.id === params.project) ? params.project : (list[0]?.id ?? "");
   const data = projectId ? await projectReportData(projectId) : null;
@@ -77,8 +77,9 @@ export default async function ProjectReportPage({ searchParams }: { searchParams
               action={emailProjectReport.bind(null, projectId)}
               project={data.project.name}
               defaults={{
-                subject: locale === "el" ? REPORT_SUBJECT_EL : REPORT_SUBJECT,
-                body: locale === "el" ? REPORT_BODY_EL : REPORT_BODY,
+                /* The email goes in English, whatever language the CRM is in. */
+                subject: REPORT_SUBJECT,
+                body: REPORT_BODY,
                 date: today,
               }}
               labels={{

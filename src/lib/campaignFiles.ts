@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaignDocuments, campaigns, documents, shareLinks } from "@/db/schema";
 import { idsOf, projectPapers } from "./campaignProjects";
+import { aboutFromChoices, aboutOf } from "./campaignAbout";
 import { appUrl } from "./unsubscribe";
 
 /**
@@ -67,8 +68,27 @@ export async function campaignAttachments(campaignId: string) {
   const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
   const own = await ownAttachments(campaignId);
   if (!campaign) return own;
-  const papers = await projectPapers(idsOf(campaign.projectIds));
+  const papers = await projectPapers(await developmentsWithFiles(campaign));
   return [...own, ...papers.attached, ...papers.gallery];
+}
+
+/**
+ * Whose papers and pictures a campaign carries.
+ *
+ * Always the developments it shows, ticked for {{projects}}. And the ones it
+ * is about, chosen under "What it is about", whenever its message has the
+ * files link, {{files_url}}: a letter that points at the files is a letter
+ * that promises them, so the brochure, drawings and specifications are
+ * attached and the pictures are on the page the link opens. A letter about a
+ * development that never mentions its files, a viewing invitation say, stays
+ * as light as it was.
+ */
+async function developmentsWithFiles(campaign: typeof campaigns.$inferSelect): Promise<string[]> {
+  const shown = idsOf(campaign.projectIds);
+  const words = `${campaign.subject ?? ""} ${campaign.body} ${campaign.bodyWhatsapp ?? ""}`;
+  if (!/\{\{\s*files[ _]url\s*\}\}/i.test(words)) return shown;
+  const about = (await aboutFromChoices(aboutOf(campaign))).projects;
+  return [...new Set([...shown, ...about])];
 }
 
 /** What an email of this campaign carries: its own files and the developments' papers, never the pictures. */
@@ -76,7 +96,7 @@ export async function emailAttachments(campaignId: string) {
   const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
   const own = await ownAttachments(campaignId);
   if (!campaign) return own;
-  const papers = await projectPapers(idsOf(campaign.projectIds));
+  const papers = await projectPapers(await developmentsWithFiles(campaign));
   return [...own, ...papers.attached];
 }
 

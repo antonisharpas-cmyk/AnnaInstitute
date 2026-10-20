@@ -547,6 +547,13 @@
       "when": 1794345147383,
       "tag": "0078_showcase_files_link",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1794431547383,
+      "tag": "0079_new_development_package",
+      "breakpoints": true
     }
   ]
 }

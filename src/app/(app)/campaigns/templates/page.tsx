@@ -154,33 +154,6 @@ export default async function TemplatesPage() {
 
                 <fieldset className="rounded border border-brand-line p-3">
                   <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
-                    ΕΛ
-                  </legend>
-                  <div className="space-y-2">
-                    <input
-                      name="subjectEl"
-                      defaultValue={template.subjectEl ?? ""}
-                      placeholder={t("campaigns.subject")}
-                      className="input"
-                    />
-                    <textarea
-                      name="bodyEl"
-                      rows={8}
-                      defaultValue={template.bodyEl ?? ""}
-                      className="textarea"
-                    />
-                    <textarea
-                      name="bodyWhatsappEl"
-                      rows={3}
-                      defaultValue={template.bodyWhatsappEl ?? ""}
-                      placeholder={t("campaigns.theWhatsapp")}
-                      className="textarea"
-                    />
-                  </div>
-                </fieldset>
-
-                <fieldset className="rounded border border-brand-line p-3">
-                  <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-graphite">
                     {t("campaigns.whoGetsIt")}
                   </legend>
                   <div className="flex flex-wrap gap-5">

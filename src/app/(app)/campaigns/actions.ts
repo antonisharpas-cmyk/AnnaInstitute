@@ -661,9 +661,7 @@ export async function saveTemplate(templateId: string, formData: FormData) {
       subject: String(formData.get("subject") ?? "").trim() || null,
       body: String(formData.get("body") ?? "").trim(),
       bodyWhatsapp: String(formData.get("bodyWhatsapp") ?? "").trim() || null,
-      subjectEl: String(formData.get("subjectEl") ?? "").trim() || null,
-      bodyEl: String(formData.get("bodyEl") ?? "").trim() || null,
-      bodyWhatsappEl: String(formData.get("bodyWhatsappEl") ?? "").trim() || null,
+      /* Only the English text is used: every campaign goes in English. */
       toClients: String(formData.get("toClients") ?? "") === "on",
       toAgents: String(formData.get("toAgents") ?? "") === "on",
       toSubowners: String(formData.get("toSubowners") ?? "") === "on",
