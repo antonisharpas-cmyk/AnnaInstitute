@@ -196,20 +196,22 @@ One Eleven`,
     key: "projects_showcase",
     name: "Our developments, to leads",
     description:
-      "To leads: the price list of the developments you tick, as a live link. Their brochures and drawings go with it as attachments.",
+      "To leads: the price list of the developments you tick, as a live link. Their brochures, architectural drawings and technical specifications go with it as attachments, and their pictures and 3D renders by a link.",
     subject: "Price list | {{project_names}}",
     body: `Dear {{title}} {{first_name}},
 
 Thank you for your interest in One Eleven.
 
-You will find our price list regarding {{project_names}} here: {{price_list_url}}
+You will find our price list for {{project_names}} here: {{price_list_url}}
 
-Please let us know which apartments you’re interested in, and we’ll be happy to arrange an appointment or viewing at your convenience.
+The brochure, architectural drawings and technical specifications are attached. Pictures and 3D renders are here: {{files_url}}
 
-Kind Regards,
+Please let us know which apartments you are interested in, and we will be happy to arrange an appointment or viewing at your convenience.
+
+Kind regards,
 One Eleven`,
     bodyWhatsapp:
-      "Hello {{first_name}}, thank you for your interest in One Eleven. Our price list for {{project_names}}: {{price_list_url}} Let us know which apartments interest you and we will be happy to arrange a viewing. One Eleven",
+      "Hello {{first_name}}, thank you for your interest in One Eleven. Our price list for {{project_names}}: {{price_list_url}} Brochure, drawings, specifications and pictures: {{files_url}} Let us know which apartments interest you and we will be happy to arrange a viewing. One Eleven",
     subjectEl: "Τιμοκατάλογος | {{project_names}}",
     bodyEl: `Αγαπητέ/ή {{first_name}},
 
@@ -217,12 +219,14 @@ One Eleven`,
 
 Θα βρείτε τον τιμοκατάλογό μας για το {{project_names}} εδώ: {{price_list_url}}
 
+Το φυλλάδιο, τα αρχιτεκτονικά σχέδια και οι τεχνικές προδιαγραφές επισυνάπτονται. Φωτογραφίες και τρισδιάστατες απεικονίσεις θα βρείτε εδώ: {{files_url}}
+
 Ενημερώστε μας για ποια διαμερίσματα ενδιαφέρεστε και θα χαρούμε να κανονίσουμε ένα ραντεβού ή μια επίσκεψη όποτε σας βολεύει.
 
 Με εκτίμηση,
 One Eleven`,
     bodyWhatsappEl:
-      "Γεια σας {{first_name}}, σας ευχαριστούμε για το ενδιαφέρον σας στη One Eleven. Ο τιμοκατάλογός μας για το {{project_names}}: {{price_list_url}} Ενημερώστε μας ποια διαμερίσματα σας ενδιαφέρουν για να κανονίσουμε επίσκεψη. One Eleven",
+      "Γεια σας {{first_name}}, σας ευχαριστούμε για το ενδιαφέρον σας στη One Eleven. Ο τιμοκατάλογός μας για το {{project_names}}: {{price_list_url}} Φυλλάδιο, σχέδια, προδιαγραφές και φωτογραφίες: {{files_url}} Ενημερώστε μας ποια διαμερίσματα σας ενδιαφέρουν για να κανονίσουμε επίσκεψη. One Eleven",
     toClients: false,
     toAgents: false,
     toSubowners: false,

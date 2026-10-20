@@ -540,6 +540,13 @@
       "when": 1794258747383,
       "tag": "0077_campaign_chosen_clients_companies",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1794345147383,
+      "tag": "0078_showcase_files_link",
+      "breakpoints": true
     }
   ]
 }
