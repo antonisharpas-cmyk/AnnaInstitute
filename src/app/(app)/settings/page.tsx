@@ -208,7 +208,7 @@ export default async function SettingsPage() {
                 <p className="mb-3 text-sm">
                   {t("settings.mailSetUp")}{" "}
                   <span className="font-mono text-xs">
-                    {mail.host}:{mail.port} {mail.secure ? "(SSL)" : "(STARTTLS)"}, {mail.user || "no user"}, from {mail.from}
+                    {mail.host}:{mail.port} {mail.secure ? "(SSL)" : "(STARTTLS)"}, {mail.user || "no user"}, from {mail.from}{mail.tenant ? `, Amazon SES tenant ${mail.tenant}` : ""}
                   </span>
                 </p>
               ) : (

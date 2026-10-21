@@ -46,6 +46,21 @@ export function mailSetting(which: keyof typeof MAIL_KEYS): string {
   return "";
 }
 
+/**
+ * Amazon SES tenants: when several customers send from one Amazon account,
+ * each sends as its own tenant, so complaints about one pause only that one.
+ * Both are left empty until the tenant and its configuration set exist in
+ * Amazon SES; set too early, Amazon refuses every email.
+ */
+function sesHeaders(): Record<string, string> | undefined {
+  const tenant = clean(process.env.SES_TENANT);
+  const configurationSet = clean(process.env.SES_CONFIGURATION_SET);
+  const headers: Record<string, string> = {};
+  if (tenant) headers["X-SES-TENANT"] = tenant;
+  if (configurationSet) headers["X-SES-CONFIGURATION-SET"] = configurationSet;
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
 function mailFrom(): string {
   return mailSetting("from") || mailSetting("user");
 }
@@ -70,7 +85,7 @@ function smtpSecure(): boolean {
 }
 
 /** What the mail setup is, without the password, for the Settings page. */
-export function emailSetup(): { host: string; port: number; secure: boolean; user: string; from: string } | null {
+export function emailSetup(): { host: string; port: number; secure: boolean; user: string; from: string; tenant: string } | null {
   if (!emailConfigured()) return null;
   return {
     host: mailSetting("host"),
@@ -78,6 +93,7 @@ export function emailSetup(): { host: string; port: number; secure: boolean; use
     secure: smtpSecure(),
     user: mailSetting("user"),
     from: mailFrom(),
+    tenant: clean(process.env.SES_TENANT),
   };
 }
 
@@ -170,6 +186,7 @@ export async function sendEmail(options: {
       text: signed.text,
       html: signed.html,
       attachments,
+      headers: sesHeaders(),
     });
     return { status: "SENT", providerId: info.messageId };
   } catch (error) {

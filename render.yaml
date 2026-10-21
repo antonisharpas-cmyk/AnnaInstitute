@@ -45,6 +45,10 @@ services:
         sync: false
       - key: MAIL_REPLY_TO
         sync: false
+      - key: SES_TENANT
+        sync: false
+      - key: SES_CONFIGURATION_SET
+        sync: false
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
