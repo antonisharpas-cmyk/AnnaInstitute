@@ -845,6 +845,13 @@ export async function letterForCommission(contractId: string): Promise<void> {
     });
   };
 
+  /*
+   * Paid in cash: there is no invoice to ask the agent for, so the letter does
+   * not go. Nothing is written down either, so that a contract changed back to
+   * an invoice later still sends its letter then.
+   */
+  if (line.contract.commissionInCash) return;
+
   const template = await templateByKey("agent_commission");
   if (!template) return;
   if (!template.isActive) {
@@ -865,7 +872,10 @@ export async function letterForCommission(contractId: string): Promise<void> {
     unit: line.unit?.code ?? line.contract.reference ?? "",
     project: line.project?.name ?? "",
     amount: money(toCents(line.commission.amount)),
-    base: `${Number(line.commission.rate)}% of ${money(toCents(line.commission.baseAmount))}`,
+    base:
+      line.contract.commissionFixed != null
+        ? `a fixed amount agreed for this sale (the sale is ${money(toCents(line.commission.baseAmount))})`
+        : `${Number(line.commission.rate)}% of ${money(toCents(line.commission.baseAmount))}`,
     /* The company the agent makes the invoice out to: the one that holds the development, or One Eleven. */
     company: (await issuerForProject(line.project?.id ?? null)).name,
   };

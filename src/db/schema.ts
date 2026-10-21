@@ -398,6 +398,11 @@ export const users = pgTable("users", {
   locale: text("locale").default("en").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  /**
+   * Sessions made before this moment are no longer accepted. Set when the
+   * password is reset or changed, so whoever knew the old one is signed out.
+   */
+  sessionsValidFrom: timestamp("sessions_valid_from", { withTimezone: true }),
   agentId: text("agent_id").references(() => agents.id, {
     onDelete: "set null",
   }),
@@ -563,6 +568,16 @@ export const contracts = pgTable("contracts", {
   clientId: text("client_id").references(() => clients.id),
   agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
   commissionRate: rate("commission_rate"),
+  /**
+   * A fixed commission agreed for this contract, before VAT, in place of a
+   * rate. Empty means the rate decides: this contract's own, or the agent's.
+   */
+  commissionFixed: money("commission_fixed"),
+  /**
+   * The agent is paid in cash on this contract: no invoice is asked of them,
+   * no receipt is made, no letter goes, and nothing is missing for it.
+   */
+  commissionInCash: boolean("commission_in_cash").default(false).notNull(),
   contractDate: timestamp("contract_date", { withTimezone: true }),
   /** A sale, or land given in exchange for apartments. */
   kind: contractKindEnum("kind").default("SALE").notNull(),
@@ -935,6 +950,8 @@ export const commissions = pgTable("commissions", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
   notes: text("notes"),
   /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
+  /** Paid in cash, as its contract says: no invoice, no receipt and no letter are expected of it. */
+  inCash: boolean("in_cash").default(false).notNull(),
   history: boolean("history").default(false).notNull(),
   createdAt: created(),
   updatedAt: updated(),

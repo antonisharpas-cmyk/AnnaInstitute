@@ -161,6 +161,13 @@ export const IconSettings = (p: Props) => (
   </Svg>
 );
 
+export const IconKey = (p: Props) => (
+  <Svg {...p}>
+    <circle cx="8" cy="15" r="4" />
+    <path d="M10.8 12.2 20 3M16 7l3 3M14 9l2 2" />
+  </Svg>
+);
+
 export const IconLogout = (p: Props) => (
   <Svg {...p}>
     <path d="M10 20H5V4h5M15 8l4 4-4 4M9 12h10" />

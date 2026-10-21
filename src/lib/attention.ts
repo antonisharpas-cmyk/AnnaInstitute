@@ -296,7 +296,7 @@ async function commissionPapers(): Promise<AttentionItem[]> {
     left join contracts c on c.id = cm.contract_id
     left join units u on u.id = c.unit_id
     left join projects p on p.id = u.project_id
-    where cm.status <> 'CANCELLED' and cm.amount > 0 and not cm.history
+    where cm.status <> 'CANCELLED' and cm.amount > 0 and not cm.history and not cm.in_cash
     order by cm.created_at`);
   return rows
     .filter((r) => !r.has_invoice || !r.has_receipt)

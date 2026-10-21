@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
@@ -66,7 +67,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    return {
+    const user: SessionUser = {
       id: String(payload.id),
       email: String(payload.email),
       name: String(payload.name),
@@ -75,10 +76,37 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       clientId: payload.clientId ? String(payload.clientId) : null,
       agentId: payload.agentId ? String(payload.agentId) : null,
     };
+    const issuedAt = typeof payload.iat === "number" ? payload.iat * 1000 : 0;
+    return (await stillAllowed(user.id, issuedAt)) ? user : null;
   } catch {
     return null;
   }
 }
+
+/**
+ * Is this login still allowed in?
+ *
+ * A login switched off is out at once, not only at its next sign in, and a
+ * session made before its password was reset or changed is no longer
+ * accepted. Asked once per request. If the database cannot answer, which
+ * before the newest update has run means a missing column, the signed
+ * session alone decides, so nobody is locked out by an update.
+ */
+const stillAllowed = cache(async (userId: string, issuedAt: number): Promise<boolean> => {
+  try {
+    const [row] = await db
+      .select({ isActive: users.isActive, sessionsValidFrom: users.sessionsValidFrom })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!row || !row.isActive) return false;
+    /* A second of grace: the session made in the same second as the change is the new one. */
+    if (row.sessionsValidFrom && issuedAt < row.sessionsValidFrom.getTime() - 1000) return false;
+    return true;
+  } catch {
+    return true;
+  }
+});
 
 export async function requireUser(roles?: SessionUser["role"][]): Promise<SessionUser> {
   const user = await getSessionUser();

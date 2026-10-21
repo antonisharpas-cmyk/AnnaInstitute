@@ -11,6 +11,7 @@ import {
   IconSettings,
   IconClose,
   IconKeyboard,
+  IconKey,
   IconLogout,
   IconMenu,
   IconMoon,
@@ -60,6 +61,7 @@ export type ShellLabels = {
   language: string;
   signOut: string;
   shortcuts: string;
+  myPassword: string;
   shortcutsTitle: string;
   shortcutSearch: string;
   shortcutNew: string;
@@ -575,6 +577,10 @@ export default function AppShell({
                   <a className="menuitem" href="/settings">
                     <IconSettings size={15} />
                     {labels.settings}
+                  </a>
+                  <a className="menuitem" href="/account/password" data-my-password-link>
+                    <IconKey size={15} />
+                    {labels.myPassword}
                   </a>
                   <button type="button" className="menuitem" onClick={() => setHelp(true)}>
                     <IconKeyboard size={15} />

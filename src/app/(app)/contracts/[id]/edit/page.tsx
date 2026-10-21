@@ -88,6 +88,7 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
             agents={agentList.map((a) => ({
               id: a.id,
               label: `${a.name} (${Number(a.commissionRate)}%)`,
+              rate: Number(a.commissionRate),
             }))}
             cancelHref={`/contracts/${id}`}
             frozen={!detail.open}

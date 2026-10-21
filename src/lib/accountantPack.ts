@@ -317,6 +317,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
         .groupBy(documents.commissionId)
     : [];
   for (const one of paidAgents) {
+    /* A commission paid in cash has no invoice and no receipt, and is not the accountant's. */
+    if (one.commission?.inCash) continue;
     const holder = one.project ? (holders.get(one.project.id) ?? "") : "";
     /* Before VAT, the agent's VAT, and the money with it. */
     const totalCents = toCents(one.payment.totalAmount);

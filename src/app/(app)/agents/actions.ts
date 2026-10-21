@@ -21,6 +21,7 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { fromCents, toCents, vatRateFrom } from "@/lib/money";
 import { recalculateCommission, refreshCommissionPapers } from "@/lib/commissions";
+import { commissionFromForm } from "@/lib/commissionChoice";
 import { whatGoesWithAgent } from "@/lib/deletes";
 import { letterForCommission } from "@/lib/automaticEmails";
 import { titleFrom } from "@/lib/titles";
@@ -266,6 +267,8 @@ export async function recordCommissionPayment(formData: FormData) {
       .update(commissions)
       .set({
         status: paid >= due ? "PAID" : paid > 0 ? "PARTIALLY_PAID" : "PENDING",
+        /* Paid in cash there are no papers to wait for, so paid in full is finished. */
+        ...(rows[0]?.inCash ? { completedAt: paid >= due ? new Date() : null } : {}),
         updatedAt: new Date(),
       })
       .where(eq(commissions.id, commissionId));
@@ -319,11 +322,13 @@ export async function addExtra(contractId: string, formData: FormData) {
   if (!contract.agentId) throw new Error("This sale has no agent on it yet.");
 
   const [who] = await db.select({ vatRate: agents.vatRate }).from(agents).where(eq(agents.id, contract.agentId)).limit(1);
-  const vatRate = vatRateFrom(formData.get("vatRate"), Number(who?.vatRate ?? 19));
+  /* Paid in cash, the extra is in cash too, with no VAT on it. */
+  const vatRate = contract.commissionInCash ? 0 : vatRateFrom(formData.get("vatRate"), Number(who?.vatRate ?? 19));
 
   await db.insert(commissions).values({
     contractId,
     agentId: contract.agentId,
+    inCash: contract.commissionInCash,
     kind: "EXTRA",
     label,
     baseAmount: "0.00",
@@ -408,7 +413,8 @@ export async function payLine(commissionId: string, agentId: string, formData: F
 
   await db
     .update(commissions)
-    .set({ status: "PAID", updatedAt: new Date() })
+    /* Paid in cash there are no papers to wait for, so paid is finished. */
+    .set({ status: "PAID", ...(line.inCash ? { completedAt: new Date() } : {}), updatedAt: new Date() })
     .where(eq(commissions.id, commissionId));
 
   await recordAudit({
@@ -451,18 +457,17 @@ export async function setLineVatRate(commissionId: string, agentId: string, form
 }
 
 /**
- * The rate on one sale, apart from the agent's usual one. A month with a better
- * rate on offer is exactly what this is for; leaving it empty goes back to the
- * agent's own rate.
+ * What was agreed on one sale, apart from the agent's usual rate: another
+ * rate, a fixed amount before VAT, and whether it is paid in cash. The same
+ * choice as on the contract form; the agent's own rate when nothing is set.
  */
 export async function setSaleRate(contractId: string, agentId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
-  const typed = String(formData.get("rate") ?? "").trim();
-  const rate = typed === "" ? null : Number(typed).toFixed(3);
+  const agreed = commissionFromForm(formData);
 
   await db
     .update(contracts)
-    .set({ commissionRate: rate, updatedAt: new Date() })
+    .set({ ...agreed, updatedAt: new Date() })
     .where(eq(contracts.id, contractId));
 
   await recalculateCommission(contractId);
@@ -471,7 +476,13 @@ export async function setSaleRate(contractId: string, agentId: string, formData:
     action: "commission.rate",
     entity: "contract",
     entityId: contractId,
-    detail: rate ? `${rate}% on this sale` : "back to the agent's own rate",
+    detail: `${
+      agreed.commissionFixed
+        ? `fixed ${agreed.commissionFixed} before VAT`
+        : agreed.commissionRate
+          ? `${agreed.commissionRate}% on this sale`
+          : "the agent's own rate"
+    }${agreed.commissionInCash ? ", paid in cash" : ""}`,
     userId: user.id,
     userEmail: user.email,
   });

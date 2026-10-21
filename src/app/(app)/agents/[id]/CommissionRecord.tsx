@@ -31,6 +31,7 @@ export default function CommissionRecord({
   generatedOn,
   completedOn,
   waitingFor,
+  inCash,
   upload,
   remove,
   labels,
@@ -46,6 +47,8 @@ export default function CommissionRecord({
   completedOn: string | null;
   /** What is still missing, or null when nothing is. */
   waitingFor: string | null;
+  /** Paid in cash: no papers are asked for, and it is finished once paid. */
+  inCash?: { note: string; paid: boolean };
   upload: (kind: "AGENT_INVOICE" | "AGENT_RECEIPT", formData: FormData) => void | Promise<void>;
   remove: (documentId: string) => void | Promise<void>;
   labels: {
@@ -82,10 +85,10 @@ export default function CommissionRecord({
       <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <h4 className="text-sm font-semibold">{headline}</h4>
-          <p className="text-xs text-brand-graphite/70">{labels.record}</p>
+          {inCash ? null : <p className="text-xs text-brand-graphite/70">{labels.record}</p>}
         </div>
-        <Pill tone={papers.complete ? "good" : "warn"}>
-          {papers.complete ? labels.completed : labels.waiting}
+        <Pill tone={papers.complete || inCash?.paid ? "good" : "warn"}>
+          {papers.complete || inCash?.paid ? labels.completed : labels.waiting}
         </Pill>
       </header>
 
@@ -117,67 +120,75 @@ export default function CommissionRecord({
         read as two different sizes of thing, because the whole point of the
         pair is that the eye can tell at a glance which of the two is missing.
       */}
-      <div className="grid items-stretch gap-3 sm:grid-cols-2">
-        {slots.map((slot) => (
-          <div
-            key={slot.kind}
-            className="flex h-full min-h-28 flex-col rounded border border-brand-line bg-brand-paper p-3"
-          >
-            <p className="text-xs font-semibold">{slot.title}</p>
-            <p className="mb-2 min-h-8 text-xs text-brand-graphite/60">{slot.hint}</p>
-
-            {slot.file ? (
-              <div className="mt-auto flex flex-wrap items-center gap-2">
-                <a
-                  href={`/api/files/${slot.file.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full truncate text-xs font-medium text-brand-teal-dark hover:underline"
-                >
-                  {slot.file.title}
-                </a>
-                <a
-                  href={`/api/files/${slot.file.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-secondary !px-2 !py-1 !text-xs"
-                >
-                  {labels.open}
-                </a>
-                <form action={remove.bind(null, slot.file.id)}>
-                  <SubmitButton className="btn btn-secondary !px-2 !py-1 !text-xs">
-                    {labels.replace}
-                  </SubmitButton>
-                </form>
-              </div>
-            ) : (
-              /*
-                One file, one slot, one button. The field is told which slot it
-                belongs to through the name as well as the binding, so the paper
-                lands where the office put it whichever of the two it is.
-              */
-              <form
-                action={upload.bind(null, slot.kind)}
-                className="mt-auto flex flex-wrap items-center gap-2"
+      {inCash ? (
+        <p className="rounded border border-brand-line bg-brand-paper p-3 text-xs" data-cash-commission>
+          {inCash.note}
+        </p>
+      ) : (
+        <>
+          <div className="grid items-stretch gap-3 sm:grid-cols-2">
+            {slots.map((slot) => (
+              <div
+                key={slot.kind}
+                className="flex h-full min-h-28 flex-col rounded border border-brand-line bg-brand-paper p-3"
               >
-                <input type="hidden" name="kind" value={slot.kind} />
-                <input
-                  name="files"
-                  type="file"
-                  required
-                  aria-label={slot.title}
-                  className="input min-w-0 flex-1 !py-1 !text-xs"
-                />
-                <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">
-                  {labels.add}
-                </SubmitButton>
-              </form>
-            )}
-          </div>
-        ))}
-      </div>
+                <p className="text-xs font-semibold">{slot.title}</p>
+                <p className="mb-2 min-h-8 text-xs text-brand-graphite/60">{slot.hint}</p>
 
-      {waitingFor ? <p className="mt-2 text-xs text-brand-graphite/70">{waitingFor}</p> : null}
+                {slot.file ? (
+                  <div className="mt-auto flex flex-wrap items-center gap-2">
+                    <a
+                      href={`/api/files/${slot.file.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full truncate text-xs font-medium text-brand-teal-dark hover:underline"
+                    >
+                      {slot.file.title}
+                    </a>
+                    <a
+                      href={`/api/files/${slot.file.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-secondary !px-2 !py-1 !text-xs"
+                    >
+                      {labels.open}
+                    </a>
+                    <form action={remove.bind(null, slot.file.id)}>
+                      <SubmitButton className="btn btn-secondary !px-2 !py-1 !text-xs">
+                        {labels.replace}
+                      </SubmitButton>
+                    </form>
+                  </div>
+                ) : (
+                  /*
+                    One file, one slot, one button. The field is told which slot it
+                    belongs to through the name as well as the binding, so the paper
+                    lands where the office put it whichever of the two it is.
+                  */
+                  <form
+                    action={upload.bind(null, slot.kind)}
+                    className="mt-auto flex flex-wrap items-center gap-2"
+                  >
+                    <input type="hidden" name="kind" value={slot.kind} />
+                    <input
+                      name="files"
+                      type="file"
+                      required
+                      aria-label={slot.title}
+                      className="input min-w-0 flex-1 !py-1 !text-xs"
+                    />
+                    <SubmitButton className="btn btn-primary !px-3 !py-1 !text-xs">
+                      {labels.add}
+                    </SubmitButton>
+                  </form>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {waitingFor ? <p className="mt-2 text-xs text-brand-graphite/70">{waitingFor}</p> : null}
+        </>
+      )}
     </section>
   );
 }

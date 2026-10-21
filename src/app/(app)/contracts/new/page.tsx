@@ -119,6 +119,7 @@ export default async function NewContractPage({
                 agents={agentList.map((a) => ({
                   id: a.id,
                   label: `${a.name} (${Number(a.commissionRate)}%)`,
+                  rate: Number(a.commissionRate),
                 }))}
                 defaults={{ unitId: unit, clientId: client, agentId: introducedBy }}
                 cancelHref="/contracts"

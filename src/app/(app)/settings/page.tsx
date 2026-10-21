@@ -80,9 +80,14 @@ export default async function SettingsPage() {
       <PageHeader
         title={t("settings.title")}
         action={
-          <a href="/settings/data" className="btn btn-secondary" data-data-link>
-            {t("data.link")}
-          </a>
+          <>
+            <a href="/settings/logins" className="btn btn-secondary" data-logins-link>
+              {t("logins.link")}
+            </a>
+            <a href="/settings/data" className="btn btn-secondary" data-data-link>
+              {t("data.link")}
+            </a>
+          </>
         }
       />
 

@@ -199,6 +199,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           language: t("shell.language"),
           signOut: t("nav.signOut"),
           shortcuts: t("shell.shortcuts"),
+          myPassword: t("account.password"),
           shortcutsTitle: t("shell.shortcutsTitle"),
           shortcutSearch: t("shell.shortcutSearch"),
           shortcutNew: t("shell.shortcutNew"),

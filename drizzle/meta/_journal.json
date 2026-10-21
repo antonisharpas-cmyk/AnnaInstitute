@@ -554,6 +554,20 @@
       "when": 1794431547383,
       "tag": "0079_new_development_package",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1794517947383,
+      "tag": "0080_login_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1794604347383,
+      "tag": "0081_commission_fixed_cash",
+      "breakpoints": true
     }
   ]
 }

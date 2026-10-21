@@ -438,6 +438,21 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the clients and companies chosen one by one for a campaign",
     migration: "0077",
   },
+  {
+    probe: "select sessions_valid_from from users limit 1",
+    what: "signing a login out everywhere when its password changes",
+    migration: "0080",
+  },
+  {
+    probe: "select commission_fixed, commission_in_cash from contracts limit 1",
+    what: "a fixed commission, or one paid in cash, on a contract",
+    migration: "0081",
+  },
+  {
+    probe: "select in_cash from commissions limit 1",
+    what: "commissions paid in cash",
+    migration: "0081",
+  },
 ];
 
 let answer: Missing[] | null = null;

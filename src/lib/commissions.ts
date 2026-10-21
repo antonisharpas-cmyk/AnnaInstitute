@@ -58,6 +58,8 @@ export type CommissionLine = {
   generatedAt: Date;
   /** The day both papers were in, which is the day the agent was settled. */
   completedAt: Date | null;
+  /** Paid in cash: no invoice, no receipt and no letter are expected of it. */
+  inCash: boolean;
 };
 
 /**
@@ -122,6 +124,7 @@ export async function salesOfAgent(agentId: string) {
       status: line.status,
       generatedAt: line.createdAt,
       completedAt: line.completedAt,
+      inCash: line.inCash,
     };
     const list = byContract.get(line.contractId);
     if (list) list.push(entry);
@@ -242,6 +245,26 @@ export function fullValueOf(contract: { netPrice: string; cashAmount?: string | 
   const priceCents = toCents(contract.netPrice);
   const cashCents = toCents(contract.cashAmount ?? "0");
   return { priceCents, cashCents, fullCents: priceCents + cashCents };
+}
+
+/**
+ * The commission a contract earns, before VAT, and what it was worked out on.
+ *
+ * A fixed amount agreed for the contract is the commission, whatever the
+ * price. Otherwise it is the rate on the full value: the contract's own rate
+ * when one was agreed, else the agent's usual one.
+ */
+export function commissionDue(
+  contract: { netPrice: string; cashAmount?: string | null; commissionRate?: string | null; commissionFixed?: string | null },
+  agentRate: string | number | null | undefined,
+): { fullCents: number; rate: number | null; fixedCents: number | null; amountCents: number } {
+  const { fullCents } = fullValueOf(contract);
+  if (contract.commissionFixed != null && contract.commissionFixed !== "") {
+    const fixedCents = toCents(contract.commissionFixed);
+    return { fullCents, rate: null, fixedCents, amountCents: fixedCents };
+  }
+  const rate = Number(contract.commissionRate ?? agentRate ?? 0);
+  return { fullCents, rate, fixedCents: null, amountCents: Math.round((fullCents * rate) / 100) };
 }
 
 /**
@@ -441,24 +464,42 @@ export async function recalculateCommission(contractId: string) {
 
   const agentRows = await db.select().from(agents).where(eq(agents.id, contract.agentId)).limit(1);
 
-  const rate = Number(contract.commissionRate ?? agentRows[0]?.commissionRate ?? 0);
-  const { fullCents } = fullValueOf(contract);
-  const amountCents = Math.round((fullCents * rate) / 100);
+  /*
+   * What was agreed for this contract: a fixed amount before VAT, or a rate,
+   * this contract's own or else the agent's usual one. A fixed amount stays
+   * what it is whatever the price does; a rate follows the price and the cash.
+   */
+  const due = commissionDue(contract, agentRows[0]?.commissionRate);
+  const { fullCents, amountCents } = due;
+  /* A fixed amount is written with a rate of nought; the contract says it was fixed. */
+  const rate = due.rate ?? 0;
+
+  /*
+   * Paid in cash, nothing is invoiced, so there is no VAT on it. Every line of
+   * the sale follows the contract, the extras too, and a line that moves
+   * between cash and invoice takes the VAT that goes with it.
+   */
+  const inCash = contract.commissionInCash;
+  const agentVat = agentRows[0]?.vatRate ?? "19";
+  const vatFor = inCash ? "0" : agentVat;
 
   await db
     .update(commissions)
     .set({ agentId: contract.agentId })
     .where(and(eq(commissions.contractId, contractId), eq(commissions.kind, "EXTRA")));
-
-  /* The line carries the agent's VAT rate from the day it is made; a new agent on the sale brings theirs. */
-  const agentVat = agentRows[0]?.vatRate ?? "19";
+  await db
+    .update(commissions)
+    .set({ inCash, vatRate: vatFor, updatedAt: new Date() })
+    .where(and(eq(commissions.contractId, contractId), sql`${commissions.inCash} <> ${inCash}`));
 
   if (existing[0]) {
+    /* The line carries the agent's VAT rate from the day it is made; a new agent on the sale brings theirs. */
     await db
       .update(commissions)
       .set({
         agentId: contract.agentId,
-        ...(existing[0].agentId !== contract.agentId ? { vatRate: agentVat } : {}),
+        ...(existing[0].agentId !== contract.agentId ? { vatRate: vatFor } : {}),
+        inCash,
         baseAmount: fromCents(fullCents),
         rate: rate.toFixed(3),
         amount: fromCents(amountCents),
@@ -475,7 +516,8 @@ export async function recalculateCommission(contractId: string) {
     baseAmount: fromCents(fullCents),
     rate: rate.toFixed(3),
     amount: fromCents(amountCents),
-    vatRate: agentVat,
+    vatRate: vatFor,
+    inCash,
     /* A past sale's commission is past too: its papers are not chased. */
     history: contract.history || (await enteringHistory()),
   });

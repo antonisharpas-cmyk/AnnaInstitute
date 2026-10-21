@@ -7,7 +7,9 @@ import { agents, commissionPayments } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { amountForInput } from "@/lib/money";
-import { commissionTotals, papersFor, salesOfAgent, salesWithoutAnAgent } from "@/lib/commissions";
+import { commissionDue, commissionTotals, papersFor, salesOfAgent, salesWithoutAnAgent } from "@/lib/commissions";
+import CommissionChoice from "@/components/CommissionChoice";
+import { commissionModeOf } from "@/lib/commissionChoice";
 import CommissionRecord from "./CommissionRecord";
 import VatFields from "@/components/VatFields";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
@@ -57,6 +59,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
     // attaches to.
     salesWithoutAnAgent(),
   ]);
+  /* The lines paid in cash, whose payments have no receipt. */
+  const cashLines = new Set(sales.flatMap((sale) => sale.lines.filter((l) => l.inCash).map((l) => l.id)));
 
   const goes = await whatGoesWithAgent(id);
 
@@ -292,29 +296,39 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                         </div>
                       </div>
 
-                      {/* The rate for this sale alone, when a better one was promised. */}
+                      {/* What was agreed on this sale alone: another rate, a fixed amount, or paid in cash. */}
                       <form
                         action={setSaleRate.bind(null, sale.contract.id, id)}
-                        className="flex items-end gap-2"
+                        className="w-full max-w-sm space-y-2"
+                        data-sale-commission
                       >
-                        <div>
-                          <label className="label" htmlFor={`rate-${sale.contract.id}`}>
-                            {t("agents.rateOnThisSale")}
-                          </label>
-                          <input
-                            id={`rate-${sale.contract.id}`}
-                            name="rate"
-                            defaultValue={
-                              sale.contract.commissionRate
-                                ? Number(sale.contract.commissionRate)
-                                : ""
-                            }
-                            placeholder={String(Number(agent.commissionRate))}
-                            className="input !w-20 !py-1 !text-xs"
-                          />
-                        </div>
+                        <CommissionChoice
+                          compact
+                          agentRate={Number(agent.commissionRate)}
+                          baseCents={sale.value.fullCents}
+                          defaults={{
+                            mode: commissionModeOf(sale.contract),
+                            rate: sale.contract.commissionRate ? String(Number(sale.contract.commissionRate)) : "",
+                            fixed: sale.contract.commissionFixed ? String(Number(sale.contract.commissionFixed)) : "",
+                            inCash: sale.contract.commissionInCash,
+                          }}
+                          locale={locale}
+                          labels={{
+                            title: t("commission.title"),
+                            standard: t("commission.standard"),
+                            otherRate: t("commission.otherRate"),
+                            fixed: t("commission.fixed"),
+                            beforeVat: t("commission.beforeVat"),
+                            inCash: t("commission.inCash"),
+                            inCashHint: t("commission.inCashHint"),
+                            fixedPreview: t("commission.fixedPreview"),
+                            of: t("common.of"),
+                            vatTail: t("commission.vatTail"),
+                            cashTail: t("commission.cashTail"),
+                          }}
+                        />
                         <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
-                          {t("common.save")}
+                          {t("commission.save")}
                         </button>
                       </form>
                     </div>
@@ -334,19 +348,13 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                       */
                       <div className="mt-3 rounded border border-dashed border-brand-line bg-brand-surface p-3">
                         <p className="text-sm font-semibold">
-                          {formatPercent(
-                            Number(sale.contract.commissionRate ?? agent.commissionRate),
-                            locale,
-                          )}{" "}
-                          {t("common.of")} {formatAmount(sale.value.fullCents, locale)} .{" "}
-                          {formatAmount(
-                            Math.round(
-                              (sale.value.fullCents *
-                                Number(sale.contract.commissionRate ?? agent.commissionRate)) /
-                                100,
-                            ),
-                            locale,
-                          )}
+                          {(() => {
+                            const due = commissionDue(sale.contract, agent.commissionRate);
+                            return due.rate === null
+                              ? `${t("commissions.fixedAmount")} . ${formatAmount(due.amountCents, locale)}`
+                              : `${formatPercent(due.rate, locale)} ${t("common.of")} ${formatAmount(due.fullCents, locale)} . ${formatAmount(due.amountCents, locale)}`;
+                          })()}
+                          {sale.contract.commissionInCash ? ` . ${t("commissions.paidInCash")}` : ""}
                         </p>
                         {sale.value.cashCents > 0 ? (
                           <p className="text-xs text-brand-graphite/70">
@@ -388,7 +396,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                           <span className="font-semibold">{formatAmount(sale.paidTotalCents, locale)}</span>
                           <span className="text-xs text-brand-graphite/60"> {t("vat.withVatShort")}</span>
                         </span>
-                        {sale.lines.every((l) => papers.get(l.id)?.complete) ? (
+                        {sale.lines.every((l) => papers.get(l.id)?.complete || (l.inCash && l.outstandingCents <= 0)) ? (
                           <Pill tone="good">{t("commissions.completed")}</Pill>
                         ) : sale.lines.every((l) => l.status === "CANCELLED") ? (
                           <Pill tone="bad">{t("commissions.cancelled")}</Pill>
@@ -434,7 +442,14 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                                 {line.kind === "RATE" ? formatAmount(line.baseCents, locale) : ""}
                               </td>
                               <td className="ctr">
-                                {line.kind === "RATE" ? formatPercent(line.rate, locale) : ""}
+                                {line.kind === "RATE"
+                                  ? sale.contract.commissionFixed != null
+                                    ? t("commissions.fixedAmount")
+                                    : formatPercent(line.rate, locale)
+                                  : ""}
+                                {line.inCash ? (
+                                  <div className="text-xs font-semibold text-brand-graphite/70">{t("commissions.paidInCash")}</div>
+                                ) : null}
                               </td>
                               <td className="ctr">{formatAmount(line.amountCents, locale)}</td>
                               <td className="ctr">
@@ -463,8 +478,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                                   they do rather than a second story told by the
                                   payments.
                                 */}
-                                <Pill tone={papers.get(line.id)?.complete ? "good" : "warn"}>
-                                  {papers.get(line.id)?.complete
+                                <Pill tone={papers.get(line.id)?.complete || (line.inCash && line.outstandingCents <= 0) ? "good" : "warn"}>
+                                  {papers.get(line.id)?.complete || (line.inCash && line.outstandingCents <= 0)
                                     ? t("commissions.completed")
                                     : t("commissions.notCompleted")}
                                 </Pill>
@@ -538,10 +553,13 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                           headline={`${t("commissions.title")} . ${where}`}
                           workedOut={
                             line.kind === "RATE"
-                              ? `${formatPercent(line.rate, locale)} ${t("common.of")} ${formatAmount(
-                                  line.baseCents,
-                                  locale,
-                                )} . ${t("commissions.fullValue").toLowerCase()} . ${formatAmount(
+                              ? `${
+                                  sale.contract.commissionFixed != null
+                                    ? t("commissions.fixedAmount")
+                                    : `${formatPercent(line.rate, locale)} ${t("common.of")} ${formatAmount(line.baseCents, locale)} . ${t(
+                                        "commissions.fullValue",
+                                      ).toLowerCase()}`
+                                } . ${formatAmount(
                                   line.amountCents,
                                   locale,
                                 )} ${t("vat.beforeVatShort")} + ${t("vat.vat")} ${formatPercent(line.vatRate, locale)} ${formatAmount(
@@ -568,6 +586,11 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                           generatedOn={`${dayAndTime(line.generatedAt, locale)} . ${t("commissions.onFirstPayment")}`}
                           completedOn={dayAndTime(line.completedAt, locale) || null}
                           waitingFor={missing}
+                          inCash={
+                            line.inCash
+                              ? { note: t("commissions.cashRecord"), paid: line.outstandingCents <= 0 }
+                              : undefined
+                          }
                           upload={async (kind, formData) => {
                             "use server";
                             await uploadCommissionPaper(line.id, id, kind, formData);
@@ -743,12 +766,17 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                             The receipt for this payment. It opens to be read,
                             and the email goes only from there, on a button.
                           */}
-                          <Link
-                            href={`/agents/${id}/receipt/${p.id}`}
-                            className="btn btn-secondary !px-2 !py-1 !text-xs"
-                          >
-                            {t("receipts.open")}
-                          </Link>
+                          {/* Paid in cash there is no receipt to make or send. */}
+                          {p.commissionId && cashLines.has(p.commissionId) ? (
+                            <span className="text-xs text-brand-graphite/60">{t("commissions.paidInCash")}</span>
+                          ) : (
+                            <Link
+                              href={`/agents/${id}/receipt/${p.id}`}
+                              className="btn btn-secondary !px-2 !py-1 !text-xs"
+                            >
+                              {t("receipts.open")}
+                            </Link>
+                          )}
                           <form action={deleteCommissionPayment.bind(null, p.id, id)}>
                             <button
                               type="submit"

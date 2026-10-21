@@ -11,6 +11,8 @@ import { standardContractName } from "@/lib/contractName";
 import type { ContractFormState } from "./actions";
 import SubmitButton from "@/components/SubmitButton";
 import { parseAmount } from "@/lib/money";
+import CommissionChoice from "@/components/CommissionChoice";
+import { commissionModeOf } from "@/lib/commissionChoice";
 
 type ContractRecord = {
   id: string;
@@ -33,6 +35,10 @@ type ContractRecord = {
   status: "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
   statusChoice?: string | null;
   notes: string | null;
+  /** What was agreed with the agent for this contract, when it is not their usual rate. */
+  commissionRate?: string | null;
+  commissionFixed?: string | null;
+  commissionInCash?: boolean;
 };
 
 const day = (value: Date | null | undefined) =>
@@ -84,7 +90,8 @@ export default function ContractForm({
   /** With the building and the number, which the standard name is made from. */
   units: { id: string; label: string; building?: string; code?: string }[];
   clients: { id: string; label: string; firstName?: string; lastName?: string }[];
-  agents: { id: string; label: string }[];
+  /** With each agent's usual rate, for the commission worked out under the agent. */
+  agents: { id: string; label: string; rate?: number }[];
   /** Preselected apartment and buyer, for a contract started from a client. */
   defaults?: { unitId?: string; clientId?: string; agentId?: string };
   /** On a land exchange, the apartments already allotted to the landowner. */
@@ -147,6 +154,10 @@ export default function ContractForm({
    * and leave the paid ones at the old rate.
    */
   const vatLocked = Boolean(frozen && contract && kind === "SALE");
+
+  /* The agent chosen, for their usual rate in the commission part below. */
+  const [agentId, setAgentId] = useState(contract?.agentId ?? defaults?.agentId ?? "");
+  const agentRate = agents.find((one) => one.id === agentId)?.rate ?? null;
 
   /** The price and the cash added up, said out loud so nobody has to do it. */
   const money = (value: string) => parseAmount(value) / 100;
@@ -367,7 +378,8 @@ export default function ContractForm({
             <select
               id="agentId"
               name="agentId"
-              defaultValue={contract?.agentId ?? defaults?.agentId ?? ""}
+              value={agentId}
+              onChange={(event) => setAgentId(event.target.value)}
               className="select"
             >
               <option value="">{labels.noAgent}</option>
@@ -377,6 +389,36 @@ export default function ContractForm({
                 </option>
               ))}
             </select>
+          </div>
+        ) : null}
+
+        {kind === "SALE" && agentId ? (
+          /* What was agreed with this agent on this contract, worked out as it is typed. */
+          <div className="sm:col-span-2">
+            <CommissionChoice
+              agentRate={agentRate}
+              baseCents={parseAmount(netPrice) + parseAmount(cash)}
+              defaults={{
+                mode: commissionModeOf(contract),
+                rate: contract?.commissionRate ? String(Number(contract.commissionRate)) : "",
+                fixed: contract?.commissionFixed ? String(Number(contract.commissionFixed)) : "",
+                inCash: Boolean(contract?.commissionInCash),
+              }}
+              locale="en"
+              labels={{
+                title: labels.commissionTitle,
+                standard: labels.commissionStandard,
+                otherRate: labels.commissionOtherRate,
+                fixed: labels.commissionFixed,
+                beforeVat: labels.commissionBeforeVat,
+                inCash: labels.commissionInCash,
+                inCashHint: labels.commissionInCashHint,
+                fixedPreview: labels.commissionFixedPreview,
+                of: labels.commissionOf,
+                vatTail: labels.commissionVatTail,
+                cashTail: labels.commissionCashTail,
+              }}
+            />
           </div>
         ) : null}
 

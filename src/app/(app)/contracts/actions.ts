@@ -45,6 +45,7 @@ import {
 } from "@/lib/contracts";
 import { followTheMoney, markUnitByHand } from "@/lib/statuses";
 import { recalculateCommission } from "@/lib/commissions";
+import { commissionFromForm } from "@/lib/commissionChoice";
 import { recordingHistory } from "@/lib/history";
 
 const detailsSchema = z.object({
@@ -467,6 +468,10 @@ export async function createContract(
       unitId: parsed.unitId,
       clientId: parsed.clientId,
       agentId: parsed.agentId || null,
+      /* What was agreed with the agent on this contract; nothing on a land exchange or without an agent. */
+      ...(parsed.kind === "SALE" && parsed.agentId
+        ? commissionFromForm(formData)
+        : { commissionRate: null, commissionFixed: null, commissionInCash: false }),
       contractDate: parsed.contractDate ? new Date(parsed.contractDate) : null,
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),
@@ -601,6 +606,10 @@ export async function updateContract(
       unitId: parsed.unitId,
       clientId: parsed.clientId,
       agentId: parsed.agentId || null,
+      /* What was agreed with the agent on this contract; nothing on a land exchange or without an agent. */
+      ...(parsed.kind === "SALE" && parsed.agentId
+        ? commissionFromForm(formData)
+        : { commissionRate: null, commissionFixed: null, commissionInCash: false }),
       contractDate: parsed.contractDate ? new Date(parsed.contractDate) : null,
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),

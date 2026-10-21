@@ -27,7 +27,7 @@ export async function commissionLines(range: Range, only: string[] | null, limit
     left join units u on u.id = c.unit_id
     left join projects p on p.id = u.project_id`;
   const rows = await run(sql`
-    select cm.id, cm.created_at, cm.kind, cm.label, cm.amount, cm.vat_rate, cm.vat_amount, cm.total_amount, cm.status, cm.history,
+    select cm.id, cm.created_at, cm.kind, cm.label, cm.amount, cm.vat_rate, cm.vat_amount, cm.total_amount, cm.status, cm.history, cm.in_cash,
            a.id as agent_id, a.name as agent, p.name as project, u.code, c.id as contract_id,
            (select coalesce(sum(x.amount), 0) from commission_payments x where x.commission_id = cm.id) as paid,
            (select coalesce(sum(x.total_amount), 0) from commission_payments x where x.commission_id = cm.id) as paid_total,
@@ -60,6 +60,8 @@ export async function commissionLines(range: Range, only: string[] | null, limit
         paidTotal: toCents(str(r.paid_total) || "0"),
         standing: standing as "CANCELLED" | "PENDING" | "PARTIALLY_PAID" | "PAID",
         history: Boolean(r.history),
+        /* Paid in cash: no invoice and no receipt are expected of it. */
+        inCash: Boolean(r.in_cash),
         agentId: str(r.agent_id),
         agent: str(r.agent),
         project: str(r.project),
