@@ -10,7 +10,7 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { removeDocument, storeDocument } from "@/lib/uploads";
 import { sendStageInvoice } from "@/lib/stageInvoices";
-import { withdrawInvoice } from "@/lib/withdrawInvoice";
+import { withdrawInvoice, withdrawPaymentPapers } from "@/lib/withdrawInvoice";
 import { PAPER_KINDS, PAPER_NAME, paperRow, type PaperKind } from "@/lib/signingPapers";
 
 /*
@@ -108,6 +108,17 @@ export async function withdrawStageInvoice(contractId: string, invoiceId: string
   refresh(contractId, row?.clientId ?? null);
   revalidatePath("/invoices/accountant");
   /* Back to the contract, so the invoice is seen gone at once. */
+  redirect(`/contracts/${contractId}`);
+}
+
+/** Take back the invoice and receipt issued by mistake for a payment recorded as history. */
+export async function withdrawHistoryPapers(contractId: string, paymentId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const [row] = await db.select({ clientId: contracts.clientId }).from(contracts).where(eq(contracts.id, contractId)).limit(1);
+  const result = await withdrawPaymentPapers(paymentId, user);
+  await flash(`${result.ok ? "said.invoiceWithdrawn" : "said.invoiceNotWithdrawn"}|${result.said}`, result.ok ? "good" : "bad");
+  refresh(contractId, row?.clientId ?? null);
+  revalidatePath("/invoices/accountant");
   redirect(`/contracts/${contractId}`);
 }
 

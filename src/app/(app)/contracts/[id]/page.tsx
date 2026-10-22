@@ -7,6 +7,8 @@ import { getTranslator, type MessageKey } from "@/i18n";
 import { amountForInput, formatAmount, formatPercent, toCents } from "@/lib/money";
 import { contractStatusTone, getContract, landExchangeUnits } from "@/lib/contracts";
 import { nextReceiptNumber } from "@/lib/receipts";
+import { whyNotWithdrawPayment } from "@/lib/withdrawInvoice";
+import { withdrawHistoryPapers } from "../stageActions";
 import { recordingHistory } from "@/lib/history";
 import { issuerIdOfContract } from "@/lib/issuer";
 import { STAGE_CHOICES } from "@/lib/vat";
@@ -75,6 +77,18 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   ]);
 
   const { contract, unit, project, client, agent, installments: lines, totals, payments } = detail;
+
+  /*
+   * Payments recorded as history that were given papers anyway: their papers
+   * are shown, and taken back here when nothing stands in the way, or the
+   * reason is given (the newest first, say).
+   */
+  const historyWithPapers = new Map<string, string | null>();
+  for (const one of payments) {
+    if (!one.history) continue;
+    const why = await whyNotWithdrawPayment(one.id);
+    if (why !== "No papers were issued for this payment.") historyWithPapers.set(one.id, why);
+  }
 
   /*
     Paid off, said out loud.
@@ -861,7 +875,25 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                       <td className="text-xs">
                         {/* The invoice and the receipt the CRM issued for this
                             money, then anything filed with it before. */}
-                        {p.kind !== "CREDIT" ? (
+                        {/* Recorded as history: no papers of ours, and the links would issue them. */}
+                        {p.kind !== "CREDIT" && p.history && !historyWithPapers.has(p.id) ? (
+                          <span className="text-brand-graphite/60">{t("history.noPapers")}</span>
+                        ) : null}
+                        {p.kind !== "CREDIT" && p.history && historyWithPapers.has(p.id) ? (
+                          <div className="mb-1" data-withdraw-papers>
+                            <ConfirmButton
+                              action={withdrawHistoryPapers.bind(null, id, p.id)}
+                              label={t("history.removePapers")}
+                              confirm={t("stages.withdrawConfirm")}
+                              title={t("history.removePapersHint")}
+                              blocked={historyWithPapers.get(p.id) ?? null}
+                            />
+                            {historyWithPapers.get(p.id) ? (
+                              <div className="mt-0.5 max-w-[16rem] text-brand-graphite/60">{historyWithPapers.get(p.id)}</div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {p.kind !== "CREDIT" && (!p.history || historyWithPapers.has(p.id)) ? (
                           <div className="flex flex-wrap gap-2">
                             <a
                               href={`/api/receipts/${p.id}?kind=invoice`}

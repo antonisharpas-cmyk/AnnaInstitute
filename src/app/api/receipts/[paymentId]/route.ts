@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { documents } from "@/db/schema";
+import { documents, payments } from "@/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { canReadDocument } from "@/lib/documents";
-import { issueForPayment } from "@/lib/issued";
+import { issuedFor, issueForPayment } from "@/lib/issued";
 import { resolveStored } from "@/lib/storage";
 
 /**
@@ -23,7 +23,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ paym
   const url = new URL(request.url);
   const wantInvoice = url.searchParams.get("kind") === "invoice";
 
-  const pair = await issueForPayment(paymentId, { id: user.id, name: user.name });
+  /*
+   * A payment recorded as history has no papers of ours, and opening its link
+   * must not issue them: only papers that already exist are shown.
+   */
+  const [payment] = await db.select({ history: payments.history }).from(payments).where(eq(payments.id, paymentId)).limit(1);
+  const pair = payment?.history ? await issuedFor(paymentId) : await issueForPayment(paymentId, { id: user.id, name: user.name });
+  if (payment?.history && !(wantInvoice ? pair.invoice : pair.receipt)) {
+    return new NextResponse("This payment was recorded as history, so no invoice or receipt of ours is issued for it.", {
+      status: 404,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
   const paper = wantInvoice ? pair.invoice : pair.receipt;
   if (!paper?.documentId) return new NextResponse("Not found", { status: 404 });
 
