@@ -21,6 +21,7 @@ import type { EmailAttachment } from "@/lib/messaging/email";
 import { templateByKey } from "@/lib/templates";
 import { buyersFirstNames, buyersName, emailList, hasSecondBuyer } from "@/lib/buyers";
 import { issuedAttachments, issueForPayment, issueStageInvoice, paperAttachment } from "@/lib/issued";
+import { recordingHistory } from "@/lib/history";
 
 /**
  * The Reservation and the Contract of Sale, from draft to signed.
@@ -225,6 +226,8 @@ export async function sendAgreedWithInvoice(
   who: { id: string; name?: string | null },
   installmentId?: string | null,
 ): Promise<LetterResult & { number?: string }> {
+  /* While the past is being entered, no invoice of ours is issued, as the switch promises. */
+  if (await recordingHistory()) return { ok: false, said: "Recording history is on, so no invoice is issued. Switch it off in Settings to issue and send invoices." };
   const paper = await paperRow(contractId, kind);
   if (paper.signedDocumentId) return { ok: false, said: `The ${PAPER_NAME[kind]} is signed already.` };
   const [agreed] = paper.draftDocumentId

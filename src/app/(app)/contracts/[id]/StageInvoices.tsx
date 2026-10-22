@@ -5,7 +5,9 @@ import { PAPER_NAME, papersOf } from "@/lib/signingPapers";
 import { stagesOf } from "@/lib/stageInvoices";
 import { Card, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
-import { removeStageProof, sendStageInvoiceAction, uploadStageProof } from "../stageActions";
+import { removeStageProof, sendStageInvoiceAction, uploadStageProof, withdrawStageInvoice } from "../stageActions";
+import { whyNotWithdraw } from "@/lib/withdrawInvoice";
+import ConfirmButton from "@/components/ConfirmButton";
 import { removePaperDraft, sendPaperForReview, uploadPaperDraft, uploadPaperSigned } from "../paperActions";
 
 /**
@@ -21,6 +23,11 @@ export default async function StageInvoices({ contractId, hasEmail }: { contract
   const { locale, t } = await getTranslator();
   const [stages, papers] = await Promise.all([stagesOf(contractId), papersOf(contractId)]);
   if (stages.length === 0) return null;
+  /* The invoices that can still be taken back: issued by mistake, never sent, last of their series. */
+  const withdrawable = new Set<string>();
+  for (const stage of stages) {
+    if (stage.invoice && !(await whyNotWithdraw(stage.invoice.id))) withdrawable.add(stage.invoice.id);
+  }
   const money = (cents: number) => formatAmount(cents, locale);
   const when = (value: Date | null | undefined) => (value ? new Date(value).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB") : "");
   const link = (id: string, title: string, extra = "") => (
@@ -68,6 +75,16 @@ export default async function StageInvoices({ contractId, hasEmail }: { contract
                 <p className="mt-1 text-xs" data-stage-invoice>
                   {stage.invoice.documentId ? link(stage.invoice.documentId, `${t("papers.invoice")} ${stage.invoice.number}`) : `${t("papers.invoice")} ${stage.invoice.number}`}
                   {sentAt ? <span className="text-brand-graphite/60">, {t("papers.sentOn")} {when(sentAt)}</span> : null}
+                  {withdrawable.has(stage.invoice.id) ? (
+                    <span className="ml-2 inline-block align-middle" data-withdraw-invoice>
+                      <ConfirmButton
+                        action={withdrawStageInvoice.bind(null, contractId, stage.invoice.id)}
+                        label={t("stages.withdraw")}
+                        confirm={t("stages.withdrawConfirm")}
+                        title={t("stages.withdrawHint")}
+                      />
+                    </span>
+                  ) : null}
                 </p>
               ) : null}
 

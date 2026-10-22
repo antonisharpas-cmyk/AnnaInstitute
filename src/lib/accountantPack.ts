@@ -114,9 +114,9 @@ export async function packMonths(): Promise<string[]> {
   const key = (column: unknown) => sql<string>`to_char(${column}, 'YYYY-MM')`;
   const [a, b, c, d, e] = await Promise.all([
     db.selectDistinct({ m: key(issuedDocuments.issuedOn) }).from(issuedDocuments),
-    db.selectDistinct({ m: key(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`) }).from(expenses).where(eq(expenses.direction, "IN")),
-    db.selectDistinct({ m: key(constructorPayments.paidOn) }).from(constructorPayments).where(sql`${constructorPayments.status} <> 'CANCELLED'`),
-    db.selectDistinct({ m: key(commissionPayments.paidOn) }).from(commissionPayments),
+    db.selectDistinct({ m: key(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`) }).from(expenses).where(and(eq(expenses.direction, "IN"), eq(expenses.history, false))),
+    db.selectDistinct({ m: key(constructorPayments.paidOn) }).from(constructorPayments).where(and(sql`${constructorPayments.status} <> 'CANCELLED'`, eq(constructorPayments.history, false))),
+    db.selectDistinct({ m: key(commissionPayments.paidOn) }).from(commissionPayments).where(eq(commissionPayments.history, false)),
     db.selectDistinct({ m: key(refunds.paidOn) }).from(refunds).where(sql`${refunds.purpose} <> 'VAT_CHANGE'`),
   ]);
   return monthsFrom([...a, ...b, ...c, ...d, ...e].map((one) => one.m)).reverse();
@@ -217,6 +217,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
     .where(
       and(
         eq(expenses.direction, "IN"),
+        /* Entered as the past: already the accountant's long ago, so not sent again. */
+        eq(expenses.history, false),
         gte(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, from),
         lt(sql`coalesce(${expenses.issueDate}, ${expenses.createdAt})`, to),
       ),
@@ -261,7 +263,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
     .innerJoin(constructorProjects, eq(constructorProjects.id, constructorPayments.constructorProjectId))
     .innerJoin(constructors, eq(constructors.id, constructorProjects.constructorId))
     .leftJoin(projects, eq(projects.id, constructorProjects.projectId))
-    .where(and(gte(constructorPayments.paidOn, from), lt(constructorPayments.paidOn, to), sql`${constructorPayments.status} <> 'CANCELLED'`))
+    /* Entered as the past: already the accountant's long ago, so not sent again. */
+    .where(and(gte(constructorPayments.paidOn, from), lt(constructorPayments.paidOn, to), sql`${constructorPayments.status} <> 'CANCELLED'`, eq(constructorPayments.history, false)))
     .orderBy(asc(constructorPayments.paidOn));
   const builtFiles = built.length
     ? await db
@@ -306,7 +309,8 @@ export async function monthPapers(month: string): Promise<PackItem[]> {
     .leftJoin(contracts, eq(contracts.id, commissions.contractId))
     .leftJoin(units, eq(units.id, contracts.unitId))
     .leftJoin(projects, eq(projects.id, units.projectId))
-    .where(and(gte(commissionPayments.paidOn, from), lt(commissionPayments.paidOn, to)))
+    /* Entered as the past: already the accountant's long ago, so not sent again. */
+    .where(and(gte(commissionPayments.paidOn, from), lt(commissionPayments.paidOn, to), eq(commissionPayments.history, false)))
     .orderBy(asc(commissionPayments.paidOn));
   const commissionIds = [...new Set(paidAgents.map((one) => one.payment.commissionId).filter(Boolean) as string[])];
   const commissionFiles = commissionIds.length

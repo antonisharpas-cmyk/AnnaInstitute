@@ -6,6 +6,7 @@ import { contracts, documents, installments, issuedDocuments, messages, payments
 import { stageFrom, stageNames } from "@/lib/choices/stages";
 import { formatAmount, toCents } from "@/lib/money";
 import { advanceInvoiceFor, issueStageInvoice, paperAttachment } from "@/lib/issued";
+import { recordingHistory } from "@/lib/history";
 import { defaultStage, PAPER_KINDS, PAPER_NAME, paperRow, writeToBuyer, type LetterResult, type PaperKind } from "@/lib/signingPapers";
 import { resolveStored } from "@/lib/storage";
 import { readFile } from "node:fs/promises";
@@ -168,6 +169,8 @@ export async function sendStageInvoice(
   installmentId: string,
   who: { id: string; name?: string | null },
 ): Promise<LetterResult & { number?: string }> {
+  /* While the past is being entered, no invoice of ours is issued, as the switch promises. */
+  if (await recordingHistory()) return { ok: false, said: "Recording history is on, so no invoice is issued. Switch it off in Settings to issue and send invoices." };
   const stages = await stagesOf(contractId);
   const stage = stages.find((one) => one.line.id === installmentId);
   if (!stage) return { ok: false, said: "That stage is not on this contract." };

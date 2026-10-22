@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { contracts, documents, installments, signingPapers } from "@/db/schema";
@@ -9,6 +10,7 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { removeDocument, storeDocument } from "@/lib/uploads";
 import { sendStageInvoice } from "@/lib/stageInvoices";
+import { withdrawInvoice } from "@/lib/withdrawInvoice";
 import { PAPER_KINDS, PAPER_NAME, paperRow, type PaperKind } from "@/lib/signingPapers";
 
 /*
@@ -95,6 +97,18 @@ export async function sendStageInvoiceAction(contractId: string, installmentId: 
     result.ok ? "good" : "bad",
   );
   refresh(contractId, row.contract.clientId);
+}
+
+/** Take back a stage invoice issued by mistake, never sent and the last of its series. */
+export async function withdrawStageInvoice(contractId: string, invoiceId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const [row] = await db.select({ clientId: contracts.clientId }).from(contracts).where(eq(contracts.id, contractId)).limit(1);
+  const result = await withdrawInvoice(invoiceId, user);
+  await flash(`${result.ok ? "said.invoiceWithdrawn" : "said.invoiceNotWithdrawn"}|${result.said}`, result.ok ? "good" : "bad");
+  refresh(contractId, row?.clientId ?? null);
+  revalidatePath("/invoices/accountant");
+  /* Back to the contract, so the invoice is seen gone at once. */
+  redirect(`/contracts/${contractId}`);
 }
 
 /**

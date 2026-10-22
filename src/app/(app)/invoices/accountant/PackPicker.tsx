@@ -169,7 +169,9 @@ export default function PackPicker({
           const keys = rows.map((one) => one.key);
           const on = keys.filter((key) => ticked.has(key)).length;
           const pageCount = Math.max(1, Math.ceil(rows.length / PER_PAGE));
-          const page = Math.min(pages[group] ?? 1, pageCount);
+          /* Read as the group's own entry: "constructor" is also a name every plain object answers to. */
+          const asked = Object.hasOwn(pages, group) ? pages[group] : undefined;
+          const page = Math.min(typeof asked === "number" ? asked : 1, pageCount);
           const shown = rows.slice((page - 1) * PER_PAGE, page * PER_PAGE);
           const go = (to: number) => setPages((was) => ({ ...was, [group]: Math.max(1, Math.min(pageCount, to)) }));
           return (
