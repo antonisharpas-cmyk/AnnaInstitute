@@ -8,6 +8,7 @@ import { leads, projects, units } from "@/db/schema";
 import { matchProject, recentDuplicate } from "@/lib/leads";
 import { recordAudit } from "@/lib/audit";
 import { QR_CONSENT_TEXT as CONSENT_TEXT } from "@/lib/qrLead";
+import { sendLeadAlert } from "@/lib/leadAlert";
 
 /**
  * A person scanning the QR code in the office or at the building.
@@ -131,6 +132,9 @@ export async function sendPersonalInformation(formData: FormData) {
     detail: `QR code form: ${email ?? phone ?? ""}${consent ? ", marketing consent given" : ""}`,
     userEmail: "qr-code-form",
   });
+
+  /* The office hears about it at once. A failure here never stops the form. */
+  await sendLeadAlert({ id: row.id, firstName, lastName, email, phone, country, interest, message, consent });
 
   redirect("/personal-information?sent=1");
 }

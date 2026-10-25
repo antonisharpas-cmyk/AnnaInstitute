@@ -9,7 +9,7 @@ import { Card, Empty, PageHeader } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import EmailSwitch from "@/components/EmailSwitch";
 import HistorySwitch from "@/components/HistorySwitch";
-import { saveAppointmentSettings, saveCompanySettings, sendSummaryNow, sendTestEmail, sendTestText } from "./actions";
+import { saveAppointmentSettings, saveCompanySettings, saveLeadAlert, sendSummaryNow, sendTestEmail, sendTestText } from "./actions";
 import { channelConfigured, textProvider } from "@/lib/messaging";
 
 /**
@@ -32,6 +32,8 @@ export default async function SettingsPage() {
     "appointments.summaryLastResult",
     "appointments.reminderOn",
     "appointments.reminderHour",
+    "leads.alertOn",
+    "leads.alertTo",
   ]);
   const company = await readSettings([
     "company.name",
@@ -200,6 +202,29 @@ export default async function SettingsPage() {
               {t("settings.byScheduler")}
             </p>
           </Card>
+
+          {/* An email to the office when a lead comes in through the QR code. */}
+          <div className="mt-4">
+            <Card title={t("settings.leadAlert")}>
+              <form action={saveLeadAlert} className="space-y-3" data-lead-alert>
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" name="on" defaultChecked={config["leads.alertOn"] === "yes"} className="mt-1" />
+                  <span>
+                    {t("settings.leadAlertOn")}
+                    <span className="block text-xs text-brand-graphite/60">{t("settings.leadAlertOnHint")}</span>
+                  </span>
+                </label>
+                <div>
+                  <label className="label" htmlFor="leadAlertTo">
+                    {t("settings.leadAlertTo")}
+                  </label>
+                  <input id="leadAlertTo" name="to" defaultValue={config["leads.alertTo"]} className="input max-w-md" />
+                  <p className="mt-1 text-xs text-brand-graphite/60">{t("settings.leadAlertToHint")}</p>
+                </div>
+                <SubmitButton className="btn btn-secondary">{t("common.save")}</SubmitButton>
+              </form>
+            </Card>
+          </div>
 
           {/* The mail account, and a button that proves it works. */}
           <div className="mt-4">

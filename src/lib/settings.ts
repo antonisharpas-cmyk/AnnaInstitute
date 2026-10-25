@@ -38,6 +38,10 @@ export const DEFAULTS = {
   "emails.testAddress": "",
   /** The office's own WhatsApp number, for trying a campaign on itself. */
   "campaigns.testPhone": "",
+  /** Whether the office gets an email when a lead comes in through the QR code. */
+  "leads.alertOn": "yes",
+  /** Where that email goes: one address, or several with commas between. */
+  "leads.alertTo": "info@oneeleven-ent.cy",
 
   /*
    * One Eleven as its own invoices, receipts and credit notes name it: the

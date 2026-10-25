@@ -6,6 +6,7 @@ import { flash } from "@/lib/flash";
 import { recordAudit } from "@/lib/audit";
 import { writeSetting } from "@/lib/settings";
 import { sendDailySummary } from "@/lib/appointmentSummary";
+import { alertAddresses } from "@/lib/leadAlert";
 import { sendEmail } from "@/lib/messaging/email";
 import { letterHtml, sendAndRecord } from "@/lib/messaging";
 
@@ -43,6 +44,28 @@ export async function saveAppointmentSettings(formData: FormData) {
     userEmail: user.email,
   });
 
+  await flash("said.saved");
+  revalidatePath("/settings");
+}
+
+/** The email to the office when a lead comes in through the QR code. */
+export async function saveLeadAlert(formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const on = formData.get("on") === "on";
+  const typed = String(formData.get("to") ?? "").trim();
+  const to = alertAddresses(typed);
+  if (on && to.length === 0) return flash("said.leadAlertNoAddress", "bad");
+
+  await writeSetting("leads.alertOn", on ? "yes" : "no");
+  await writeSetting("leads.alertTo", to.join(", "));
+  await recordAudit({
+    action: "settings.leadAlert",
+    entity: "settings",
+    entityId: "leads",
+    detail: `${on ? "on" : "off"}, to ${to.join(", ") || "nobody"}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
   await flash("said.saved");
   revalidatePath("/settings");
 }
