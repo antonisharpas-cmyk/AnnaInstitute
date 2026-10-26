@@ -66,7 +66,7 @@ export default async function AutomaticEmailsPage() {
       title: t("emails.test.appointments"),
       keys: ["appointment_made", "appointment_moved", "appointment_cancelled", "appointment_reminder"],
     },
-    { title: t("emails.test.agent"), keys: ["agent_new_lead", "agent_commission"] },
+    { title: t("emails.test.agent"), keys: ["agent_new_lead", "agent_commission", "agent_follow_up"] },
     { title: t("emails.test.leads"), keys: ["lead_reminder"] },
     { title: t("emails.test.clients"), keys: ["birthday"] },
     { title: t("emails.test.team"), keys: ["day_summary"] },

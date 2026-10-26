@@ -541,6 +541,7 @@ export async function historyForLead(leadId: string): Promise<HistoryLine[]> {
     "lead.followUp.delete": "A follow up was taken off",
     "lead.converted": "It became a client",
     "lead.reminder": "A reminder was emailed",
+    "lead.agentFollowUp": "The agent was asked for news",
     "lead.conversion.undone": "The conversion was undone",
     "lead.binned": "It was moved to the bin",
     "lead.binned.bulk": "It was moved to the bin",

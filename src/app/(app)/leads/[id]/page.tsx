@@ -27,6 +27,7 @@ import {
   deleteFollowUp,
   deleteLead,
   remindLead,
+  followUpWithAgent,
   removeLeadNote,
   saveLeadDetails,
   setFollowUpStatus,
@@ -120,6 +121,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             {!locked && lead.email ? (
               <form action={remindLead.bind(null, lead.id)} data-lead-reminder>
                 <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("leads.sendReminder")}</SubmitButton>
+              </form>
+            ) : null}
+            {/* A lead an agent brought: ask the agent for news, by email, now. */}
+            {!locked && introducer ? (
+              <form action={followUpWithAgent.bind(null, lead.id)} data-agent-follow-up>
+                <SubmitButton className="btn btn-secondary !px-3 !py-1 !text-xs">{t("leads.followUpAgent")}</SubmitButton>
               </form>
             ) : null}
             <Pill tone={leadStatusTone(lead.status) as "good" | "warn" | "neutral"}>

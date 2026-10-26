@@ -1299,6 +1299,58 @@ export async function sendLeadReminder(leadId: string): Promise<{ ok: boolean; s
   return { ok: result.status === "SENT", said: result.status === "SENT" ? `to ${email}` : reason };
 }
 
+/**
+ * The follow up to the agent who brought a lead, sent when somebody presses
+ * the button on the lead's page. Never by itself, and as often as the office
+ * presses it. The agent reads about "your client": the word lead is ours, not
+ * theirs. Written in the list of automatic emails, the agent's communication
+ * and the lead's history.
+ */
+export async function sendAgentFollowUp(leadId: string): Promise<{ ok: boolean; said: string }> {
+  const [row] = await db
+    .select({ lead: leads, agent: agents })
+    .from(leads)
+    .leftJoin(agents, eq(agents.id, leads.agentId))
+    .where(eq(leads.id, leadId))
+    .limit(1);
+  if (!row) return { ok: false, said: "The lead is not there any more." };
+  const { lead, agent } = row;
+  if (!agent) return { ok: false, said: "No agent is named on this lead." };
+  const email = agent.email?.trim();
+  if (!email) return { ok: false, said: `${agent.name} has no email address on their record.` };
+  const template = await templateByKey("agent_follow_up");
+  if (!template) return { ok: false, said: "The follow up letter is not there." };
+  if (!template.isActive) return { ok: false, said: "The follow up to the agent is switched off in Automatic emails." };
+
+  const client = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || lead.email || "";
+  const values: Record<string, string> = {
+    title: titleWord(agent.title),
+    first_name: agent.name.split(" ")[0] ?? agent.name,
+    name: client,
+  };
+  const result = await sendAndRecord({
+    channel: "EMAIL",
+    recipient: { name: agent.name, email, agentId: agent.id, leadId: lead.id },
+    subject: fill(template.subject || "", values),
+    body: fill(template.body, values),
+    withOptOut: false,
+  });
+  const status = result.status === "SENT" ? "SENT" : result.status === "SIMULATED" ? "SKIPPED" : "FAILED";
+  const reason =
+    result.status === "SENT"
+      ? "Sent."
+      : (result.error ?? (result.status === "SIMULATED" ? "Email is not set up yet, so nothing left the building." : "It did not go."));
+  await db.insert(automaticEmails).values({
+    templateKey: "agent_follow_up",
+    agentId: agent.id,
+    leadId: lead.id,
+    status,
+    reason: `${agent.name}, about ${client}: ${reason}`,
+    sentAt: status === "SENT" ? new Date() : null,
+  });
+  return { ok: result.status === "SENT", said: result.status === "SENT" ? `${agent.name}, ${email}` : reason };
+}
+
 const DAY = 24 * 60 * 60 * 1000;
 
 /**

@@ -161,6 +161,11 @@ export async function sendTestLetter(key: TestKey, to: string): Promise<{ ok: bo
       values.amount = money(25000);
       values.outstanding = money(0);
     }
+    if (key === "agent_follow_up") {
+      values.title = "Mr.";
+      values.first_name = "Andreas";
+      values.name = "Maria Georgiou";
+    }
     if (key === "agent_new_lead") {
       values.first_name = "Andreas";
       values.name = "Maria Georgiou";

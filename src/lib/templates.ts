@@ -903,6 +903,35 @@ One Eleven`,
     toLeads: true,
   },
   {
+    /* Sent by a person, with the button on a lead's page, to the agent who brought the lead. Never by itself. */
+    key: "agent_follow_up",
+    isAutomatic: true,
+    name: "A follow up on their client, to the agent",
+    description:
+      "Goes when you press Follow up with the agent on a lead that an agent brought. It asks the agent for news about their client, who is named in it, and mentions our apartments in Larnaca. It never goes by itself, and each one is written in the lead's history.",
+    subject: "Following up on your client {{name}}",
+    body: `Dear {{title}} {{first_name}},
+
+May this email find you well.
+
+We wanted to follow up regarding your client {{name}}. Could you let us know if there is any update?
+
+On a separate note, we now also have apartments available in Larnaca. These could be a great fit if you have any clients looking for options in this area and we'd be happy to share more details or arrange a viewing. For further information, please visit our site: www.oneeleven.com.cy
+
+Don't hesitate to reach out if you need any extra help.
+
+Kind Regards,
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, we wanted to follow up regarding your client {{name}}. Could you let us know if there is any update? We now also have apartments available in Larnaca: www.oneeleven.com.cy. One Eleven",
+    subjectEl: "",
+    bodyEl: "",
+    bodyWhatsappEl: "",
+    toClients: false,
+    toAgents: true,
+    toSubowners: false,
+  },
+  {
     key: "agent_commission",
     isAutomatic: true,
     name: "Commission generated, to the agent",
@@ -1209,6 +1238,7 @@ export const AUTOMATIC_KEYS = [
   "invoice_reminder",
   "birthday",
   "lead_reminder",
+  "agent_follow_up",
 ] as const;
 
 export type AutomaticKey = (typeof AUTOMATIC_KEYS)[number];
