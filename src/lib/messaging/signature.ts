@@ -55,7 +55,7 @@ export function signatureHtml(withLogo = true): string {
     ),
   ].join("");
   const logo = withLogo
-    ? `<td valign="middle" style="padding:0 18px 0 0;vertical-align:middle"><img src="cid:${LOGO_CID}" width="130" height="81" alt="OneEleven" style="display:block;width:130px;height:81px;border:0"></td>`
+    ? `<td valign="middle" style="padding:0 18px 0 0;vertical-align:middle"><img src="cid:${LOGO_CID}" width="80" height="50" alt="OneEleven" style="display:block;width:80px;height:50px;border:0"></td>`
     : "";
   return (
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" data-signature style="margin:18px 0 0;border-collapse:collapse">` +
