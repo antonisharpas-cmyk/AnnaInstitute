@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  clientNotes,
   clients,
   contracts,
   documents,
@@ -504,6 +505,13 @@ export async function undoConversion(clientId: string) {
   for (const doc of filed) await removeDocument(doc.id, user);
 
   if (lead) {
+    /* The notes written on the client go back with them, onto the lead. */
+    const written = await db.select().from(clientNotes).where(eq(clientNotes.clientId, clientId));
+    if (written.length > 0) {
+      await db.insert(leadNotes).values(
+        written.map((note) => ({ leadId: lead.id, body: note.body, writtenById: note.writtenById, createdAt: note.createdAt })),
+      );
+    }
     await db
       .update(leads)
       .set({ clientId: null, status: "ACTIVE", updatedAt: new Date() })

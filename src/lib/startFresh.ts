@@ -60,6 +60,7 @@ const CLEARED: { table: string; what: string; where?: string }[] = [
   { table: "appointments", what: "appointments" },
   { table: "lead_follow_ups", what: "follow ups" },
   { table: "lead_notes", what: "lead notes" },
+  { table: "client_notes", what: "client notes" },
   { table: "leads", what: "leads" },
   { table: "users", what: "buyer logins", where: "role = 'BUYER'" },
   { table: "clients", what: "clients" },

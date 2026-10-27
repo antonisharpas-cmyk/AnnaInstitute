@@ -1,10 +1,10 @@
 import "server-only";
 import { choiceFilter } from "@/lib/choices/filter";
 import { LIST_BY_KEY } from "@/lib/choices/lists";
-import { and, asc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { many } from "@/lib/filters";
-import { clients, contracts, projects, units, type UnitStatus } from "@/db/schema";
+import { clientNotes, clients, contracts, leadNotes, leads, projects, units, users, type UnitStatus } from "@/db/schema";
 import { partnersByProject } from "@/lib/subowners";
 
 export type AssignedApartment = {
@@ -312,4 +312,34 @@ export async function matchingClientIds(input: {
     .orderBy(asc(clients.lastName), asc(clients.firstName))
     .limit(5000);
   return rows.map((row) => row.id);
+}
+
+/**
+ * The office's notes on a client, newest first.
+ *
+ * Their own notes, and with them the notes written while they were still a
+ * lead, so the whole story of the person reads in one place. The lead's notes
+ * are marked as such and stay the lead's: they are taken off on the lead, not
+ * here.
+ */
+export async function notesForClient(clientId: string) {
+  const own = await db
+    .select({ id: clientNotes.id, body: clientNotes.body, createdAt: clientNotes.createdAt, writtenBy: users.name })
+    .from(clientNotes)
+    .leftJoin(users, eq(users.id, clientNotes.writtenById))
+    .where(eq(clientNotes.clientId, clientId))
+    .orderBy(desc(clientNotes.createdAt), desc(clientNotes.id))
+    .limit(500);
+  const fromLead = await db
+    .select({ id: leadNotes.id, body: leadNotes.body, createdAt: leadNotes.createdAt, writtenBy: users.name })
+    .from(leadNotes)
+    .innerJoin(leads, eq(leads.id, leadNotes.leadId))
+    .leftJoin(users, eq(users.id, leadNotes.writtenById))
+    .where(eq(leads.clientId, clientId))
+    .orderBy(desc(leadNotes.createdAt), desc(leadNotes.id))
+    .limit(500);
+  return [
+    ...own.map((note) => ({ ...note, asLead: false })),
+    ...fromLead.map((note) => ({ ...note, asLead: true })),
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
 }

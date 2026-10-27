@@ -568,6 +568,13 @@
       "when": 1794604347383,
       "tag": "0081_commission_fixed_cash",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1794690747383,
+      "tag": "0082_client_notes",
+      "breakpoints": true
     }
   ]
 }

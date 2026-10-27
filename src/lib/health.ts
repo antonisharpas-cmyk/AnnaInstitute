@@ -453,6 +453,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "commissions paid in cash",
     migration: "0081",
   },
+  {
+    probe: "select client_id from client_notes limit 1",
+    what: "the client_notes table",
+    migration: "0082",
+  },
 ];
 
 let answer: Missing[] | null = null;

@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   numeric,
   pgEnum,
@@ -1365,6 +1366,24 @@ export const leadNotes = pgTable("lead_notes", {
   writtenById: text("written_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: created(),
 });
+
+/**
+ * The office's notes on a client, the same as on a lead: each note its own
+ * row, with the day it was written and who wrote it, never typed over.
+ */
+export const clientNotes = pgTable(
+  "client_notes",
+  {
+    id: id(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    writtenById: text("written_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: created(),
+  },
+  (table) => ({ byClient: index("client_notes_client_idx").on(table.clientId) }),
+);
 
 /** A follow up is either still to be done or it has been done. */
 export const followUpStatusEnum = pgEnum("follow_up_status", ["PENDING", "DONE", "CANCELLED"]);

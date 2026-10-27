@@ -17,7 +17,8 @@ import {
 } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
-import { apartmentsByClient, assignableUnits } from "@/lib/clients";
+import { apartmentsByClient, assignableUnits, notesForClient } from "@/lib/clients";
+import NoteList from "@/components/NoteList";
 import { landExchangesForClient } from "@/lib/contracts";
 import { appointmentsForClient } from "@/lib/appointments";
 import { whoCanGo } from "@/lib/team";
@@ -45,6 +46,8 @@ import DocumentUpload from "@/components/DocumentUpload";
 import { undoConversion } from "../../leads/actions";
 import ConfirmButton from "@/components/ConfirmButton";
 import {
+  addClientNote,
+  removeClientNote,
   assignApartment,
   assignClient,
   setClientTextChannel,
@@ -77,7 +80,7 @@ const statusTone = (status: string) =>
 /** The six kinds, in the order the office listed them. */
 
 /** The parts of a client, one at a time, apartments first. */
-const TABS = ["apartments", "contracts", "appointments", "followups", "documents", "history"] as const;
+const TABS = ["apartments", "contracts", "appointments", "followups", "documents", "history", "notes"] as const;
 
 export default async function ClientPage({
   params,
@@ -100,6 +103,7 @@ export default async function ClientPage({
   const leadRows = await db.select().from(leads).where(eq(leads.clientId, id)).limit(1);
   /* The whole story, only when it is the part being read. */
   const history = tab === "history" ? await clientHistory(id, locale) : [];
+  const notes = tab === "notes" ? await notesForClient(id) : [];
   const historyLabels = {
     title: t("clients.tab.history"),
     all: t("common.all"),
@@ -1066,6 +1070,49 @@ export default async function ClientPage({
           <ClientHistory events={history} locale={locale} labels={historyLabels} />
         ) : null}
 
+        {/*
+          The office's notes on this client, the same as on a lead: each note
+          keeps the day it was written and who wrote it, newest first, ten at a
+          time. The notes from when they were a lead are here too, marked, so
+          the whole story reads in one place.
+        */}
+        {tab === "notes" ? (
+          <div data-client-notes>
+          <Card
+            title={t("leads.notes")}
+            action={
+              <span className="text-xs text-brand-graphite/60">
+                {notes.length} {t("leads.noteCount")}
+              </span>
+            }
+          >
+            <form action={addClientNote.bind(null, id)} className="mb-4 space-y-2" data-client-note>
+              <textarea name="body" rows={3} required placeholder={t("clients.notePlaceholder")} className="textarea" />
+              <SubmitButton>{t("leads.noteAdd")}</SubmitButton>
+            </form>
+            <NoteList
+              notes={notes.map((note) => ({
+                id: note.id,
+                body: note.body,
+                when: when(note.createdAt, locale),
+                writtenBy: note.writtenBy,
+                tag: note.asLead ? t("clients.noteAsLead") : undefined,
+                fixed: note.asLead,
+              }))}
+              labels={{
+                none: t("leads.noteNone"),
+                by: t("leads.noteBy"),
+                older: t("leads.noteOlder"),
+                newer: t("leads.noteNewer"),
+                of: t("common.of"),
+                delete: t("common.delete"),
+              }}
+              remove={removeClientNote.bind(null, id)}
+            />
+          </Card>
+          </div>
+        ) : null}
+
 
 
 
@@ -1096,7 +1143,8 @@ export default async function ClientPage({
               </div>
             ) : null}
 
-            {enquiryNotes.length > 0 ? (
+            {/* On the Notes part they are already in the list above. */}
+            {enquiryNotes.length > 0 && tab !== "notes" ? (
               <div className="mb-3">
                 <p className="label">{t("leads.notes")}</p>
                 <ol className="notes mt-1">

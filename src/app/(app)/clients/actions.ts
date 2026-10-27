@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { clients, contractUnits, contracts, leads, payments, projects, teamMembers, units } from "@/db/schema";
+import { clientNotes, clients, contractUnits, contracts, leads, payments, projects, teamMembers, units } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { followTheApartments, markUnitByHand } from "@/lib/statuses";
@@ -1051,5 +1051,56 @@ export async function setClientTextChannel(clientId: string, formData: FormData)
     userEmail: user.email,
   });
   await flash("said.saved");
+  revalidatePath(`/clients/${clientId}`);
+}
+
+/**
+ * A note on a client, the same as a note on a lead: added, never typed over,
+ * with the day and who wrote it. The client's updated stamp moves too, so a
+ * list sorted by activity puts them where they belong.
+ */
+export async function addClientNote(clientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) {
+    await flash("said.noteEmpty", "bad");
+    revalidatePath(`/clients/${clientId}`);
+    return;
+  }
+  const [client] = await db.select({ id: clients.id }).from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!client) return;
+
+  await db.insert(clientNotes).values({ clientId, body, writtenById: user.id });
+  await db.update(clients).set({ updatedAt: new Date() }).where(eq(clients.id, clientId));
+  await recordAudit({
+    action: "client.note",
+    entity: "client",
+    entityId: clientId,
+    detail: body.slice(0, 120),
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.noteAdded");
+  revalidatePath(`/clients/${clientId}`);
+}
+
+/** Take one note back off the client. The activity log remembers it was there. */
+export async function removeClientNote(clientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const noteId = String(formData.get("noteId") ?? "").trim();
+  if (!noteId) return;
+  const removed = await db
+    .delete(clientNotes)
+    .where(and(eq(clientNotes.id, noteId), eq(clientNotes.clientId, clientId)))
+    .returning({ body: clientNotes.body });
+  if (removed.length === 0) return;
+  await recordAudit({
+    action: "client.note.remove",
+    entity: "client",
+    entityId: clientId,
+    detail: removed[0].body.slice(0, 120),
+    userId: user.id,
+    userEmail: user.email,
+  });
   revalidatePath(`/clients/${clientId}`);
 }

@@ -21,6 +21,10 @@ export type Note = {
   /** Already formatted by the server, so the two languages read correctly. */
   when: string;
   writtenBy: string | null;
+  /** A short word beside the date, such as where the note was first written. */
+  tag?: string;
+  /** Shown but not removable here: it belongs to another record. */
+  fixed?: boolean;
 };
 
 const PER_PAGE = 10;
@@ -66,12 +70,15 @@ export default function NoteList({
                   {labels.by} {note.writtenBy}
                 </span>
               ) : null}
-              <form action={remove} className="ml-auto">
-                <input type="hidden" name="noteId" value={note.id} />
-                <button type="submit" className="notedrop" title={labels.delete}>
-                  {labels.delete}
-                </button>
-              </form>
+              {note.tag ? <span className="notewho">{note.tag}</span> : null}
+              {note.fixed ? null : (
+                <form action={remove} className="ml-auto">
+                  <input type="hidden" name="noteId" value={note.id} />
+                  <button type="submit" className="notedrop" title={labels.delete}>
+                    {labels.delete}
+                  </button>
+                </form>
+              )}
             </div>
             <p className="notebody">{note.body}</p>
           </li>
