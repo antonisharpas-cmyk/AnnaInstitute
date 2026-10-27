@@ -1096,7 +1096,7 @@ export async function followUpWithAgent(leadId: string) {
   revalidatePath(`/leads/${leadId}`);
 }
 
-/** How the office texts this lead, set with the SMS and WhatsApp buttons on their page. */
+/** Whether the office texts this lead, set with the SMS and None buttons on their page. */
 export async function setLeadTextChannel(leadId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   if (await refuseForClient(leadId)) return;

@@ -156,13 +156,13 @@ export async function sendTestEmail(formData: FormData) {
 }
 
 /**
- * A test SMS or WhatsApp to one number, to prove the text channels work.
+ * A test SMS to one number, to prove the texts can go out.
  * Recorded with the other messages, so it shows what went out and when.
  */
 export async function sendTestText(formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const to = String(formData.get("to") ?? "").trim();
-  const channel = formData.get("channel") === "WHATSAPP" ? "WHATSAPP" : "SMS";
+  const channel = "SMS" as const;
   if (!to) {
     await flash("said.testTextFailed|no number", "bad");
     return;

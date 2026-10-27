@@ -3,6 +3,7 @@ import type { MessageKey } from "@/i18n";
 import SubmitButton from "@/components/SubmitButton";
 import DateField from "@/components/DateField";
 import { TITLES, titleWord } from "@/lib/titles";
+import { agentCampaignChannel } from "@/lib/textChannel";
 
 type AgentRecord = {
   id: string;
@@ -131,9 +132,9 @@ export default function AgentForm({
           <label className="label" htmlFor="campaignChannel">
             {t("agents.campaignChannel")}
           </label>
-          <select id="campaignChannel" name="campaignChannel" defaultValue={agent?.campaignChannel ?? "EMAIL"} className="select">
+          <select id="campaignChannel" name="campaignChannel" defaultValue={agentCampaignChannel(agent?.campaignChannel)} className="select">
             <option value="EMAIL">{t("agents.channel.EMAIL")}</option>
-            <option value="WHATSAPP">{t("agents.channel.WHATSAPP")}</option>
+            <option value="SMS">{t("agents.channel.SMS")}</option>
             <option value="BOTH">{t("agents.channel.BOTH")}</option>
           </select>
           <p className="mt-1 text-xs text-brand-graphite/60">{t("agents.campaignChannelHint")}</p>

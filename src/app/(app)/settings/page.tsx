@@ -11,6 +11,7 @@ import EmailSwitch from "@/components/EmailSwitch";
 import HistorySwitch from "@/components/HistorySwitch";
 import { saveAppointmentSettings, saveCompanySettings, saveLeadAlert, sendSummaryNow, sendTestEmail, sendTestText } from "./actions";
 import { channelConfigured, textProvider } from "@/lib/messaging";
+import { phonesToCheck } from "@/lib/phoneCheckList";
 
 /**
  * The admin panel, which is one panel so far.
@@ -56,6 +57,7 @@ export default async function SettingsPage() {
     "numbers.nextCreditNote",
   ]);
   const mail = emailSetup();
+  const badPhones = await phonesToCheck();
   const diagnosis = diagnoseMail();
   const companyFields: { key: keyof typeof company; name: string; label: string; wide?: boolean }[] = [
     { key: "company.name", name: "name", label: t("settings.company.name"), wide: true },
@@ -336,18 +338,14 @@ export default async function SettingsPage() {
             </Card>
           </div>
 
-          {/* SMS and WhatsApp, and a button that proves they work. */}
+          {/* SMS, and a button that proves it works. */}
           <div className="mt-4">
             <Card title={t("settings.texts")}>
-              {channelConfigured("SMS") || channelConfigured("WHATSAPP") ? (
+              {channelConfigured("SMS") ? (
                 <p className="mb-3 text-sm" data-texts-setup>
                   {t("settings.textsVia")} <span className="font-semibold">{textProvider() === "twilio" ? "Twilio" : "SMS.to"}</span>: SMS{" "}
                   <span className={channelConfigured("SMS") ? "text-[color:var(--color-positive,#2f855a)]" : "text-brand-graphite/50"}>
                     {channelConfigured("SMS") ? t("settings.textReady") : t("settings.textNotReady")}
-                  </span>
-                  , WhatsApp{" "}
-                  <span className={channelConfigured("WHATSAPP") ? "text-[color:var(--color-positive,#2f855a)]" : "text-brand-graphite/50"}>
-                    {channelConfigured("WHATSAPP") ? t("settings.textReady") : t("settings.textNotReady")}
                   </span>
                 </p>
               ) : (
@@ -362,18 +360,47 @@ export default async function SettingsPage() {
                   </label>
                   <input id="testTextTo" name="to" type="tel" required placeholder={t("settings.testTextToHint")} className="input" />
                 </div>
-                <div>
-                  <label className="label" htmlFor="testChannel">
-                    {t("settings.testChannel")}
-                  </label>
-                  <select id="testChannel" name="channel" className="input">
-                    <option value="SMS">SMS</option>
-                    <option value="WHATSAPP">WhatsApp</option>
-                  </select>
-                </div>
+                <input type="hidden" name="channel" value="SMS" />
                 <SubmitButton className="btn btn-secondary">{t("settings.testTextSend")}</SubmitButton>
               </form>
               <p className="mt-2 max-w-prose text-xs text-brand-graphite/55">{t("settings.testTextHint")}</p>
+
+              {/* The mobiles an SMS cannot reach as they are written, to fix before a campaign. */}
+              <div className="mt-4 border-t border-brand-line pt-3" data-phones-to-check>
+                <p className="text-sm font-semibold">
+                  {t("settings.phonesToCheck")}: {badPhones.length}
+                </p>
+                <p className="mt-0.5 max-w-prose text-xs text-brand-graphite/60">{t("settings.phonesToCheckHint")}</p>
+                {badPhones.length === 0 ? (
+                  <p className="mt-2 text-xs text-[color:var(--color-positive,#2f855a)]">{t("settings.phonesAllGood")}</p>
+                ) : (
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="data" data-nosort="true">
+                      <thead>
+                        <tr>
+                          <th>{t("common.name")}</th>
+                          <th>{t("leads.phone")}</th>
+                          <th>{t("settings.phoneWhy")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {badPhones.map((one) => (
+                          <tr key={`${one.kind}${one.id}`} data-phone-row={one.kind}>
+                            <td>
+                              <a href={one.href} className="font-medium text-brand-teal-dark hover:underline">
+                                {one.name}
+                              </a>
+                              <div className="text-xs text-brand-graphite/50">{t(`settings.phoneKind.${one.kind}` as MessageKey)}</div>
+                            </td>
+                            <td className="font-mono text-xs">{one.phone}</td>
+                            <td className="text-xs">{one.problem}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </Card>
           </div>
 

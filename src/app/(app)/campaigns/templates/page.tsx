@@ -65,7 +65,7 @@ export default async function TemplatesPage() {
             </li>
             <li>
               <code className="font-mono text-xs">{"{{files_url}}"}</code> the attachments, for
-              WhatsApp
+              the SMS
             </li>
           </ul>
         </Card>

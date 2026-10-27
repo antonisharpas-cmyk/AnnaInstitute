@@ -95,23 +95,27 @@ test("campaign ways: clients and leads are texted their own way, agents theirs",
   const { campaignWays } = await import("../agentWay");
   const both = { viaEmail: true, viaWhatsapp: true, agentsBothVia: null, subject: "Hi", bodyWhatsapp: "Hi" };
   assert.deepEqual(campaignWays({ group: "CLIENTS", textChannel: "SMS" }, both), ["EMAIL", "SMS"]);
-  assert.deepEqual(campaignWays({ group: "LEADS", textChannel: "WHATSAPP" }, both), ["EMAIL", "WHATSAPP"]);
+  assert.deepEqual(campaignWays({ group: "LEADS", textChannel: "WHATSAPP" }, both), ["EMAIL", "SMS"]);
   assert.deepEqual(campaignWays({ group: "BUYERS", textChannel: "SMS" }, { ...both, viaEmail: false }), ["SMS"]);
-  assert.deepEqual(campaignWays({ group: "SUBOWNERS" }, both), ["EMAIL", "WHATSAPP"]);
+  assert.deepEqual(campaignWays({ group: "SUBOWNERS" }, both), ["EMAIL", "SMS"]);
   assert.deepEqual(campaignWays({ group: "CLIENTS", textChannel: "NONE" }, both), ["EMAIL"]);
   assert.deepEqual(campaignWays({ group: "LEADS", textChannel: "NONE" }, { ...both, viaEmail: false }), []);
-  assert.deepEqual(campaignWays({ group: "AGENTS", agentChannel: "WHATSAPP" }, both), ["WHATSAPP"]);
+  assert.deepEqual(campaignWays({ group: "AGENTS", agentChannel: "WHATSAPP" }, both), ["SMS"]);
+  assert.deepEqual(campaignWays({ group: "AGENTS", agentChannel: "SMS" }, both), ["SMS"]);
+  assert.deepEqual(campaignWays({ group: "AGENTS", agentChannel: "BOTH" }, { ...both, agentsBothVia: "BOTH" }), ["EMAIL", "SMS"]);
   assert.deepEqual(campaignWays({ group: "CLIENTS", textChannel: "WHATSAPP" }, { ...both, viaWhatsapp: false }), ["EMAIL"]);
 });
 
-test("text channel: anything but WhatsApp is SMS", async () => {
-  const { textChannelOf, agentTextChannel } = await import("../textChannel");
-  assert.equal(textChannelOf("WHATSAPP"), "WHATSAPP");
+test("text channel: everything but None is SMS, WhatsApp included", async () => {
+  const { textChannelOf, agentTextChannel, agentCampaignChannel } = await import("../textChannel");
+  assert.equal(textChannelOf("WHATSAPP"), "SMS");
+  assert.equal(agentCampaignChannel("WHATSAPP"), "SMS");
+  assert.equal(agentCampaignChannel("BOTH"), "BOTH");
+  assert.equal(agentCampaignChannel(null), "EMAIL");
   assert.equal(textChannelOf("whatever"), "SMS");
   assert.equal(textChannelOf(null), "SMS");
   assert.equal(textChannelOf("NONE"), "NONE");
-  assert.equal(agentTextChannel("BOTH"), "WHATSAPP");
-  assert.equal(agentTextChannel("EMAIL"), "SMS");
+  assert.equal(agentTextChannel(), "SMS");
 });
 
 test("every email carries the One Eleven signature after the letter, above the unsubscribe line", async () => {

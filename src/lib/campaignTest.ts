@@ -26,7 +26,7 @@ type Campaign = typeof campaigns.$inferSelect;
  * own the first time it is saved, tested or sent without one, so the office
  * never has to make a link first and the page always shows today's prices. A
  * link that was revoked or has run out is replaced the same way. Files get
- * their page as soon as there are any, for WhatsApp and for {{files_url}} in
+ * their page as soon as there are any, for the SMS and for {{files_url}} in
  * the email.
  */
 const ownNote = (campaign: Campaign) => `For the campaign "${campaign.title}"`;
@@ -122,12 +122,12 @@ async function aboutExtras(campaign: Campaign, month: string): Promise<Record<st
 
 /**
  * The placeholders that would go out as they are, in the subject, the email or
- * the WhatsApp. Sending and testing both stop while there are any, and say which.
+ * the SMS. Sending and testing both stop while there are any, and say which.
  */
 export async function unfilledIn(campaign: Campaign): Promise<string[]> {
   const values = await testValues(campaign);
   return placeholdersLeft(
-    /* An email or a WhatsApp written only for the agents who take it that way is checked too. */
+    /* An email or an SMS written only for the agents who take it that way is checked too. */
     campaign.viaEmail || campaign.subject ? fillPlaceholders(campaign.subject ?? "", values) : "",
     campaign.viaEmail || campaign.subject ? fillPlaceholders(campaign.body, values) : "",
     campaign.viaWhatsapp || campaign.bodyWhatsapp ? fillPlaceholders(campaign.bodyWhatsapp ?? campaign.body, values) : "",
@@ -158,29 +158,21 @@ export async function testValues(campaign: Campaign) {
 }
 
 /**
- * The WhatsApp message, finished, and a link that opens WhatsApp with it.
- *
- * The CRM cannot send WhatsApp itself until the SMS.to account and its number
- * are approved, so the test opens WhatsApp on this computer or phone with the
- * message already typed, addressed to the office's own number. Sending it to
- * yourself shows exactly what a client would see, links and all.
+ * The SMS, finished, as a client would get it, and the office's own number to
+ * try it on. The same steps as the real send: the files link on the end when
+ * the message does not place it itself, and the stop line for clients and
+ * leads, whose own link is made for each of them when it is sent for real.
  */
-export async function whatsappTest(campaign: Campaign): Promise<{ text: string; link: string; phone: string } | null> {
+export async function textTest(campaign: Campaign): Promise<{ text: string; phone: string } | null> {
   if (!campaign.viaWhatsapp && !campaign.bodyWhatsapp) return null;
   const values = await testValues(campaign);
   const hasFiles = (await campaignAttachments(campaign.id)).length > 0;
-
-  /* The same steps as the real send: the files link on the end when the message
-     does not place it itself, and the opt out line for clients. */
   const words = campaign.bodyWhatsapp ?? campaign.body;
   const withFiles =
     hasFiles && values.filesUrl && !words.includes("{{files_url}}") ? `${words}\n${values.filesUrl}` : words;
   let text = fillPlaceholders(withFiles, values);
   const clientsToo = campaign.toClients || campaign.toLeads || campaign.audience === "CLIENTS_CONSENTED";
-  if (clientsToo && !/reply stop/i.test(text)) text = `${text}\nReply STOP to opt out.`;
-
+  if (clientsToo) text = `${text}\nTo stop these messages: (each client gets their own link)`;
   const phone = (await readSetting("campaigns.testPhone")).trim();
-  const digits = phone.replace(/\D/g, "");
-  const link = `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-  return { text, link, phone };
+  return { text, phone };
 }

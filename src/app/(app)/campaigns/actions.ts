@@ -20,6 +20,7 @@ import {
   subowners,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { agentCampaignChannel } from "@/lib/textChannel";
 import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { storeDocument } from "@/lib/uploads";
@@ -27,7 +28,7 @@ import { addressFor, fillPlaceholders, letterHtml, sendAndRecord } from "@/lib/m
 import { sendEmail } from "@/lib/messaging/email";
 import { normalisePhone } from "@/lib/messaging/text";
 import { readSetting, writeSetting } from "@/lib/settings";
-import { campaignExtras, ensureCampaignLinks, testValues, unfilledIn } from "@/lib/campaignTest";
+import { campaignExtras, ensureCampaignLinks, testValues, textTest, unfilledIn } from "@/lib/campaignTest";
 import { createPriceListLink, priceListUrl } from "@/lib/priceList";
 import { campaignAttachments, emailFilesWithin, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
 import { endRun, runOf, startRun, tickRun } from "@/lib/campaignProgress";
@@ -126,29 +127,30 @@ export async function createCampaign(formData: FormData) {
 
   const viaEmail = String(formData.get("viaEmail") ?? "") === "on";
   const viaWhatsapp = String(formData.get("viaWhatsapp") ?? "") === "on";
-  /* For the agents who take either way: email, WhatsApp, or both. */
+  /* For the agents who take either way: email, SMS, or both. */
   const bothRaw = String(formData.get("agentsBothVia") ?? "");
-  const agentsBothVia = toAgents && (bothRaw === "EMAIL" || bothRaw === "WHATSAPP" || bothRaw === "BOTH") ? bothRaw : null;
+  const bothWay = bothRaw === "WHATSAPP" ? "SMS" : bothRaw;
+  const agentsBothVia = toAgents && (bothWay === "EMAIL" || bothWay === "SMS" || bothWay === "BOTH") ? bothWay : null;
   /* Every active agent, or only the ones ticked. */
   const agentIds =
     toAgents && String(formData.get("agentMode") ?? "all") === "chosen"
       ? formData.getAll("agentIds").map(String).filter(Boolean)
       : [];
   if (!viaEmail && !viaWhatsapp) {
-    throw new Error("Choose at least one way to send it, email or WhatsApp.");
+    throw new Error("Choose at least one way to send it, email or SMS.");
   }
 
   const body = String(formData.get("body") ?? "").trim();
   const bodyWhatsapp = String(formData.get("bodyWhatsapp") ?? "").trim();
   if (viaEmail && !body) throw new Error("Write the email first.");
-  if (viaWhatsapp && !bodyWhatsapp) throw new Error("Write the WhatsApp message first.");
+  if (viaWhatsapp && !bodyWhatsapp) throw new Error("Write the SMS first.");
 
   const inserted = await db
     .insert(campaigns)
     .values({
       title: String(formData.get("title") ?? "").trim() || "Untitled",
       // The log keeps a channel per message; this one only says what it started as.
-      channel: viaEmail ? "EMAIL" : "WHATSAPP",
+      channel: viaEmail ? "EMAIL" : "SMS",
       viaEmail,
       viaWhatsapp,
       agentsBothVia,
@@ -201,7 +203,7 @@ export async function createCampaign(formData: FormData) {
     action: "campaign.create",
     entity: "campaign",
     entityId: campaignId,
-    detail: `${[viaEmail ? "email" : null, viaWhatsapp ? "whatsapp" : null]
+    detail: `${[viaEmail ? "email" : null, viaWhatsapp ? "sms" : null]
       .filter(Boolean)
       .join(" and ")} to ${audience}, ${files.length} attachment(s)`,
     userId: user.id,
@@ -260,9 +262,9 @@ export async function audienceFor(groups: CampaignGroups) {
     subownerId: string | null;
     leadId?: string | null;
     group: "CLIENTS" | "AGENTS" | "SUBOWNERS" | "LEADS" | "BUYERS";
-    /** An agent's own choice of how campaigns reach them: EMAIL, WHATSAPP or BOTH. */
+    /** An agent's own choice of how campaigns reach them: EMAIL, SMS or BOTH. */
     agentChannel?: string;
-    /** A client's, buyer's or lead's own choice of how they are texted: SMS or WHATSAPP. */
+    /** A client's, buyer's or lead's own choice of whether they are texted: SMS or NONE. */
     textChannel?: string;
   }[] = [];
 
@@ -315,7 +317,7 @@ export async function audienceFor(groups: CampaignGroups) {
         agentId: a.id,
         subownerId: null,
         group: "AGENTS",
-        agentChannel: a.campaignChannel,
+        agentChannel: agentCampaignChannel(a.campaignChannel),
       });
     }
   }
@@ -493,7 +495,7 @@ const whoKey = (
  *
  * Everybody already written to for this campaign is skipped, so a run that
  * carries on after a restart never sends twice. Each letter has its own time
- * limit in the mail and WhatsApp code, so one that hangs is recorded as failed
+ * limit in the mail and SMS code, so one that hangs is recorded as failed
  * and the rest carry on. Whatever happens, the campaign ends with a status.
  */
 async function runCampaign(campaignId: string, who: { id: string; email: string }) {
@@ -546,7 +548,7 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
     /* Every letter to go, worked out first, so the page can say how many. */
     const plan: { recipient: (typeof recipients)[number]; channel: CampaignWay }[] = [];
     for (const recipient of recipients) {
-      /* An agent hears the way they chose; a client, buyer or lead is texted by SMS or WhatsApp as their buttons say. */
+      /* An agent hears the way they chose; a client, buyer or lead gets the SMS unless set to no texts. */
       for (const channel of campaignWays(recipient, campaign)) plan.push({ recipient, channel });
     }
     const todo = plan.filter((one) => !done.has(whoKey(one.channel, one.recipient)));
@@ -724,7 +726,7 @@ export async function messagesForCampaign(campaignId: string) {
    Trying a campaign on yourself first
    --------------------------------------------------------------------------- */
 
-/** Where the office's own tests go: the same address as the automatic emails, and a WhatsApp number. */
+/** Where the office's own tests go: the same address as the automatic emails, and a mobile number for the SMS. */
 export async function saveCampaignTester(campaignId: string, formData: FormData) {
   await requireUser(["ADMIN"]);
   const to = String(formData.get("to") ?? "").trim();
@@ -798,6 +800,54 @@ export async function sendCampaignTest(campaignId: string) {
     result.status === "SENT"
       ? `said.testLetterSent|${campaign.title} went to ${to}`
       : `said.testLetterFailed|${String(result.error ?? "no answer").slice(0, 200)}`,
+    result.status === "SENT" ? "good" : "bad",
+  );
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
+/**
+ * The campaign's SMS, once, to the office's own mobile.
+ *
+ * The same words and links the audience will get, with example names, sent
+ * for real so it arrives the way a client's would. It goes in the list of
+ * messages like any test; the campaign itself stays a draft and its own log
+ * stays empty.
+ */
+export async function sendCampaignTextTest(campaignId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const [found] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  if (!found) return;
+  const campaign = await ensureCampaignLinks(found, user.email);
+  const unfilled = await unfilledIn(campaign);
+  if (unfilled.length > 0) {
+    await flash(`said.placeholdersLeft|${unfilled.join(", ")}`, "bad");
+    revalidatePath(`/campaigns/${campaignId}`);
+    return;
+  }
+  const test = await textTest(campaign);
+  if (!test || !test.phone) {
+    await flash("said.testPhoneBad", "bad");
+    revalidatePath(`/campaigns/${campaignId}`);
+    return;
+  }
+  const result = await sendAndRecord({
+    channel: "SMS",
+    recipient: { name: "Test", phone: test.phone },
+    body: test.text,
+    withOptOut: false,
+  });
+  await recordAudit({
+    action: "campaign.testText",
+    entity: "campaign",
+    entityId: campaignId,
+    detail: `SMS ${test.phone}: ${result.status}${result.error ? `, ${result.error}` : ""}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(
+    result.status === "SENT"
+      ? `said.testTextSent|SMS ${test.phone}`
+      : `said.testTextFailed|${String(result.error ?? "no answer").slice(0, 300)}`,
     result.status === "SENT" ? "good" : "bad",
   );
   revalidatePath(`/campaigns/${campaignId}`);

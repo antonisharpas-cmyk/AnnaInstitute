@@ -575,6 +575,13 @@
       "when": 1794690747383,
       "tag": "0082_client_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1794777147383,
+      "tag": "0083_texts_by_sms",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import { asc, desc, eq, sql, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, clients, projects, suppressions, units } from "@/db/schema";
 import { groupsOf } from "@/lib/campaignGroups";
+import { sentByWhatsapp } from "@/lib/campaignTextWay";
 import { getTranslator } from "@/i18n";
 import { channelConfigured, emailConfigured } from "@/lib/messaging";
 import { activePriceListLinks, priceListUrl, scopeWords } from "@/lib/priceList";
@@ -34,7 +35,9 @@ export default async function CampaignsPage() {
     activePriceListLinks(),
     audienceFor({ toClients: true, toAgents: true, toSubowners: true }),
     listTemplates(),
-  ]);
+  ])
+  /* Campaigns sent before texts moved to SMS still say WhatsApp. */
+  const byWhatsapp = await sentByWhatsapp(rows.map((c) => c.id));;
 
   /* What each price list link shows, and what a new one can show. */
   const shows = await Promise.all(links.map((l) => scopeWords({ projectId: l.projectId, unitId: l.unitId, projectIds: l.projectIds })));
@@ -52,11 +55,6 @@ export default async function CampaignsPage() {
 
   const readiness = [
     { label: t("campaigns.email"), ready: emailConfigured(), note: "SMTP_HOST, SMTP_USER and SMTP_PASSWORD" },
-    {
-      label: t("campaigns.whatsapp"),
-      ready: channelConfigured("WHATSAPP"),
-      note: "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM",
-    },
     { label: "SMS", ready: channelConfigured("SMS"), note: "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_SMS_FROM" },
   ];
 
@@ -169,7 +167,7 @@ export default async function CampaignsPage() {
                       <td className="ctr text-xs">
                         {[
                           c.viaEmail ? t("campaigns.email") : null,
-                          c.viaWhatsapp ? t("campaigns.whatsapp") : null,
+                          c.viaWhatsapp ? (byWhatsapp.has(c.id) ? "WhatsApp" : t("campaigns.whatsapp")) : null,
                         ]
                           .filter(Boolean)
                           .join(" + ")}

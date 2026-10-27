@@ -423,7 +423,7 @@ export default async function ClientPage({
         <TextChannelSwitch
           action={setClientTextChannel.bind(null, client.id)}
           current={textChannelOf(client.textChannel)}
-          labels={{ title: t("people.textBy"), hint: t("people.textByHint"), sms: "SMS", whatsapp: "WhatsApp", none: t("people.textNone") }}
+          labels={{ title: t("people.textBy"), hint: t("people.textByHint"), sms: "SMS", none: t("people.textNone") }}
         />
 
         {/* Who in the office looks after this client. */}

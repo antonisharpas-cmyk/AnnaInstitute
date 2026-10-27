@@ -1037,7 +1037,7 @@ export async function assignClient(clientId: string, formData: FormData) {
   revalidatePath("/clients");
 }
 
-/** How the office texts this client, set with the SMS and WhatsApp buttons on their page. */
+/** Whether the office texts this client, set with the SMS and None buttons on their page. */
 export async function setClientTextChannel(clientId: string, formData: FormData) {
   const user = await requireUser(["ADMIN"]);
   const textChannel = textChannelOf(String(formData.get("channel") ?? ""));

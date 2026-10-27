@@ -27,6 +27,7 @@ import { letterForCommission } from "@/lib/automaticEmails";
 import { titleFrom } from "@/lib/titles";
 import { removeDocument, storeDocuments } from "@/lib/uploads";
 import { recordingHistory } from "@/lib/history";
+import { agentCampaignChannel } from "@/lib/textChannel";
 
 const agentSchema = z.object({
   name: z.string().min(1),
@@ -58,11 +59,8 @@ function read(formData: FormData) {
   });
 }
 
-/** How the agent wants campaigns, from the form: EMAIL, WHATSAPP or BOTH. */
-const channelFrom = (formData: FormData) => {
-  const value = String(formData.get("campaignChannel") ?? "EMAIL");
-  return value === "WHATSAPP" || value === "BOTH" ? value : "EMAIL";
-};
+/** How the agent wants campaigns, from the form: EMAIL, SMS or BOTH. */
+const channelFrom = (formData: FormData) => agentCampaignChannel(String(formData.get("campaignChannel") ?? "EMAIL"));
 
 export async function createAgent(formData: FormData) {
   const user = await requireUser(["ADMIN"]);

@@ -47,7 +47,7 @@ export type Reach = {
  * Writing a campaign.
  *
  * Three things are chosen here and none of them is assumed: who it goes to,
- * how it is sent, and what it says. Email and WhatsApp are ticked independently,
+ * how it is sent, and what it says. Email and SMS are ticked independently,
  * and each has its own box, because an email with a subject and four paragraphs
  * is not what anybody wants to read on their phone. Picking a ready made message
  * fills the boxes in, and everything stays editable afterwards.
@@ -129,7 +129,7 @@ export default function CampaignForm({
 
   const [viaEmail, setViaEmail] = useState(true);
   const [viaWhatsapp, setViaWhatsapp] = useState(Boolean(picked?.bodyWhatsapp));
-  const [bothVia, setBothVia] = useState<"EMAIL" | "WHATSAPP" | "BOTH">("EMAIL");
+  const [bothVia, setBothVia] = useState<"EMAIL" | "SMS" | "BOTH">("EMAIL");
   const [agentMode, setAgentMode] = useState<"all" | "chosen">("all");
   const [chosenAgents, setChosenAgents] = useState<string[]>([]);
   const [agentTerm, setAgentTerm] = useState("");
@@ -148,12 +148,12 @@ export default function CampaignForm({
       : null;
   const ways = agentsInPlay
     ? {
-        email: agentsInPlay.filter((one) => one.channel !== "WHATSAPP" && one.channel !== "BOTH").length,
-        whatsapp: agentsInPlay.filter((one) => one.channel === "WHATSAPP").length,
+        email: agentsInPlay.filter((one) => one.channel !== "SMS" && one.channel !== "WHATSAPP" && one.channel !== "BOTH").length,
+        whatsapp: agentsInPlay.filter((one) => one.channel === "SMS" || one.channel === "WHATSAPP").length,
         both: agentsInPlay.filter((one) => one.channel === "BOTH").length,
       }
     : agentWays;
-  const agentsNeedEmail = toAgents && (ways.email > 0 || (ways.both > 0 && bothVia !== "WHATSAPP"));
+  const agentsNeedEmail = toAgents && (ways.email > 0 || (ways.both > 0 && bothVia !== "SMS"));
   const agentsNeedWhatsapp = toAgents && (ways.whatsapp > 0 || (ways.both > 0 && bothVia !== "EMAIL"));
   /*
    * A campaign to the agents alone needs no "how it goes out": each agent
@@ -233,7 +233,7 @@ export default function CampaignForm({
   /*
    * Who gets it, and how: worked out live from what is ticked, group by
    * group, with the same rule the sending uses. An agent their own way; a
-   * client, buyer or lead by email and by SMS or WhatsApp as their page says.
+   * client, buyer or lead by email and by SMS, unless set to no texts.
    */
   const way = { viaEmail: sendEmail, viaWhatsapp: sendWhatsapp, agentsBothVia: bothVia, subject, bodyWhatsapp: whatsapp };
   const tally = (people: Reach[]) => {
@@ -727,7 +727,7 @@ export default function CampaignForm({
                 {labels.email}
               </label>
               <label className="flex items-center gap-2">
-                <input type="radio" name="agentsBothVia" value="WHATSAPP" checked={bothVia === "WHATSAPP"} onChange={() => setBothVia("WHATSAPP")} />
+                <input type="radio" name="agentsBothVia" value="SMS" checked={bothVia === "SMS"} onChange={() => setBothVia("SMS")} />
                 {labels.whatsapp}
               </label>
               <label className="flex items-center gap-2">
@@ -757,7 +757,6 @@ export default function CampaignForm({
                     <th className="ctr">{labels.summaryPeople}</th>
                     <th className="ctr">{labels.email}</th>
                     <th className="ctr">SMS</th>
-                    <th className="ctr">WhatsApp</th>
                     <th className="ctr">{labels.summaryNone}</th>
                   </tr>
                 </thead>
@@ -775,7 +774,6 @@ export default function CampaignForm({
                       <td className="ctr">{row.people}</td>
                       <td className="ctr">{row.email}</td>
                       <td className="ctr">{row.sms}</td>
-                      <td className="ctr">{row.whatsapp}</td>
                       <td className={`ctr ${row.none ? "text-[color:var(--color-warning,#b7791f)]" : ""}`}>{row.none}</td>
                     </tr>
                   ))}
@@ -785,7 +783,6 @@ export default function CampaignForm({
                       <td className="ctr">{total.people}</td>
                       <td className="ctr">{total.email}</td>
                       <td className="ctr">{total.sms}</td>
-                      <td className="ctr">{total.whatsapp}</td>
                       <td className="ctr">{total.none}</td>
                     </tr>
                   ) : null}

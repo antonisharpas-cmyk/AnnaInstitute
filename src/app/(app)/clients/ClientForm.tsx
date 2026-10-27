@@ -105,7 +105,6 @@ export default function ClientForm({
           </label>
           <select id="textChannel" name="textChannel" defaultValue={client?.textChannel ?? "SMS"} className="select">
             <option value="SMS">SMS</option>
-            <option value="WHATSAPP">WhatsApp</option>
             <option value="NONE">{t("people.textNone")}</option>
           </select>
         </div>

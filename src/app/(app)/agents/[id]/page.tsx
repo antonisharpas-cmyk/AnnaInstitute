@@ -21,6 +21,7 @@ import { TITLES, titleWord } from "@/lib/titles";
 import ProfileCard from "@/components/ProfileCard";
 import DeleteRecord from "@/components/DeleteRecord";
 import { whatGoesWithAgent } from "@/lib/deletes";
+import { agentCampaignChannel } from "@/lib/textChannel";
 import {
   addExtra,
   deleteAgent,
@@ -151,12 +152,12 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               {
                 name: "campaignChannel",
                 label: t("agents.campaignChannel"),
-                value: agent.campaignChannel,
-                display: t(`agents.channel.${agent.campaignChannel === "WHATSAPP" || agent.campaignChannel === "BOTH" ? agent.campaignChannel : "EMAIL"}` as MessageKey),
+                value: agentCampaignChannel(agent.campaignChannel),
+                display: t(`agents.channel.${agentCampaignChannel(agent.campaignChannel)}` as MessageKey),
                 kind: "select",
                 options: [
                   { value: "EMAIL", label: t("agents.channel.EMAIL") },
-                  { value: "WHATSAPP", label: t("agents.channel.WHATSAPP") },
+                  { value: "SMS", label: t("agents.channel.SMS") },
                   { value: "BOTH", label: t("agents.channel.BOTH") },
                 ],
               },

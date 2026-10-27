@@ -684,16 +684,15 @@ export async function letterForAppointment(
     });
   }
 
-  /* And the same news as a text, short, to the mobile on the record: by SMS or
-     by WhatsApp, as the client or lead is set to be texted (an agent who takes
-     campaigns by WhatsApp gets WhatsApp). The place is given without the map
+  /* And the same news as an SMS, short, to the mobile on the record, unless
+     the client or lead is set to no texts. The place is given without the map
      link, which would make the text run long. */
   const textBy = row.client
     ? textChannelOf(row.client.textChannel)
     : row.lead
       ? textChannelOf(row.lead.textChannel)
       : row.agent
-        ? agentTextChannel(row.agent.campaignChannel)
+        ? agentTextChannel()
         : "SMS";
   let text: Awaited<ReturnType<typeof sendAndRecord>> | null = null;
   const short = (template.bodyWhatsapp ?? "").trim();

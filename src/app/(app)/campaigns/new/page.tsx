@@ -54,13 +54,13 @@ export default async function NewCampaignPage({
   };
   /* How the agents want campaigns, so the form can say who gets what. */
   const agentWays = {
-    email: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel !== "WHATSAPP" && r.agentChannel !== "BOTH").length,
-    whatsapp: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel === "WHATSAPP").length,
+    email: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel !== "SMS" && r.agentChannel !== "BOTH").length,
+    whatsapp: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel === "SMS").length,
     both: everyone.filter((r) => r.group === "AGENTS" && r.agentChannel === "BOTH").length,
   };
   /* The agents, to choose from one by one, each with the way they want campaigns. */
   const wayWord = (channel: string | undefined) =>
-    channel === "WHATSAPP" ? t("campaigns.agentsByWhatsapp") : channel === "BOTH" ? t("campaigns.agentsBoth") : t("campaigns.agentsByEmail");
+    channel === "SMS" ? t("campaigns.agentsByWhatsapp") : channel === "BOTH" ? t("campaigns.agentsBoth") : t("campaigns.agentsByEmail");
   const agentChoices = everyone
     .filter((r) => r.group === "AGENTS" && r.agentId)
     .map((r) => ({

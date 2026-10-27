@@ -17,9 +17,10 @@ import { sameEmail, samePhone } from "@/lib/samePerson";
 import { appUrl } from "@/lib/unsubscribe";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
-import { audienceFor, messagesForCampaign, saveCampaignTester, resumeCampaign, sendCampaign, sendCampaignTest, setCampaignAbout, setCampaignProjects } from "../actions";
+import { audienceFor, messagesForCampaign, saveCampaignTester, resumeCampaign, sendCampaign, sendCampaignTest, sendCampaignTextTest, setCampaignAbout, setCampaignProjects } from "../actions";
 import { idsOf } from "@/lib/campaignProjects";
-import { campaignExtras, ensureCampaignLinks, unfilledIn, whatsappTest } from "@/lib/campaignTest";
+import { campaignExtras, ensureCampaignLinks, textTest, unfilledIn } from "@/lib/campaignTest";
+import { phoneProblem } from "@/lib/phoneCheck";
 import { readSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/auth";
 import SubmitButton from "@/components/SubmitButton";
@@ -71,16 +72,16 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const seenPhone = new Set<string>();
   for (const recipient of recipients) {
     /* An agent is sent the way they chose, or both ways when the campaign says so;
-       a client, buyer or lead is texted by SMS or WhatsApp as their buttons say. */
+       a client, buyer or lead gets the SMS unless set to no texts. */
     const ways = campaignWays(recipient, campaign);
     const agentWays = recipient.group === "AGENTS" ? ways : null;
     const way = agentWays ? (agentWays.length > 1 ? "BOTH" : agentWays[0] ?? null) : null;
     const byEmail = ways.includes("EMAIL");
-    const textVia = ways.includes("WHATSAPP") ? "WHATSAPP" : ways.includes("SMS") ? "SMS" : null;
-    /* "byWhatsapp" is any text, by WhatsApp or by SMS: the column shows which. */
+    const textVia = ways.includes("SMS") ? "SMS" : null;
+    /* "byWhatsapp" is the SMS: the name is from when texts went by WhatsApp. */
     const byWhatsapp = textVia !== null;
     const emailAddress = byEmail ? addressFor("EMAIL", recipient) : null;
-    const phoneAddress = byWhatsapp ? addressFor("WHATSAPP", recipient) : null;
+    const phoneAddress = byWhatsapp ? addressFor("SMS", recipient) : null;
     const emailKey = sameEmail(emailAddress);
     const phoneKey = samePhone(phoneAddress);
     const emailTwin = Boolean(emailKey && seenEmail.has(emailKey));
@@ -102,24 +103,24 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
     });
   }
 
-  /* Email or WhatsApp is in play when the campaign was ticked for it, or when an agent takes it that way. */
+  /* Email or SMS is in play when the campaign was ticked for it, or when an agent takes it that way. */
   const usesEmail = campaign.viaEmail || checked.some((r) => r.byEmail);
-  const usesWhatsapp = checked.some((r) => r.textVia === "WHATSAPP") || (campaign.viaWhatsapp && checked.length === 0);
-  const usesSms = checked.some((r) => r.textVia === "SMS");
+  const usesSms = checked.some((r) => r.textVia === "SMS") || (campaign.viaWhatsapp && checked.length === 0);
+  /* Numbers an SMS cannot reach as they are written, to fix before sending. */
+  const badNumbers = checked.filter((r) => r.phoneAddress && !r.phoneSuppressed && phoneProblem(r.phoneAddress));
   const willGetEmail = checked.filter((r) => r.emailAddress && !r.emailSuppressed);
   const willGetWhatsapp = checked.filter((r) => r.phoneAddress && !r.phoneSuppressed);
   const sendable = [...new Set([...willGetEmail, ...willGetWhatsapp])];
 
   const channelReady =
     (!usesEmail || emailConfigured()) &&
-    (!usesWhatsapp || channelConfigured("WHATSAPP")) &&
     (!usesSms || channelConfigured("SMS"));
   const alreadySent = campaign.status !== "DRAFT";
   /* Sending now in this CRM, and how far; and what an email of it carries. */
   const running = runOf(id);
   const emailFiles = await emailFilesWithin(id);
 
-  /* Trying it on yourself: the email to your inbox, the WhatsApp opened ready to send to your own number. */
+  /* Trying it on yourself: the email to your inbox, the SMS to your own mobile. */
   const testTo = (await readSetting("emails.testAddress")).trim();
   /* Placeholders that nothing would fill, and what the campaign can be about to fill them. */
   const unfilled = await unfilledIn(campaign);
@@ -134,10 +135,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
           .orderBy(asc(projects.name), asc(units.code)),
       ]);
   const aboutNow = aboutOf(campaign);
-  const tryWhatsapp = await whatsappTest(campaign);
+  const tryText = await textTest(campaign);
 
-  // The files of a campaign also live behind a link of their own, because a
-  // WhatsApp message cannot carry a PDF the way an email can.
+  // The files of a campaign also live behind a link of their own, because an
+  // SMS cannot carry a PDF the way an email can.
   const filesLink = fileLinkRows[0] ? filesUrl(fileLinkRows[0].token) : undefined;
   const values = {
     name: checked[0]?.name ?? "Name Surname",
@@ -160,7 +161,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       />
       <PageHeader
         title={campaign.title}
-        subtitle={`${[usesEmail ? "email" : null, usesWhatsapp ? "whatsapp" : null, usesSms ? "sms" : null]
+        subtitle={`${[usesEmail ? "email" : null, usesSms ? "sms" : null]
           .filter(Boolean)
           .join(" and ")} . ${[
           groupsOf(campaign).clients ? t("campaigns.groupClients").toLowerCase() : null,
@@ -254,7 +255,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                     id="testPhone"
                     name="phone"
                     inputMode="tel"
-                    defaultValue={tryWhatsapp?.phone ?? ""}
+                    defaultValue={tryText?.phone ?? ""}
                     placeholder="+357 99 000000"
                     className="input"
                   />
@@ -271,15 +272,17 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                   </p>
                 </form>
               ) : null}
-              {tryWhatsapp && unfilled.length === 0 ? (
-                <div>
-                  <a href={tryWhatsapp.link} target="_blank" rel="noreferrer" className="btn btn-secondary w-full" data-whatsapp-test>
-                    {t("campaigns.test.whatsapp")}
-                  </a>
-                  <p className="mt-1 text-xs text-brand-graphite/60">
-                    {tryWhatsapp.phone ? `${t("campaigns.test.whatsappTo")} ${tryWhatsapp.phone}` : t("campaigns.test.whatsappPick")}
-                  </p>
-                </div>
+              {tryText && unfilled.length === 0 ? (
+                tryText.phone ? (
+                  <form action={sendCampaignTextTest.bind(null, id)} data-sms-test>
+                    <SubmitButton className="btn btn-secondary w-full">{t("campaigns.test.whatsapp")}</SubmitButton>
+                    <p className="mt-1 text-xs text-brand-graphite/60">
+                      {t("campaigns.test.whatsappTo")} <span className="font-semibold">{tryText.phone}</span>
+                    </p>
+                  </form>
+                ) : (
+                  <p className="text-xs text-brand-graphite/60" data-sms-test-needs-number>{t("campaigns.test.whatsappPick")}</p>
+                )
               ) : null}
             </div>
           </div>
@@ -290,13 +293,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         <Stat label="In the audience" value={String(checked.length)} />
         <Stat label="Emails" value={String(willGetEmail.length)} hint="address, not suppressed" />
         <Stat
-          label={usesSms ? (usesWhatsapp ? "SMS or WhatsApp" : "SMS") : "WhatsApp"}
+          label="SMS"
           value={String(willGetWhatsapp.length)}
-          hint={
-            usesSms && usesWhatsapp
-              ? `${willGetWhatsapp.filter((r) => r.textVia === "SMS").length} by SMS, ${willGetWhatsapp.filter((r) => r.textVia === "WHATSAPP").length} by WhatsApp`
-              : "number, not suppressed"
-          }
+          hint={badNumbers.length > 0 ? `number, not suppressed . ${badNumbers.length} to check` : "number, not suppressed"}
         />
         <Stat
           label="Skipped"
@@ -319,7 +318,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 </pre>
               </div>
             ) : null}
-            {(usesWhatsapp || usesSms) && previewWhatsapp ? (
+            {usesSms && previewWhatsapp ? (
               <div className="mb-2 border-t border-brand-line pt-3">
                 <p className="label">{t("campaigns.theWhatsapp")}</p>
                 <pre className="whitespace-pre-wrap font-sans text-sm text-brand-graphite">
@@ -331,9 +330,6 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
               <p className="mt-3 border-t border-brand-line pt-3 text-xs text-brand-graphite/60">
                 {campaign.viaEmail
                   ? "An unsubscribe link is added to every email automatically. "
-                  : ""}
-                {usesWhatsapp
-                  ? "Reply STOP to opt out is added to every WhatsApp message, and a reply of stop suppresses that number for good. "
                   : ""}
                 {usesSms
                   ? "Every SMS carries a link to unsubscribe, since a text sent by name cannot be answered."
@@ -354,7 +350,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                     </a>
                     {campaign.viaWhatsapp ? (
                       <span className="ml-2 text-xs text-brand-graphite/60">
-                        attached to the email, and reachable from the WhatsApp link
+                        attached to the email, and reachable from the link in the SMS
                       </span>
                     ) : null}
                   </li>
@@ -391,7 +387,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                     </td>
                     <td className="break-all text-xs">
                       {!r.byEmail ? (
-                        r.way === "WHATSAPP" ? (
+                        r.way === "SMS" ? (
                           <span className="text-brand-graphite/40" data-not-their-way>{t("campaigns.theirWayWhatsapp")}</span>
                         ) : (
                           <span className="text-brand-graphite/40">not on this campaign</span>
@@ -422,12 +418,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                       ) : r.phoneAddress ? (
                         <>
                           {r.phoneAddress}
-                          {r.group === "CLIENTS" || r.group === "LEADS" || r.group === "BUYERS" ? (
-                            <div className="text-brand-graphite/50" data-text-via={r.textVia ?? ""}>
-                              {r.textVia === "SMS" ? t("campaigns.textWaySms") : t("campaigns.textWayWhatsapp")}
+                          {phoneProblem(r.phoneAddress) ? (
+                            <div data-phone-problem>
+                              <Pill tone="warn">{phoneProblem(r.phoneAddress)}</Pill>
                             </div>
-                          ) : r.textVia === "SMS" ? (
-                            <div className="text-brand-graphite/50">SMS</div>
                           ) : null}
                         </>
                       ) : (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { groupsOf } from "@/lib/campaignGroups";
 import { getTranslator } from "@/i18n";
 import { campaignRows, consentTotals, messageTotals, rangeFrom } from "@/lib/reports";
+import { sentByWhatsapp } from "@/lib/campaignTextWay";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import { Breakdown, Figure, SERIES } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
@@ -24,6 +25,8 @@ export default async function MarketingReportPage({
     campaignRows(range),
     consentTotals(),
   ]);
+  /* Campaigns sent before texts moved to SMS still say WhatsApp. */
+  const byWhatsapp = await sentByWhatsapp(campaigns.map((row) => row.campaign.id));
 
   const byChannel = new Map<string, { handled: number; failed: number }>();
   for (const row of messages) {
@@ -155,7 +158,7 @@ export default async function MarketingReportPage({
                     <td className="ctr text-xs">
                       {[
                         row.campaign.viaEmail ? t("campaigns.email") : null,
-                        row.campaign.viaWhatsapp ? t("campaigns.whatsapp") : null,
+                        row.campaign.viaWhatsapp ? (byWhatsapp.has(row.campaign.id) ? "WhatsApp" : t("campaigns.whatsapp")) : null,
                       ]
                         .filter(Boolean)
                         .join(" + ")}

@@ -465,7 +465,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <TextChannelSwitch
             action={setLeadTextChannel.bind(null, id)}
             current={textChannelOf(lead.textChannel)}
-            labels={{ title: t("people.textBy"), hint: t("people.textByHint"), sms: "SMS", whatsapp: "WhatsApp", none: t("people.textNone") }}
+            labels={{ title: t("people.textBy"), hint: t("people.textByHint"), sms: "SMS", none: t("people.textNone") }}
           />
 
           {/* Whose enquiry this is. Changed here without opening the form. */}
