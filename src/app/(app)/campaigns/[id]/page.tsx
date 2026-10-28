@@ -21,13 +21,21 @@ import { audienceFor, messagesForCampaign, saveCampaignTester, resumeCampaign, s
 import { idsOf } from "@/lib/campaignProjects";
 import { campaignExtras, ensureCampaignLinks, textTest, unfilledIn } from "@/lib/campaignTest";
 import { phoneProblem } from "@/lib/phoneCheck";
+import Pagination from "@/components/Pagination";
 import { readSetting } from "@/lib/settings";
 import { requireUser } from "@/lib/auth";
 import SubmitButton from "@/components/SubmitButton";
 import SendButton from "./SendButton";
 
-export default async function CampaignPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CampaignPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
   const user = await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
 
@@ -111,6 +119,20 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const willGetEmail = checked.filter((r) => r.emailAddress && !r.emailSuppressed);
   const willGetWhatsapp = checked.filter((r) => r.phoneAddress && !r.phoneSuppressed);
   const sendable = [...new Set([...willGetEmail, ...willGetWhatsapp])];
+
+  /*
+   * The two long tables ten at a time: who receives it in name order, and
+   * what happened newest first, each with pages of its own.
+   */
+  const PER_PAGE = 10;
+  const pageOf = (key: string, total: number) =>
+    Math.min(Math.max(1, Number(query[key] ?? 1) || 1), Math.max(1, Math.ceil(total / PER_PAGE)));
+  const whoPage = pageOf("whoPage", checked.length);
+  const shownChecked = checked.slice((whoPage - 1) * PER_PAGE, whoPage * PER_PAGE);
+  const newestLog = [...log].reverse();
+  const logPage = pageOf("logPage", newestLog.length);
+  const shownLog = newestLog.slice((logPage - 1) * PER_PAGE, logPage * PER_PAGE);
+  const pageLabels = { previous: t("common.previous"), next: t("common.next"), showing: t("common.showing"), of: t("common.of") };
 
   const channelReady =
     (!usesEmail || emailConfigured()) &&
@@ -359,6 +381,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
             ) : null}
           </Card>
 
+          <div id="who-receives" className="scroll-mt-24">
           <Card title="Who receives it">
             <table className="data">
               <thead>
@@ -369,7 +392,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 </tr>
               </thead>
               <tbody>
-                {checked.map((r) => (
+                {shownChecked.map((r) => (
                   <tr key={`${r.clientId ?? r.agentId ?? r.subownerId}`}>
                     <td>
                       {r.name}
@@ -432,9 +455,19 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                 ))}
               </tbody>
             </table>
+            <Pagination
+              basePath={`/campaigns/${id}`}
+              params={query}
+              pageKey="whoPage"
+              anchor="who-receives"
+              info={{ page: whoPage, perPage: PER_PAGE, total: checked.length }}
+              labels={pageLabels}
+            />
           </Card>
+          </div>
 
           {log.length > 0 ? (
+            <div id="what-happened" className="scroll-mt-24">
             <Card title="What happened">
               <table className="data">
                 <thead>
@@ -446,7 +479,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                   </tr>
                 </thead>
                 <tbody>
-                  {log.map((m) => (
+                  {shownLog.map((m) => (
                     <tr key={m.id}>
                       <td className="break-all">{m.toAddress}</td>
                       <td>{m.channel.toLowerCase()}</td>
@@ -470,7 +503,16 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                basePath={`/campaigns/${id}`}
+                params={query}
+                pageKey="logPage"
+                anchor="what-happened"
+                info={{ page: logPage, perPage: PER_PAGE, total: newestLog.length }}
+                labels={pageLabels}
+              />
             </Card>
+            </div>
           ) : null}
         </div>
 

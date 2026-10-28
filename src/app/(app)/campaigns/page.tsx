@@ -10,6 +10,7 @@ import { activePriceListLinks, priceListUrl, scopeWords } from "@/lib/priceList"
 import { listTemplates } from "@/lib/templates";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
+import Pagination from "@/components/Pagination";
 import { audienceFor, makePriceListLink, revokePriceListLink } from "./actions";
 
 const day = (value: Date | null | undefined) =>
@@ -18,8 +19,13 @@ const day = (value: Date | null | undefined) =>
 const statusTone = (status: string) =>
   status === "SENT" ? "good" : status === "DRAFT" ? "warn" : status === "FAILED" ? "bad" : "teal";
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const { t } = await getTranslator();
+  const params = await searchParams;
 
   const [[counts], [suppressed], rows, links, everyone, templates] = await Promise.all([
     db
@@ -31,16 +37,31 @@ export default async function CampaignsPage() {
       .from(clients)
       .where(isNull(clients.deletedAt)),
     db.select({ total: sql<number>`count(*)::int` }).from(suppressions),
-    db.select().from(campaigns).orderBy(desc(campaigns.createdAt)).limit(30),
+    db.select().from(campaigns).orderBy(desc(campaigns.createdAt)),
     activePriceListLinks(),
     audienceFor({ toClients: true, toAgents: true, toSubowners: true }),
     listTemplates(),
-  ])
+  ]);
+
+  /*
+   * Both lists ten at a time, newest first, with pages back to the oldest.
+   * Each list turns its own pages, so the other stays where it was.
+   */
+  const PER_PAGE = 10;
+  const pageOf = (key: string, total: number) =>
+    Math.min(Math.max(1, Number(params[key] ?? 1) || 1), Math.max(1, Math.ceil(total / PER_PAGE)));
+  const campaignsPage = pageOf("campaignsPage", rows.length);
+  const shownRows = rows.slice((campaignsPage - 1) * PER_PAGE, campaignsPage * PER_PAGE);
+  const newestLinks = [...links].reverse();
+  const linksPage = pageOf("linksPage", newestLinks.length);
+  const shownLinks = newestLinks.slice((linksPage - 1) * PER_PAGE, linksPage * PER_PAGE);
+  const pageLabels = { previous: t("common.previous"), next: t("common.next"), showing: t("common.showing"), of: t("common.of") };
+
   /* Campaigns sent before texts moved to SMS still say WhatsApp. */
-  const byWhatsapp = await sentByWhatsapp(rows.map((c) => c.id));;
+  const byWhatsapp = await sentByWhatsapp(shownRows.map((c) => c.id));
 
   /* What each price list link shows, and what a new one can show. */
-  const shows = await Promise.all(links.map((l) => scopeWords({ projectId: l.projectId, unitId: l.unitId, projectIds: l.projectIds })));
+  const shows = await Promise.all(shownLinks.map((l) => scopeWords({ projectId: l.projectId, unitId: l.unitId, projectIds: l.projectIds })));
   const [projectRows, unitRows] = await Promise.all([
     db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
     db
@@ -121,6 +142,7 @@ export default async function CampaignsPage() {
           </p>
         </Card>
 
+        <div id="campaigns-list" className="scroll-mt-24">
         <Card title={t("nav.campaigns")}>
           {rows.length === 0 ? (
             <Empty message={t("campaigns.noneYet")} />
@@ -138,7 +160,7 @@ export default async function CampaignsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((c) => (
+                  {shownRows.map((c) => (
                     <tr key={c.id}>
                       <td>
                         <Link
@@ -190,7 +212,16 @@ export default async function CampaignsPage() {
               </table>
             </div>
           )}
+          <Pagination
+            basePath="/campaigns"
+            params={params}
+            pageKey="campaignsPage"
+            anchor="campaigns-list"
+            info={{ page: campaignsPage, perPage: PER_PAGE, total: rows.length }}
+            labels={pageLabels}
+          />
         </Card>
+        </div>
 
         <Card
           title={t("campaigns.templates")}
@@ -301,7 +332,7 @@ export default async function CampaignsPage() {
           {links.length === 0 ? (
             <Empty message={t("common.none")} />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto scroll-mt-24" id="price-links">
               <table className="data">
                 <thead>
                   <tr>
@@ -313,7 +344,7 @@ export default async function CampaignsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {links.map((l, index) => (
+                  {shownLinks.map((l, index) => (
                     <tr key={l.id}>
                       <td>{l.note ?? ""}</td>
                       <td className="text-xs" data-link-shows>{shows[index] || t("campaigns.linkShowsAll")}</td>
@@ -341,6 +372,14 @@ export default async function CampaignsPage() {
               </table>
             </div>
           )}
+          <Pagination
+            basePath="/campaigns"
+            params={params}
+            pageKey="linksPage"
+            anchor="price-links"
+            info={{ page: linksPage, perPage: PER_PAGE, total: newestLinks.length }}
+            labels={pageLabels}
+          />
         </Card>
 
         <Card title="What is connected">

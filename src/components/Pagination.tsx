@@ -16,11 +16,17 @@ export default function Pagination({
   params,
   info,
   labels,
+  pageKey = "page",
+  anchor,
 }: {
   basePath: string;
   params: Record<string, string | undefined>;
   info: PageInfo;
   labels: { previous: string; next: string; showing: string; of: string };
+  /** The name of the page in the address, for a page with more than one list on it. */
+  pageKey?: string;
+  /** Where the page lands after turning, so a list lower down stays in view. */
+  anchor?: string;
 }) {
   const pages = Math.max(1, Math.ceil(info.total / info.perPage));
   if (info.total === 0) return null;
@@ -28,11 +34,11 @@ export default function Pagination({
   const href = (page: number) => {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
-      if (value && key !== "page") search.set(key, value);
+      if (value && key !== pageKey) search.set(key, value);
     }
-    if (page > 1) search.set("page", String(page));
+    if (page > 1) search.set(pageKey, String(page));
     const query = search.toString();
-    return query ? `${basePath}?${query}` : basePath;
+    return `${query ? `${basePath}?${query}` : basePath}${anchor ? `#${anchor}` : ""}`;
   };
 
   const first = (info.page - 1) * info.perPage + 1;
