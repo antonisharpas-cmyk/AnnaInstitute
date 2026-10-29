@@ -582,6 +582,13 @@
       "when": 1794777147383,
       "tag": "0083_texts_by_sms",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794863547383,
+      "tag": "0084_partner_offers_constructor_files",
+      "breakpoints": true
     }
   ]
 }

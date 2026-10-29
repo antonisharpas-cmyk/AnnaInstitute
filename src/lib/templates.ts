@@ -231,6 +231,33 @@ One Eleven`,
     toLeads: true,
   },
   {
+    key: "projects_showcase_agents",
+    name: "Our developments, to agents",
+    description:
+      "To agents: the price list of the developments you tick, as a live link, to pass on to their clients. Their brochures, architectural drawings and technical specifications go with it as attachments, and their pictures and 3D renders by a link.",
+    subject: "Price list | {{project_names}}",
+    body: `Dear {{first_name}},
+
+Please find below the latest information on {{project_names}}, to share with your clients.
+
+You will find our live price list here: {{price_list_url}}
+
+The brochure, architectural drawings and technical specifications are attached. Pictures and 3D renders are here: {{files_url}}
+
+Should any of your clients be interested, we will be happy to arrange a viewing at your convenience.
+
+Kind regards,
+One Eleven`,
+    bodyWhatsapp:
+      "Hello {{first_name}}, the latest on {{project_names}} for your clients. Price list: {{price_list_url}} Brochure, drawings, specifications and pictures: {{files_url}} We will be happy to arrange viewings for your clients. One Eleven",
+    subjectEl: "",
+    bodyEl: "",
+    bodyWhatsappEl: "",
+    toClients: false,
+    toAgents: true,
+    toSubowners: false,
+  },
+  {
     key: "viewing_invitation",
     name: "An invitation to a viewing",
     description: "For an open day or a private viewing at a development.",

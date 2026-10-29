@@ -458,6 +458,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     what: "the client_notes table",
     migration: "0082",
   },
+  {
+    probe: "select partner_id from partner_offers limit 1",
+    what: "the partner_offers table",
+    migration: "0084",
+  },
+  {
+    probe: "select partner_offer_id, constructor_id from documents limit 1",
+    what: "files on partners' offers and on constructors",
+    migration: "0084",
+  },
 ];
 
 let answer: Missing[] | null = null;

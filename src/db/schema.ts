@@ -906,8 +906,15 @@ export const documents = pgTable("documents", {
   constructorPaymentId: text("constructor_payment_id"),
   /** A stage of the building: its architect's certificate and its photographs. */
   installmentId: text("installment_id"),
+  /** A picture or PDF of a partner's offer. */
+  partnerOfferId: text("partner_offer_id"),
+  /** A constructor's own paper, their contractor licence say. */
+  constructorId: text("constructor_id"),
   createdAt: created(),
-});
+}, (table) => ({
+  byPartnerOffer: index("documents_partner_offer_idx").on(table.partnerOfferId),
+  byConstructor: index("documents_constructor_idx").on(table.constructorId),
+}));
 
 /**
  * What an agent earns on one sale.
@@ -1885,6 +1892,28 @@ export const partners = pgTable("partners", {
   createdAt: created(),
   updatedAt: updated(),
 });
+
+/**
+ * What a partner offered: an item, its price, and its pictures or PDFs (kept
+ * as documents). For the office to quote to a client, and as a history of
+ * what each partner priced and when.
+ */
+export const partnerOffers = pgTable(
+  "partner_offers",
+  {
+    id: id(),
+    partnerId: text("partner_id")
+      .notNull()
+      .references(() => partners.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    price: money("price"),
+    notes: text("notes"),
+    createdById: text("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (table) => ({ byPartner: index("partner_offers_partner_idx").on(table.partnerId) }),
+);
 
 /** A development a constructor builds, and the amount agreed for building it. One constructor a development. */
 export const constructorProjects = pgTable(

@@ -23,7 +23,13 @@ import {
   updateConstructorProject,
   uploadConstructorPapers,
   emailConstructorPayment,
+  uploadConstructorDocuments,
+  deleteConstructorDocument,
 } from "../actions";
+import { desc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { documents } from "@/db/schema";
+import DocumentList from "@/components/DocumentList";
 
 /**
  * One constructor: their details, the developments they build with the amount
@@ -39,6 +45,8 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
   if (!found) notFound();
   const { constructor: who, jobs } = found;
   const free = await projectsWithoutConstructor();
+  /* Their own papers: the contractor licence and anything else kept on file for them. */
+  const papers = await db.select().from(documents).where(eq(documents.constructorId, id)).orderBy(desc(documents.createdAt));
   const money = (cents: number) => formatAmount(cents, locale);
   const day = (value: Date) => new Date(value).toLocaleDateString(locale === "el" ? "el-GR" : "en-GB");
   const sum = (pick: (job: (typeof jobs)[number]) => number) => jobs.reduce((a, job) => a + pick(job), 0);
@@ -98,6 +106,37 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
             { name: "notes", label: t("common.notes"), kind: "textarea", value: who.notes ?? "" },
           ]}
         />
+
+        {/* Their papers, the contractor licence say: a title and the file, or several. */}
+        <Card title={t("constructors.documents")}>
+          <form action={uploadConstructorDocuments.bind(null, id)} className="mb-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" data-constructor-docs>
+            <div>
+              <label className="label" htmlFor="constructorDocTitle">
+                {t("common.title")}
+              </label>
+              <input id="constructorDocTitle" name="title" required placeholder={t("constructors.documentTitleHint")} className="input" />
+            </div>
+            <div>
+              <label className="label" htmlFor="constructorDocFiles">
+                {t("common.files")}
+              </label>
+              <input id="constructorDocFiles" name="files" type="file" multiple required accept="image/*,application/pdf,.doc,.docx" className="input !py-1.5 text-xs" />
+            </div>
+            <SubmitButton>{t("common.add")}</SubmitButton>
+          </form>
+          <DocumentList
+            items={papers}
+            emptyMessage={t("constructors.noDocuments")}
+            locale={locale}
+            action={(doc) => (
+              <ConfirmButton
+                action={deleteConstructorDocument.bind(null, doc.id, id)}
+                label={t("common.delete")}
+                confirm={t("remove.sure")}
+              />
+            )}
+          />
+        </Card>
 
         <Card title={t("constructors.projects")}>
           {free.length > 0 ? (

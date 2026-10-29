@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { constructorPayments, constructorProjects, constructors, documents } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -10,7 +10,7 @@ import { recordAudit } from "@/lib/audit";
 import { flash } from "@/lib/flash";
 import { fromCents, parseAmount, vatRateFrom } from "@/lib/money";
 import { paymentOf, jobOf, CONSTRUCTOR_STATUSES, type ConstructorStatus } from "@/lib/constructors";
-import { removeDocument, storeDocument } from "@/lib/uploads";
+import { readUploadFields, removeDocument, storeDocument, storeDocuments } from "@/lib/uploads";
 import { constructorPaymentLetter } from "@/lib/constructorLetter";
 import { emailConfigured, sendAndRecord } from "@/lib/messaging";
 import { recordingHistory } from "@/lib/history";
@@ -246,6 +246,9 @@ export async function deleteConstructor(id: string) {
   const user = await requireUser(["ADMIN"]);
   const jobs = await db.select({ id: constructorProjects.id }).from(constructorProjects).where(eq(constructorProjects.constructorId, id));
   for (const job of jobs) await removeConstructorProject(job.id);
+  /* Their own papers go too, files and all. */
+  const papers = await db.select({ id: documents.id }).from(documents).where(eq(documents.constructorId, id));
+  for (const paper of papers) await removeDocument(paper.id, user);
   await db.delete(constructors).where(eq(constructors.id, id));
   await recordAudit({ action: "constructor.delete", entity: "constructor", entityId: id, userId: user.id, userEmail: user.email });
   revalidatePath("/constructors");
@@ -305,4 +308,41 @@ export async function emailConstructorPayment(paymentId: string) {
     await flash(`said.constructorEmailFailed|${why}`, "bad");
   }
   back(found.job.constructorId);
+}
+
+/**
+ * The constructor's own papers: their contractor licence, insurance, company
+ * certificate, anything the office keeps on file for them. A title and one
+ * file or several, numbered when there are several.
+ */
+export async function uploadConstructorDocuments(constructorId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const [who] = await db.select({ id: constructors.id }).from(constructors).where(eq(constructors.id, constructorId)).limit(1);
+  if (!who) return;
+  let fields: ReturnType<typeof readUploadFields>;
+  try {
+    fields = readUploadFields(formData);
+  } catch {
+    await flash("said.chooseAFile", "bad");
+    back(constructorId);
+    return;
+  }
+  await storeDocuments({ files: fields.files, title: fields.title, category: "OTHER", attachTo: { constructorId }, user });
+  await flash("said.saved");
+  back(constructorId);
+}
+
+/** Take one of the constructor's papers off, the file with it. */
+export async function deleteConstructorDocument(documentId: string, constructorId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const [doc] = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.constructorId, constructorId)))
+    .limit(1);
+  if (!doc) return;
+  await removeDocument(doc.id, user);
+  await flash("said.deleted");
+  back(constructorId);
+  redirect(`/constructors/${constructorId}`);
 }

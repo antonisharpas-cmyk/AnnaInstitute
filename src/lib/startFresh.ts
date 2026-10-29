@@ -37,7 +37,7 @@ const CLEARED: { table: string; what: string; where?: string }[] = [
     table: "documents",
     what: "files of clients, contracts, payments, invoices and campaigns",
     where:
-      "client_id is not null or contract_id is not null or change_request_id is not null or payment_id is not null or commission_id is not null or expense_id is not null or constructor_payment_id is not null or id in (select document_id from campaign_documents)",
+      "client_id is not null or contract_id is not null or change_request_id is not null or payment_id is not null or commission_id is not null or expense_id is not null or constructor_payment_id is not null or constructor_id is not null or id in (select document_id from campaign_documents)",
   },
   { table: "campaign_documents", what: "campaign attachments" },
   { table: "campaigns", what: "campaigns" },
