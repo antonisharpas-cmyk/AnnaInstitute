@@ -6,7 +6,7 @@ import SearchSelect from "@/components/SearchSelect";
 /*
  * Who an appointment is with, and where it is.
  *
- * Who: a client, a lead, an agent, or somebody the CRM has no record of, who
+ * Who: a client, a lead, an agent, a partner (told by email only), or somebody the CRM has no record of, who
  * is then named here with the email the confirmation goes to. A follow up
  * asks the same who, without the where.
  *
@@ -24,6 +24,7 @@ export type WhoWhereLabels = {
   withClient: string;
   withLead: string;
   withAgent: string;
+  withPartner: string;
   withOther: string;
   who: string;
   otherName: string;
@@ -42,7 +43,7 @@ export type WhoWhereLabels = {
   noMatch: string;
 };
 
-type Group = "client" | "lead" | "agent" | "other";
+type Group = "client" | "lead" | "agent" | "partner" | "other";
 
 export default function AppointmentFields({
   id = "appt",
@@ -56,7 +57,7 @@ export default function AppointmentFields({
   firstGroup = "client",
 }: {
   id?: string;
-  people?: { clients: Person[]; leads: Person[]; agents: Person[] };
+  people?: { clients: Person[]; leads: Person[]; agents: Person[]; partners?: Person[] };
   projects?: { id: string; name: string }[];
   kinds?: { value: string; label: string }[];
   labels: WhoWhereLabels;
@@ -82,6 +83,8 @@ export default function AppointmentFields({
     ? "lead"
     : startWith.startsWith("agent:")
       ? "agent"
+      : startWith.startsWith("partner:")
+        ? "partner"
       : startWith === "other" || defaults?.otherName
         ? "other"
         : startWith.startsWith("client:")
@@ -91,7 +94,7 @@ export default function AppointmentFields({
   const [kind, setKind] = useState(defaults?.type ?? kinds?.[0]?.value ?? "OFFICE");
 
   const list = people
-    ? { client: people.clients, lead: people.leads, agent: people.agents, other: [] }[group]
+    ? { client: people.clients, lead: people.leads, agent: people.agents, partner: people.partners ?? [], other: [] }[group]
     : [];
 
   return (
@@ -114,6 +117,7 @@ export default function AppointmentFields({
               <option value="client">{labels.withClient}</option>
               <option value="lead">{labels.withLead}</option>
               <option value="agent">{labels.withAgent}</option>
+              {people.partners ? <option value="partner">{labels.withPartner}</option> : null}
               <option value="other">{labels.withOther}</option>
             </select>
           </div>

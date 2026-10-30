@@ -2,7 +2,7 @@ import "server-only";
 import { listEntries, shownCode } from "@/lib/choices";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, appointments, clients, leads, teamMembers } from "@/db/schema";
+import { agents, appointments, clients, leads, partners, teamMembers } from "@/db/schema";
 import { sendAndRecord } from "@/lib/messaging";
 import { readSettings, writeSetting } from "@/lib/settings";
 import { recordAudit } from "@/lib/audit";
@@ -79,11 +79,12 @@ const KIND: Record<string, string> = {
 /** Everything on one day, with the person it is with named. */
 async function linesFor(from: Date, to: Date) {
   const rows = await db
-    .select({ appointment: appointments, client: clients, lead: leads, agent: agents })
+    .select({ appointment: appointments, client: clients, lead: leads, agent: agents, partner: partners })
     .from(appointments)
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
     .leftJoin(agents, eq(agents.id, appointments.agentId))
+    .leftJoin(partners, eq(partners.id, appointments.partnerId))
     .where(and(gte(appointments.at, from), lt(appointments.at, to)))
     .orderBy(asc(appointments.at));
 
@@ -92,7 +93,7 @@ async function linesFor(from: Date, to: Date) {
     (await listEntries("appointmentType")).filter((one) => !one.builtin).map((one) => [one.code, one.labelEn || one.defaultEn]),
   );
 
-  return rows.map(({ appointment, client, lead, agent }) => ({
+  return rows.map(({ appointment, client, lead, agent, partner }) => ({
     assignedToId: appointment.assignedToId,
     line: {
       time: clock(appointment.at),
@@ -102,10 +103,12 @@ async function linesFor(from: Date, to: Date) {
           ? `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() || "a lead"
           : agent
             ? `${agent.name} (agent)`
-            : appointment.otherName || "nobody named",
+            : partner
+              ? `${partner.company ? `${partner.name}, ${partner.company}` : partner.name} (partner)`
+              : appointment.otherName || "nobody named",
       contact: [
-        client?.phone ?? lead?.phone ?? agent?.phone ?? appointment.otherPhone,
-        client?.email ?? lead?.email ?? agent?.email ?? appointment.otherEmail,
+        client?.phone ?? lead?.phone ?? agent?.phone ?? partner?.mobile ?? appointment.otherPhone,
+        client?.email ?? lead?.email ?? agent?.email ?? partner?.email ?? appointment.otherEmail,
       ]
         .filter(Boolean)
         .join(", "),

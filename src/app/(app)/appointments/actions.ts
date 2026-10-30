@@ -61,6 +61,7 @@ type Who = {
   clientId: string | null;
   leadId: string | null;
   agentId: string | null;
+  partnerId: string | null;
   otherName: string | null;
   otherEmail: string | null;
   otherPhone: string | null;
@@ -69,10 +70,11 @@ type Who = {
 /** Who it is with, from one field that carries every kind of person, and the boxes for somebody else. */
 function whoWith(formData: FormData): Who {
   const raw = String(formData.get("with") ?? "");
-  const none: Who = { clientId: null, leadId: null, agentId: null, otherName: null, otherEmail: null, otherPhone: null };
+  const none: Who = { clientId: null, leadId: null, agentId: null, partnerId: null, otherName: null, otherEmail: null, otherPhone: null };
   if (raw.startsWith("client:")) return { ...none, clientId: raw.slice(7) || null };
   if (raw.startsWith("lead:")) return { ...none, leadId: raw.slice(5) || null };
   if (raw.startsWith("agent:")) return { ...none, agentId: raw.slice(6) || null };
+  if (raw.startsWith("partner:")) return { ...none, partnerId: raw.slice(8) || null };
   if (raw === "other") {
     return {
       ...none,
@@ -84,7 +86,7 @@ function whoWith(formData: FormData): Who {
   return none;
 }
 
-const somebody = (who: Who) => Boolean(who.clientId || who.leadId || who.agentId || who.otherName);
+const somebody = (who: Who) => Boolean(who.clientId || who.leadId || who.agentId || who.partnerId || who.otherName);
 
 /** What the form says about where, before the place is written from it. */
 function whereFrom(formData: FormData) {

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, appointments, clients, leadFollowUps, leads, projects, teamMembers } from "@/db/schema";
+import { agents, appointments, clients, leadFollowUps, leads, partners, projects, teamMembers } from "@/db/schema";
 import { many } from "@/lib/filters";
 
 /**
@@ -28,7 +28,7 @@ export type CalendarItem = {
   /** Pending with its day gone. Still yellow, with a word that says so. */
   late: boolean;
   who: string;
-  whoKind: "client" | "lead" | "agent" | "other";
+  whoKind: "client" | "lead" | "agent" | "partner" | "other";
   whoHref: string | null;
   /** What it is: the place of an appointment, the note of a follow up. */
   what: string;
@@ -86,6 +86,7 @@ export async function calendarItems(filter: CalendarFilter): Promise<CalendarIte
       client: { id: clients.id, firstName: clients.firstName, lastName: clients.lastName },
       lead: { id: leads.id, firstName: leads.firstName, lastName: leads.lastName, email: leads.email },
       agent: { id: agents.id, name: agents.name },
+      partner: { id: partners.id, name: partners.name, company: partners.company },
       project: { id: projects.id, name: projects.name },
       member: { name: teamMembers.name },
     })
@@ -93,6 +94,7 @@ export async function calendarItems(filter: CalendarFilter): Promise<CalendarIte
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
     .leftJoin(agents, eq(agents.id, appointments.agentId))
+    .leftJoin(partners, eq(partners.id, appointments.partnerId))
     .leftJoin(projects, eq(projects.id, appointments.projectId))
     .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(and(...meet))
@@ -147,7 +149,9 @@ export async function calendarItems(filter: CalendarFilter): Promise<CalendarIte
           ? { who: name(row.lead.firstName, row.lead.lastName) || row.lead.email || "?", whoKind: "lead" as const, whoHref: `/leads/${row.lead.id}` }
           : row.agent?.id
             ? { who: row.agent.name, whoKind: "agent" as const, whoHref: `/agents/${row.agent.id}` }
-            : { who: a.otherName ?? "?", whoKind: "other" as const, whoHref: null };
+            : row.partner?.id
+              ? { who: row.partner.company ? `${row.partner.name}, ${row.partner.company}` : row.partner.name, whoKind: "partner" as const, whoHref: `/partners/${row.partner.id}` }
+              : { who: a.otherName ?? "?", whoKind: "other" as const, whoHref: null };
     /* The place as it was written when it was booked, which is what the letter said. */
     let what = a.place;
     if (row.project?.name && !what.includes(row.project.name)) what = `${what}, ${row.project.name}`;

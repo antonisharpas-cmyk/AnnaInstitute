@@ -8,6 +8,7 @@ export function whoWhereLabels(t: (key: MessageKey) => string): WhoWhereLabels {
     withClient: t("appointments.withClient"),
     withLead: t("appointments.withLead"),
     withAgent: t("appointments.withAgent"),
+    withPartner: t("appointments.withPartner"),
     withOther: t("appointments.withOther"),
     who: t("appointments.who"),
     otherName: t("appointments.otherName"),
@@ -32,6 +33,8 @@ export function peopleOptions(people: {
   clients: { id: string; firstName: string | null; lastName: string | null; phone: string | null; email: string | null }[];
   leads: { id: string; firstName: string | null; lastName: string | null; phone: string | null; email: string | null }[];
   agents: { id: string; name: string; phone: string | null; email: string | null }[];
+  /** Only where an appointment can be with a partner: not on a follow up. */
+  partners?: { id: string; name: string; company: string | null; email: string | null }[];
 }) {
   const person = (first: string | null, last: string | null) => `${first ?? ""} ${last ?? ""}`.trim();
   return {
@@ -50,5 +53,14 @@ export function peopleOptions(people: {
       label: one.name,
       hint: one.phone ?? one.email ?? undefined,
     })),
+    ...(people.partners
+      ? {
+          partners: people.partners.map((one) => ({
+            value: `partner:${one.id}`,
+            label: one.company ? `${one.name}, ${one.company}` : one.name,
+            hint: one.email ?? undefined,
+          })),
+        }
+      : {}),
   };
 }

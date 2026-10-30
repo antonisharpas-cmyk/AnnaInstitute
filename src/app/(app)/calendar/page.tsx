@@ -234,6 +234,7 @@ export default async function CalendarPage({
             client: t("followUps.kind.client"),
             lead: t("followUps.kind.lead"),
             agent: t("followUps.kind.agent"),
+            partner: t("appointments.withPartner"),
             other: t("followUps.kind.other"),
           },
           status: {

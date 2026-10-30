@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   index,
   integer,
@@ -1774,6 +1775,8 @@ export const appointments = pgTable("appointments", {
   clientId: text("client_id").references(() => clients.id, { onDelete: "cascade" }),
   leadId: text("lead_id").references(() => leads.id, { onDelete: "cascade" }),
   agentId: text("agent_id").references(() => agents.id, { onDelete: "cascade" }),
+  /** One of the office's partners, told by email only. Kept if the partner is ever taken off. */
+  partnerId: text("partner_id").references((): AnyPgColumn => partners.id, { onDelete: "set null" }),
   /**
    * Somebody the CRM has no record of: the valuer, the bank, a supplier.
    * Named here, with the address the confirmation goes to.

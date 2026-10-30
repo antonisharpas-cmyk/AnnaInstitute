@@ -258,7 +258,7 @@ export default async function AppointmentsPage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ appointment, client, lead, agent, member }) => {
+                {rows.map(({ appointment, client, lead, agent, partner, member }) => {
                   const asking = needsAnAnswer(appointment);
                   const values = fieldValues(appointment.at);
                   return (
@@ -303,6 +303,17 @@ export default async function AppointmentsPage({
                               {agent.name}
                             </Link>
                             <div className="text-xs text-brand-graphite/60">{t("appointments.anAgent")}</div>
+                          </>
+                        ) : partner ? (
+                          <>
+                            <Link
+                              href={`/partners/${partner.id}`}
+                              className="text-brand-teal-dark hover:underline"
+                              prefetch={false}
+                            >
+                              {partner.company ? `${partner.name}, ${partner.company}` : partner.name}
+                            </Link>
+                            <div className="text-xs text-brand-graphite/60">{t("appointments.aPartner")}</div>
                           </>
                         ) : appointment.otherName ? (
                           <>
@@ -423,7 +434,9 @@ export default async function AppointmentsPage({
                                       ? `lead:${lead.id}`
                                       : agent
                                         ? `agent:${agent.id}`
-                                        : appointment.otherName
+                                        : partner
+                                          ? `partner:${partner.id}`
+                                          : appointment.otherName
                                           ? "other"
                                           : "",
                                   type: shownCode(appointment.type, appointment.typeChoice),

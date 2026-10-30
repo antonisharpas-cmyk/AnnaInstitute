@@ -72,6 +72,21 @@ export async function ourCompanies(): Promise<{ id: string; name: string }[]> {
   ];
 }
 
+/**
+ * The email on One Eleven's own page under Companies, if it has one.
+ *
+ * One Eleven's papers print the email from Settings. The copy of an invoice
+ * One Eleven received goes to this one instead, so the office can send those
+ * copies to a person without changing what clients see on our papers.
+ */
+export async function oneElevenPageEmail(): Promise<string> {
+  const mine = norm((await companyDetails()).name);
+  if (!mine) return "";
+  const rows = await db.select({ name: subowners.name, company: subowners.company, email: subowners.email }).from(subowners);
+  const page = rows.find((one) => norm(one.company) === mine || norm(one.name) === mine);
+  return page?.email?.trim() ?? "";
+}
+
 /** Whether a company id is One Eleven's own page, so it is One Eleven's series. */
 export async function asOurCompanyId(id: string | null | undefined): Promise<string> {
   const wanted = (id ?? "").trim();

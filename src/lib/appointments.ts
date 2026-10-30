@@ -2,7 +2,7 @@ import "server-only";
 import { choiceFilter } from "@/lib/choices/filter";
 import { and, asc, desc, eq, gte, ilike, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, appointments, clients, leads, projects, teamMembers } from "@/db/schema";
+import { agents, appointments, clients, leads, partners, projects, teamMembers } from "@/db/schema";
 import { englishWord } from "@/lib/choices";
 import { readSetting } from "@/lib/settings";
 
@@ -26,6 +26,7 @@ const selection = {
   client: clients,
   lead: leads,
   agent: agents,
+  partner: partners,
   project: projects,
   member: teamMembers,
 };
@@ -168,6 +169,8 @@ export async function listAppointments(filter: AppointmentFilter) {
         ilike(leads.firstName, `%${query}%`),
         ilike(leads.lastName, `%${query}%`),
         ilike(agents.name, `%${query}%`),
+        ilike(partners.name, `%${query}%`),
+        ilike(partners.company, `%${query}%`),
         ilike(appointments.otherName, `%${query}%`),
       ) as SQL,
     );
@@ -218,6 +221,7 @@ export async function listAppointments(filter: AppointmentFilter) {
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
     .leftJoin(agents, eq(agents.id, appointments.agentId))
+    .leftJoin(partners, eq(partners.id, appointments.partnerId))
     .leftJoin(projects, eq(projects.id, appointments.projectId))
     .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(where)
@@ -311,7 +315,12 @@ export async function whoCanBeMet() {
     .where(eq(agents.isActive, true))
     .orderBy(asc(agents.name));
 
-  return { clients: people, leads: enquiries, agents: agentRows };
+  const partnerRows = await db
+    .select({ id: partners.id, name: partners.name, company: partners.company, email: partners.email })
+    .from(partners)
+    .orderBy(asc(partners.name));
+
+  return { clients: people, leads: enquiries, agents: agentRows, partners: partnerRows };
 }
 
 /** Is this one still waiting for somebody to say whether it happened? */

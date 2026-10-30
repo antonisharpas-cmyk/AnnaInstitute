@@ -11,7 +11,7 @@ import { letterHtml, sendAndRecord } from "@/lib/messaging";
 import { sendEmail, type EmailAttachment } from "@/lib/messaging/email";
 import { readSetting } from "@/lib/settings";
 import { englishWord, isCustom, listEntries, shownCode } from "@/lib/choices";
-import { asOurCompanyId, partyOf } from "@/lib/parties";
+import { asOurCompanyId, oneElevenPageEmail, partyOf } from "@/lib/parties";
 import { statusFor } from "@/lib/expenses";
 
 /**
@@ -468,7 +468,10 @@ export async function emailCompanyInvoice(expenseId: string): Promise<Emailed> {
       attachments: attachment ? [attachment] : files,
     });
   } else {
-    to = ours.email?.trim() || (await readSetting("company.email"))?.trim() || null;
+    /* One Eleven's copies go to the email on its own Companies page when it has one; its papers keep the Settings email. */
+    const ourId = await asOurCompanyId(expense.ourCompanyId);
+    const own = ourId === (await asOurCompanyId(null)) ? await oneElevenPageEmail() : "";
+    to = own || ours.email?.trim() || (await readSetting("company.email"))?.trim() || null;
     if (!to) return { status: "SKIPPED", to: null, detail: "The company email is not set in Settings." };
     const letter = receivedLetter({
       supplier: expense.supplier,

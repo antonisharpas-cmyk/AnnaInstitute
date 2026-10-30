@@ -153,7 +153,7 @@ export default async function FollowUpsPage({
           >
             <AppointmentFields
               id="followUp"
-              people={peopleOptions(people)}
+              people={peopleOptions({ clients: people.clients, leads: people.leads, agents: people.agents })}
               labels={words}
               withWhere={false}
               firstGroup="lead"

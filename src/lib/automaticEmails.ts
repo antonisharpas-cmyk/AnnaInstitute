@@ -16,6 +16,7 @@ import {
   documents,
   installments,
   leads,
+  partners,
   payments,
   projects,
   signingPapers,
@@ -562,6 +563,7 @@ export async function letterForAppointment(
       client: clients,
       lead: leads,
       agent: agents,
+      partner: partners,
       project: projects,
       member: teamMembers,
     })
@@ -569,6 +571,7 @@ export async function letterForAppointment(
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
     .leftJoin(agents, eq(agents.id, appointments.agentId))
+    .leftJoin(partners, eq(partners.id, appointments.partnerId))
     .leftJoin(projects, eq(projects.id, appointments.projectId))
     .leftJoin(teamMembers, eq(teamMembers.id, appointments.assignedToId))
     .where(eq(appointments.id, appointmentId))
@@ -609,6 +612,15 @@ export async function letterForAppointment(
             name: row.agent.name,
             clientId: null,
           }
+        : row.partner
+          ? {
+              /* A partner hears by email only, never by SMS. */
+              email: row.partner.email,
+              phone: null,
+              first: row.partner.name.split(" ")[0] ?? row.partner.name,
+              name: row.partner.name,
+              clientId: null,
+            }
         : row.appointment.otherName
           ? {
               email: row.appointment.otherEmail,
