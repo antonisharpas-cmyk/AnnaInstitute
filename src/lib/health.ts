@@ -459,6 +459,11 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     migration: "0082",
   },
   {
+    probe: "select 'SALARY'::expense_category",
+    what: "Salary as a kind of expense",
+    migration: "0086",
+  },
+  {
     probe: "select partner_id from partner_offers limit 1",
     what: "the partner_offers table",
     migration: "0084",

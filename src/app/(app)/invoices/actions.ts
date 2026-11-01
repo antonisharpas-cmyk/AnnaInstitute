@@ -20,7 +20,7 @@ import {
 } from "@/lib/partnerInvoices";
 import { asOurCompanyId, partyOf, splitParty } from "@/lib/parties";
 import { removeDocument, storeDocument, storeDocuments } from "@/lib/uploads";
-import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/expenses";
+import { EXPENSE_CATEGORIES, isSalary, type ExpenseCategory } from "@/lib/expenses";
 import { recordingHistory } from "@/lib/history";
 
 /**
@@ -162,6 +162,8 @@ export async function createExpense(formData: FormData) {
   const files = filesIn(formData);
   /* An invoice from the past is entered as it was, without its file if the office has none to hand. */
   const history = await recordingHistory();
+  /* A salary comes with no invoice: the payslip is added if and when the accountant sends it. */
+  const salary = parsed.direction === "IN" && lines.length > 0 && lines.every((one) => one.category === "SALARY");
   const problem =
     !parsed.supplier
       ? parsed.direction === "OUT"
@@ -169,7 +171,7 @@ export async function createExpense(formData: FormData) {
         : "Choose who the invoice is from."
       : lines.length === 0
         ? "Add at least one line with an amount."
-        : parsed.direction === "IN" && files.length === 0 && !history
+        : parsed.direction === "IN" && files.length === 0 && !history && !salary
           ? "Upload the invoice they sent us."
           : null;
   if (problem) {
@@ -188,7 +190,11 @@ export async function createExpense(formData: FormData) {
   if (files.length > 0) {
     await storeDocuments({
       files,
-      title: parsed.reference ? `Invoice ${parsed.reference} from ${parsed.supplier}` : `Invoice from ${parsed.supplier}`,
+      title: salary
+        ? `Payslip, ${parsed.supplier}`
+        : parsed.reference
+          ? `Invoice ${parsed.reference} from ${parsed.supplier}`
+          : `Invoice from ${parsed.supplier}`,
       category: "OTHER",
       attachTo: { expenseId },
       user,
@@ -215,6 +221,8 @@ export async function createExpense(formData: FormData) {
   });
 
   if (history) await flash("said.historyRecorded");
+  /* A salary is the office's own record: no copy of it is emailed anywhere. */
+  else if (salary) await flash("said.salarySaved");
   else await sayWhatWasSent(expenseId, issued);
   revalidatePath("/invoices");
   redirect(`/invoices/${expenseId}`);
@@ -259,7 +267,11 @@ export async function updateExpense(expenseId: string, formData: FormData) {
   if (files.length > 0) {
     await storeDocuments({
       files,
-      title: current.reference ? `Invoice ${current.reference} from ${current.supplier}` : `Invoice from ${current.supplier}`,
+      title: isSalary(current)
+        ? `Payslip, ${current.supplier}`
+        : current.reference
+          ? `Invoice ${current.reference} from ${current.supplier}`
+          : `Invoice from ${current.supplier}`,
       category: "OTHER",
       attachTo: { expenseId },
       user,

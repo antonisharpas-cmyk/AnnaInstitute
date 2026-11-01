@@ -39,6 +39,7 @@ export const CATEGORY_WORDS: Record<string, string> = {
   BILLS: "Bills",
   LEGAL: "Legal and accounting",
   CONSTRUCTION: "Construction",
+  SALARY: "Salary",
   OTHER: "Other",
 };
 
@@ -127,9 +128,14 @@ export async function settle(expenseId: string): Promise<void> {
     .where(eq(expenses.id, expenseId));
 }
 
-/** Whether an invoice we received is paid but still waits for a receipt. */
-export function receiptMissing(direction: string, status: string, payments: { receiptDocumentId: string | null }[]): boolean {
-  return direction === "IN" && status === "PAID" && payments.some((one) => !one.receiptDocumentId);
+/** Whether an invoice we received is paid but still waits for a receipt. A salary has none to wait for. */
+export function receiptMissing(
+  direction: string,
+  status: string,
+  payments: { receiptDocumentId: string | null }[],
+  category?: string | null,
+): boolean {
+  return direction === "IN" && category !== "SALARY" && status === "PAID" && payments.some((one) => !one.receiptDocumentId);
 }
 
 const rateOf = (line: Pick<InvoiceLine, "vatRate" | "netAmount" | "vatAmount">) => {

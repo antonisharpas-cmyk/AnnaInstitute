@@ -1553,6 +1553,7 @@ export const expenseCategoryEnum = pgEnum("expense_category", [
   "CONSTRUCTION",
   "MANAGEMENT_FEES",
   "SERVICES",
+  "SALARY",
   "OTHER",
 ]);
 

@@ -54,6 +54,8 @@ const KEYS = [
   "removeLine",
   "theirInvoice",
   "theirInvoiceNote",
+  "payslip",
+  "payslipNote",
 ] as const;
 
 /** The words on the company invoice form, in one place for both pages. */

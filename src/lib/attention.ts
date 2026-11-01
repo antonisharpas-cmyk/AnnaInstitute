@@ -350,12 +350,12 @@ async function buyerPapers(): Promise<AttentionItem[]> {
 
 /**
  * Company invoices with a paper missing. One we pay: their invoice is not
- * filed, or it is paid and their receipt is not. One we charge: our invoice was
+ * filed, or it is paid and their receipt is not. Never a salary, which has neither. One we charge: our invoice was
  * never issued, or money came in and our receipt was not issued.
  */
 async function companyPapers(): Promise<AttentionItem[]> {
   const rows = await run(sql`
-    select e.id, e.supplier, e.reference, e.direction, e.issue_date, e.created_at, e.total_amount,
+    select e.id, e.supplier, e.reference, e.direction, e.category, e.issue_date, e.created_at, e.total_amount,
            exists (select 1 from documents d where d.expense_id = e.id) as has_paper,
            e.issued_document_id is not null as issued,
            exists (select 1 from expense_payments ep where ep.expense_id = e.id and ep.receipt_document_id is null and not ep.history) as their_receipt_missing,
@@ -369,7 +369,8 @@ async function companyPapers(): Promise<AttentionItem[]> {
     if (r.direction === "OUT") {
       if (!r.issued) flags.push("att.flag.notIssued");
       if (r.our_receipt_missing) flags.push("att.flag.receiptNotIssued");
-    } else {
+    } else if (r.category !== "SALARY") {
+      /* A salary comes with no invoice and no receipt; its payslip is optional. */
       if (!r.has_paper) flags.push("att.flag.invoice");
       if (r.their_receipt_missing) flags.push("att.flag.receipt");
     }

@@ -223,6 +223,7 @@ export const LISTS: ListDef[] = [
       { code: "BILLS" },
       { code: "LEGAL" },
       { code: "CONSTRUCTION" },
+      { code: "SALARY" },
       { code: "OTHER", locked: true },
     ],
   },

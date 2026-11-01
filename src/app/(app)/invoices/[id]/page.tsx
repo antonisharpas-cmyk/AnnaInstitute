@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { documents, expenses, issuedDocuments, projects } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, toCents } from "@/lib/money";
-import { expenseStatusTone } from "@/lib/expenses";
+import { expenseStatusTone, isSalary } from "@/lib/expenses";
 import { titleWithExtension } from "@/lib/fileLabels";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import DateField from "@/components/DateField";
@@ -65,7 +65,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const totalCents = toCents(expense.totalAmount);
   const paidCents = toCents(expense.paidAmount);
   const owedCents = Math.max(0, totalCents - paidCents);
-  const missing = receiptMissing(expense.direction, expense.status, payments);
+  const salary = isSalary(expense);
+  const missing = receiptMissing(expense.direction, expense.status, payments, expense.category);
   const fromName = out ? ourName : party.name;
   const toName = out ? party.name : ourName;
   const href = partyHref(party.kind, party.id);
@@ -165,6 +166,10 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                               <a href={`/api/files/${theirs.id}`} target="_blank" rel="noreferrer" className="font-semibold text-brand-teal-dark hover:underline">
                                 {titleWithExtension(theirs)}
                               </a>
+                            ) : salary ? (
+                              <span className="text-brand-graphite/60" data-salary-no-receipt>
+                                {t("invoices.salaryNoReceipt")}
+                              </span>
                             ) : (
                               <form action={uploadTheirReceipt.bind(null, id, payment.id)} className="space-y-1" data-their-receipt-form>
                                 <span className="block font-semibold text-[color:var(--color-negative)]">{t("invoices.receiptMissing")}</span>
@@ -197,13 +202,15 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 data-record-payment
               >
                 <p className="text-sm font-semibold">{out ? t("invoices.recordReceived") : t("invoices.recordPaid")}</p>
-                <p className="text-xs text-brand-graphite/60">
-                  {out
-                    ? party.email
-                      ? `${t("invoices.receiptGoesTo")} ${party.email}`
-                      : t("invoices.receiptNoEmail")
-                    : t("invoices.theirReceiptHint")}
-                </p>
+                {salary ? null : (
+                  <p className="text-xs text-brand-graphite/60">
+                    {out
+                      ? party.email
+                        ? `${t("invoices.receiptGoesTo")} ${party.email}`
+                        : t("invoices.receiptNoEmail")
+                      : t("invoices.theirReceiptHint")}
+                  </p>
+                )}
                 {/* Two to a row, so every box has the room for its label and its value. */}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -234,7 +241,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                     <input id="payReference" name="reference" className="input" />
                   </div>
                 </div>
-                {out ? null : (
+                {out || salary ? null : (
                   <div>
                     <label className="label" htmlFor="receipt">
                       {t("invoices.theirReceipt")}

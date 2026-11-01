@@ -5,7 +5,7 @@ import Link from "next/link";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { parseAmount } from "@/lib/money";
-import { shownCode } from "@/lib/choices/lists";
+import { shownCode, splitChoice } from "@/lib/choices/lists";
 
 export type ExpenseRecord = {
   direction: string;
@@ -257,6 +257,10 @@ export default function ExpenseForm({
       : [fresh()],
   );
   const setRow = (i: number, change: Partial<Row>) => setRows((was) => was.map((one, n) => (n === i ? { ...one, ...change } : one)));
+  /* A salary has no VAT, and no invoice: the payslip is optional, added whenever the accountant sends it. */
+  const isSalaryCode = (code: string) => splitChoice(code || "OTHER").base === "SALARY";
+  const salary = !out && rows.length > 0 && rows.every((row) => isSalaryCode(row.category));
+  const lineCategories = out ? categories.filter((option) => !isSalaryCode(option.value)) : categories;
 
   const sums = rows.reduce(
     (a, row) => {
@@ -372,10 +376,12 @@ export default function ExpenseForm({
                     <select
                       name="lineCategory"
                       value={row.category}
-                      onChange={(event) => setRow(i, { category: event.target.value })}
+                      onChange={(event) =>
+                        setRow(i, isSalaryCode(event.target.value) ? { category: event.target.value, rate: "0" } : { category: event.target.value })
+                      }
                       className="select"
                     >
-                      {categories.map((option) => (
+                      {lineCategories.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -513,18 +519,18 @@ export default function ExpenseForm({
       {out ? null : (
         <div>
           <label className="label" htmlFor="files">
-            {labels.theirInvoice}
+            {salary ? labels.payslip : labels.theirInvoice}
           </label>
           <input
             id="files"
             name="files"
             type="file"
             multiple
-            required={!expense}
+            required={!expense && !salary}
             accept=".pdf,.xlsx,.xls,.csv,.doc,.docx,image/*"
             className="input !py-1.5 text-xs"
           />
-          <p className="mt-1 text-xs text-brand-graphite/60">{labels.theirInvoiceNote}</p>
+          <p className="mt-1 text-xs text-brand-graphite/60">{salary ? labels.payslipNote : labels.theirInvoiceNote}</p>
         </div>
       )}
 
@@ -545,7 +551,7 @@ export default function ExpenseForm({
       {locked ? <p className="text-xs text-brand-graphite/60">{labels.lockedNote}</p> : null}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-brand-line pt-4">
-        <SubmitButton>{expense ? labels.save : out ? labels.issueAndSend : labels.saveAndSend}</SubmitButton>
+        <SubmitButton>{expense || salary ? labels.save : out ? labels.issueAndSend : labels.saveAndSend}</SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">
           {labels.cancel}
         </Link>

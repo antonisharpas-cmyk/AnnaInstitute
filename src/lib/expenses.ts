@@ -23,16 +23,25 @@ export const EXPENSE_CATEGORIES = [
   "BILLS",
   "LEGAL",
   "CONSTRUCTION",
+  "SALARY",
   "OTHER",
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
+/**
+ * A salary the company paid one of its people. Nobody sends an invoice or a
+ * receipt for it, so none is asked for; the payslip can be added when the
+ * accountant sends it.
+ */
+export const isSalary = (expense: { direction: string; category: string | null }) =>
+  expense.direction === "IN" && expense.category === "SALARY";
+
 export const expenseStatusTone = (status: string) =>
   status === "PAID" ? "good" : status === "PARTIALLY_PAID" ? "warn" : "neutral";
 
-/** Paid on an invoice we received, but their receipt is not in yet for every payment. */
-export const RECEIPT_MISSING_SQL = sql`(${expenses.direction} = 'IN' and ${expenses.status} = 'PAID' and exists (select 1 from expense_payments ep where ep.expense_id = ${expenses.id} and ep.receipt_document_id is null))`;
+/** Paid on an invoice we received, but their receipt is not in yet for every payment. A salary has none to wait for. */
+export const RECEIPT_MISSING_SQL = sql`(${expenses.direction} = 'IN' and ${expenses.category} <> 'SALARY' and ${expenses.status} = 'PAID' and exists (select 1 from expense_payments ep where ep.expense_id = ${expenses.id} and ep.receipt_document_id is null))`;
 
 export async function listExpenses({
   query = "",

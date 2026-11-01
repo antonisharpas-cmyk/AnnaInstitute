@@ -596,6 +596,13 @@
       "when": 1794949947383,
       "tag": "0085_appointment_partner",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1795036347383,
+      "tag": "0086_salary_category",
+      "breakpoints": true
     }
   ]
 }
