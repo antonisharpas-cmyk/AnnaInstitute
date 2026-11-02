@@ -11,20 +11,53 @@ import { resolveStored, storageRoot } from "@/lib/storage";
  * was slow to open on a phone. The small copy is made once and kept beside the
  * files; the full picture opens when it is tapped. Without the picture tool the
  * full one is sent, as before.
+ *
+ * Making one means opening the whole render, and a 15 MB render is a hundred
+ * megabytes or more once opened. A page of renders asks for a dozen at once,
+ * which on a 512 MB server ran the memory to its limit. So they are made one
+ * at a time, read from the top down rather than whole, with the picture tool's
+ * own cache off; the next one waits its turn. Each is made once only, and
+ * then read from the disk.
  */
-async function thumbnail(documentId: string, full: string): Promise<Buffer | null> {
-  const kept = path.join(storageRoot(), "thumbs", `${documentId}.jpg`);
+let turn: Promise<unknown> = Promise.resolve();
+const making = new Map<string, Promise<Buffer | null>>();
+
+function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+  const next = turn.then(work, work);
+  turn = next.catch(() => undefined);
+  return next;
+}
+
+async function makeThumbnail(full: string, kept: string): Promise<Buffer | null> {
   const ready = await readFile(kept).catch(() => null);
   if (ready) return ready;
   try {
     const sharp = (await import("sharp")).default;
-    const small = await sharp(full).rotate().resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+    sharp.cache(false);
+    sharp.concurrency(1);
+    const small = await sharp(full, { sequentialRead: true, limitInputPixels: 120_000_000 })
+      .rotate()
+      .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 72 })
+      .toBuffer();
     await mkdir(path.dirname(kept), { recursive: true });
     await writeFile(kept, small).catch(() => undefined);
     return small;
   } catch {
     return null;
   }
+}
+
+async function thumbnail(documentId: string, full: string): Promise<Buffer | null> {
+  const kept = path.join(storageRoot(), "thumbs", `${documentId}.jpg`);
+  const ready = await readFile(kept).catch(() => null);
+  if (ready) return ready;
+  /* The same render asked for twice while it is being made waits for the one copy. */
+  const already = making.get(documentId);
+  if (already) return already;
+  const job = oneAtATime(() => makeThumbnail(full, kept)).finally(() => making.delete(documentId));
+  making.set(documentId, job);
+  return job;
 }
 
 /**
