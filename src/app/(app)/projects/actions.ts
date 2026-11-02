@@ -17,6 +17,7 @@ import {
 } from "@/lib/statuses";
 import { shownCode, splitChoice } from "@/lib/choices/lists";
 import { flash } from "@/lib/flash";
+import { cleanBedrooms } from "@/lib/bedrooms";
 import { fromCents, toCents } from "@/lib/money";
 import { readUploadFields, removeDocument, storeDocuments } from "@/lib/uploads";
 import { contractsOnUnits } from "@/lib/deletes";
@@ -139,7 +140,7 @@ export async function updateProject(projectId: string, formData: FormData) {
 const unitSchema = z.object({
   code: z.string().min(1),
   floor: z.string().optional(),
-  bedrooms: z.coerce.number().int().min(0).max(20).optional(),
+  bedrooms: z.string().optional(),
   coveredArea: z.string().optional(),
   verandaArea: z.string().optional(),
   roofGardenArea: z.string().optional(),
@@ -169,7 +170,8 @@ function readUnit(formData: FormData) {
   return {
     code: parsed.code.trim(),
     floor: parsed.floor?.trim() || null,
-    bedrooms: parsed.bedrooms ?? null,
+    /* As typed, 2 or 2+1; anything else is not kept rather than kept wrong. */
+    bedrooms: cleanBedrooms(parsed.bedrooms) ?? null,
     coveredArea: parsed.coveredArea ? String(Number(parsed.coveredArea)) : null,
     verandaArea: parsed.verandaArea ? String(Number(parsed.verandaArea)) : null,
     roofGardenArea: parsed.roofGardenArea ? String(Number(parsed.roofGardenArea)) : null,

@@ -64,8 +64,8 @@ export default async function TemplatesPage() {
               <code className="font-mono text-xs">{"{{material_partners}}"}</code> the Kitchens and Bathrooms partners, with telephone and location, from Partners
             </li>
             <li>
-              <code className="font-mono text-xs">{"{{files_url}}"}</code> the attachments, for
-              the SMS
+              <code className="font-mono text-xs">{"{{files_url}}"}</code> the page with the files,
+              a folder for each development; each person gets their own link
             </li>
           </ul>
         </Card>

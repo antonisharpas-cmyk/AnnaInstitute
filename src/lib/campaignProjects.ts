@@ -3,6 +3,7 @@ import { and, asc, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { documents, projects } from "@/db/schema";
 import { formatAmount, toCents } from "@/lib/money";
+import { bedroomsWords } from "@/lib/bedrooms";
 import { availableForPriceList } from "@/lib/priceList";
 
 /*
@@ -47,7 +48,7 @@ export async function projectsBlock(projectIds: string[]): Promise<{ text: strin
     const lines = units.map(({ unit }) => {
       const bits = [
         unit.floor ? `floor ${unit.floor}` : null,
-        unit.bedrooms ? `${unit.bedrooms} ${unit.bedrooms === 1 ? "bedroom" : "bedrooms"}` : null,
+        bedroomsWords(unit.bedrooms),
         unit.coveredArea ? `${Number(unit.coveredArea)} m2 covered` : null,
         unit.verandaArea ? `${Number(unit.verandaArea)} m2 veranda` : null,
       ].filter(Boolean);

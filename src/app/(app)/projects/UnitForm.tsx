@@ -4,6 +4,7 @@ import type { MessageKey } from "@/i18n";
 import { amountForInput } from "@/lib/money";
 import SubmitButton from "@/components/SubmitButton";
 import { shownCode } from "@/lib/choices/lists";
+import { BEDROOMS_PATTERN } from "@/lib/bedrooms";
 
 type Unit = typeof unitsTable.$inferSelect;
 
@@ -52,8 +53,10 @@ export default function UnitForm({
           <input
             id="bedrooms"
             name="bedrooms"
-            type="number"
-            min="0"
+            type="text"
+            pattern={BEDROOMS_PATTERN}
+            title={t("units.bedroomsHint")}
+            placeholder="2 or 2+1"
             defaultValue={unit?.bedrooms ?? ""}
             className="input"
           />

@@ -30,11 +30,13 @@ import { normalisePhone } from "@/lib/messaging/text";
 import { readSetting, writeSetting } from "@/lib/settings";
 import { campaignExtras, ensureCampaignLinks, testValues, textTest, unfilledIn } from "@/lib/campaignTest";
 import { createPriceListLink, priceListUrl } from "@/lib/priceList";
-import { campaignAttachments, emailFilesWithin, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { campaignAttachments, filesLinkFor, filesUrl, personalFilesLink } from "@/lib/campaignFiles";
 import { endRun, runOf, startRun, tickRun } from "@/lib/campaignProgress";
 
 /** The line that takes the files too big to attach to the recipient. */
-const FILES_LINE = "The brochures and drawings, too large to attach, are here:";
+/** The button under an email whose files are on their page. */
+const FILES_BUTTON = "View the files";
+const hasFilesPlaceholder = (words: string) => /\{\{\s*files[ _]url\s*\}\}/i.test(words);
 import { idsOf } from "@/lib/campaignProjects";
 import { buyersOf, chosenBuyers } from "@/lib/campaignBuyers";
 import { titleWord } from "@/lib/titles";
@@ -504,8 +506,7 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
     if (!found) return;
     const campaign = await ensureCampaignLinks(found, who.email);
 
-    /* What fits is attached; the rest, and the pictures, are on the campaign's files page. */
-    const emailFiles = await emailFilesWithin(campaignId);
+    /* No attachments: the files are on a page of their own, and each person gets their own link to it. */
     const pageFiles = await campaignAttachments(campaignId);
 
     let url: string | undefined;
@@ -513,22 +514,16 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
       const [link] = await db.select().from(shareLinks).where(eq(shareLinks.id, campaign.shareLinkId)).limit(1);
       if (link) url = priceListUrl(link.token);
     }
-    let files: string | undefined;
-    if (pageFiles.length > 0) {
-      const link = await filesLinkFor(campaignId, who.email);
-      files = filesUrl(link.token);
-    }
+    const hasFiles = pageFiles.length > 0;
+    if (hasFiles) await filesLinkFor(campaignId, who.email);
 
     const recipients = await audienceFor(campaign);
     const extras = await campaignExtras(campaign);
 
     const whatsappBody = campaign.bodyWhatsapp ?? campaign.body;
-    const withFilesLink = files && !whatsappBody.includes("{{files_url}}") ? `${whatsappBody}\n${files}` : whatsappBody;
-    /* Files too big to attach reach the email as the files link. */
-    const emailBody =
-      emailFiles.linked.length > 0 && files && !campaign.body.includes("{{files_url}}")
-        ? `${campaign.body}\n\n${FILES_LINE} ${files}`
-        : campaign.body;
+    const withFilesLink = hasFiles && !hasFilesPlaceholder(whatsappBody) ? `${whatsappBody}\n{{files_url}}` : whatsappBody;
+    /* An email that does not place the link itself gets a button to the files under the words. */
+    const filesButton = hasFiles && !hasFilesPlaceholder(campaign.body);
 
     const done = new Set(
       (
@@ -582,6 +577,8 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
         continue;
       }
       if (key) reached.add(key);
+      /* Their own link to the files, so the office sees who opened them. */
+      const files = hasFiles ? filesUrl((await personalFilesLink(campaignId, recipient, who.email)).token) : undefined;
       /* A buyer's letter names their own apartment and development. */
       const values = { ...recipient, priceListUrl: url, filesUrl: files, extras: { ...extras, ...(recipient.own ?? {}) } };
       try {
@@ -591,10 +588,10 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
             channel: "EMAIL",
             recipient,
             subject: campaign.subject ? fillPlaceholders(campaign.subject, values) : null,
-            body: fillPlaceholders(emailBody, values),
+            body: fillPlaceholders(campaign.body, values),
             /* A letter to a buyer about their own home is a service letter, not marketing. */
             withOptOut: recipient.group === "CLIENTS" || recipient.group === "LEADS",
-            attachments: emailFiles.attached,
+            button: filesButton && files ? { label: FILES_BUTTON, url: files } : undefined,
           });
         } else {
           await sendAndRecord({
@@ -631,7 +628,7 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
       action: "campaign.send",
       entity: "campaign",
       entityId: campaignId,
-      detail: `${sent} handled, ${failed} not sent, ${recipients.length} in the audience${emailFiles.linked.length ? `, ${emailFiles.linked.length} file(s) sent as a link` : ""}`,
+      detail: `${sent} handled, ${failed} not sent, ${recipients.length} in the audience${hasFiles ? ", the files by each person's own link" : ""}`,
       userId: who.id,
       userEmail: who.email,
     });
@@ -760,10 +757,6 @@ export async function sendCampaignTest(campaignId: string) {
   const campaign = await ensureCampaignLinks(found, user.email);
   const to = (await readSetting("emails.testAddress"))?.trim() || user.email;
 
-  /* The same files as the real letter: what fits attached, the rest by the files link. */
-  const emailFiles = await emailFilesWithin(campaignId);
-  const attachments = emailFiles.attached;
-
   const unfilled = await unfilledIn(campaign);
   if (unfilled.length > 0) {
     await flash(`said.placeholdersLeft|${unfilled.join(", ")}`, "bad");
@@ -773,18 +766,18 @@ export async function sendCampaignTest(campaignId: string) {
   const values = await testValues(campaign);
   const clientsToo = campaign.toClients || campaign.toLeads || campaign.audience === "CLIENTS_CONSENTED";
   const intro = `This is a test of the campaign "${campaign.title}". It is what the audience will receive, with example names.`;
-  let body = `${intro}\n\n${fillPlaceholders(campaign.body, values)}`;
-  if (emailFiles.linked.length > 0 && !campaign.body.includes("{{files_url}}") && values.filesUrl) {
-    body += `\n\n${FILES_LINE} ${values.filesUrl}`;
-  }
-  if (clientsToo) body += "\n\nIf you would rather not receive these, unsubscribe here: (each client gets their own link)";
+  const main = `${intro}\n\n${fillPlaceholders(campaign.body, values)}`;
+  /* The same as the real letter: no attachments, the files behind a button. Each person's own link is made when it is sent. */
+  const button = values.filesUrl && !hasFilesPlaceholder(campaign.body) ? { label: FILES_BUTTON, url: values.filesUrl } : undefined;
+  const optOut = "If you would rather not receive these, unsubscribe here: (each client gets their own link)";
+  let body = button ? `${main}\n\n${button.label}: ${button.url}` : main;
+  if (clientsToo) body += `\n\n${optOut}`;
 
   const result = await sendEmail({
     to,
     subject: `[Test] ${campaign.subject ? fillPlaceholders(campaign.subject, values) : campaign.title}`,
     text: body,
-    html: letterHtml(body),
-    attachments,
+    html: letterHtml(main, button) + (clientsToo ? `<p style="font-size:9pt;color:#6b7280">${optOut}</p>` : ""),
     pastTheSwitch: true,
   });
 

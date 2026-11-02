@@ -66,16 +66,30 @@ const escapeHtml = (value: string) =>
 /** The look of every letter the CRM sends: Times New Roman, 11 points, as the office writes its own. */
 export const LETTER_FONT = "font-family:'Times New Roman',Times,serif;font-size:11pt";
 
+/** Web addresses in a letter as links, so they open with a click in every mail program. */
+function withLinks(escaped: string): string {
+  return escaped.replace(/https?:\/\/(?:(?!&quot;)[^\s<])+/g, (found) => {
+    const tail = /[.,;:!?)]+$/.exec(found)?.[0] ?? "";
+    const address = tail ? found.slice(0, -tail.length) : found;
+    return `<a href="${address}" style="color:#3D8397">${address}</a>${tail}`;
+  });
+}
+
+/** A button under the words, for the one thing the letter asks the reader to open. */
+export type LetterButton = { label: string; url: string };
+
+function buttonHtml(button: LetterButton): string {
+  return `<p style="margin:20px 0"><a href="${escapeHtml(button.url)}" style="${LETTER_FONT};display:inline-block;background:#3D8397;color:#ffffff;text-decoration:none;font-weight:bold;padding:10px 22px;border-radius:4px">${escapeHtml(button.label)}</a></p>`;
+}
+
 /**
  * A letter's text as the email's HTML, the same for every letter the CRM sends.
  * The mark at the end is where the One Eleven signature goes when it is sent.
  */
-export function letterHtml(body: string): string {
-  return `<div style="${LETTER_FONT};line-height:1.45;color:#121111">${escapeHtml(
-    body,
-  )
+export function letterHtml(body: string, button?: LetterButton): string {
+  return `<div style="${LETTER_FONT};line-height:1.45;color:#121111">${withLinks(escapeHtml(body))
     .split("\n")
-    .join("<br>")}</div>${SIGNATURE_MARK}`;
+    .join("<br>")}</div>${button ? buttonHtml(button) : ""}${SIGNATURE_MARK}`;
 }
 
 export async function sendAndRecord(options: {
@@ -90,6 +104,8 @@ export async function sendAndRecord(options: {
   attachments?: EmailAttachment[];
   /** Email only: copied in, the second buyer or the bank say. */
   cc?: string[];
+  /** Email only: a button under the words, the campaign's files say. The text version carries the address. */
+  button?: LetterButton;
 }): Promise<SendResult & { messageId: string }> {
   const { channel, recipient } = options;
   const to = addressFor(channel, recipient);
@@ -142,8 +158,9 @@ export async function sendAndRecord(options: {
     return { status: "FAILED", error: "Suppressed", messageId };
   }
 
-  let body = options.body;
-  let html = letterHtml(body);
+  const button = channel === "EMAIL" ? options.button : undefined;
+  let html = letterHtml(options.body, button);
+  let body = button ? `${options.body}\n\n${button.label}: ${button.url}` : options.body;
 
   if (options.withOptOut && (recipient.clientId || recipient.leadId)) {
     if (channel === "EMAIL") {

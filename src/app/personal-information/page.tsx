@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { projects, units } from "@/db/schema";
 import Logo from "@/components/Logo";
 import { QR_CONSENT_TEXT } from "@/lib/qrLead";
+import { bedroomsWords } from "@/lib/bedrooms";
 import { sendPersonalInformation } from "./actions";
 import InterestPicker, { type Development } from "./InterestPicker";
 
@@ -43,7 +44,7 @@ export default async function PersonalInformationPage({
       .from(units)
       .where(and(eq(units.status, "AVAILABLE")))
       .orderBy(asc(units.code))
-      .catch(() => [] as { id: string; projectId: string; code: string; floor: string | null; bedrooms: number | null }[]),
+      .catch(() => [] as { id: string; projectId: string; code: string; floor: string | null; bedrooms: string | null }[]),
   ]);
   const developments: Development[] = buildings.map((one) => ({
     id: one.id,
@@ -56,7 +57,7 @@ export default async function PersonalInformationPage({
           `Apartment ${unit.code}`,
           /* "1st floor" or "ground floor" as written, "floor 3" when only the number is. */
           unit.floor ? (/^\d+$/.test(unit.floor.trim()) ? `floor ${unit.floor.trim()}` : `${unit.floor.trim()} floor`.replace(/ floor floor$/i, " floor")) : null,
-          unit.bedrooms ? `${unit.bedrooms} ${unit.bedrooms === 1 ? "bedroom" : "bedrooms"}` : null,
+          bedroomsWords(unit.bedrooms),
         ]
           .filter(Boolean)
           .join(", "),

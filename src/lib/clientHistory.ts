@@ -15,9 +15,11 @@ import {
   leadFollowUps,
   leadNotes,
   leads,
+  campaigns,
   messages,
   payments,
   refunds,
+  shareLinks,
   teamMembers,
   units,
 } from "@/db/schema";
@@ -413,6 +415,30 @@ export async function clientHistory(clientId: string, locale = "en"): Promise<Hi
       title: `Automatic email: ${letterName.get(letter.templateKey) ?? letter.templateKey}`,
       note: letter.reason,
       status: letter.status === "WAITING" ? { label: "Waiting", tone: "warn" } : { label: "Not sent", tone: "neutral" },
+    });
+  }
+
+  /* 5b. The campaign files they opened, by their own link, as a client or before, as a lead. */
+  const opened = await db
+    .select({ link: shareLinks, title: campaigns.title })
+    .from(shareLinks)
+    .leftJoin(campaigns, eq(campaigns.id, shareLinks.campaignId))
+    .where(
+      and(
+        sql`${shareLinks.openCount} > 0`,
+        leadIds.length > 0 ? or(eq(shareLinks.clientId, clientId), inArray(shareLinks.leadId, leadIds)) : eq(shareLinks.clientId, clientId),
+      ),
+    );
+  for (const { link, title } of opened) {
+    if (!link.firstOpenedAt) continue;
+    push({
+      id: `files-${link.id}`,
+      at: link.firstOpenedAt,
+      kind: "email",
+      title: `Opened the files of the campaign "${title ?? "a campaign"}"`,
+      note: link.openCount > 1 ? `Opened ${link.openCount} times, last on ${link.lastOpenedAt?.toLocaleDateString("en-GB") ?? ""}` : undefined,
+      href: link.campaignId ? `/campaigns/${link.campaignId}` : undefined,
+      status: { label: "Opened", tone: "good" },
     });
   }
 

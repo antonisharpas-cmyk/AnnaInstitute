@@ -1,10 +1,10 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaigns, shareLinks } from "@/db/schema";
 import { fillPlaceholders, placeholdersLeft } from "@/lib/messaging";
 import { aboutFromChoices, aboutOf, aboutValues } from "@/lib/campaignAbout";
-import { campaignAttachments, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
+import { campaignAttachments, campaignFilesLink, filesLinkFor, filesUrl } from "@/lib/campaignFiles";
 import { idsOf, projectsBlock } from "@/lib/campaignProjects";
 import { createPriceListLink, priceListUrl, resolvePriceListToken } from "@/lib/priceList";
 import { readSetting } from "@/lib/settings";
@@ -140,11 +140,8 @@ export async function testValues(campaign: Campaign) {
     const [link] = await db.select().from(shareLinks).where(eq(shareLinks.id, campaign.shareLinkId)).limit(1);
     if (link) price = priceListUrl(link.token);
   }
-  const [files] = await db
-    .select()
-    .from(shareLinks)
-    .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, campaign.id)))
-    .limit(1);
+  /* The campaign's own link: each person gets one of their own when it is sent for real. */
+  const files = await campaignFilesLink(campaign.id);
   /* A campaign to the buyers is tried with its first buyer's own apartment. */
   const firstBuyer = campaign.toBuyers ? chosenBuyers(await buyersOf(campaign), campaign.buyerIds)[0] : undefined;
   return {

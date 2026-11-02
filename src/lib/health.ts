@@ -459,6 +459,16 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     migration: "0082",
   },
   {
+    probe: "select 1 from units where bedrooms = '2+1' limit 1",
+    what: "bedrooms written as 2+1",
+    migration: "0088",
+  },
+  {
+    probe: "select recipient_key, open_count, first_opened_at from share_links limit 1",
+    what: "a files link for each person a campaign goes to, and who opened it",
+    migration: "0087",
+  },
+  {
     probe: "select 'SALARY'::expense_category",
     what: "Salary as a kind of expense",
     migration: "0086",

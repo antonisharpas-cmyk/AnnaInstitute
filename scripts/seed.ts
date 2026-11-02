@@ -171,7 +171,7 @@ async function seedProjects() {
           projectId,
           code: u.code,
           floor: u.floor,
-          bedrooms: u.bedrooms,
+          bedrooms: String(u.bedrooms),
           coveredArea: u.coveredArea.toFixed(2),
           verandaArea: u.verandaArea.toFixed(2),
           parkingSpaces: 1,

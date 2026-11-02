@@ -501,7 +501,8 @@ export const units = pgTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     code: text("code").notNull(),
     floor: text("floor"),
-    bedrooms: integer("bedrooms"),
+    /** As typed: 2, or 2+1 for two bedrooms and a room that can become a third. */
+    bedrooms: text("bedrooms"),
     coveredArea: numeric("covered_area", { precision: 10, scale: 2 }),
     verandaArea: numeric("veranda_area", { precision: 10, scale: 2 }),
     roofGardenArea: numeric("roof_garden_area", { precision: 10, scale: 2 }),
@@ -1235,7 +1236,22 @@ export const shareLinks = pgTable("share_links", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdByEmail: text("created_by_email"),
   createdAt: created(),
-});
+  /**
+   * A campaign's files link of one person's own: "client:<id>", "agent:<id>",
+   * "company:<id>", "lead:<id>". Empty is the campaign's own link, the one the
+   * office previews and tests with.
+   */
+  recipientKey: text("recipient_key"),
+  recipientName: text("recipient_name"),
+  clientId: text("client_id").references((): AnyPgColumn => clients.id, { onDelete: "set null" }),
+  agentId: text("agent_id").references((): AnyPgColumn => agents.id, { onDelete: "set null" }),
+  subownerId: text("subowner_id").references((): AnyPgColumn => subowners.id, { onDelete: "set null" }),
+  leadId: text("lead_id").references((): AnyPgColumn => leads.id, { onDelete: "set null" }),
+  /** When the person first and last opened the files, and how many times. */
+  firstOpenedAt: timestamp("first_opened_at", { withTimezone: true }),
+  lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
+  openCount: integer("open_count").default(0).notNull(),
+}, (table) => ({ byCampaignRecipient: index("share_links_campaign_recipient_idx").on(table.campaignId, table.recipientKey) }));
 
 /* ---------------------------------------------------------------------------
    Leads from the website.

@@ -1,17 +1,17 @@
 import KeepFresh from "./KeepFresh";
 import { runOf } from "@/lib/campaignProgress";
-import { emailFilesWithin } from "@/lib/campaignFiles";
 import AboutPicker from "@/components/AboutPicker";
 import { aboutOf } from "@/lib/campaignAbout";
 import { campaignWays } from "@/lib/agentWay";
 import { notFound } from "next/navigation";
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { campaignDocuments, campaigns, documents, projects, shareLinks, units } from "@/db/schema";
 import { groupsOf } from "@/lib/campaignGroups";
 import { getTranslator } from "@/i18n";
 import { addressFor, channelConfigured, emailConfigured, fillPlaceholders } from "@/lib/messaging";
-import { filesUrl } from "@/lib/campaignFiles";
+import { campaignFilesLink, filesOpens, filesUrl, recipientKeyOf } from "@/lib/campaignFiles";
+import { dayAndTime } from "@/lib/when";
 import { priceListUrl } from "@/lib/priceList";
 import { sameEmail, samePhone } from "@/lib/samePerson";
 import { appUrl } from "@/lib/unsubscribe";
@@ -46,7 +46,7 @@ export default async function CampaignPage({
   const campaign =
     rows[0].status === "DRAFT" ? await ensureCampaignLinks(rows[0], user.email) : rows[0];
 
-  const [attachments, recipients, log, fileLinkRows] = await Promise.all([
+  const [attachments, recipients, log, ownFilesLink, opens] = await Promise.all([
     db
       .select({ document: documents })
       .from(campaignDocuments)
@@ -54,11 +54,8 @@ export default async function CampaignPage({
       .where(eq(campaignDocuments.campaignId, id)),
     audienceFor(campaign),
     messagesForCampaign(id),
-    db
-      .select()
-      .from(shareLinks)
-      .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, id)))
-      .limit(1),
+    campaignFilesLink(id),
+    filesOpens(id),
   ]);
 
   let url: string | undefined;
@@ -140,7 +137,6 @@ export default async function CampaignPage({
   const alreadySent = campaign.status !== "DRAFT";
   /* Sending now in this CRM, and how far; and what an email of it carries. */
   const running = runOf(id);
-  const emailFiles = await emailFilesWithin(id);
 
   /* Trying it on yourself: the email to your inbox, the SMS to your own mobile. */
   const testTo = (await readSetting("emails.testAddress")).trim();
@@ -161,7 +157,10 @@ export default async function CampaignPage({
 
   // The files of a campaign also live behind a link of their own, because an
   // SMS cannot carry a PDF the way an email can.
-  const filesLink = fileLinkRows[0] ? filesUrl(fileLinkRows[0].token) : undefined;
+  const filesLink = ownFilesLink ? filesUrl(ownFilesLink.token) : undefined;
+  /* Who opened their own link to the files, by who they are, for the log below. */
+  const openedBy = new Map(opens.filter((one) => one.openCount > 0).map((one) => [one.recipientKey ?? "", one]));
+  const openedCount = openedBy.size;
   const values = {
     name: checked[0]?.name ?? "Name Surname",
     firstName: checked[0]?.firstName ?? "Name",
@@ -370,11 +369,7 @@ export default async function CampaignPage({
                     >
                       {a.document.title}
                     </a>
-                    {campaign.viaWhatsapp ? (
-                      <span className="ml-2 text-xs text-brand-graphite/60">
-                        attached to the email, and reachable from the link in the SMS
-                      </span>
-                    ) : null}
+                    <span className="ml-2 text-xs text-brand-graphite/60">on the files page, under Other files</span>
                   </li>
                 ))}
               </ul>
@@ -476,6 +471,7 @@ export default async function CampaignPage({
                     <th>Channel</th>
                     <th>{t("common.status")}</th>
                     <th>Reference or reason</th>
+                    {opens.length > 0 ? <th>{t("campaigns.filesOpened")}</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -499,6 +495,35 @@ export default async function CampaignPage({
                         </Pill>
                       </td>
                       <td className="text-xs">{m.providerId ?? m.error ?? ""}</td>
+                      {opens.length > 0 ? (
+                        <td className="text-xs" data-files-opened>
+                          {(() => {
+                            const seen = openedBy.get(
+                              recipientKeyOf({
+                                name: "",
+                                clientId: m.clientId,
+                                agentId: m.agentId,
+                                subownerId: m.subownerId,
+                                leadId: m.leadId,
+                                email: m.channel === "EMAIL" ? m.toAddress : null,
+                                phone: m.channel === "EMAIL" ? null : m.toAddress,
+                              }) ?? "",
+                            );
+                            return seen?.firstOpenedAt ? (
+                              <>
+                                <Pill tone="good">{dayAndTime(seen.firstOpenedAt, locale)}</Pill>
+                                {seen.openCount > 1 ? (
+                                  <div className="text-brand-graphite/60">
+                                    {t("campaigns.timesOpened").replace("{n}", String(seen.openCount))}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : (
+                              <span className="text-brand-graphite/50">{t("campaigns.notOpened")}</span>
+                            );
+                          })()}
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -563,13 +588,6 @@ export default async function CampaignPage({
                     and nothing will actually leave the building. Useful for a rehearsal.
                   </p>
                 ) : null}
-                {emailFiles.linked.length > 0 && campaign.viaEmail ? (
-                  <p className="mb-3 rounded border border-brand-line bg-brand-surface p-2 text-xs" data-files-too-big>
-                    {t("campaigns.filesTooBig")
-                      .replace("{mb}", String(Math.round(emailFiles.totalBytes / 1048576)))
-                      .replace("{files}", emailFiles.linked.join(", "))}
-                  </p>
-                ) : null}
                 <SendButton campaignId={id} action={sendCampaign} count={sendable.length} />
               </>
             )}
@@ -577,6 +595,11 @@ export default async function CampaignPage({
 
           {filesLink ? (
             <Card title={t("campaigns.filesLink")}>
+              {opens.length > 0 ? (
+                <p className="mb-2 text-sm font-semibold" data-files-opened-count>
+                  {t("campaigns.openedOf").replace("{n}", String(openedCount)).replace("{total}", String(opens.length))}
+                </p>
+              ) : null}
               <p className="mb-2 text-xs text-brand-graphite/60">{t("campaigns.filesLinkHint")}</p>
               <a
                 href={filesLink}

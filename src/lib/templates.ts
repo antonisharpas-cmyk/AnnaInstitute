@@ -3,6 +3,7 @@ import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { emailTemplates, projects, units } from "@/db/schema";
 import { formatAmount, toCents } from "./money";
+import { bedroomsWords } from "./bedrooms";
 
 /**
  * Ready made messages.
@@ -39,7 +40,7 @@ export const SYSTEM_TEMPLATES: TemplateSeed[] = [
     key: "new_project",
     name: "A new development, to the agents",
     description:
-      "Introduces a new development to the partner agents with its sales package and the launch commission. Choose the development under What it is about: its brochure, architectural plans and technical specifications are attached, and its pictures, map and live price list go as links. Change the words that belong to one development (distance to the sea, permit, apartment mix) for each new one.",
+      "Introduces a new development to the partner agents with its sales package and the launch commission. Choose the development under What it is about: its brochure, architectural plans, technical specifications and renders, its map and its live price list all go as links. Change the words that belong to one development (distance to the sea, permit, apartment mix) for each new one.",
     subject: "Introducing {{project}} | Launch Commission 7%",
     body: `Dear {{first_name}},
 
@@ -51,8 +52,7 @@ With only {{residences}} exclusive residences, this is a limited collection desi
 
 Your complete sales package:
 
-• Project Brochure, Architectural Plans and Technical Specifications, including air conditioning units: attached
-• 3D Renders and pictures: {{files_url}}
+• Project Brochure, Architectural Plans, Technical Specifications, including air conditioning units, and 3D Renders: {{files_url}}
 • Location: {{maps_url}}
 • Live Price List: {{price_list_url}}
 
@@ -138,7 +138,7 @@ One Eleven`,
     key: "construction_update",
     name: "Construction progress update",
     description:
-      "To the buyers of a development and its companies, with the photographs of the site attached. {{project}} fills in from the development; the works in progress and the works coming are typed for each update, so change them in the campaign before sending.",
+      "To the buyers of a development and its companies, with the photographs of the site by a link. {{project}} fills in from the development; the works in progress and the works coming are typed for each update, so change them in the campaign before sending.",
     subject: "Construction progress update | {{project}}",
     body: `Dear All,
 
@@ -152,7 +152,7 @@ Upcoming Works:
 Elevator installation.
 Kitchen installation, as the project progresses towards the completion of the internal finishes.
 
-Please find attached the latest photographs from the construction site, showcasing the progress achieved to date.
+You will find the latest photographs from the construction site, showcasing the progress achieved to date, here: {{files_url}}
 
 The One Eleven supervision team continues to monitor the project on a daily basis, ensuring that the works are carried out in accordance with the agreed quality specifications.
 
@@ -175,7 +175,7 @@ One Eleven`,
 Τοποθέτηση του ανελκυστήρα.
 Τοποθέτηση των κουζινών, καθώς το έργο προχωρά προς την ολοκλήρωση των εσωτερικών τελειωμάτων.
 
-Επισυνάπτονται οι πιο πρόσφατες φωτογραφίες από το εργοτάξιο, που δείχνουν την πρόοδο μέχρι σήμερα.
+Τις πιο πρόσφατες φωτογραφίες από το εργοτάξιο, που δείχνουν την πρόοδο μέχρι σήμερα, θα βρείτε εδώ: {{files_url}}
 
 Η ομάδα επίβλεψης της One Eleven συνεχίζει να παρακολουθεί το έργο καθημερινά, ώστε οι εργασίες να γίνονται σύμφωνα με τις συμφωνημένες προδιαγραφές ποιότητας.
 
@@ -194,7 +194,7 @@ One Eleven`,
     key: "projects_showcase",
     name: "Our developments, to leads",
     description:
-      "To leads: the price list of the developments you tick, as a live link. Their brochures, architectural drawings and technical specifications go with it as attachments, and their pictures and 3D renders by a link.",
+      "To leads: the price list of the developments you tick, as a live link. Their brochures, architectural drawings, technical specifications and 3D renders go by one link, with a folder for each development.",
     subject: "Price list | {{project_names}}",
     body: `Dear {{title}} {{first_name}},
 
@@ -202,7 +202,7 @@ Thank you for your interest in One Eleven.
 
 You will find our price list for {{project_names}} here: {{price_list_url}}
 
-The brochure, architectural drawings and technical specifications are attached. Pictures and 3D renders are here: {{files_url}}
+The brochure, architectural drawings, technical specifications and 3D renders are here, with a folder for each development: {{files_url}}
 
 Please let us know which apartments you are interested in, and we will be happy to arrange an appointment or viewing at your convenience.
 
@@ -217,7 +217,7 @@ One Eleven`,
 
 Θα βρείτε τον τιμοκατάλογό μας για το {{project_names}} εδώ: {{price_list_url}}
 
-Το φυλλάδιο, τα αρχιτεκτονικά σχέδια και οι τεχνικές προδιαγραφές επισυνάπτονται. Φωτογραφίες και τρισδιάστατες απεικονίσεις θα βρείτε εδώ: {{files_url}}
+Το φυλλάδιο, τα αρχιτεκτονικά σχέδια, οι τεχνικές προδιαγραφές και οι τρισδιάστατες απεικονίσεις βρίσκονται εδώ, με έναν φάκελο για κάθε έργο: {{files_url}}
 
 Ενημερώστε μας για ποια διαμερίσματα ενδιαφέρεστε και θα χαρούμε να κανονίσουμε ένα ραντεβού ή μια επίσκεψη όποτε σας βολεύει.
 
@@ -234,7 +234,7 @@ One Eleven`,
     key: "projects_showcase_agents",
     name: "Our developments, to agents",
     description:
-      "To agents: the price list of the developments you tick, as a live link, to pass on to their clients. Their brochures, architectural drawings and technical specifications go with it as attachments, and their pictures and 3D renders by a link.",
+      "To agents: the price list of the developments you tick, as a live link, to pass on to their clients. Their brochures, architectural drawings, technical specifications and 3D renders go by one link, with a folder for each development.",
     subject: "Price list | {{project_names}}",
     body: `Dear {{first_name}},
 
@@ -242,7 +242,7 @@ Please find below the latest information on {{project_names}}, to share with you
 
 You will find our live price list here: {{price_list_url}}
 
-The brochure, architectural drawings and technical specifications are attached. Pictures and 3D renders are here: {{files_url}}
+The brochure, architectural drawings, technical specifications and 3D renders are here, with a folder for each development: {{files_url}}
 
 Should any of your clients be interested, we will be happy to arrange a viewing at your convenience.
 
@@ -1354,9 +1354,7 @@ export async function detailsForUnit(unitId: string, locale: string) {
   if (!row) return null;
 
   const bits = [
-    row.unit.bedrooms
-      ? `${row.unit.bedrooms} ${row.unit.bedrooms === 1 ? "bedroom" : "bedrooms"}`
-      : null,
+    bedroomsWords(row.unit.bedrooms),
     row.unit.coveredArea ? `${Number(row.unit.coveredArea)} m2 covered` : null,
     row.unit.verandaArea ? `${Number(row.unit.verandaArea)} m2 veranda` : null,
     row.unit.parkingSpaces > 0

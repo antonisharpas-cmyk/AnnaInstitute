@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { dayAndTime } from "@/lib/when";
 import { notFound } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, commissionPayments } from "@/db/schema";
+import { agents, campaigns, commissionPayments, shareLinks } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { amountForInput } from "@/lib/money";
@@ -48,7 +48,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   const agent = found[0];
   if (!agent) notFound();
 
-  const [sales, paidOut, totals, unclaimed] = await Promise.all([
+  const [sales, paidOut, totals, unclaimed, opened] = await Promise.all([
     salesOfAgent(id),
     db
       .select()
@@ -59,6 +59,13 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
     // Contracts nobody is named on yet, which is what a sale recorded by hand
     // attaches to.
     salesWithoutAnAgent(),
+    /* The campaign files they opened, by their own link. */
+    db
+      .select({ link: shareLinks, title: campaigns.title })
+      .from(shareLinks)
+      .leftJoin(campaigns, eq(campaigns.id, shareLinks.campaignId))
+      .where(and(eq(shareLinks.agentId, id), gt(shareLinks.openCount, 0)))
+      .orderBy(desc(shareLinks.lastOpenedAt)),
   ]);
   /* The lines paid in cash, whose payments have no receipt. */
   const cashLines = new Set(sales.flatMap((sale) => sale.lines.filter((l) => l.inCash).map((l) => l.id)));
@@ -794,6 +801,40 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               </table>
             )}
           </Card>
+
+          {opened.length > 0 ? (
+            <Card title={t("agents.filesOpened")}>
+              <table className="data" data-agent-files-opened>
+                <thead>
+                  <tr>
+                    <th>{t("agents.campaignName")}</th>
+                    <th className="ctr">{t("campaigns.filesOpened")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {opened.map(({ link, title }) => (
+                    <tr key={link.id}>
+                      <td>
+                        {link.campaignId ? (
+                          <Link href={`/campaigns/${link.campaignId}`} className="text-brand-teal-dark hover:underline">
+                            {title ?? link.campaignId}
+                          </Link>
+                        ) : (
+                          title
+                        )}
+                      </td>
+                      <td className="ctr text-xs">
+                        {link.firstOpenedAt ? dayAndTime(link.firstOpenedAt, locale) : ""}
+                        {link.openCount > 1 ? (
+                          <div className="text-brand-graphite/60">{t("campaigns.timesOpened").replace("{n}", String(link.openCount))}</div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          ) : null}
 
           {/*
             Every agent can be deleted. What goes with them is spelled out, and

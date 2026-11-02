@@ -1,27 +1,38 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { stat } from "node:fs/promises";
-import path from "node:path";
-import { resolveStored } from "./storage";
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { campaignDocuments, campaigns, documents, shareLinks } from "@/db/schema";
+import { campaignDocuments, campaigns, documents, projects, shareLinks } from "@/db/schema";
 import { idsOf, projectPapers } from "./campaignProjects";
 import { aboutFromChoices, aboutOf } from "./campaignAbout";
 import { appUrl } from "./unsubscribe";
 
 /**
- * A WhatsApp message cannot carry a PDF the way an email can, so the files of a
- * campaign get a link of their own: one page, no login, listing whatever was
- * attached. The email still carries the real attachments.
+ * The files of a campaign go by link, never as attachments. Four developments'
+ * brochures, drawings and specifications come to far more than an email can
+ * carry, and a letter that carried part of them left the rest out without
+ * saying so. The link opens one page with a folder for each development.
+ *
+ * Each person the campaign goes to has a link of their own, so the office can
+ * see who opened the files and when. The campaign's own link, with no person
+ * on it, is the one the office previews and tests with; opening it is not
+ * counted.
  */
-export async function filesLinkFor(campaignId: string, createdByEmail: string) {
-  const existing = await db
+
+/** The campaign's own link, the one with nobody's name on it. */
+export async function campaignFilesLink(campaignId: string) {
+  const [found] = await db
     .select()
     .from(shareLinks)
-    .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, campaignId)))
+    .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, campaignId), isNull(shareLinks.recipientKey)))
+    .orderBy(asc(shareLinks.createdAt))
     .limit(1);
-  if (existing[0]) return existing[0];
+  return found ?? null;
+}
+
+export async function filesLinkFor(campaignId: string, createdByEmail: string) {
+  const existing = await campaignFilesLink(campaignId);
+  if (existing) return existing;
 
   const inserted = await db
     .insert(shareLinks)
@@ -34,6 +45,82 @@ export async function filesLinkFor(campaignId: string, createdByEmail: string) {
     .returning();
 
   return inserted[0];
+}
+
+export type FilesRecipient = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  clientId?: string | null;
+  agentId?: string | null;
+  subownerId?: string | null;
+  leadId?: string | null;
+};
+
+/** Who a link is for, the same for their email and their SMS. */
+export function recipientKeyOf(one: FilesRecipient): string | null {
+  if (one.clientId) return `client:${one.clientId}`;
+  if (one.agentId) return `agent:${one.agentId}`;
+  if (one.subownerId) return `company:${one.subownerId}`;
+  if (one.leadId) return `lead:${one.leadId}`;
+  const address = (one.email ?? one.phone ?? "").trim().toLowerCase();
+  return address ? `address:${address}` : null;
+}
+
+/** One person's own link to a campaign's files, made the first time it is needed. */
+export async function personalFilesLink(campaignId: string, recipient: FilesRecipient, createdByEmail: string) {
+  const key = recipientKeyOf(recipient);
+  if (!key) return filesLinkFor(campaignId, createdByEmail);
+  const [existing] = await db
+    .select()
+    .from(shareLinks)
+    .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, campaignId), eq(shareLinks.recipientKey, key)))
+    .limit(1);
+  if (existing) return existing;
+  const inserted = await db
+    .insert(shareLinks)
+    .values({
+      token: randomBytes(16).toString("base64url"),
+      kind: "CAMPAIGN_FILES",
+      campaignId,
+      createdByEmail,
+      recipientKey: key,
+      recipientName: recipient.name || recipient.email || recipient.phone || null,
+      clientId: recipient.clientId ?? null,
+      agentId: recipient.agentId ?? null,
+      subownerId: recipient.subownerId ?? null,
+      leadId: recipient.leadId ?? null,
+    })
+    .returning();
+  return inserted[0];
+}
+
+/**
+ * Somebody opened their link: the first time is kept, the last moves on. A
+ * visit counts once: opening it again, or refreshing, within half an hour is
+ * the same visit, so "3 times" means three separate visits.
+ */
+export async function recordFilesOpen(link: { id: string; recipientKey: string | null }) {
+  if (!link.recipientKey) return;
+  const now = new Date();
+  const visit = new Date(now.getTime() - 30 * 60 * 1000);
+  await db
+    .update(shareLinks)
+    .set({
+      firstOpenedAt: sql`coalesce(${shareLinks.firstOpenedAt}, ${now})`,
+      openCount: sql`case when ${shareLinks.lastOpenedAt} is null or ${shareLinks.lastOpenedAt} < ${visit} then ${shareLinks.openCount} + 1 else ${shareLinks.openCount} end`,
+      lastOpenedAt: now,
+    })
+    .where(eq(shareLinks.id, link.id));
+}
+
+/** Everybody who has a link to the campaign's files, and whether they opened it. */
+export async function filesOpens(campaignId: string) {
+  return db
+    .select()
+    .from(shareLinks)
+    .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, campaignId), isNotNull(shareLinks.recipientKey)))
+    .orderBy(desc(shareLinks.lastOpenedAt));
 }
 
 export async function resolveFilesToken(token: string) {
@@ -78,10 +165,9 @@ export async function campaignAttachments(campaignId: string) {
  * Always the developments it shows, ticked for {{projects}}. And the ones it
  * is about, chosen under "What it is about", whenever its message has the
  * files link, {{files_url}}: a letter that points at the files is a letter
- * that promises them, so the brochure, drawings and specifications are
- * attached and the pictures are on the page the link opens. A letter about a
- * development that never mentions its files, a viewing invitation say, stays
- * as light as it was.
+ * that promises them, so the brochure, drawings, specifications and renders
+ * are on the page the link opens. A letter about a development that never
+ * mentions its files, a viewing invitation say, does not point at them.
  */
 async function developmentsWithFiles(campaign: typeof campaigns.$inferSelect): Promise<string[]> {
   const shown = idsOf(campaign.projectIds);
@@ -91,64 +177,54 @@ async function developmentsWithFiles(campaign: typeof campaigns.$inferSelect): P
   return [...new Set([...shown, ...about])];
 }
 
-/** What an email of this campaign carries: its own files and the developments' papers, never the pictures. */
-export async function emailAttachments(campaignId: string) {
-  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
-  const own = await ownAttachments(campaignId);
-  if (!campaign) return own;
-  const papers = await projectPapers(await developmentsWithFiles(campaign));
-  return [...own, ...papers.attached];
-}
-
 export function filesUrl(token: string): string {
   return `${appUrl()}/files/${token}`;
 }
 
-/**
- * How much an email of a campaign can carry.
- *
- * Mail servers refuse a letter much over 25 MB, and files grow by a third on
- * the way, so the files an email carries are kept to 15 MB. A brochure,
- * a specification and the drawings of four developments easily come to a
- * hundred, and a campaign that tried to attach them all to every recipient
- * spent minutes uploading each letter only to have it refused. What fits is
- * attached, in order, and the rest reach the recipient by the campaign's files
- * link, which the email then carries.
- */
-export const EMAIL_FILES_LIMIT = 15 * 1024 * 1024;
+type FileDoc = typeof documents.$inferSelect;
 
-export type EmailFiles = {
-  attached: { filename: string; path: string; contentType?: string }[];
-  /** The files left out because they would not fit, by name. */
-  linked: string[];
-  /** All of them together, in bytes. */
-  totalBytes: number;
+/** The folders inside each development, in the order a buyer reads them. */
+export const FOLDERS = [
+  { kind: "BROCHURE", label: "Brochure" },
+  { kind: "ARCHITECTURAL", label: "Architectural drawings" },
+  { kind: "TECHNICAL_SPEC", label: "Technical specifications" },
+  { kind: "PICTURES", label: "Renders" },
+] as const;
+
+export type ProjectFolder = {
+  projectId: string;
+  name: string;
+  groups: { kind: string; label: string; files: FileDoc[] }[];
+  count: number;
 };
 
-export async function emailFilesWithin(campaignId: string, limit = EMAIL_FILES_LIMIT): Promise<EmailFiles> {
-  const docs = await emailAttachments(campaignId);
-  const attached: EmailFiles["attached"] = [];
-  const linked: string[] = [];
-  let used = 0;
-  let totalBytes = 0;
-  for (const doc of docs) {
-    const where = resolveStored(doc.filePath);
-    let size = doc.sizeBytes ?? 0;
-    if (!size) {
-      try {
-        size = (await stat(where)).size;
-      } catch {
-        continue; /* Not on the disk: nothing to attach. */
-      }
-    }
-    totalBytes += size;
-    const name = doc.originalName ?? path.basename(doc.filePath);
-    if (used + size <= limit) {
-      used += size;
-      attached.push({ filename: name, path: where, contentType: doc.mimeType ?? undefined });
-    } else {
-      linked.push(name);
-    }
-  }
-  return { attached, linked, totalBytes };
+/**
+ * What the files page shows: a folder for each development, in the order the
+ * campaign has them, each with its brochure, drawings, specifications and
+ * renders; then the files uploaded with the campaign itself.
+ */
+export async function campaignFolders(campaignId: string): Promise<{ folders: ProjectFolder[]; other: FileDoc[] }> {
+  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  const other = await ownAttachments(campaignId);
+  if (!campaign) return { folders: [], other };
+  const ids = await developmentsWithFiles(campaign);
+  if (ids.length === 0) return { folders: [], other };
+  const [papers, names] = await Promise.all([
+    projectPapers(ids),
+    db.select({ id: projects.id, name: projects.name }).from(projects).where(inArray(projects.id, ids)),
+  ]);
+  const all = [...papers.attached, ...papers.gallery];
+  const nameOf = new Map(names.map((one) => [one.id, one.name]));
+  const folders = ids
+    .map((projectId) => {
+      const mine = all.filter((doc) => doc.projectId === projectId);
+      const groups = FOLDERS.map((folder) => ({
+        kind: folder.kind as string,
+        label: folder.label as string,
+        files: mine.filter((doc) => doc.category === folder.kind),
+      })).filter((group) => group.files.length > 0);
+      return { projectId, name: nameOf.get(projectId) ?? "Development", groups, count: mine.length };
+    })
+    .filter((folder) => folder.count > 0);
+  return { folders, other };
 }

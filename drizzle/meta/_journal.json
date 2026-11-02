@@ -603,6 +603,20 @@
       "when": 1795036347383,
       "tag": "0086_salary_category",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1795122747383,
+      "tag": "0087_campaign_files_per_person",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1795209147383,
+      "tag": "0088_bedrooms_as_typed",
+      "breakpoints": true
     }
   ]
 }
