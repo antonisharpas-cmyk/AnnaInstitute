@@ -170,6 +170,7 @@ export async function campaignAttachments(campaignId: string) {
  * mentions its files, a viewing invitation say, does not point at them.
  */
 async function developmentsWithFiles(campaign: typeof campaigns.$inferSelect): Promise<string[]> {
+  if (campaign.templateKey === "construction_update") return [];
   const shown = idsOf(campaign.projectIds);
   const words = `${campaign.subject ?? ""} ${campaign.body} ${campaign.bodyWhatsapp ?? ""}`;
   if (!/\{\{\s*files[ _]url\s*\}\}/i.test(words)) return shown;
