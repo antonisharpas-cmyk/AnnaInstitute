@@ -3,6 +3,7 @@ import type { MessageKey } from "@/i18n";
 import type { Option } from "@/lib/choices";
 import SubmitButton from "@/components/SubmitButton";
 import CategoryField from "./CategoryField";
+import PhoneField from "@/components/PhoneField";
 
 type PartnerRecord = {
   name: string;
@@ -66,7 +67,7 @@ export default function PartnerForm({
           <label className="label" htmlFor="mobile">
             {t("partners.mobile")}
           </label>
-          <input id="mobile" name="mobile" type="tel" defaultValue={partner?.mobile ?? ""} className="input" autoComplete="off" />
+          <PhoneField id="mobile" name="mobile" defaultValue={partner?.mobile} />
         </div>
         <div className="sm:col-span-2">
           <label className="label" htmlFor="locationUrl">

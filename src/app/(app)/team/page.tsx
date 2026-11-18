@@ -9,6 +9,7 @@ import DateField from "@/components/DateField";
 import { birthdayText } from "@/lib/buyers";
 import ConfirmButton from "@/components/ConfirmButton";
 import { addTeamMember, deleteTeamMember, updateTeamMember } from "../appointments/actions";
+import PhoneField from "@/components/PhoneField";
 
 /**
  * The people in the office who go to the appointments.
@@ -49,7 +50,7 @@ export default async function TeamPage() {
                 <label className="label" htmlFor="phone">
                   {t("team.phone")}
                 </label>
-                <input id="phone" name="phone" className="input" />
+                <PhoneField id="phone" name="phone" />
               </div>
               <div>
                 <label className="label" htmlFor="birthDate">
@@ -163,11 +164,7 @@ export default async function TeamPage() {
                             </div>
                             <div>
                               <label className="label">{t("team.phone")}</label>
-                              <input
-                                name="phone"
-                                defaultValue={member.phone ?? ""}
-                                className="input"
-                              />
+                              <PhoneField name="phone" defaultValue={member.phone} />
                             </div>
                             <div>
                               <label className="label">{t("people.birthDate")}</label>

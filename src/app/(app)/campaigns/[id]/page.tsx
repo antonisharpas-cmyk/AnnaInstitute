@@ -17,7 +17,7 @@ import { sameEmail, samePhone } from "@/lib/samePerson";
 import { appUrl } from "@/lib/unsubscribe";
 import { isSuppressed } from "@/lib/suppression";
 import { BackLink, Card, PageHeader, Pill, Stat } from "@/components/ui";
-import { audienceFor, messagesForCampaign, saveCampaignTester, resumeCampaign, sendCampaign, sendCampaignTest, sendCampaignTextTest, setCampaignAbout, setCampaignProjects } from "../actions";
+import { audienceFor, messagesForCampaign, renewCampaignLinks, saveCampaignTester, resumeCampaign, sendCampaign, sendCampaignTest, sendCampaignTextTest, setCampaignAbout, setCampaignProjects } from "../actions";
 import { idsOf } from "@/lib/campaignProjects";
 import { campaignExtras, ensureCampaignLinks, textTest, unfilledIn } from "@/lib/campaignTest";
 import { phoneProblem } from "@/lib/phoneCheck";
@@ -59,6 +59,7 @@ export default async function CampaignPage({
   ]);
 
   let url: string | undefined;
+  let priceUntil: Date | null = null;
   if (campaign.shareLinkId) {
     const linkRows = await db
       .select()
@@ -66,6 +67,7 @@ export default async function CampaignPage({
       .where(eq(shareLinks.id, campaign.shareLinkId))
       .limit(1);
     if (linkRows[0]) url = priceListUrl(linkRows[0].token);
+    priceUntil = linkRows[0]?.expiresAt ?? null;
   }
 
   // Somebody can be reachable on one channel and not the other, so each is
@@ -158,6 +160,10 @@ export default async function CampaignPage({
   // The files of a campaign also live behind a link of their own, because an
   // SMS cannot carry a PDF the way an email can.
   const filesLink = ownFilesLink ? filesUrl(ownFilesLink.token) : undefined;
+  /* The files links all run out together, from when the campaign went: the latest of them is shown. */
+  const filesUntil = [ownFilesLink?.expiresAt, ...opens.map((one) => one.expiresAt)]
+    .filter((one): one is Date => Boolean(one))
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
   /* Who opened their own link to the files, by who they are, for the log below. */
   const openedBy = new Map(opens.filter((one) => one.openCount > 0).map((one) => [one.recipientKey ?? "", one]));
   const openedCount = openedBy.size;
@@ -190,6 +196,7 @@ export default async function CampaignPage({
           groupsOf(campaign).subowners ? t("campaigns.groupSubowners").toLowerCase() : null,
           groupsOf(campaign).leads ? t("campaigns.groupLeads").toLowerCase() : null,
           groupsOf(campaign).buyers ? t("campaigns.groupBuyers").toLowerCase() : null,
+          groupsOf(campaign).partners ? t("campaigns.groupPartners").toLowerCase() : null,
         ]
           .filter(Boolean)
           .join(", ")}`}
@@ -400,7 +407,9 @@ export default async function CampaignPage({
                               ? t("campaigns.groupLeads")
                               : r.group === "BUYERS"
                                 ? `${t("campaigns.groupBuyers")}${r.own?.unit ? ` . ${r.own.project} ${r.own.unit}` : ""}`
-                                : t("campaigns.groupSubowners")}
+                                : r.group === "PARTNERS"
+                                  ? t("campaigns.groupPartners")
+                                  : t("campaigns.groupSubowners")}
                       </div>
                     </td>
                     <td className="break-all text-xs">
@@ -505,6 +514,7 @@ export default async function CampaignPage({
                                 agentId: m.agentId,
                                 subownerId: m.subownerId,
                                 leadId: m.leadId,
+                                partnerId: m.partnerId,
                                 email: m.channel === "EMAIL" ? m.toAddress : null,
                                 phone: m.channel === "EMAIL" ? null : m.toAddress,
                               }) ?? "",
@@ -593,6 +603,30 @@ export default async function CampaignPage({
             )}
           </Card>
 
+          {/* How long the links stay open, and another 60 days for everybody when a client still needs them. */}
+          {alreadySent && (url || opens.length > 0 || filesLink) ? (
+            <Card title={t("campaigns.linksTitle")}>
+              <ul className="mb-3 space-y-1 text-sm" data-campaign-links>
+                {url && priceUntil ? (
+                  <li className="flex justify-between gap-2">
+                    <span>{t("campaigns.priceListLink")}</span>
+                    <Validity until={priceUntil} t={t} />
+                  </li>
+                ) : null}
+                {filesUntil ? (
+                  <li className="flex justify-between gap-2">
+                    <span>{t("campaigns.filesLink")}</span>
+                    <Validity until={filesUntil} t={t} />
+                  </li>
+                ) : null}
+              </ul>
+              <form action={renewCampaignLinks.bind(null, id)}>
+                <SubmitButton className="btn btn-secondary w-full">{t("campaigns.renewLink")}</SubmitButton>
+              </form>
+              <p className="mt-2 text-xs text-brand-graphite/60">{t("campaigns.linksHint")}</p>
+            </Card>
+          ) : null}
+
           {filesLink ? (
             <Card title={t("campaigns.filesLink")}>
               {opens.length > 0 ? (
@@ -627,5 +661,14 @@ export default async function CampaignPage({
         </div>
       </div>
     </>
+  );
+}
+
+function Validity({ until, t }: { until: Date; t: Awaited<ReturnType<typeof getTranslator>>["t"] }) {
+  const gone = until.getTime() < Date.now();
+  return (
+    <Pill tone={gone ? "bad" : "good"}>
+      {gone ? t("campaigns.linksExpiredOn") : t("campaigns.linksValid")} {until.toLocaleDateString("en-GB")}
+    </Pill>
   );
 }

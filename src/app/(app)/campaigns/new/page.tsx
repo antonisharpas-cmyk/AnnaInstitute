@@ -1,13 +1,18 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, units } from "@/db/schema";
-import { getTranslator } from "@/i18n";
+import { getTranslator, type MessageKey } from "@/i18n";
+import { LIST_BY_KEY } from "@/lib/choices/lists";
+import { englishWord } from "@/lib/choices";
 import { activePriceListLinks } from "@/lib/priceList";
 import { detailsForProject, detailsForUnit, listTemplates } from "@/lib/templates";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import CampaignForm, { type TemplateChoice } from "../CampaignForm";
 import { audienceFor, createCampaign } from "../actions";
 import { buyerChoices } from "@/lib/campaignBuyers";
+
+/** The partner categories the CRM knows by name; the office's own ones are shown as typed. */
+const CATEGORY_CODES = LIST_BY_KEY.partnerCategory.builtins.map((one) => one.code);
 
 /**
  * A new campaign.
@@ -26,7 +31,7 @@ export default async function NewCampaignPage({
 
   const [links, everyone, templates, buyers] = await Promise.all([
     activePriceListLinks(),
-    audienceFor({ toClients: true, toAgents: true, toSubowners: true, toLeads: true }),
+    audienceFor({ toClients: true, toAgents: true, toSubowners: true, toLeads: true, toPartners: true }),
     listTemplates(),
     buyerChoices(),
   ]);
@@ -51,6 +56,7 @@ export default async function NewCampaignPage({
     agents: everyone.filter((r) => r.group === "AGENTS").length,
     subowners: everyone.filter((r) => r.group === "SUBOWNERS").length,
     leads: everyone.filter((r) => r.group === "LEADS").length,
+    partners: everyone.filter((r) => r.group === "PARTNERS").length,
   };
   /* How the agents want campaigns, so the form can say who gets what. */
   const agentWays = {
@@ -73,16 +79,51 @@ export default async function NewCampaignPage({
      mobile and how they are texted, so the form can say who gets it and how. */
   const reach = everyone.map((r) => ({
     group: r.group,
-    id: r.clientId ?? r.agentId ?? r.subownerId ?? r.leadId ?? "",
+    id: r.clientId ?? r.agentId ?? r.subownerId ?? r.leadId ?? r.partnerId ?? "",
     email: Boolean(r.email?.trim()),
     phone: Boolean(r.phone?.trim()),
     textChannel: r.textChannel,
     agentChannel: r.agentChannel,
   }));
   /* The clients with consent and the companies, to choose from one by one. */
+  /* A client's wishes go in the line, so typing "air conditioning" finds those who want it. */
+  const wishWords = (r: (typeof everyone)[number]) =>
+    [
+      r.wantsAppliances === "YES" ? t("campaigns.wantsAppliances") : null,
+      r.wantsAirCondition === "YES" ? t("campaigns.wantsAirCondition") : null,
+    ].filter(Boolean);
   const clientChoices = everyone
     .filter((r) => r.group === "CLIENTS" && r.clientId)
-    .map((r) => ({ id: r.clientId as string, label: r.name, hint: [r.email, r.phone].filter(Boolean).join(" . ") }));
+    .map((r) => ({
+      id: r.clientId as string,
+      label: r.name,
+      hint: [...wishWords(r), r.email, r.phone].filter(Boolean).join(" . "),
+      tags: [r.wantsAppliances === "YES" ? "appliances" : null, r.wantsAirCondition === "YES" ? "airCondition" : null].filter(
+        (one): one is string => Boolean(one),
+      ),
+    }));
+  /* The partners, to choose from one by one, with what they do. */
+  const partnerChoices = await Promise.all(
+    everyone
+      .filter((r) => r.group === "PARTNERS" && r.partnerId)
+      .map(async (r) => ({
+        id: r.partnerId as string,
+        label: r.name,
+        hint: [
+          r.category
+            ? CATEGORY_CODES.includes(r.category)
+              ? t(`partners.category.${r.category}` as MessageKey)
+              : r.category.includes("~")
+                ? await englishWord("partnerCategory", r.category)
+                : r.category
+            : null,
+          r.email,
+          r.phone,
+        ]
+          .filter(Boolean)
+          .join(" . "),
+      })),
+  );
   const subownerChoices = everyone
     .filter((r) => r.group === "SUBOWNERS" && r.subownerId)
     .map((r) => ({ id: r.subownerId as string, label: r.name, hint: [r.email, r.phone].filter(Boolean).join(" . ") }));
@@ -125,11 +166,17 @@ export default async function NewCampaignPage({
   }));
 
   const groups = {
-    clients: params.audience !== "AGENTS" && params.audience !== "SUBOWNERS" && params.audience !== "LEADS" && params.audience !== "BUYERS",
+    clients:
+      params.audience !== "AGENTS" &&
+      params.audience !== "SUBOWNERS" &&
+      params.audience !== "LEADS" &&
+      params.audience !== "BUYERS" &&
+      params.audience !== "PARTNERS",
     agents: params.audience === "AGENTS",
     subowners: params.audience === "SUBOWNERS",
     leads: params.audience === "LEADS",
     buyers: params.audience === "BUYERS",
+    partners: params.audience === "PARTNERS",
   };
 
   return (
@@ -157,6 +204,7 @@ export default async function NewCampaignPage({
             agentChoices={agentChoices}
             reach={reach}
             clientChoices={clientChoices}
+            partnerChoices={partnerChoices}
             subownerChoices={subownerChoices}
             groups={groups}
             about={about}
@@ -214,6 +262,14 @@ export default async function NewCampaignPage({
               subownersAll: t("campaigns.subownersAll"),
               subownersChosen: t("campaigns.subownersChosen"),
               subownersSearch: t("campaigns.subownersSearch"),
+              groupPartners: t("campaigns.groupPartners"),
+              groupPartnersHint: t("campaigns.groupPartnersHint"),
+              summaryRulePartners: t("campaigns.summaryRulePartners"),
+              partnersAll: t("campaigns.partnersAll"),
+              partnersChosen: t("campaigns.partnersChosen"),
+              partnersSearch: t("campaigns.partnersSearch"),
+              tickAppliances: t("campaigns.tickAppliances"),
+              tickAirCondition: t("campaigns.tickAirCondition"),
               leadsChosen: t("campaigns.leadsChosen"),
               leadsSearch: t("campaigns.leadsSearch"),
               leadsPicked: t("campaigns.leadsPicked"),

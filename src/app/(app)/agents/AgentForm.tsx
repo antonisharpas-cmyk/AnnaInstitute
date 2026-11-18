@@ -4,6 +4,7 @@ import SubmitButton from "@/components/SubmitButton";
 import DateField from "@/components/DateField";
 import { TITLES, titleWord } from "@/lib/titles";
 import { agentCampaignChannel } from "@/lib/textChannel";
+import PhoneField from "@/components/PhoneField";
 
 type AgentRecord = {
   id: string;
@@ -89,7 +90,7 @@ export default function AgentForm({
           <label className="label" htmlFor="phone">
             {t("common.phone")}
           </label>
-          <input id="phone" name="phone" defaultValue={agent?.phone ?? ""} className="input" />
+          <PhoneField id="phone" name="phone" defaultValue={agent?.phone} />
         </div>
 
         <div>

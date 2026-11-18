@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import DateField from "@/components/DateField";
+import PhoneField from "@/components/PhoneField";
 
 export type ProfileField = {
   name: string;
@@ -144,6 +145,20 @@ export default function ProfileCard({
                   <DateField id={field.name} name={field.name} defaultValue={field.value ?? ""} />
                   {field.hint ? <p className="mt-1 text-xs text-brand-graphite/60">{field.hint}</p> : null}
                 </div>
+              </div>
+            );
+          }
+
+          if (field.kind === "tel") {
+            return (
+              <div
+                key={field.name}
+                className="flex flex-wrap items-center gap-2 border-b border-brand-line py-2 last:border-b-0"
+              >
+                <label className="label !mb-0 w-44 shrink-0" htmlFor={field.name}>
+                  {field.label}
+                </label>
+                <PhoneField id={field.name} name={field.name} defaultValue={field.value} required={field.required} className="max-w-sm flex-1" />
               </div>
             );
           }

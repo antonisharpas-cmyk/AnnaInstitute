@@ -15,6 +15,7 @@ const KEYS = [
   "partyCLIENT",
   "partyAGENT",
   "partyCONSTRUCTOR",
+  "partyPARTNER",
   "partyTEAM",
   "partyOTHER",
   "partyName",

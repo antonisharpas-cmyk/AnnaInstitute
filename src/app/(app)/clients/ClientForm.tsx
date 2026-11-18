@@ -6,6 +6,7 @@ import SourceAgentFields from "@/components/SourceAgentFields";
 import DateField from "@/components/DateField";
 import NewClientExtras, { type ExtrasLabels } from "@/components/BuyerExtras";
 import { TITLES, titleWord } from "@/lib/titles";
+import PhoneField from "@/components/PhoneField";
 
 type Client = typeof clientsTable.$inferSelect;
 
@@ -91,13 +92,7 @@ export default function ClientForm({
           <label className="label" htmlFor="phone">
             {t("common.phone")}
           </label>
-          <input
-            id="phone"
-            name="phone"
-            defaultValue={client?.phone ?? ""}
-            placeholder="+357 99 000000"
-            className="input"
-          />
+          <PhoneField id="phone" name="phone" defaultValue={client?.phone} />
         </div>
         <div>
           <label className="label" htmlFor="textChannel">

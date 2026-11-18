@@ -7,6 +7,13 @@ import { appUrl } from "./unsubscribe";
 import { recordAudit } from "./audit";
 
 /**
+ * How long a price list or a campaign's files stay open: 60 days from the
+ * day the link was made, or from the day the office renewed it. Prices and
+ * availability change, so an old list must not be quoted from.
+ */
+export const LINK_DAYS = 60;
+
+/**
  * The monthly price list for agents.
  *
  * It is a link to a live page rather than a file, so the prices an agent quotes
@@ -110,7 +117,9 @@ export async function createPriceListLink(options: {
   campaignId?: string | null;
 }) {
   const token = randomBytes(16).toString("base64url");
-  const expiresAt = options.days ? new Date(Date.now() + options.days * 24 * 60 * 60 * 1000) : null;
+  /* Every price list is valid for 60 days unless the office asks for fewer. */
+  const days = options.days && options.days > 0 ? Math.min(options.days, LINK_DAYS) : LINK_DAYS;
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
   const inserted = await db
     .insert(shareLinks)
@@ -152,6 +161,15 @@ export async function activePriceListLinks() {
     .orderBy(asc(shareLinks.createdAt));
 }
 
+/** Every price list link not revoked, open or past its date, for the office's list where the old ones can be renewed. */
+export async function priceListLinksForOffice() {
+  return db
+    .select()
+    .from(shareLinks)
+    .where(and(eq(shareLinks.kind, "PRICE_LIST"), isNull(shareLinks.revokedAt)))
+    .orderBy(asc(shareLinks.createdAt));
+}
+
 export async function resolvePriceListToken(token: string) {
   const rows = await db
     .select()
@@ -168,4 +186,30 @@ export async function resolvePriceListToken(token: string) {
 
 export function priceListUrl(token: string): string {
   return `${appUrl()}/price-list/${token}`;
+}
+
+/** A price list link that existed but has passed its date: for the page that says so. */
+export async function expiredPriceListLink(token: string) {
+  const [link] = await db
+    .select()
+    .from(shareLinks)
+    .where(and(eq(shareLinks.token, token), eq(shareLinks.kind, "PRICE_LIST")))
+    .limit(1);
+  if (!link || link.revokedAt || !link.expiresAt || link.expiresAt.getTime() >= Date.now()) return null;
+  return link;
+}
+
+/**
+ * Another 60 days for a link, from today: a price list or a campaign's files
+ * that a client still needs after the first 60 days ran out.
+ */
+export async function renewLinks(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const expiresAt = new Date(Date.now() + LINK_DAYS * 24 * 60 * 60 * 1000);
+  const done = await db
+    .update(shareLinks)
+    .set({ expiresAt })
+    .where(and(inArray(shareLinks.id, ids), isNull(shareLinks.revokedAt)))
+    .returning({ id: shareLinks.id });
+  return done.length;
 }

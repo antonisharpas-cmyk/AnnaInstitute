@@ -1104,3 +1104,26 @@ export async function removeClientNote(clientId: string, formData: FormData) {
   });
   revalidatePath(`/clients/${clientId}`);
 }
+
+const wish = (value: FormDataEntryValue | null) => {
+  const typed = String(value ?? "");
+  return typed === "YES" || typed === "NO" || typed === "UNDECIDED" ? typed : null;
+};
+
+/** What the client wants with the apartment: appliances and air conditioning. */
+export async function setClientWishes(clientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const wantsAppliances = wish(formData.get("wantsAppliances"));
+  const wantsAirCondition = wish(formData.get("wantsAirCondition"));
+  await db.update(clients).set({ wantsAppliances, wantsAirCondition, updatedAt: new Date() }).where(eq(clients.id, clientId));
+  await recordAudit({
+    action: "client.wishes",
+    entity: "client",
+    entityId: clientId,
+    detail: `appliances ${wantsAppliances ?? "not asked"}, air conditioning ${wantsAirCondition ?? "not asked"}`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash("said.saved");
+  revalidatePath(`/clients/${clientId}`);
+}

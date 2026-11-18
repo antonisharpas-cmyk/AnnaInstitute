@@ -5,6 +5,7 @@ import { humanLabel } from "@/lib/fileLabels";
 import { updateClient } from "../actions";
 import SourceAgentFields from "@/components/SourceAgentFields";
 import DateField from "@/components/DateField";
+import PhoneField from "@/components/PhoneField";
 import { birthdayText } from "@/lib/buyers";
 import { TITLES, titleWord } from "@/lib/titles";
 
@@ -59,15 +60,19 @@ function Field({
       <label className="label !mb-0 w-44 shrink-0" htmlFor={name}>
         {label}
       </label>
-      <input
-        id={name}
-        name={name}
-        type={type}
-        required={required}
-        defaultValue={defaultValue ?? ""}
-        placeholder={placeholder}
-        className="input max-w-sm flex-1"
-      />
+      {type === "tel" ? (
+        <PhoneField id={name} name={name} defaultValue={defaultValue} required={required} className="max-w-sm flex-1" />
+      ) : (
+        <input
+          id={name}
+          name={name}
+          type={type}
+          required={required}
+          defaultValue={defaultValue ?? ""}
+          placeholder={placeholder}
+          className="input max-w-sm flex-1"
+        />
+      )}
     </div>
   );
 }
@@ -189,7 +194,7 @@ export default function PersonalInfo({
         <Field label={labels.name} name="firstName" defaultValue={client.firstName} required />
         <Field label={labels.surname} name="lastName" defaultValue={client.lastName} required />
         <Field label={labels.email} name="email" type="email" defaultValue={client.email ?? ""} />
-        <Field label={labels.phone} name="phone" defaultValue={client.phone ?? ""} />
+        <Field label={labels.phone} name="phone" type="tel" defaultValue={client.phone ?? ""} />
 
         <div className="flex flex-wrap items-center gap-2 border-b border-brand-line py-2">
           <label className="label !mb-0 w-44 shrink-0" htmlFor="idType">

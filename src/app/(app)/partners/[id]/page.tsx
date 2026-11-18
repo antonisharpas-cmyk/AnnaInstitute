@@ -7,6 +7,7 @@ import { BackLink, Card, PageHeader } from "@/components/ui";
 import DeleteRecord from "@/components/DeleteRecord";
 import PartnerForm from "../PartnerForm";
 import Offers from "./Offers";
+import PartnerInvoices from "./Invoices";
 import { offersOf } from "@/lib/partnerOffers";
 import { deletePartner, updatePartner } from "../actions";
 
@@ -57,6 +58,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
             noPrice: t("offers.noPrice"),
           }}
         />
+        <PartnerInvoices partnerId={partner.id} t={t} locale={locale} />
         <DeleteRecord
           action={deletePartner.bind(null, partner.id)}
           label={t("partners.delete")}

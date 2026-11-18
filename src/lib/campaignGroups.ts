@@ -10,11 +10,19 @@ export function groupsOf(c: {
   toSubowners: boolean;
   toLeads?: boolean | null;
   toBuyers?: boolean | null;
+  toPartners?: boolean | null;
   audience: string;
 }) {
-  const flagged = c.toClients || c.toAgents || c.toSubowners || Boolean(c.toLeads) || Boolean(c.toBuyers);
+  const flagged = c.toClients || c.toAgents || c.toSubowners || Boolean(c.toLeads) || Boolean(c.toBuyers) || Boolean(c.toPartners);
   if (flagged) {
-    return { clients: c.toClients, agents: c.toAgents, subowners: c.toSubowners, leads: Boolean(c.toLeads), buyers: Boolean(c.toBuyers) };
+    return {
+      clients: c.toClients,
+      agents: c.toAgents,
+      subowners: c.toSubowners,
+      leads: Boolean(c.toLeads),
+      buyers: Boolean(c.toBuyers),
+      partners: Boolean(c.toPartners),
+    };
   }
   return {
     clients: c.audience === "CLIENTS_CONSENTED",
@@ -22,5 +30,6 @@ export function groupsOf(c: {
     subowners: c.audience === "SUBOWNERS",
     leads: false,
     buyers: false,
+    partners: false,
   };
 }

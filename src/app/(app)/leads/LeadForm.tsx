@@ -6,6 +6,7 @@ import Link from "next/link";
 import SubmitButton from "@/components/SubmitButton";
 import SearchSelect from "@/components/SearchSelect";
 import type { LeadFormState } from "./actions";
+import PhoneField from "@/components/PhoneField";
 
 /**
  * A lead typed in by hand.
@@ -125,7 +126,7 @@ export default function LeadForm({
           <label className="label" htmlFor="phone">
             {labels.phone}
           </label>
-          <input id="phone" name="phone" defaultValue={was.phone ?? ""} className="input" />
+          <PhoneField id="phone" name="phone" defaultValue={was.phone} />
         </div>
         <div>
           <label className="label" htmlFor="textChannel">

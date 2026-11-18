@@ -6,12 +6,12 @@ import { groupsOf } from "@/lib/campaignGroups";
 import { sentByWhatsapp } from "@/lib/campaignTextWay";
 import { getTranslator } from "@/i18n";
 import { channelConfigured, emailConfigured } from "@/lib/messaging";
-import { activePriceListLinks, priceListUrl, scopeWords } from "@/lib/priceList";
+import { LINK_DAYS, priceListLinksForOffice, priceListUrl, scopeWords } from "@/lib/priceList";
 import { listTemplates } from "@/lib/templates";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import Pagination from "@/components/Pagination";
-import { audienceFor, makePriceListLink, revokePriceListLink } from "./actions";
+import { audienceFor, makePriceListLink, renewLinkAction, revokePriceListLink } from "./actions";
 
 const day = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
@@ -38,7 +38,7 @@ export default async function CampaignsPage({
       .where(isNull(clients.deletedAt)),
     db.select({ total: sql<number>`count(*)::int` }).from(suppressions),
     db.select().from(campaigns).orderBy(desc(campaigns.createdAt)),
-    activePriceListLinks(),
+    priceListLinksForOffice(),
     audienceFor({ toClients: true, toAgents: true, toSubowners: true }),
     listTemplates(),
   ]);
@@ -182,6 +182,7 @@ export default async function CampaignsPage({
           groupsOf(c).subowners ? t("campaigns.groupSubowners") : null,
           groupsOf(c).leads ? t("campaigns.groupLeads") : null,
           groupsOf(c).buyers ? t("campaigns.groupBuyers") : null,
+          groupsOf(c).partners ? t("campaigns.groupPartners") : null,
         ]
           .filter(Boolean)
                           .join(", ")}
@@ -318,7 +319,7 @@ export default async function CampaignsPage({
                   <input
                     id="days"
                     name="days"
-                    defaultValue="45"
+                    defaultValue={String(LINK_DAYS)}
                     className="input !w-24 !py-1 !text-xs"
                   />
                 </div>
@@ -358,13 +359,27 @@ export default async function CampaignsPage({
                           {priceListUrl(l.token)}
                         </a>
                       </td>
-                      <td className="ctr">{day(l.expiresAt) || "never"}</td>
                       <td className="ctr">
-                        <form action={revokePriceListLink.bind(null, l.id)}>
-                          <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
-                            Revoke
-                          </button>
-                        </form>
+                        {day(l.expiresAt) || "never"}
+                        {l.expiresAt && l.expiresAt.getTime() < Date.now() ? (
+                          <div>
+                            <Pill tone="bad">{t("campaigns.linkExpired")}</Pill>
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="ctr">
+                        <div className="flex flex-wrap justify-center gap-1">
+                          <form action={renewLinkAction.bind(null, l.id)}>
+                            <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs" data-renew-link>
+                              {t("campaigns.renewLink")}
+                            </button>
+                          </form>
+                          <form action={revokePriceListLink.bind(null, l.id)}>
+                            <button type="submit" className="btn btn-secondary !px-2 !py-1 !text-xs">
+                              Revoke
+                            </button>
+                          </form>
+                        </div>
                       </td>
                     </tr>
                   ))}

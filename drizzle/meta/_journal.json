@@ -617,6 +617,20 @@
       "when": 1795209147383,
       "tag": "0088_bedrooms_as_typed",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1795295547383,
+      "tag": "0089_partners_preferences_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1795381947383,
+      "tag": "0090_agent_agreements",
+      "breakpoints": true
     }
   ]
 }

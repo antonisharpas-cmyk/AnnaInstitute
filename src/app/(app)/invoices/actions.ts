@@ -12,6 +12,7 @@ import { flash } from "@/lib/flash";
 import { fromCents, parseAmount, toCents } from "@/lib/money";
 import {
   emailCompanyInvoice,
+  emailPaidAskReceipt,
   emailIncomeReceipt,
   issueIncomeReceipt,
   issuePartnerInvoice,
@@ -416,18 +417,26 @@ export async function recordExpensePayment(expenseId: string, formData: FormData
       user,
     });
   }
-  await db.insert(expensePayments).values({
-    expenseId,
-    paidOn: typed.paidOn,
-    amount: fromCents(typed.amountCents),
-    method: typed.method,
-    methodOther: typed.methodOther,
-    reference: typed.reference,
-    receiptDocumentId,
-    recordedByEmail: user.email,
-    history: expense.history || (await recordingHistory()),
-  });
+  const history = expense.history || (await recordingHistory());
+  const [paid] = await db
+    .insert(expensePayments)
+    .values({
+      expenseId,
+      paidOn: typed.paidOn,
+      amount: fromCents(typed.amountCents),
+      method: typed.method,
+      methodOther: typed.methodOther,
+      reference: typed.reference,
+      receiptDocumentId,
+      recordedByEmail: user.email,
+      history,
+    })
+    .returning({ id: expensePayments.id });
   await settle(expenseId);
+  /* Paid without their receipt: tell them it is paid and ask for it, when the box is left ticked. */
+  const askReceipt =
+    !receiptDocumentId && !history && !isSalary(expense) && String(formData.get("emailPaid") ?? "") === "on";
+  const asked = askReceipt ? await emailPaidAskReceipt(expenseId, paid.id) : null;
   await recordAudit({
     action: "expense.paid",
     entity: "expense",
@@ -436,7 +445,18 @@ export async function recordExpensePayment(expenseId: string, formData: FormData
     userId: user.id,
     userEmail: user.email,
   });
-  await flash(`said.paymentSaved|${receiptDocumentId ? "Their receipt is filed with it." : "Upload their receipt when it comes."}`);
+  await flash(
+    `said.paymentSaved|${
+      receiptDocumentId
+        ? "Their receipt is filed with it."
+        : asked
+          ? asked.status === "SENT"
+            ? `${asked.to} was told it is paid and asked for the receipt.`
+            : `Upload their receipt when it comes. The email asking for it did not go: ${asked.detail}`
+          : "Upload their receipt when it comes."
+    }`,
+    asked && asked.status !== "SENT" ? "bad" : "good",
+  );
   revalidatePath(`/invoices/${expenseId}`);
   revalidatePath("/invoices");
 }

@@ -9,8 +9,10 @@ import ExpenseForm from "../ExpenseForm";
 import { createExpense } from "../actions";
 import { invoiceLabels } from "../labels";
 
-export default async function NewInvoicePage() {
+export default async function NewInvoicePage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
   const { t } = await getTranslator();
+  /* Opened from a partner's page, say: an invoice we received from them, with them chosen. */
+  const from = String((await searchParams).from ?? "");
   const [projectList, companies, parties] = await Promise.all([
     db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(asc(projects.name)),
     ourCompanies(),
@@ -31,6 +33,7 @@ export default async function NewInvoicePage() {
             cancelHref="/invoices"
             categories={await optionsFor("expenseCategory", t)}
             labels={invoiceLabels(t)}
+            startWith={parties.some((one) => one.value === from) ? { direction: "IN", party: from } : undefined}
           />
         </Card>
       </div>

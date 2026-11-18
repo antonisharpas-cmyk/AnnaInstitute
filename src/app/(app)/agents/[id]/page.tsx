@@ -3,7 +3,7 @@ import { dayAndTime } from "@/lib/when";
 import { notFound } from "next/navigation";
 import { and, desc, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, campaigns, commissionPayments, shareLinks } from "@/db/schema";
+import { agents, campaigns, commissionPayments, documents, shareLinks } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
 import { amountForInput } from "@/lib/money";
@@ -20,12 +20,16 @@ import { birthdayText } from "@/lib/buyers";
 import { TITLES, titleWord } from "@/lib/titles";
 import ProfileCard from "@/components/ProfileCard";
 import DeleteRecord from "@/components/DeleteRecord";
+import DocumentList from "@/components/DocumentList";
+import ConfirmButton from "@/components/ConfirmButton";
 import { whatGoesWithAgent } from "@/lib/deletes";
 import { agentCampaignChannel } from "@/lib/textChannel";
 import {
   addExtra,
   deleteAgent,
+  deleteAgentAgreement,
   saveAgentProfile,
+  uploadAgentAgreement,
   deleteCommissionPayment,
   payLine,
   recordCommissionPayment,
@@ -48,7 +52,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
   const agent = found[0];
   if (!agent) notFound();
 
-  const [sales, paidOut, totals, unclaimed, opened] = await Promise.all([
+  const [sales, paidOut, totals, unclaimed, opened, agreement] = await Promise.all([
     salesOfAgent(id),
     db
       .select()
@@ -66,6 +70,8 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
       .leftJoin(campaigns, eq(campaigns.id, shareLinks.campaignId))
       .where(and(eq(shareLinks.agentId, id), gt(shareLinks.openCount, 0)))
       .orderBy(desc(shareLinks.lastOpenedAt)),
+    /* The agreement signed with them, every version kept. */
+    db.select().from(documents).where(eq(documents.agentId, id)).orderBy(desc(documents.createdAt)),
   ]);
   /* The lines paid in cash, whose payments have no receipt. */
   const cashLines = new Set(sales.flatMap((sale) => sale.lines.filter((l) => l.inCash).map((l) => l.id)));
@@ -209,6 +215,33 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
             ]}
           />
         </div>
+
+        {/* The agreement signed with the agent: a title and the file, or several. */}
+        <Card title={t("agents.agreement")}>
+          <form action={uploadAgentAgreement.bind(null, id)} className="mb-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" data-agent-agreement>
+            <div>
+              <label className="label" htmlFor="agentAgreementTitle">
+                {t("common.title")}
+              </label>
+              <input id="agentAgreementTitle" name="title" required placeholder={t("agents.agreementTitleHint")} className="input" />
+            </div>
+            <div>
+              <label className="label" htmlFor="agentAgreementFiles">
+                {t("common.files")}
+              </label>
+              <input id="agentAgreementFiles" name="files" type="file" multiple required accept="image/*,application/pdf,.doc,.docx" className="input !py-1.5 text-xs" />
+            </div>
+            <SubmitButton>{t("common.add")}</SubmitButton>
+          </form>
+          <DocumentList
+            items={agreement}
+            emptyMessage={t("agents.noAgreement")}
+            locale={locale}
+            action={(doc) => (
+              <ConfirmButton action={deleteAgentAgreement.bind(null, doc.id, id)} label={t("common.delete")} confirm={t("remove.sure")} />
+            )}
+          />
+        </Card>
 
         <div className="space-y-4">
           {/* What he sold, and what each sale earns him. */}

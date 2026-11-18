@@ -4,7 +4,7 @@ import { cleanBirthDate } from "@/lib/buyers";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -25,7 +25,7 @@ import { commissionFromForm } from "@/lib/commissionChoice";
 import { whatGoesWithAgent } from "@/lib/deletes";
 import { letterForCommission } from "@/lib/automaticEmails";
 import { titleFrom } from "@/lib/titles";
-import { removeDocument, storeDocuments } from "@/lib/uploads";
+import { readUploadFields, removeDocument, storeDocuments } from "@/lib/uploads";
 import { recordingHistory } from "@/lib/history";
 import { agentCampaignChannel } from "@/lib/textChannel";
 
@@ -682,6 +682,10 @@ export async function deleteAgent(agentId: string) {
     for (const paper of papers) await removeDocument(paper.id, user);
   }
 
+  /* Their agreement goes too, files and all. */
+  const agreement = await db.select({ id: documents.id }).from(documents).where(eq(documents.agentId, agentId));
+  for (const paper of agreement) await removeDocument(paper.id, user);
+
   await db.delete(commissionPayments).where(eq(commissionPayments.agentId, agentId));
   await db.delete(commissions).where(eq(commissions.agentId, agentId));
 
@@ -704,4 +708,40 @@ export async function deleteAgent(agentId: string) {
   await flash("said.deleted");
   revalidatePath("/agents");
   redirect("/agents");
+}
+
+/**
+ * The agreement signed with the agent: a title and one file or several,
+ * numbered when there are several. A new agreement is added beside the old
+ * one, so the office keeps every version it signed.
+ */
+export async function uploadAgentAgreement(agentId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN"]);
+  const [who] = await db.select({ id: agents.id }).from(agents).where(eq(agents.id, agentId)).limit(1);
+  if (!who) return;
+  let fields: ReturnType<typeof readUploadFields>;
+  try {
+    fields = readUploadFields(formData);
+  } catch {
+    await flash("said.chooseAFile", "bad");
+    revalidatePath(`/agents/${agentId}`);
+    return;
+  }
+  await storeDocuments({ files: fields.files, title: fields.title, category: "CONTRACT", attachTo: { agentId }, user });
+  await flash("said.saved");
+  revalidatePath(`/agents/${agentId}`);
+}
+
+/** Take one of the agreement's files off, the file with it. */
+export async function deleteAgentAgreement(documentId: string, agentId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const [doc] = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.agentId, agentId)))
+    .limit(1);
+  if (!doc) return;
+  await removeDocument(doc.id, user);
+  await flash("said.deleted");
+  revalidatePath(`/agents/${agentId}`);
 }

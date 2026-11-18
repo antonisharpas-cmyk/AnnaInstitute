@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslator } from "@/i18n";
 import { BackLink, Card, PageHeader } from "@/components/ui";
 import { createSubowner } from "../actions";
+import PhoneField from "@/components/PhoneField";
 
 export default async function NewSubownerPage() {
   const { t } = await getTranslator();
@@ -42,7 +43,7 @@ export default async function NewSubownerPage() {
                 <label className="label" htmlFor="phone">
                   {t("leads.phone")}
                 </label>
-                <input id="phone" name="phone" className="input" />
+                <PhoneField id="phone" name="phone" />
               </div>
               <div>
                 <label className="label" htmlFor="country">
@@ -80,7 +81,7 @@ export default async function NewSubownerPage() {
                 <label className="label" htmlFor="mobile">
                   {t("subowners.mobile")}
                 </label>
-                <input id="mobile" name="mobile" className="input" />
+                <PhoneField id="mobile" name="mobile" />
               </div>
               <div>
                 <label className="label" htmlFor="fax">

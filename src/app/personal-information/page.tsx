@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, units } from "@/db/schema";
 import Logo from "@/components/Logo";
+import PhoneField from "@/components/PhoneField";
 import { QR_CONSENT_TEXT } from "@/lib/qrLead";
 import { bedroomsWords } from "@/lib/bedrooms";
 import { sendPersonalInformation } from "./actions";
@@ -110,7 +111,7 @@ export default async function PersonalInformationPage({
                 </div>
                 <div>
                   <label className="label" htmlFor="phone">Telephone</label>
-                  <input id="phone" name="phone" type="tel" autoComplete="tel" className="input" />
+                  <PhoneField id="phone" name="phone" />
                 </div>
                 <div>
                   <label className="label" htmlFor="country">Country</label>

@@ -20,7 +20,10 @@ export type TemplateChoice = {
   toBuyers?: boolean;
 };
 
-export type GroupCounts = { clients: number; agents: number; subowners: number; leads?: number };
+export type GroupCounts = { clients: number; agents: number; subowners: number; leads?: number; partners?: number };
+
+/** One person to tick; tags mark the clients who want appliances or air conditioning. */
+export type PickChoice = { id: string; label: string; hint: string; tags?: string[] };
 
 /** A buyer, with the developments and apartments they hold as "project:<id>" and "unit:<id>". */
 export type BuyerChoice = {
@@ -71,10 +74,13 @@ export default function CampaignForm({
   reach: everyone = [],
   clientChoices = [],
   subownerChoices = [],
+  partnerChoices = [],
   labels,
 }: {
   /** Every client with consent, to tick one by one. */
-  clientChoices?: { id: string; label: string; hint: string }[];
+  clientChoices?: PickChoice[];
+  /** Every partner of the Partners directory, to tick one by one. */
+  partnerChoices?: PickChoice[];
   /** Every active partner company, to tick one by one. */
   subownerChoices?: { id: string; label: string; hint: string }[];
   /** Everybody in the clients, agents, partners and leads lists, for "who gets it and how". */
@@ -99,7 +105,7 @@ export default function CampaignForm({
   counts: GroupCounts;
   /** How many agents want campaigns by email, by WhatsApp, or both ways. */
   agentWays?: { email: number; whatsapp: number; both: number };
-  groups: { clients: boolean; agents: boolean; subowners: boolean; leads?: boolean; buyers?: boolean };
+  groups: { clients: boolean; agents: boolean; subowners: boolean; leads?: boolean; buyers?: boolean; partners?: boolean };
   priceLists: { id: string; label: string }[];
   labels: Record<string, string>;
 }) {
@@ -119,6 +125,9 @@ export default function CampaignForm({
   const [chosenClients, setChosenClients] = useState<string[]>([]);
   const [subownerMode, setSubownerMode] = useState<"all" | "chosen">("all");
   const [chosenSubowners, setChosenSubowners] = useState<string[]>([]);
+  const [toPartners, setToPartners] = useState(Boolean(groups.partners));
+  const [partnerMode, setPartnerMode] = useState<"all" | "chosen">("all");
+  const [chosenPartners, setChosenPartners] = useState<string[]>([]);
   const [chosenLeads, setChosenLeads] = useState<string[]>(leadsDefault);
   const [leadTerm, setLeadTerm] = useState("");
   const [shownProjects, setShownProjects] = useState<string[]>(projectsDefault);
@@ -160,7 +169,7 @@ export default function CampaignForm({
    * already said how, and the office only chooses for the agents who take
    * either way. The ways then follow the agents.
    */
-  const onlyAgents = toAgents && !toClients && !toSubowners && !toLeads && !toBuyers;
+  const onlyAgents = toAgents && !toClients && !toSubowners && !toLeads && !toBuyers && !toPartners;
   const sendEmail = onlyAgents ? agentsNeedEmail : viaEmail;
   const sendWhatsapp = onlyAgents ? agentsNeedWhatsapp : viaWhatsapp;
   const showEmail = sendEmail || agentsNeedEmail;
@@ -178,7 +187,7 @@ export default function CampaignForm({
   const needsProject = /\{\{\s*(project|location|details|completion|residences)\s*\}\}/i.test(words);
   const needsUnit = /\{\{\s*(unit|price)\s*\}\}/i.test(words);
   /* A letter to the buyers takes each buyer's own apartment and development. */
-  const ownPlaces = toBuyers && !toClients && !toAgents && !toSubowners && !toLeads;
+  const ownPlaces = toBuyers && !toClients && !toAgents && !toSubowners && !toLeads && !toPartners;
   const aboutWarning = ownPlaces
     ? ""
     : needsUnit && !aboutValues.some((one) => one.startsWith("unit:"))
@@ -228,7 +237,8 @@ export default function CampaignForm({
     (toClients ? (clientMode === "chosen" && chosenClients.length > 0 ? chosenClients.length : counts.clients) : 0) +
     (toAgents ? (agentsInPlay ? agentsInPlay.length : counts.agents) : 0) +
     (toSubowners ? (subownerMode === "chosen" && chosenSubowners.length > 0 ? chosenSubowners.length : counts.subowners) : 0) +
-    (toLeads ? (leadMode === "chosen" && chosenLeads.length > 0 ? chosenLeads.length : (counts.leads ?? 0)) : 0);
+    (toLeads ? (leadMode === "chosen" && chosenLeads.length > 0 ? chosenLeads.length : (counts.leads ?? 0)) : 0) +
+    (toPartners ? (partnerMode === "chosen" && chosenPartners.length > 0 ? chosenPartners.length : (counts.partners ?? 0)) : 0);
 
   /*
    * Who gets it, and how: worked out live from what is ticked, group by
@@ -301,6 +311,17 @@ export default function CampaignForm({
               ...tally(
                 inGroup("SUBOWNERS").filter(
                   (one) => subownerMode !== "chosen" || chosenSubowners.length === 0 || chosenSubowners.includes(one.id),
+                ),
+              ),
+            }
+          : null,
+        toPartners
+          ? {
+              key: "partners",
+              name: labels.groupPartners,
+              ...tally(
+                inGroup("PARTNERS").filter(
+                  (one) => partnerMode !== "chosen" || chosenPartners.length === 0 || chosenPartners.includes(one.id),
                 ),
               ),
             }
@@ -422,6 +443,7 @@ export default function CampaignForm({
           {groupTile("toLeads", toLeads, setToLeads, labels.groupLeads, counts.leads ?? 0, labels.groupLeadsHint)}
           {groupTile("toAgents", toAgents, setToAgents, labels.groupAgents, counts.agents, labels.groupAgentsHint)}
           {groupTile("toSubowners", toSubowners, setToSubowners, labels.groupSubowners, counts.subowners, labels.groupSubownersHint)}
+          {groupTile("toPartners", toPartners, setToPartners, labels.groupPartners, counts.partners ?? 0, labels.groupPartnersHint)}
         </div>
 
         {/* Every client with consent, or only the ones ticked here. */}
@@ -434,6 +456,10 @@ export default function CampaignForm({
             setChosen={setChosenClients}
             choices={clientChoices}
             labels={{ all: `${labels.clientsAll} (${clientChoices.length})`, chosen: labels.clientsChosen, picked: labels.leadsPicked, search: labels.leadsSearch }}
+            quick={[
+              { tag: "appliances", label: labels.tickAppliances },
+              { tag: "airCondition", label: labels.tickAirCondition },
+            ]}
           />
         ) : null}
 
@@ -447,6 +473,19 @@ export default function CampaignForm({
             setChosen={setChosenSubowners}
             choices={subownerChoices}
             labels={{ all: `${labels.subownersAll} (${subownerChoices.length})`, chosen: labels.subownersChosen, picked: labels.leadsPicked, search: labels.subownersSearch }}
+          />
+        ) : null}
+
+        {/* Every partner of the directory, or only the ones ticked: search by name or by what they do. */}
+        {toPartners ? (
+          <ChoosePeople
+            name="partner"
+            mode={partnerMode}
+            setMode={setPartnerMode}
+            chosen={chosenPartners}
+            setChosen={setChosenPartners}
+            choices={partnerChoices}
+            labels={{ all: `${labels.partnersAll} (${partnerChoices.length})`, chosen: labels.partnersChosen, picked: labels.leadsPicked, search: labels.partnersSearch }}
           />
         ) : null}
 
@@ -793,6 +832,7 @@ export default function CampaignForm({
               <li>{labels.summaryRuleClients}</li>
               {toAgents ? <li>{labels.summaryRuleAgents}</li> : null}
               {toSubowners ? <li>{labels.summaryRuleSubowners}</li> : null}
+              {toPartners ? <li>{labels.summaryRulePartners}</li> : null}
               <li>{labels.summaryRuleNone}</li>
               <li>{labels.summaryRuleOnce}</li>
             </ul>
@@ -920,14 +960,17 @@ function ChoosePeople({
   setChosen,
   choices,
   labels,
+  quick = [],
 }: {
-  name: "client" | "subowner";
+  name: "client" | "subowner" | "partner";
   mode: "all" | "chosen";
   setMode: (mode: "all" | "chosen") => void;
   chosen: string[];
   setChosen: (ids: string[]) => void;
-  choices: { id: string; label: string; hint: string }[];
+  choices: PickChoice[];
   labels: { all: string; chosen: string; picked: string; search: string };
+  /** Buttons that tick everybody with a tag: the clients who want air conditioning, say. */
+  quick?: { tag: string; label: string }[];
 }) {
   const [term, setTerm] = useState("");
   const words = term.toLowerCase().split(/\s+/).filter(Boolean);
@@ -951,6 +994,25 @@ function ChoosePeople({
       </div>
       {mode === "chosen" ? (
         <>
+          {quick.some((one) => choices.some((choice) => choice.tags?.includes(one.tag))) ? (
+            <div className="mt-2 flex flex-wrap gap-2" data-quick-pick>
+              {quick
+                .filter((one) => choices.some((choice) => choice.tags?.includes(one.tag)))
+                .map((one) => {
+                  const ids = choices.filter((choice) => choice.tags?.includes(one.tag)).map((choice) => choice.id);
+                  return (
+                    <button
+                      key={one.tag}
+                      type="button"
+                      className="btn btn-secondary !px-2 !py-1 !text-xs"
+                      onClick={() => setChosen([...new Set([...chosen, ...ids])])}
+                    >
+                      {one.label} ({ids.length})
+                    </button>
+                  );
+                })}
+            </div>
+          ) : null}
           <input value={term} onChange={(event) => setTerm(event.target.value)} placeholder={labels.search} className="input mt-2" />
           <ul className="mt-2 max-h-56 overflow-y-auto rounded border border-brand-line bg-white text-sm">
             {shown.map((one) => (

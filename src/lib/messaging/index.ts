@@ -43,6 +43,7 @@ export type Recipient = {
   agentId?: string | null;
   subownerId?: string | null;
   leadId?: string | null;
+  partnerId?: string | null;
 };
 
 export function addressFor(channel: Channel, recipient: Recipient): string | null {
@@ -130,6 +131,7 @@ export async function sendAndRecord(options: {
         agentId: recipient.agentId ?? null,
         subownerId: recipient.subownerId ?? null,
         leadId: recipient.leadId ?? null,
+        partnerId: recipient.partnerId ?? null,
         subject: options.subject ?? null,
         body,
         status,

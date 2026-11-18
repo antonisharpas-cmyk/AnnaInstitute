@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import DateField from "@/components/DateField";
+import PhoneField from "@/components/PhoneField";
 
 /*
  * The two things a client can have beyond themselves: a second buyer, when the
@@ -81,15 +82,19 @@ function Box({
       <label className="label" htmlFor={name}>
         {label}
       </label>
-      <input
-        id={name}
-        name={name}
-        type={type}
-        required={required}
-        defaultValue={value ?? ""}
-        placeholder={placeholder}
-        className="input"
-      />
+      {type === "tel" ? (
+        <PhoneField id={name} name={name} defaultValue={value} required={required} />
+      ) : (
+        <input
+          id={name}
+          name={name}
+          type={type}
+          required={required}
+          defaultValue={value ?? ""}
+          placeholder={placeholder}
+          className="input"
+        />
+      )}
     </div>
   );
 }
@@ -109,7 +114,7 @@ export function SecondBuyerFields({
       <Box label={labels.name} name="secondFirstName" value={values?.secondFirstName} required />
       <Box label={labels.surname} name="secondLastName" value={values?.secondLastName} required />
       <Box label={labels.email} name="secondEmail" type="email" value={values?.secondEmail} />
-      <Box label={labels.phone} name="secondPhone" value={values?.secondPhone} placeholder="+357 99 000000" />
+      <Box label={labels.phone} name="secondPhone" type="tel" value={values?.secondPhone} />
       <div>
         <label className="label" htmlFor="secondIdType">
           {labels.idType}
@@ -150,7 +155,7 @@ export function LoanFields({ values, labels }: { values?: LoanValues; labels: Ex
         <input id="loanEmail" name="loanEmail" defaultValue={values?.loanEmail ?? ""} className="input" placeholder="loans@bank.com.cy, officer@bank.com.cy" />
         <p className="mt-1 text-xs text-brand-graphite/60">{labels.loanEmailHint}</p>
       </div>
-      <Box label={labels.loanPhone} name="loanPhone" value={values?.loanPhone} />
+      <Box label={labels.loanPhone} name="loanPhone" type="tel" value={values?.loanPhone} />
       <Box label={labels.loanNotes} name="loanNotes" value={values?.loanNotes} />
     </div>
   );

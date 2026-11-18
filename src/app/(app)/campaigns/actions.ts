@@ -17,6 +17,7 @@ import {
   emailTemplates,
   messages,
   shareLinks,
+  partners,
   subowners,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -29,7 +30,7 @@ import { sendEmail } from "@/lib/messaging/email";
 import { normalisePhone } from "@/lib/messaging/text";
 import { readSetting, writeSetting } from "@/lib/settings";
 import { campaignExtras, ensureCampaignLinks, testValues, textTest, unfilledIn } from "@/lib/campaignTest";
-import { createPriceListLink, priceListUrl } from "@/lib/priceList";
+import { createPriceListLink, LINK_DAYS, priceListUrl, renewLinks } from "@/lib/priceList";
 import { campaignAttachments, filesLinkFor, filesUrl, personalFilesLink } from "@/lib/campaignFiles";
 import { endRun, runOf, startRun, tickRun } from "@/lib/campaignProgress";
 
@@ -102,7 +103,8 @@ export async function createCampaign(formData: FormData) {
   const toSubowners = String(formData.get("toSubowners") ?? "") === "on";
   const toLeads = String(formData.get("toLeads") ?? "") === "on";
   const toBuyers = String(formData.get("toBuyers") ?? "") === "on";
-  if (!toClients && !toAgents && !toSubowners && !toLeads && !toBuyers) {
+  const toPartners = String(formData.get("toPartners") ?? "") === "on";
+  if (!toClients && !toAgents && !toSubowners && !toLeads && !toBuyers && !toPartners) {
     throw new Error("Choose at least one group to send it to.");
   }
   const audience = toClients ? "CLIENTS_CONSENTED" : toAgents ? "AGENTS" : "SUBOWNERS";
@@ -119,6 +121,11 @@ export async function createCampaign(formData: FormData) {
   const subownerIds =
     toSubowners && String(formData.get("subownerMode") ?? "all") === "chosen"
       ? formData.getAll("subownerIds").map(String).filter(Boolean)
+      : [];
+  /* Every partner of the directory, or only the ones ticked. */
+  const partnerIds =
+    toPartners && String(formData.get("partnerMode") ?? "all") === "chosen"
+      ? formData.getAll("partnerIds").map(String).filter(Boolean)
       : [];
   const projectIds = formData.getAll("projectIds").map(String).filter(Boolean);
   /* Every buyer of what it is about, or only the ones ticked. */
@@ -165,6 +172,8 @@ export async function createCampaign(formData: FormData) {
       leadIds: leadIds.length > 0 ? JSON.stringify(leadIds) : null,
       clientIds: clientIds.length > 0 ? JSON.stringify(clientIds) : null,
       subownerIds: subownerIds.length > 0 ? JSON.stringify(subownerIds) : null,
+      toPartners,
+      partnerIds: partnerIds.length > 0 ? JSON.stringify(partnerIds) : null,
       toBuyers,
       buyerIds: buyerIds.length > 0 ? JSON.stringify(buyerIds) : null,
       projectIds: projectIds.length > 0 ? JSON.stringify(projectIds) : null,
@@ -228,6 +237,9 @@ export type CampaignGroups = {
   /** JSON lists of the clients with consent and the companies chosen by hand; empty is every one. */
   clientIds?: string | null;
   subownerIds?: string | null;
+  /** The partners of the Partners directory, every one or the ones chosen. */
+  toPartners?: boolean;
+  partnerIds?: string | null;
   /** The buyers of what the campaign is about, every one or the ones chosen. */
   toBuyers?: boolean;
   buyerIds?: string | null;
@@ -263,7 +275,13 @@ export async function audienceFor(groups: CampaignGroups) {
     agentId: string | null;
     subownerId: string | null;
     leadId?: string | null;
-    group: "CLIENTS" | "AGENTS" | "SUBOWNERS" | "LEADS" | "BUYERS";
+    partnerId?: string | null;
+    group: "CLIENTS" | "AGENTS" | "SUBOWNERS" | "LEADS" | "BUYERS" | "PARTNERS";
+    /** A client's wishes, YES, NO or UNDECIDED, for choosing who a campaign goes to. */
+    wantsAppliances?: string | null;
+    wantsAirCondition?: string | null;
+    /** A partner's kind of work, for choosing them. */
+    category?: string;
     /** An agent's own choice of how campaigns reach them: EMAIL, SMS or BOTH. */
     agentChannel?: string;
     /** A client's, buyer's or lead's own choice of whether they are texted: SMS or NONE. */
@@ -296,6 +314,8 @@ export async function audienceFor(groups: CampaignGroups) {
         subownerId: null,
         group: "CLIENTS",
         textChannel: c.textChannel,
+        wantsAppliances: c.wantsAppliances,
+        wantsAirCondition: c.wantsAirCondition,
       });
     }
   }
@@ -348,6 +368,30 @@ export async function audienceFor(groups: CampaignGroups) {
         agentId: null,
         subownerId: s.id,
         group: "SUBOWNERS",
+      });
+    }
+  }
+
+  if (groups.toPartners) {
+    /* The partners of the directory: business contacts, like the agents, so every one of them. */
+    const chosen = idsOf(groups.partnerIds);
+    const rows = await db
+      .select()
+      .from(partners)
+      .where(chosen.length > 0 ? inArray(partners.id, chosen) : undefined)
+      .orderBy(asc(partners.name));
+    for (const one of rows) {
+      people.push({
+        name: one.name,
+        firstName: one.name.split(" ")[0] ?? one.name,
+        email: one.email,
+        phone: one.mobile,
+        clientId: null,
+        agentId: null,
+        subownerId: null,
+        partnerId: one.id,
+        group: "PARTNERS",
+        category: one.category === "OTHER" && one.categoryOther?.trim() ? one.categoryOther.trim() : one.category,
       });
     }
   }
@@ -489,8 +533,17 @@ export async function resumeCampaign(campaignId: string) {
 /** Who a message went to, the same way whether it is being sent or was already. */
 const whoKey = (
   channel: string,
-  one: { clientId?: string | null; agentId?: string | null; subownerId?: string | null; leadId?: string | null; email?: string | null; phone?: string | null },
-) => `${channel === "EMAIL" ? "EMAIL" : "TEXT"}|${one.clientId ?? one.agentId ?? one.subownerId ?? one.leadId ?? one.email ?? one.phone ?? ""}`;
+  one: {
+    clientId?: string | null;
+    agentId?: string | null;
+    subownerId?: string | null;
+    leadId?: string | null;
+    partnerId?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  },
+) =>
+  `${channel === "EMAIL" ? "EMAIL" : "TEXT"}|${one.clientId ?? one.agentId ?? one.subownerId ?? one.leadId ?? one.partnerId ?? one.email ?? one.phone ?? ""}`;
 
 /**
  * The send itself, one recipient after another.
@@ -534,6 +587,7 @@ async function runCampaign(campaignId: string, who: { id: string; email: string 
             agentId: messages.agentId,
             subownerId: messages.subownerId,
             leadId: messages.leadId,
+            partnerId: messages.partnerId,
           })
           .from(messages)
           .where(eq(messages.campaignId, campaignId))
@@ -694,6 +748,45 @@ export async function makePriceListLink(formData: FormData) {
   });
 
   revalidatePath("/campaigns");
+}
+
+/** Another 60 days for one price list link, from today. */
+export async function renewLinkAction(shareLinkId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const done = await renewLinks([shareLinkId]);
+  await recordAudit({
+    action: "priceList.link.renew",
+    entity: "shareLink",
+    entityId: shareLinkId,
+    detail: `open for another ${LINK_DAYS} days`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(done > 0 ? "said.linkRenewed" : "said.linkNotRenewed", done > 0 ? "good" : "bad");
+  revalidatePath("/campaigns");
+}
+
+/** Another 60 days, from today, for a campaign's price list and everybody's files links. */
+export async function renewCampaignLinks(campaignId: string) {
+  const user = await requireUser(["ADMIN"]);
+  const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+  if (!campaign) return;
+  const files = await db
+    .select({ id: shareLinks.id })
+    .from(shareLinks)
+    .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, campaignId)));
+  const ids = [...(campaign.shareLinkId ? [campaign.shareLinkId] : []), ...files.map((one) => one.id)];
+  const done = await renewLinks(ids);
+  await recordAudit({
+    action: "campaign.links.renew",
+    entity: "campaign",
+    entityId: campaignId,
+    detail: `${done} link(s) open for another ${LINK_DAYS} days`,
+    userId: user.id,
+    userEmail: user.email,
+  });
+  await flash(done > 0 ? "said.linkRenewed" : "said.linkNotRenewed", done > 0 ? "good" : "bad");
+  revalidatePath(`/campaigns/${campaignId}`);
 }
 
 export async function revokePriceListLink(shareLinkId: string) {

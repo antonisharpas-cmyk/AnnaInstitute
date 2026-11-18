@@ -371,6 +371,12 @@ export const clients = pgTable("clients", {
   loanPhone: text("loan_phone"),
   loanNotes: text("loan_notes"),
   /**
+   * What the client wants with the apartment, for the office and for choosing
+   * who a campaign goes to: YES, NO or UNDECIDED. Empty until somebody asks.
+   */
+  wantsAppliances: text("wants_appliances"),
+  wantsAirCondition: text("wants_air_condition"),
+  /**
    * In the recycle bin rather than gone.
    *
    * Nothing the office deletes by hand is destroyed on the spot: the record is
@@ -912,10 +918,13 @@ export const documents = pgTable("documents", {
   partnerOfferId: text("partner_offer_id"),
   /** A constructor's own paper, their contractor licence say. */
   constructorId: text("constructor_id"),
+  /** The agreement signed with an agent. */
+  agentId: text("agent_id").references((): AnyPgColumn => agents.id, { onDelete: "cascade" }),
   createdAt: created(),
 }, (table) => ({
   byPartnerOffer: index("documents_partner_offer_idx").on(table.partnerOfferId),
   byConstructor: index("documents_constructor_idx").on(table.constructorId),
+  byAgent: index("documents_agent_idx").on(table.agentId),
 }));
 
 /**
@@ -1135,6 +1144,10 @@ export const campaigns = pgTable("campaigns", {
   clientIds: text("client_ids"),
   /** The partner companies chosen by hand, as a JSON list of ids. Empty means every active one. */
   subownerIds: text("subowner_ids"),
+  /** The partners of the Partners directory: kitchens, bathrooms, furniture and the rest. */
+  toPartners: boolean("to_partners").default(false).notNull(),
+  /** The partners chosen by hand, as a JSON list of ids. Empty means every partner. */
+  partnerIds: text("partner_ids"),
   /**
    * The buyers of what the campaign is about: the clients holding a reserved,
    * sold or delivered apartment there. Service letters about their own home,
@@ -1206,6 +1219,8 @@ export const messages = pgTable("messages", {
   subownerId: text("subowner_id").references(() => subowners.id, {
     onDelete: "set null",
   }),
+  /** A partner from the Partners directory: a campaign to them, or the note that we paid their invoice. */
+  partnerId: text("partner_id").references((): AnyPgColumn => partners.id, { onDelete: "set null" }),
   subject: text("subject"),
   body: text("body").notNull(),
   status: messageStatusEnum("status").default("QUEUED").notNull(),

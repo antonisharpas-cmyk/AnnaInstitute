@@ -1,7 +1,7 @@
 import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { agents, clients, constructors, subownerDirectors, subowners, teamMembers } from "@/db/schema";
+import { agents, clients, constructors, partners, subownerDirectors, subowners, teamMembers } from "@/db/schema";
 import { companyDetails, issuerDetails, ONE_ELEVEN } from "@/lib/issuer";
 import type { IssuedSnapshot } from "@/lib/paymentPdf";
 import type { Recipient } from "@/lib/messaging";
@@ -11,13 +11,13 @@ import { titleWord } from "@/lib/titles";
  * Who is on the other side of an invoice under Company.
  *
  * One Eleven, or another of our companies, charges anybody the CRM knows: a
- * company, a client, an agent, a constructor, somebody in the team, or anybody
+ * company, a client, an agent, a constructor, a partner, somebody in the team, or anybody
  * else typed by name. An invoice we received has the same choice for who sent
  * it. The party is kept as its kind and its record, so the paper, the email
  * and the reports always find the person as they are now.
  */
 
-export const PARTY_KINDS = ["COMPANY", "CLIENT", "AGENT", "CONSTRUCTOR", "TEAM", "OTHER"] as const;
+export const PARTY_KINDS = ["COMPANY", "CLIENT", "AGENT", "CONSTRUCTOR", "PARTNER", "TEAM", "OTHER"] as const;
 export type PartyKind = (typeof PARTY_KINDS)[number];
 
 export type PartyOption = { value: string; kind: PartyKind; name: string; email: string };
@@ -38,6 +38,10 @@ const norm = (value: string | null | undefined) =>
     .replace(/[^a-z0-9α-ω]+/g, " ")
     .replace(/\b(ltd|limited|llc|plc)\b/g, "")
     .trim();
+
+/** A partner as an invoice names them: their company, with the person after it when the two differ. */
+export const partnerName = (one: { name: string; company: string | null }) =>
+  one.company?.trim() && one.company.trim() !== one.name.trim() ? `${one.company.trim()} (${one.name.trim()})` : one.name.trim();
 
 /** The first name of a person's name: "Maria" of "Maria Georgiou". */
 const firstOf = (value: string | null | undefined) => (value ?? "").trim().split(/\s+/)[0] ?? "";
@@ -101,7 +105,7 @@ export async function ourCompanyName(id: string | null | undefined): Promise<str
 
 /** Everybody an invoice can be to or from, grouped, for the picker. */
 export async function partyOptions(): Promise<PartyOption[]> {
-  const [companyRows, clientRows, agentRows, constructorRows, teamRows] = await Promise.all([
+  const [companyRows, clientRows, agentRows, constructorRows, teamRows, partnerRows] = await Promise.all([
     db.select().from(subowners).orderBy(asc(subowners.name)),
     db
       .select({ id: clients.id, firstName: clients.firstName, lastName: clients.lastName, email: clients.email })
@@ -113,6 +117,7 @@ export async function partyOptions(): Promise<PartyOption[]> {
       .from(constructors)
       .orderBy(asc(constructors.name)),
     db.select({ id: teamMembers.id, name: teamMembers.name, email: teamMembers.email }).from(teamMembers).orderBy(asc(teamMembers.name)),
+    db.select({ id: partners.id, name: partners.name, company: partners.company, email: partners.email }).from(partners).orderBy(asc(partners.name)),
   ]);
   const out: PartyOption[] = [];
   for (const one of companyRows) {
@@ -131,6 +136,9 @@ export async function partyOptions(): Promise<PartyOption[]> {
   }
   for (const one of constructorRows) {
     out.push({ value: `CONSTRUCTOR:${one.id}`, kind: "CONSTRUCTOR", name: one.company?.trim() || one.name, email: one.email?.trim() ?? "" });
+  }
+  for (const one of partnerRows) {
+    out.push({ value: `PARTNER:${one.id}`, kind: "PARTNER", name: partnerName(one), email: one.email?.trim() ?? "" });
   }
   for (const one of teamRows) {
     out.push({ value: `TEAM:${one.id}`, kind: "TEAM", name: one.name, email: one.email?.trim() ?? "" });
@@ -280,6 +288,24 @@ export async function partyOf(expense: {
       };
     }
   }
+  if (kind === "PARTNER" && id) {
+    const [one] = await db.select().from(partners).where(eq(partners.id, id)).limit(1);
+    if (one) {
+      const name = one.company?.trim() || one.name;
+      const email = typedEmail || one.email?.trim() || "";
+      return {
+        kind,
+        id,
+        name,
+        dear: one.name,
+        greeting: firstOf(one.name),
+        email,
+        phone: one.mobile ?? "",
+        bill: blank(name, { email, phone: one.mobile ?? "" }),
+        recipient: { name, email, partnerId: one.id },
+      };
+    }
+  }
   if (kind === "TEAM" && id) {
     const [one] = await db.select().from(teamMembers).where(eq(teamMembers.id, id)).limit(1);
     if (one) {
@@ -324,6 +350,8 @@ export function partyHref(kind: string | null | undefined, id: string | null | u
       return `/agents/${id}`;
     case "CONSTRUCTOR":
       return `/constructors/${id}`;
+    case "PARTNER":
+      return `/partners/${id}`;
     default:
       return null;
   }

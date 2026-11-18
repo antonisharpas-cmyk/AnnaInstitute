@@ -6,6 +6,7 @@ import { campaignDocuments, campaigns, documents, projects, shareLinks } from "@
 import { idsOf, projectPapers } from "./campaignProjects";
 import { aboutFromChoices, aboutOf } from "./campaignAbout";
 import { appUrl } from "./unsubscribe";
+import { LINK_DAYS } from "./priceList";
 
 /**
  * The files of a campaign go by link, never as attachments. Four developments'
@@ -30,9 +31,22 @@ export async function campaignFilesLink(campaignId: string) {
   return found ?? null;
 }
 
+const sixtyDays = () => new Date(Date.now() + LINK_DAYS * 24 * 60 * 60 * 1000);
+
+/**
+ * A link about to be sent: one that has run out is opened for another 60
+ * days, so a campaign carried on later, or tried again, never sends a dead link.
+ */
+async function fresh<T extends { id: string; expiresAt: Date | null }>(link: T): Promise<T> {
+  if (link.expiresAt && link.expiresAt.getTime() > Date.now()) return link;
+  const expiresAt = sixtyDays();
+  await db.update(shareLinks).set({ expiresAt }).where(eq(shareLinks.id, link.id));
+  return { ...link, expiresAt };
+}
+
 export async function filesLinkFor(campaignId: string, createdByEmail: string) {
   const existing = await campaignFilesLink(campaignId);
-  if (existing) return existing;
+  if (existing) return fresh(existing);
 
   const inserted = await db
     .insert(shareLinks)
@@ -41,6 +55,7 @@ export async function filesLinkFor(campaignId: string, createdByEmail: string) {
       kind: "CAMPAIGN_FILES",
       campaignId,
       createdByEmail,
+      expiresAt: sixtyDays(),
     })
     .returning();
 
@@ -55,6 +70,7 @@ export type FilesRecipient = {
   agentId?: string | null;
   subownerId?: string | null;
   leadId?: string | null;
+  partnerId?: string | null;
 };
 
 /** Who a link is for, the same for their email and their SMS. */
@@ -63,6 +79,7 @@ export function recipientKeyOf(one: FilesRecipient): string | null {
   if (one.agentId) return `agent:${one.agentId}`;
   if (one.subownerId) return `company:${one.subownerId}`;
   if (one.leadId) return `lead:${one.leadId}`;
+  if (one.partnerId) return `partner:${one.partnerId}`;
   const address = (one.email ?? one.phone ?? "").trim().toLowerCase();
   return address ? `address:${address}` : null;
 }
@@ -76,7 +93,7 @@ export async function personalFilesLink(campaignId: string, recipient: FilesReci
     .from(shareLinks)
     .where(and(eq(shareLinks.kind, "CAMPAIGN_FILES"), eq(shareLinks.campaignId, campaignId), eq(shareLinks.recipientKey, key)))
     .limit(1);
-  if (existing) return existing;
+  if (existing) return fresh(existing);
   const inserted = await db
     .insert(shareLinks)
     .values({
@@ -90,6 +107,7 @@ export async function personalFilesLink(campaignId: string, recipient: FilesReci
       agentId: recipient.agentId ?? null,
       subownerId: recipient.subownerId ?? null,
       leadId: recipient.leadId ?? null,
+      expiresAt: sixtyDays(),
     })
     .returning();
   return inserted[0];
@@ -168,6 +186,10 @@ export async function campaignAttachments(campaignId: string) {
  * that promises them, so the brochure, drawings, specifications and renders
  * are on the page the link opens. A letter about a development that never
  * mentions its files, a viewing invitation say, does not point at them.
+ *
+ * A construction progress update is the exception: its link is for the site
+ * photographs uploaded with it, so it never carries the development's
+ * brochure, drawings, specifications or renders.
  */
 async function developmentsWithFiles(campaign: typeof campaigns.$inferSelect): Promise<string[]> {
   if (campaign.templateKey === "construction_update") return [];
@@ -228,4 +250,15 @@ export async function campaignFolders(campaignId: string): Promise<{ folders: Pr
     })
     .filter((folder) => folder.count > 0);
   return { folders, other };
+}
+
+/** A campaign's files link that existed but has passed its 60 days: for the page that says so. */
+export async function expiredFilesLink(token: string) {
+  const [link] = await db
+    .select()
+    .from(shareLinks)
+    .where(and(eq(shareLinks.token, token), eq(shareLinks.kind, "CAMPAIGN_FILES")))
+    .limit(1);
+  if (!link || link.revokedAt || !link.expiresAt || link.expiresAt.getTime() >= Date.now()) return null;
+  return link;
 }

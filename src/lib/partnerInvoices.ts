@@ -549,3 +549,64 @@ export async function emailIncomeReceipt(paymentId: string): Promise<Emailed> {
   await remember(error);
   return done(result.status === "SIMULATED" ? "SKIPPED" : "FAILED", error, party.email);
 }
+
+/**
+ * We paid an invoice someone sent us: an email saying so, asking for their
+ * receipt. Sent when the payment is recorded without their receipt, if the
+ * office leaves the box ticked. Never for a salary, and only to somebody with
+ * an email address. What happened is kept on the payment, as for our receipts.
+ */
+export async function emailPaidAskReceipt(expenseId: string, paymentId: string): Promise<Emailed> {
+  const row = await load(expenseId);
+  if (!row) return { status: "SKIPPED", to: null, detail: "The invoice is not there." };
+  const { expense } = row;
+  const [payment] = await db.select().from(expensePayments).where(eq(expensePayments.id, paymentId)).limit(1);
+  if (!payment || expense.direction !== "IN") return { status: "SKIPPED", to: null, detail: "Not a payment we made." };
+  const party = await partyOf(expense);
+  const remember = async (error: string | null) =>
+    db
+      .update(expensePayments)
+      .set(error ? { emailError: error } : { emailedAt: new Date(), emailError: null })
+      .where(eq(expensePayments.id, paymentId));
+  if (!party.email) {
+    await remember(`${party.name} has no email address`);
+    return { status: "SKIPPED", to: null, detail: `${party.name} has no email address, so nobody was asked for the receipt.` };
+  }
+  const ours = await issuerDetails(await asOurCompanyId(expense.ourCompanyId));
+  const method = payment.method
+    ? payment.method === "OTHER"
+      ? (payment.methodOther ?? "").trim()
+      : (await englishWord("paymentMethod", payment.method)).toLowerCase()
+    : "";
+  const what = [
+    expense.reference ? `your invoice ${expense.reference}` : "your invoice",
+    expense.issueDate ? `dated ${expense.issueDate.toLocaleDateString("en-GB")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const how = [method ? `by ${method}` : "", payment.reference ? `reference ${payment.reference}` : ""].filter(Boolean).join(", ");
+  const body = [
+    `Dear ${party.greeting},`,
+    "",
+    `We would like to let you know that we have paid ${what}. We paid ${euro(toCents(payment.amount))} on ${payment.paidOn.toLocaleDateString("en-GB")}${how ? `, ${how}` : ""}.`,
+    "",
+    "Could you please send us your receipt for this payment? You can simply reply to this email with it.",
+    "",
+    "Kind regards,",
+    ours.name || "One Eleven",
+  ].join("\n");
+  const result = await sendAndRecord({
+    channel: "EMAIL",
+    recipient: { ...party.recipient, email: party.email },
+    subject: `Payment of ${expense.reference ? `invoice ${expense.reference}` : "your invoice"}, your receipt please`,
+    body,
+    withOptOut: false,
+  });
+  if (result.status === "SENT") {
+    await remember(null);
+    return { status: "SENT", to: party.email, detail: `${party.email} was told it is paid and asked for the receipt` };
+  }
+  const error = result.error ?? (result.status === "SIMULATED" ? "email is not set up" : "the email did not go");
+  await remember(error);
+  return { status: result.status === "SIMULATED" ? "SKIPPED" : "FAILED", to: party.email, detail: error };
+}

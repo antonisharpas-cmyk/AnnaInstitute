@@ -37,6 +37,7 @@ import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
 import PersonalInfo from "./PersonalInfo";
+import WishesAndVisits from "./WishesAndVisits";
 import TextChannelSwitch from "@/components/TextChannelSwitch";
 import { textChannelOf } from "@/lib/textChannel";
 import { LoanCard, SecondBuyerCard } from "./BuyerCards";
@@ -441,6 +442,9 @@ export default async function ClientPage({
           </form>
           <p className="mt-2 text-xs text-brand-graphite/60">{t("clients.assignedNote")}</p>
         </Card>
+
+        {/* What they want with the apartment, and whether they have been to our partners. */}
+        <WishesAndVisits client={client} t={t} locale={locale} />
 
         {/* The second buyer, when the apartment is in two names, and the bank, when a loan pays. */}
         <div className="grid gap-4 lg:grid-cols-2">

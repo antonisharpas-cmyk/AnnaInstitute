@@ -42,6 +42,7 @@ export type AttachTo = {
   installmentId?: string | null;
   partnerOfferId?: string | null;
   constructorId?: string | null;
+  agentId?: string | null;
 };
 
 /** Save one uploaded file and create its document record. */
@@ -74,6 +75,7 @@ export async function storeDocument(options: {
       installmentId: options.attachTo.installmentId ?? null,
       partnerOfferId: options.attachTo.partnerOfferId ?? null,
       constructorId: options.attachTo.constructorId ?? null,
+      agentId: options.attachTo.agentId ?? null,
       uploadedById: options.user.id,
     })
     .returning({ id: documents.id });

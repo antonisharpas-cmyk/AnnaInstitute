@@ -171,6 +171,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                                 {t("invoices.salaryNoReceipt")}
                               </span>
                             ) : (
+                              <>
+                              {payment.emailedAt ? (
+                                <div className="mb-1 text-brand-graphite/60" data-paid-asked>
+                                  {t("invoices.paidAsked")} {dayAndTime(payment.emailedAt, locale)}
+                                </div>
+                              ) : null}
                               <form action={uploadTheirReceipt.bind(null, id, payment.id)} className="space-y-1" data-their-receipt-form>
                                 <span className="block font-semibold text-[color:var(--color-negative)]">{t("invoices.receiptMissing")}</span>
                                 <input name="receipt" type="file" required accept=".pdf,image/*" className="input !py-1 text-xs" />
@@ -178,6 +184,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                                   {t("invoices.uploadTheirReceipt")}
                                 </button>
                               </form>
+                              </>
                             )}
                           </td>
                           <td className="ctr">
@@ -249,6 +256,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                     <input id="receipt" name="receipt" type="file" accept=".pdf,image/*" className="input !py-1.5 text-xs" />
                   </div>
                 )}
+                {/* Paid without their receipt: they are told and asked for it, unless the office unticks it. */}
+                {!out && !salary && party.email ? (
+                  <label className="flex items-start gap-2 text-sm" data-email-paid>
+                    <input type="checkbox" name="emailPaid" defaultChecked className="mt-0.5" />
+                    <span>
+                      {t("invoices.emailPaid").replace("{email}", party.email)}
+                      <span className="block text-xs text-brand-graphite/60">{t("invoices.emailPaidHint")}</span>
+                    </span>
+                  </label>
+                ) : null}
                 <button type="submit" className="btn btn-primary">
                   {out ? t("invoices.saveAndSendReceipt") : t("common.save")}
                 </button>

@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
 import { formatAmount, toCents } from "@/lib/money";
-import { priceListRows, resolvePriceListToken } from "@/lib/priceList";
+import { squareMetres, totalArea } from "@/lib/areas";
+import { expiredPriceListLink, priceListRows, resolvePriceListToken } from "@/lib/priceList";
+import LinkExpired from "@/components/LinkExpired";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +17,12 @@ export const dynamic = "force-dynamic";
 export default async function PriceListPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const link = await resolvePriceListToken(token);
-  if (!link) notFound();
+  if (!link) {
+    /* Past its 60 days: the prices are not shown, the way to today's list is. */
+    const old = await expiredPriceListLink(token);
+    if (!old?.expiresAt) notFound();
+    return <LinkExpired what="price list" sentOn={old.createdAt} closedOn={old.expiresAt} />;
+  }
 
   /* Everything, one development or one apartment, as the link was made for. */
   const { rows, focus, gone } = await priceListRows({ projectId: link.projectId, unitId: link.unitId, projectIds: link.projectIds });
@@ -76,9 +83,15 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
           <div>Ermou 75, 6022 Larnaca</div>
           <div>+357 24 342 720</div>
           {link.expiresAt ? (
-            <div className="mt-1">
-              This list stops working on {new Date(link.expiresAt).toLocaleDateString("en-GB")}
+            <div className="mt-1 font-semibold" data-valid-until>
+              Valid until{" "}
+              {new Date(link.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
             </div>
+          ) : null}
+          {rows.length > 0 ? (
+            <a href={`/price-list/${token}/pdf`} className="btn btn-secondary mt-2 !py-1 !text-xs" data-price-list-pdf>
+              Download as PDF
+            </a>
           ) : null}
         </div>
       </header>
@@ -115,6 +128,8 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
                     <th className="num">Bedrooms</th>
                     <th className="num">Covered</th>
                     <th className="num">Veranda</th>
+                    {project.units.some(({ unit }) => Number(unit.roofGardenArea) > 0) ? <th className="num">Roof garden</th> : null}
+                    <th className="num">Total area</th>
                     <th className="num">Parking</th>
                     <th className="num">Price before VAT</th>
                   </tr>
@@ -125,11 +140,13 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
                       <td className="font-semibold">{unit.code}</td>
                       <td>{unit.floor ?? ""}</td>
                       <td className="num">{unit.bedrooms ?? ""}</td>
-                      <td className="num">
-                        {unit.coveredArea ? `${Number(unit.coveredArea)} m2` : ""}
-                      </td>
-                      <td className="num">
-                        {unit.verandaArea ? `${Number(unit.verandaArea)} m2` : ""}
+                      <td className="num">{squareMetres(unit.coveredArea)}</td>
+                      <td className="num">{squareMetres(unit.verandaArea)}</td>
+                      {project.units.some(({ unit: one }) => Number(one.roofGardenArea) > 0) ? (
+                        <td className="num">{squareMetres(unit.roofGardenArea)}</td>
+                      ) : null}
+                      <td className="num font-semibold" data-total-area>
+                        {squareMetres(totalArea(unit))}
                       </td>
                       <td className="num">{unit.parkingSpaces}</td>
                       <td className="num font-semibold">{formatAmount(toCents(unit.netPrice))}</td>
@@ -148,8 +165,8 @@ export default async function PriceListPage({ params }: { params: Promise<{ toke
           the buyer qualifies, and their accountant confirms it before a figure is quoted.
         </p>
         <p className="mt-1">
-          This page is live, so it always shows what is available now. Print it if you need a copy
-          for a meeting.
+          Total area is the covered area, the verandas and the roof garden together. This page is live,
+          so it always shows what is available now.
         </p>
       </footer>
     </main>

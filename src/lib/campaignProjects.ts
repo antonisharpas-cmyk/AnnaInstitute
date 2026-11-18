@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { documents, projects } from "@/db/schema";
 import { formatAmount, toCents } from "@/lib/money";
 import { bedroomsWords } from "@/lib/bedrooms";
+import { totalArea } from "@/lib/areas";
 import { availableForPriceList } from "@/lib/priceList";
 
 /*
@@ -51,6 +52,8 @@ export async function projectsBlock(projectIds: string[]): Promise<{ text: strin
         bedroomsWords(unit.bedrooms),
         unit.coveredArea ? `${Number(unit.coveredArea)} m2 covered` : null,
         unit.verandaArea ? `${Number(unit.verandaArea)} m2 veranda` : null,
+        Number(unit.roofGardenArea) > 0 ? `${Number(unit.roofGardenArea)} m2 roof garden` : null,
+        totalArea(unit) ? `${totalArea(unit)} m2 in total` : null,
       ].filter(Boolean);
       return `   ${unit.code}${bits.length ? `, ${bits.join(", ")}` : ""}: ${formatAmount(toCents(unit.netPrice), "en")}`;
     });

@@ -459,6 +459,26 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     migration: "0082",
   },
   {
+    probe: "select agent_id from documents limit 1",
+    what: "an agent's agreement",
+    migration: "0090",
+  },
+  {
+    probe: "select wants_appliances, wants_air_condition from clients limit 1",
+    what: "a client's wish for appliances and air conditioning",
+    migration: "0089",
+  },
+  {
+    probe: "select to_partners, partner_ids from campaigns limit 1",
+    what: "campaigns to the partners",
+    migration: "0089",
+  },
+  {
+    probe: "select partner_id from messages limit 1",
+    what: "messages to partners",
+    migration: "0089",
+  },
+  {
     probe: "select 1 from units where bedrooms = '2+1' limit 1",
     what: "bedrooms written as 2+1",
     migration: "0088",

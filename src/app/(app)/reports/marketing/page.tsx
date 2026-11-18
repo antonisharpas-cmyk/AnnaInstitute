@@ -151,6 +151,7 @@ export default async function MarketingReportPage({
           groupsOf(row.campaign).agents ? t("campaigns.groupAgents") : null,
           groupsOf(row.campaign).subowners ? t("campaigns.groupSubowners") : null,
           groupsOf(row.campaign).leads ? t("campaigns.groupLeads") : null,
+          groupsOf(row.campaign).partners ? t("campaigns.groupPartners") : null,
         ]
           .filter(Boolean)
                         .join(", ")}

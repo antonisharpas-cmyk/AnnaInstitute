@@ -24,6 +24,7 @@ import {
   updateShareholder,
   updateSubowner,
 } from "../actions";
+import PhoneField from "@/components/PhoneField";
 
 export default async function SubownerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -470,7 +471,7 @@ function HolderForm({
       </div>
       <div>
         <label className="label">{t("common.phone")}</label>
-        <input name="phone" defaultValue={row?.phone ?? ""} className="input" />
+        <PhoneField name="phone" defaultValue={row?.phone} />
       </div>
       <div>
         <label className="label">{t("people.birthDate")}</label>
@@ -530,7 +531,7 @@ function DirectorForm({
       </div>
       <div>
         <label className="label">{t("leads.phone")}</label>
-        <input name="phone" defaultValue={row?.phone ?? ""} className="input" />
+        <PhoneField name="phone" defaultValue={row?.phone} />
       </div>
       <div>
         <label className="label">{t("people.birthDate")}</label>

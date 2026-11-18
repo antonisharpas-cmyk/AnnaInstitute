@@ -50,14 +50,14 @@ const euros = (cents: number) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(cents / 100);
 
 const FEES = "MANAGEMENT_FEES";
-const KINDS = ["COMPANY", "CLIENT", "AGENT", "CONSTRUCTOR", "TEAM"] as const;
+const KINDS = ["COMPANY", "CLIENT", "AGENT", "CONSTRUCTOR", "PARTNER", "TEAM"] as const;
 
 type Row = { category: string; other: string; projectId: string; description: string; net: string; rate: string };
 
 /**
  * The other side of an invoice: one box. Type a name or an email and the
  * people the CRM knows come up under it, grouped: companies, clients, agents,
- * constructors, the team. Or pick "Someone else" and type their name.
+ * constructors, partners, the team. Or pick "Someone else" and type their name.
  */
 function PartyPicker({
   id,
@@ -220,9 +220,12 @@ export default function ExpenseForm({
   cancelHref,
   labels,
   lines: savedLines = [],
+  startWith,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   expense?: ExpenseRecord;
+  /** A new invoice opened from someone's page: we received it from them, and they are already chosen. */
+  startWith?: { direction: "IN" | "OUT"; party: string };
   lines?: SavedLine[];
   projects: { id: string; name: string }[];
   ourCompanies: { id: string; name: string }[];
@@ -232,7 +235,9 @@ export default function ExpenseForm({
   labels: Record<string, string>;
 }) {
   const locked = Boolean(expense?.issuedDocumentId && expense.direction === "OUT");
-  const [direction, setDirection] = useState(expense?.direction === "OUT" ? "OUT" : expense ? "IN" : "OUT");
+  const [direction, setDirection] = useState<string>(
+    expense?.direction === "OUT" ? "OUT" : expense ? "IN" : (startWith?.direction ?? "OUT"),
+  );
   const out = direction === "OUT";
   const [party, setParty] = useState(
     expense
@@ -241,7 +246,7 @@ export default function ExpenseForm({
         : expense.subownerId
           ? `COMPANY:${expense.subownerId}`
           : "OTHER"
-      : "",
+      : (startWith?.party ?? ""),
   );
   const fresh = (category = FEES, projectId = ""): Row => ({ category, other: "", projectId, description: "", net: "", rate: "19" });
   const [rows, setRows] = useState<Row[]>(

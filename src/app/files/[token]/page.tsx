@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { campaignFolders, recordFilesOpen, resolveFilesToken } from "@/lib/campaignFiles";
+import { campaignFolders, expiredFilesLink, recordFilesOpen, resolveFilesToken } from "@/lib/campaignFiles";
+import LinkExpired from "@/components/LinkExpired";
 import { extensionOf, titleWithExtension } from "@/lib/fileLabels";
 import Logo from "@/components/Logo";
 import { isPicture } from "@/lib/campaignProjects";
@@ -68,7 +69,12 @@ function FolderIcon() {
 export default async function CampaignFilesPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const link = await resolveFilesToken(token);
-  if (!link?.campaignId) notFound();
+  if (!link?.campaignId) {
+    /* Past its 60 days: nothing is shown, the way to get the files again is. */
+    const old = await expiredFilesLink(token);
+    if (!old?.expiresAt) notFound();
+    return <LinkExpired what="files" sentOn={old.createdAt} closedOn={old.expiresAt} />;
+  }
 
   const [{ folders, other }] = await Promise.all([campaignFolders(link.campaignId), recordFilesOpen(link)]);
   const nothing = folders.length === 0 && other.length === 0;
