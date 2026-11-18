@@ -9,6 +9,7 @@ import { BackLink, Card, PageHeader, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import ProfileCard from "@/components/ProfileCard";
 import NoteList from "@/components/NoteList";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 import { whoCanGo } from "@/lib/team";
 import { followUpsForLead } from "@/lib/followUps";
 import { historyForLead } from "@/lib/leads";
@@ -54,8 +55,15 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LeadPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ fuPage?: string; historyPage?: string }>;
+}) {
   const { id } = await params;
+  const pages = await searchParams;
   const { locale, t } = await getTranslator();
 
   const found = await db
@@ -83,6 +91,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
        so it cannot disagree with what was actually done. */
     historyForLead(id),
   ]);
+  /* The follow ups ten at a time and the history twenty five at a time, each with its own page numbers. */
+  const followUpsShown = pageOf(followUps, pages, 10, "fuPage");
+  const historyShown = pageOf(history, pages, 25, "historyPage");
 
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "?";
 
@@ -271,6 +282,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             stays there until somebody presses Done, which is the only way it
             stops asking.
           */}
+          <div id="lead-follow-ups" className="scroll-mt-24">
           <Card title={t("leads.followUps")}>
             {locked ? null : (
             <form
@@ -310,7 +322,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               <p className="text-sm text-brand-graphite/60">{t("leads.followUpNone")}</p>
             ) : (
               <ul className="divide-y divide-brand-line text-sm">
-                {followUps.map((one) => (
+                {followUpsShown.rows.map((one) => (
                   <li
                     key={one.id}
                     className="flex flex-wrap items-center justify-between gap-2 py-2"
@@ -368,7 +380,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 ))}
               </ul>
             )}
+            <Pagination basePath={`/leads/${id}`} params={pages} pageKey="fuPage" anchor="lead-follow-ups" info={followUpsShown.info} labels={pageWords(t)} />
           </Card>
+          </div>
 
           {/*
             The record, not a box. Each note keeps the day it was written and
@@ -423,12 +437,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             out of the audit trail, which is written by the actions themselves,
             so nothing here is a second copy of anything.
           */}
+          <div id="lead-history" className="scroll-mt-24">
           <Card title={t("leads.history")}>
             {history.length === 0 ? (
               <p className="text-sm text-brand-graphite/60">{t("leads.historyNone")}</p>
             ) : (
               <ol className="divide-y divide-brand-line text-sm">
-                {history.map((line) => (
+                {historyShown.rows.map((line) => (
                   <li key={line.id} className="flex flex-wrap items-baseline gap-2 py-2">
                     <span className="w-40 shrink-0 text-xs text-brand-graphite/60">
                       {when(line.at, locale)}
@@ -446,7 +461,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 ))}
               </ol>
             )}
+            <Pagination basePath={`/leads/${id}`} params={pages} pageKey="historyPage" anchor="lead-history" info={historyShown.info} labels={pageWords(t)} />
           </Card>
+          </div>
 
           {lead.payload ? (
             <Card title={t("leads.raw")}>

@@ -31,6 +31,7 @@ import { clientFileLabel } from "@/lib/fileLabels";
 import { dayAndTime } from "@/lib/when";
 import { clientHistory } from "@/lib/clientHistory";
 import ClientHistory from "@/components/ClientHistory";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 import ClientFollowUps from "@/components/ClientFollowUps";
 import { followUpsForClient } from "@/lib/followUps";
 import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
@@ -38,6 +39,7 @@ import Disclosure from "@/components/Disclosure";
 import SubmitButton from "@/components/SubmitButton";
 import PersonalInfo from "./PersonalInfo";
 import WishesAndVisits from "./WishesAndVisits";
+import PartyInvoices from "@/components/PartyInvoices";
 import TextChannelSwitch from "@/components/TextChannelSwitch";
 import { textChannelOf } from "@/lib/textChannel";
 import { LoanCard, SecondBuyerCard } from "./BuyerCards";
@@ -88,7 +90,7 @@ export default async function ClientPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ undo?: string; tab?: string }>;
+  searchParams: Promise<{ undo?: string; tab?: string; aptPage?: string; fuPage?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -111,6 +113,9 @@ export default async function ClientPage({
     none: t("common.none"),
     open: t("common.open"),
     by: t("clients.historyBy"),
+    previous: t("common.previous"),
+    next: t("common.next"),
+    of: t("common.of"),
     kinds: {
       lead: t("clients.history.lead"),
       client: t("clients.history.client"),
@@ -180,6 +185,9 @@ export default async function ClientPage({
   ]);
   const everyKind = await optionsFor("appointmentType", t, { everything: true });
   const activeKinds = new Set((await optionsFor("appointmentType", t)).map((one) => one.value));
+  /* Their appointments and follow ups fifteen at a time, each with its own page numbers. */
+  const meetingsShown = pageOf(meetings, query, 15, "aptPage");
+  const followUpsShown = pageOf(theirFollowUps, query, 15, "fuPage");
 
   const contractIds = contractRows.map((r) => r.contract.id);
 
@@ -445,6 +453,7 @@ export default async function ClientPage({
 
         {/* What they want with the apartment, and whether they have been to our partners. */}
         <WishesAndVisits client={client} t={t} locale={locale} />
+        <PartyInvoices kind="CLIENT" id={client.id} t={t} locale={locale} />
 
         {/* The second buyer, when the apartment is in two names, and the bank, when a loan pays. */}
         <div className="grid gap-4 lg:grid-cols-2">
@@ -965,7 +974,7 @@ export default async function ClientPage({
           viewing it is the thing somebody has to answer for.
         */}
         <Appointments
-          rows={meetings}
+          rows={meetingsShown.rows}
           with={`client:${id}`}
           locale={locale}
           labels={{
@@ -1007,11 +1016,15 @@ export default async function ClientPage({
             buildings: await buildingChoices(),
           }}
         />
+        <Pagination basePath={`/clients/${id}`} params={query} pageKey="aptPage" info={meetingsShown.info} labels={pageWords(t)} />
           </>
         ) : null}
 
         {tab === "followups" ? (
-          <ClientFollowUps clientId={id} rows={theirFollowUps} team={team} defaultMember={client.assignedToId ?? ""} locale={locale} t={t} />
+          <>
+            <ClientFollowUps clientId={id} rows={followUpsShown.rows} team={team} defaultMember={client.assignedToId ?? ""} locale={locale} t={t} />
+            <Pagination basePath={`/clients/${id}`} params={query} pageKey="fuPage" info={followUpsShown.info} labels={pageWords(t)} />
+          </>
         ) : null}
 
         {tab === "documents" ? (

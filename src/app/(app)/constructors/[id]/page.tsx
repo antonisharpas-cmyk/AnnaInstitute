@@ -30,6 +30,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { documents } from "@/db/schema";
 import DocumentList from "@/components/DocumentList";
+import PartyInvoices from "@/components/PartyInvoices";
 
 /**
  * One constructor: their details, the developments they build with the amount
@@ -137,6 +138,8 @@ export default async function ConstructorPage({ params }: { params: Promise<{ id
             )}
           />
         </Card>
+
+        <PartyInvoices kind="CONSTRUCTOR" id={id} t={t} locale={locale} />
 
         <Card title={t("constructors.projects")}>
           {free.length > 0 ? (

@@ -10,6 +10,10 @@ import { birthdayText } from "@/lib/buyers";
 import ConfirmButton from "@/components/ConfirmButton";
 import { addTeamMember, deleteTeamMember, updateTeamMember } from "../appointments/actions";
 import PhoneField from "@/components/PhoneField";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
+import { eq, sql } from "drizzle-orm";
+import { db } from "@/db";
+import { expenses } from "@/db/schema";
 
 /**
  * The people in the office who go to the appointments.
@@ -18,10 +22,19 @@ import PhoneField from "@/components/PhoneField";
  * going to the tile shop on Thursday should be in the CRM in ten seconds, and
  * the email is there so the day's summary has somewhere to go.
  */
-export default async function TeamPage() {
+export default async function TeamPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   await requireUser(["ADMIN"]);
+  const params = await searchParams;
   const { locale, t } = await getTranslator();
-  const rows = await listTeam();
+  /* Twenty five at a time, with the page numbers under the list. */
+  const { rows, info } = pageOf(await listTeam(), params, 25);
+  /* How many invoices each person has under Invoices: their salaries, their expenses. */
+  const counted = await db
+    .select({ id: expenses.partyId, n: sql<number>`count(*)::int` })
+    .from(expenses)
+    .where(eq(expenses.partyKind, "TEAM"))
+    .groupBy(expenses.partyId);
+  const invoicesOf = new Map(counted.map((one) => [one.id ?? "", one.n]));
 
   return (
     <>
@@ -140,6 +153,14 @@ export default async function TeamPage() {
                         >
                           {t("appointments.theirs")}
                         </Link>
+                        <Link
+                          href={`/invoices?party=${encodeURIComponent(`TEAM:${member.id}`)}`}
+                          className="btn btn-secondary !px-3 !py-1 !text-xs"
+                          prefetch={false}
+                          data-team-invoices
+                        >
+                          {t("team.invoices")} ({invoicesOf.get(member.id) ?? 0})
+                        </Link>
                         <Disclosure
                           showLabel={t("common.edit")}
                           hideLabel={t("common.cancel")}
@@ -195,6 +216,7 @@ export default async function TeamPage() {
             </table>
           </div>
         )}
+        <Pagination basePath="/team" params={params} info={info} labels={pageWords(t)} />
 
         <p className="mt-2 max-w-prose text-xs text-brand-graphite/55">{t("team.hint")}</p>
       </Card>

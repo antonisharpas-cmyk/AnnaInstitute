@@ -7,6 +7,7 @@ import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import { Figure } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
 import { periodLabels, periodQuery } from "../labels";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 
 /** What share of the agreed came in, as a whole percentage. */
 const share = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : "");
@@ -32,7 +33,7 @@ const STAGE_TONE: Record<Stage, "neutral" | "good" | "warn" | "bad" | "teal"> = 
 export default async function ApartmentSalesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; from?: string; to?: string; project?: string; partner?: string; holder?: string }>;
+  searchParams: Promise<{ period?: string; from?: string; to?: string; project?: string; partner?: string; holder?: string; salesPage?: string }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
@@ -375,7 +376,7 @@ export default async function ApartmentSalesPage({
                 </tr>
               </thead>
               <tbody>
-                {lines.map((line: SaleLine) => (
+                {pageOf(lines, params, 25, "salesPage").rows.map((line: SaleLine) => (
                   <tr key={line.id}>
                     <td className="whitespace-nowrap">
                       <Link href={`/contracts/${line.id}`} className="font-semibold hover:underline">
@@ -437,6 +438,10 @@ export default async function ApartmentSalesPage({
             </table>
           </div>
         )}
+        {/* Every sale in the period is counted above; the list itself twenty five at a time. */}
+        <div className="px-4 pb-3">
+          <Pagination basePath="/reports/apartments" params={params} pageKey="salesPage" info={pageOf(lines, params, 25, "salesPage").info} labels={pageWords(t)} />
+        </div>
       </Card>
     </>
   );

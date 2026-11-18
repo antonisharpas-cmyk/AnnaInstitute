@@ -49,6 +49,7 @@ export async function listExpenses({
   status = "",
   direction = "",
   company = "",
+  party = "",
   limit = 20,
   offset = 0,
 }: {
@@ -58,6 +59,8 @@ export async function listExpenses({
   direction?: string;
   /** One of our companies ("ours" is One Eleven itself): on either side of the invoice. */
   company?: string;
+  /** One person on the other side, as KIND:id: a team member's invoices, say. */
+  party?: string;
   limit?: number;
   offset?: number;
 }) {
@@ -113,6 +116,8 @@ export async function listExpenses({
         : (sql`(${expenses.ourCompanyId} = ${one} or (${expenses.partyKind} = 'COMPANY' and ${expenses.partyId} = ${one}) or ${expenses.subownerId} = ${one})` as SQL),
     ),
   );
+  const [partyKind, ...partyRest] = party.split(":");
+  if (partyKind && partyRest.join(":")) filters.push(and(eq(expenses.partyKind, partyKind), eq(expenses.partyId, partyRest.join(":"))) as SQL);
   const where = filters.length > 0 ? and(...filters) : undefined;
 
   const [rows, [counted], sums] = await Promise.all([

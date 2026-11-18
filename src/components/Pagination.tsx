@@ -11,6 +11,26 @@ export function paginate(searchParams: Record<string, string | undefined>, perPa
   return { page, perPage, offset: (page - 1) * perPage };
 }
 
+/**
+ * One page of a list already in hand, for a list that is never long enough to
+ * be worth a second query: a person's notes, a partner directory. The page is
+ * kept inside the list, so a page number left in the address after a delete
+ * still shows the last page rather than an empty one.
+ */
+export function pageOf<T>(rows: T[], searchParams: Record<string, string | undefined>, perPage: number, pageKey = "page") {
+  const pages = Math.max(1, Math.ceil(rows.length / perPage));
+  const page = Math.min(pages, Math.max(1, Number(searchParams[pageKey] ?? 1) || 1));
+  return { rows: rows.slice((page - 1) * perPage, page * perPage), info: { page, perPage, total: rows.length } };
+}
+
+/** The four words under every list, from the translator. */
+export const pageWords = (t: (key: "common.previous" | "common.next" | "common.showing" | "common.of") => string) => ({
+  previous: t("common.previous"),
+  next: t("common.next"),
+  showing: t("common.showing"),
+  of: t("common.of"),
+});
+
 export default function Pagination({
   basePath,
   params,

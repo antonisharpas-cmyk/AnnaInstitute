@@ -1,3 +1,4 @@
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { readSettings } from "@/lib/settings";
@@ -22,7 +23,8 @@ import { phonesToCheck } from "@/lib/phoneCheckList";
  * the page also shows exactly what each person will receive, as it stands right
  * now, and offers to send it this minute.
  */
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ phonesPage?: string }> }) {
+  const pages = await searchParams;
   await requireUser(["ADMIN"]);
   const { t } = await getTranslator();
 
@@ -58,6 +60,8 @@ export default async function SettingsPage() {
   ]);
   const mail = emailSetup();
   const badPhones = await phonesToCheck();
+  /* Twenty at a time; the figure counts them all. */
+  const phonesShown = pageOf(badPhones, pages, 20, "phonesPage");
   const diagnosis = diagnoseMail();
   const companyFields: { key: keyof typeof company; name: string; label: string; wide?: boolean }[] = [
     { key: "company.name", name: "name", label: t("settings.company.name"), wide: true },
@@ -366,7 +370,7 @@ export default async function SettingsPage() {
               <p className="mt-2 max-w-prose text-xs text-brand-graphite/55">{t("settings.testTextHint")}</p>
 
               {/* The mobiles an SMS cannot reach as they are written, to fix before a campaign. */}
-              <div className="mt-4 border-t border-brand-line pt-3" data-phones-to-check>
+              <div id="phones-to-check" className="mt-4 scroll-mt-24 border-t border-brand-line pt-3" data-phones-to-check>
                 <p className="text-sm font-semibold">
                   {t("settings.phonesToCheck")}: {badPhones.length}
                 </p>
@@ -384,7 +388,7 @@ export default async function SettingsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {badPhones.map((one) => (
+                        {phonesShown.rows.map((one) => (
                           <tr key={`${one.kind}${one.id}`} data-phone-row={one.kind}>
                             <td>
                               <a href={one.href} className="font-medium text-brand-teal-dark hover:underline">
@@ -400,6 +404,7 @@ export default async function SettingsPage() {
                     </table>
                   </div>
                 )}
+                <Pagination basePath="/settings" params={pages} pageKey="phonesPage" anchor="phones-to-check" info={phonesShown.info} labels={pageWords(t)} />
               </div>
             </Card>
           </div>

@@ -3,6 +3,7 @@ import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { upcomingBirthdays, type UpcomingBirthday } from "@/lib/automaticEmails";
 import { BackLink, Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 
 const RANGES = [7, 30, 90, 365];
 
@@ -22,7 +23,7 @@ const STATE_TONE: Record<UpcomingBirthday["state"], "good" | "warn" | "bad" | "n
  * one. One line per person, exactly as the wishes go: somebody who is both a
  * director and a client is one line and one email.
  */
-export default async function UpcomingBirthdaysPage({ searchParams }: { searchParams: Promise<{ days?: string }> }) {
+export default async function UpcomingBirthdaysPage({ searchParams }: { searchParams: Promise<{ days?: string; page?: string }> }) {
   await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
   const params = await searchParams;
@@ -32,6 +33,8 @@ export default async function UpcomingBirthdaysPage({ searchParams }: { searchPa
   const dayText = (value: Date) => value.toLocaleDateString(tag, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
   const cannot = rows.filter((row) => row.state === "NO_EMAIL").length;
   const today = rows.filter((row) => row.day.toDateString() === new Date().toDateString()).length;
+  /* The soonest first, twenty five at a time; the figures above count them all. */
+  const shown = pageOf(rows, params, 25);
 
   return (
     <>
@@ -73,7 +76,7 @@ export default async function UpcomingBirthdaysPage({ searchParams }: { searchPa
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
+                {shown.rows.map((row, i) => (
                   <tr key={`${row.day.toISOString()}-${i}`} data-birthday={row.name} data-birthday-state={row.state}>
                     <td className="nowrap text-xs">{dayText(row.day)}</td>
                     <td>
@@ -108,6 +111,7 @@ export default async function UpcomingBirthdaysPage({ searchParams }: { searchPa
             </table>
           </div>
         )}
+        <Pagination basePath="/emails/birthdays" params={params} info={shown.info} labels={pageWords(t)} />
       </Card>
     </>
   );

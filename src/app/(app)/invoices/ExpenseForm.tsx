@@ -95,10 +95,18 @@ function PartyPicker({
   const words = query.trim().toLowerCase();
   const typing = open && words !== shownName.toLowerCase();
   const found = useMemo(
-    () => (typing && words ? parties.filter((one) => `${one.name} ${one.email}`.toLowerCase().includes(words)) : parties).slice(0, 60),
+    () => (typing && words ? parties.filter((one) => `${one.name} ${one.email}`.toLowerCase().includes(words)) : parties),
     [typing, words, parties],
   );
-  const options = [...KINDS.flatMap((kind) => found.filter((one) => one.kind === kind)), { value: "OTHER", kind: "OTHER", name: labels.partyOTHER, email: "" }];
+  /*
+   * A few of every kind, so constructors and partners are there to see and not
+   * pushed off the end by a long list of clients. Typing a name finds anybody.
+   */
+  const each = typing && words ? 25 : 8;
+  const options = [
+    ...KINDS.flatMap((kind) => found.filter((one) => one.kind === kind).slice(0, each)),
+    { value: "OTHER", kind: "OTHER", name: labels.partyOTHER, email: "" },
+  ];
 
   const choose = (one: PartyChoice) => {
     onChange(one.value);
@@ -186,6 +194,12 @@ function PartyPicker({
           <input name="partyEmail" type="email" defaultValue={expense?.partyEmail ?? ""} placeholder={labels.partyEmail} aria-label={labels.partyEmail} className="input" />
           <input name="partyAddress" defaultValue={expense?.partyAddress ?? ""} placeholder={labels.partyAddress} aria-label={labels.partyAddress} className="input" />
         </div>
+      ) : null}
+
+      {picked?.kind === "CONSTRUCTOR" ? (
+        <p className="mt-1 text-xs text-[color:var(--color-warning)]" data-constructor-note>
+          {labels.constructorNote}
+        </p>
       ) : null}
 
       {sendsTo && picked ? (

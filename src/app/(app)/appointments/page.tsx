@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getTranslator, type MessageKey } from "@/i18n";
 import { requireUser } from "@/lib/auth";
 import { listAppointments, needsAnAnswer, PERIODS, whoCanBeMet } from "@/lib/appointments";
+import Pagination, { pageWords, paginate } from "@/components/Pagination";
 import { whoCanGo } from "@/lib/team";
 import { anyFilter, many } from "@/lib/filters";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
@@ -60,9 +61,12 @@ export default async function AppointmentsPage({
     when?: string;
     from?: string;
     to?: string;
+    page?: string;
   }>;
 }) {
   const params = await searchParams;
+  /* Twenty five at a time, with the page numbers under the list. */
+  const { page, perPage, offset } = paginate(params, 25);
   await requireUser(["ADMIN"]);
   const { locale, t } = await getTranslator();
   /* The kinds as the office has them in the Builder: all of them to filter by, the active ones to pick. */
@@ -82,6 +86,8 @@ export default async function AppointmentsPage({
       when: params.when,
       from: params.from,
       to: params.to,
+      limit: perPage,
+      offset,
     }),
     whoCanBeMet(),
     whoCanGo(),
@@ -203,7 +209,7 @@ export default async function AppointmentsPage({
                 The key changes with the list, so saving one hands back an empty
                 form.
               */
-              key={rows.length}
+              key={rows[0]?.total ?? 0}
               action={createAppointment}
               className="grid gap-2 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-4"
             >
@@ -495,6 +501,12 @@ export default async function AppointmentsPage({
             </table>
           </div>
         )}
+        <Pagination
+          basePath="/appointments"
+          params={{ ...params, page: String(page) }}
+          info={{ page, perPage, total: rows[0]?.total ?? 0 }}
+          labels={pageWords(t)}
+        />
 
         <p className="mt-2 text-xs text-brand-graphite/55">{t("appointments.hint")}</p>
       </Card>

@@ -4,15 +4,17 @@ import { requireUser } from "@/lib/auth";
 import { listConstructors } from "@/lib/constructors";
 import { formatAmount, toCents } from "@/lib/money";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 
 /** Every constructor, with the developments they build and where the money stands. */
 export const dynamic = "force-dynamic";
 
-export default async function ConstructorsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function ConstructorsPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
   await requireUser(["ADMIN"]);
   const params = await searchParams;
   const { locale, t } = await getTranslator();
-  const rows = await listConstructors(params.q ?? "");
+  /* Twenty five at a time, with the page numbers under the list. */
+  const { rows, info } = pageOf(await listConstructors(params.q ?? ""), params, 25);
   const money = (value: string) => formatAmount(toCents(value), locale);
 
   return (
@@ -76,6 +78,7 @@ export default async function ConstructorsPage({ searchParams }: { searchParams:
             </table>
           </div>
         )}
+        <Pagination basePath="/constructors" params={params} info={info} labels={pageWords(t)} />
       </Card>
     </>
   );

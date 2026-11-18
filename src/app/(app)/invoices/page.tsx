@@ -9,7 +9,7 @@ import {
   listExpenses,
 } from "@/lib/expenses";
 import { Card, Empty, PageHeader, Pill, Stat } from "@/components/ui";
-import { ourCompanies } from "@/lib/parties";
+import { ourCompanies, partyOptions } from "@/lib/parties";
 import SearchBox from "@/components/SearchBox";
 import RowLink from "@/components/RowLink";
 import Pagination, { paginate } from "@/components/Pagination";
@@ -24,7 +24,7 @@ const day = (value: Date | null | undefined) =>
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; status?: string; direction?: string; company?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; status?: string; direction?: string; company?: string; party?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const { locale, t } = await getTranslator();
@@ -33,13 +33,17 @@ export default async function InvoicesPage({
   const status = params.status ?? "";
   const direction = params.direction ?? "";
   const company = params.company ?? "";
+  const party = params.party ?? "";
   const { page, perPage, offset } = paginate(params, PER_PAGE);
 
-  const [{ rows, total, income, costs }, byCategory, companies] = await Promise.all([
-    listExpenses({ query, category, status, direction, company, limit: perPage, offset }),
+  const [{ rows, total, income, costs }, byCategory, companies, everybody] = await Promise.all([
+    listExpenses({ query, category, status, direction, company, party, limit: perPage, offset }),
     expensesByCategory(),
     ourCompanies(),
+    party ? partyOptions() : Promise.resolve([]),
   ]);
+  /* Opened from somebody's page: whose invoices these are. */
+  const partyShown = party ? (everybody.find((one) => one.value === party)?.name ?? "") : "";
   const ourName = new Map(companies.map((one) => [one.id, one.name]));
   const oneEleven = companies[0]?.name ?? "One Eleven";
   const money = (cents: number) => formatAmount(cents, locale);
@@ -111,13 +115,13 @@ export default async function InvoicesPage({
         <Card>
           {/* The key makes the filters show the address when a link opens this page with other filters. */}
           <SearchBox
-            key={`${query}|${category}|${company}|${direction}|${status}`}
+            key={`${query}|${category}|${company}|${direction}|${status}|${party}`}
             action="/invoices"
             query={query}
             placeholder={t("invoices.searchPlaceholder")}
             searchLabel={t("common.search")}
             clearLabel={t("common.clear")}
-            filtered={Boolean(query || category || status || direction || company)}
+            filtered={Boolean(query || category || status || direction || company || party)}
             resetLabel={t("list.resetAll")}
           >
             <Pick
@@ -157,14 +161,26 @@ export default async function InvoicesPage({
                 { value: "RECEIPT_MISSING", label: t("invoices.status.RECEIPT_MISSING") },
               ]}
             />
+            {party ? <input type="hidden" name="party" value={party} /> : null}
           </SearchBox>
+
+          {party ? (
+            <p className="mt-3 flex flex-wrap items-center gap-2 text-sm" data-party-filter>
+              <Pill tone="teal">
+                {t("invoices.onlyOf")} {partyShown || t("invoices.partyOTHER")}
+              </Pill>
+              <Link href="/invoices" className="text-xs text-brand-teal-dark hover:underline">
+                {t("invoices.showAll")}
+              </Link>
+            </p>
+          ) : null}
 
           <p className="mt-3 text-xs text-brand-graphite/60">{t("invoices.rowHint")}</p>
           <div className="mt-2 overflow-x-auto">
             {rows.length === 0 ? (
               <Empty
                 message={
-                  query || category || status || direction || company ? t("invoices.noneFound") : t("invoices.noneYet")
+                  query || category || status || direction || company || party ? t("invoices.noneFound") : t("invoices.noneYet")
                 }
               />
             ) : (

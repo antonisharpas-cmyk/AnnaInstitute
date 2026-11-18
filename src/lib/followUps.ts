@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, clients, leadFollowUps, leads, teamMembers } from "@/db/schema";
 import { many } from "@/lib/filters";
@@ -26,13 +26,24 @@ export type FollowUpRow = {
   doneAt: Date | null;
 };
 
-/** Every follow up on one lead, the soonest first. */
+/**
+ * The order every list of follow ups reads in: what is still to do first,
+ * soonest first, so the overdue ones lead; then what is done or cancelled,
+ * the latest first, so the first page never fills with old calls.
+ */
+const NEXT_THEN_LATEST = [
+  sql`(${leadFollowUps.status} <> 'PENDING')`,
+  sql`case when ${leadFollowUps.status} = 'PENDING' then ${leadFollowUps.at} end asc`,
+  desc(leadFollowUps.at),
+];
+
+/** Every follow up on one lead, what is still to do first. */
 export async function followUpsForLead(leadId: string): Promise<FollowUpRow[]> {
   const rows = await db
     .select()
     .from(leadFollowUps)
     .where(eq(leadFollowUps.leadId, leadId))
-    .orderBy(asc(leadFollowUps.at));
+    .orderBy(...NEXT_THEN_LATEST);
 
   return rows.map((row) => ({
     id: row.id,
@@ -166,11 +177,31 @@ export async function followUpsOnDay(offset: number) {
  * which lead they are on, and they can be narrowed to one person or to what
  * is still to be done.
  */
-export async function listFollowUps(filter: {
+type FollowUpFilter = {
   status?: string;
   assignedTo?: string;
   when?: string;
-} = {}) {
+};
+
+export async function listFollowUps(filter: FollowUpFilter & { limit?: number; offset?: number } = {}) {
+  return withWho()
+    .where(followUpWhere(filter))
+    .orderBy(...NEXT_THEN_LATEST)
+    .limit(filter.limit ?? 500)
+    .offset(filter.offset ?? 0);
+}
+
+/** How many follow ups the same filter finds, for the page numbers under the list. */
+export async function countFollowUps(filter: FollowUpFilter = {}): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(leadFollowUps)
+    .leftJoin(leads, eq(leads.id, leadFollowUps.leadId))
+    .where(followUpWhere(filter));
+  return row?.n ?? 0;
+}
+
+function followUpWhere(filter: FollowUpFilter): SQL | undefined {
   const parts: SQL[] = [];
 
   /* Both take several, comma separated, like every filter in the CRM. */
@@ -196,10 +227,7 @@ export async function listFollowUps(filter: {
     parts.push(sql`${leadFollowUps.at} < ${startOfDay(8)}` as SQL);
   }
 
-  return withWho()
-    .where(parts.length > 0 ? and(...parts) : undefined)
-    .orderBy(asc(leadFollowUps.at))
-    .limit(500);
+  return parts.length > 0 ? and(...parts) : undefined;
 }
 
 /** The three figures at the top of the section. */
@@ -227,5 +255,5 @@ export async function followUpsForClient(clientId: string) {
         ? or(eq(leadFollowUps.clientId, clientId), inArray(leadFollowUps.leadId, leadIds))
         : eq(leadFollowUps.clientId, clientId),
     )
-    .orderBy(asc(leadFollowUps.at));
+    .orderBy(...NEXT_THEN_LATEST);
 }

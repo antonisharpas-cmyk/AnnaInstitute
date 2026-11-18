@@ -5,11 +5,12 @@ import { labelKey, optionsFor } from "@/lib/choices";
 import { listPartners, telHref } from "@/lib/partners";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import RowLink from "@/components/RowLink";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 
 /** The directory of the office's outside partners and collaborators. */
 export const dynamic = "force-dynamic";
 
-export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ q?: string; category?: string }> }) {
+export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ q?: string; category?: string; page?: string }> }) {
   await requireUser(["ADMIN"]);
   const params = await searchParams;
   const { t } = await getTranslator();
@@ -27,7 +28,8 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
   for (const row of found) counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
   const on = new Set(active.map((one) => one.value));
   const tabs = every.filter((one) => on.has(one.value) || (counts.get(one.value) ?? 0) > 0);
-  const rows = category ? found.filter((row) => row.category === category) : found;
+  /* Twenty five at a time, with the page numbers under the list. */
+  const { rows, info } = pageOf(category ? found.filter((row) => row.category === category) : found, params, 25);
   const word = (code: string) => t(labelKey("partnerCategory", code) as MessageKey);
 
   const href = (next: { category?: string }) => {
@@ -142,6 +144,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
             </table>
           </div>
         )}
+        <Pagination basePath="/partners" params={params} info={info} labels={pageWords(t)} />
       </Card>
     </>
   );

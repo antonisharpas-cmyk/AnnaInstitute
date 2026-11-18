@@ -23,6 +23,7 @@ const KEYS = [
   "partyAddress",
   "partyNoEmail",
   "sentTo",
+  "constructorNote",
   "otherPlaceholder",
   "descriptionExample",
   "ourNumber",

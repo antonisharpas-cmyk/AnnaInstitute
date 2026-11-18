@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getTranslator } from "@/i18n";
 import { requireUser } from "@/lib/auth";
-import { followUpCounts, listFollowUps } from "@/lib/followUps";
+import { countFollowUps, followUpCounts, listFollowUps } from "@/lib/followUps";
+import Pagination, { pageWords, paginate } from "@/components/Pagination";
 import { whoCanGo } from "@/lib/team";
 import { Card, Empty, PageHeader, Pill } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
@@ -33,7 +34,7 @@ const VIEWS = ["overdue", "today", "week", "all"] as const;
 export default async function FollowUpsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ when?: string; status?: string; assignedTo?: string }>;
+  searchParams: Promise<{ when?: string; status?: string; assignedTo?: string; page?: string }>;
 }) {
   const params = await searchParams;
   await requireUser(["ADMIN"]);
@@ -45,8 +46,11 @@ export default async function FollowUpsPage({
   const status = params.status ?? "";
   const assignedTo = params.assignedTo ?? "";
 
-  const [rows, counts, team, people] = await Promise.all([
-    listFollowUps({ when, status, assignedTo }),
+  /* Twenty five at a time, with the page numbers under the list. */
+  const { page, perPage, offset } = paginate(params, 25);
+  const [rows, total, counts, team, people] = await Promise.all([
+    listFollowUps({ when, status, assignedTo, limit: perPage, offset }),
+    countFollowUps({ when, status, assignedTo }),
     followUpCounts(),
     whoCanGo(),
     whoCanBeMet(),
@@ -147,7 +151,7 @@ export default async function FollowUpsPage({
       <div className="mb-4">
         <Disclosure showLabel={t("followUps.add")} hideLabel={t("common.cancel")}>
           <form
-            key={rows.length}
+            key={total}
             action={addFollowUpFromList}
             className="grid gap-3 rounded border border-brand-line bg-brand-surface p-3 sm:grid-cols-2 lg:grid-cols-4"
           >
@@ -317,6 +321,12 @@ export default async function FollowUpsPage({
             </table>
           </div>
         )}
+        <Pagination
+          basePath="/follow-ups"
+          params={{ when: when === "all" ? "" : when, status, assignedTo, page: String(page) }}
+          info={{ page, perPage, total }}
+          labels={pageWords(t)}
+        />
       </Card>
     </>
   );

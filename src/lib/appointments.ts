@@ -156,7 +156,7 @@ export type AppointmentFilter = {
   type?: string;
 };
 
-export async function listAppointments(filter: AppointmentFilter) {
+export async function listAppointments(filter: AppointmentFilter & { limit?: number; offset?: number }) {
   const parts: SQL[] = [];
 
   const query = (filter.q ?? "").trim();
@@ -215,8 +215,9 @@ export async function listAppointments(filter: AppointmentFilter) {
 
   const where = parts.length > 0 ? and(...parts) : undefined;
 
+  /* Every row carries how many the filter finds in all, for the page numbers. */
   const rows = await db
-    .select(selection)
+    .select({ ...selection, total: sql<number>`count(*) over()::int` })
     .from(appointments)
     .leftJoin(clients, eq(clients.id, appointments.clientId))
     .leftJoin(leads, eq(leads.id, appointments.leadId))
@@ -232,7 +233,8 @@ export async function listAppointments(filter: AppointmentFilter) {
         ? asc(appointments.at)
         : desc(appointments.at),
     )
-    .limit(400);
+    .limit(filter.limit ?? 400)
+    .offset(filter.offset ?? 0);
 
   return rows;
 }

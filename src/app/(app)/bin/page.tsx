@@ -6,6 +6,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { NothingYet } from "@/components/Nothing";
 import { IconClock } from "@/components/icons";
 import { forGood, putBack } from "./actions";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 
 /**
  * The recycle bin.
@@ -15,8 +16,9 @@ import { forGood, putBack } from "./actions";
  * back where it was. Clearing it for good is the only irreversible thing on the
  * page, so it is the only thing that says so.
  */
-export default async function BinPage() {
+export default async function BinPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   await requireUser(["ADMIN"]);
+  const params = await searchParams;
   const { locale, t } = await getTranslator();
   const { leads, clients } = await readBin();
 
@@ -35,7 +37,7 @@ export default async function BinPage() {
     return Math.max(0, Math.ceil(BIN_DAYS - gone));
   };
 
-  const rows = [
+  const all = [
     ...leads.map((row) => ({
       id: row.id,
       kind: "lead" as const,
@@ -51,6 +53,8 @@ export default async function BinPage() {
       deletedAt: row.deletedAt,
     })),
   ].sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
+  /* The latest deleted first, twenty five at a time. */
+  const { rows, info } = pageOf(all, params, 25);
 
   return (
     <>
@@ -112,6 +116,9 @@ export default async function BinPage() {
                 ))}
               </tbody>
             </table>
+            <div className="px-4">
+              <Pagination basePath="/bin" params={params} info={info} labels={pageWords(t)} />
+            </div>
             <p className="px-4 py-3 text-xs text-brand-graphite/60">{t("bin.warn")}</p>
           </div>
         )}

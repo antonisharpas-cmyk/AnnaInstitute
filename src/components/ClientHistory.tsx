@@ -25,6 +25,8 @@ const DOT: Record<HistoryKind, string> = {
   document: "#86888b",
 };
 
+const PER_PAGE = 30;
+
 const TONE: Record<string, string> = {
   good: "pill pill-good",
   warn: "pill pill-warn",
@@ -40,12 +42,27 @@ export default function ClientHistory({
 }: {
   events: HistoryEvent[];
   locale: string;
-  labels: { title: string; all: string; none: string; kinds: Record<HistoryKind, string>; open: string; by: string };
+  labels: {
+    title: string;
+    all: string;
+    none: string;
+    kinds: Record<HistoryKind, string>;
+    open: string;
+    by: string;
+    previous: string;
+    next: string;
+    of: string;
+  };
 }) {
   const [only, setOnly] = useState<HistoryKind | "">("");
+  const [page, setPage] = useState(1);
   const tag = locale === "el" ? "el-GR" : "en-GB";
 
-  const shown = useMemo(() => (only ? events.filter((one) => one.kind === only) : events), [events, only]);
+  const matching = useMemo(() => (only ? events.filter((one) => one.kind === only) : events), [events, only]);
+  /* The latest first, thirty at a time, so a long story never becomes an endless page. */
+  const pages = Math.max(1, Math.ceil(matching.length / PER_PAGE));
+  const at = Math.min(page, pages);
+  const shown = matching.slice((at - 1) * PER_PAGE, at * PER_PAGE);
   const present = useMemo(() => new Set(events.map((one) => one.kind)), [events]);
 
   const days: { day: string; rows: HistoryEvent[] }[] = [];
@@ -63,7 +80,10 @@ export default function ClientHistory({
       <div className="mb-4 flex flex-wrap gap-1.5">
         <button
           type="button"
-          onClick={() => setOnly("")}
+          onClick={() => {
+            setOnly("");
+            setPage(1);
+          }}
           className={only === "" ? "btn btn-primary !px-3 !py-1 !text-xs" : "btn btn-secondary !px-3 !py-1 !text-xs"}
         >
           {labels.all} ({events.length})
@@ -72,7 +92,10 @@ export default function ClientHistory({
           <button
             key={kind}
             type="button"
-            onClick={() => setOnly(kind)}
+            onClick={() => {
+              setOnly(kind);
+              setPage(1);
+            }}
             className={only === kind ? "btn btn-primary !px-3 !py-1 !text-xs" : "btn btn-secondary !px-3 !py-1 !text-xs"}
           >
             {labels.kinds[kind]} ({events.filter((one) => one.kind === kind).length})
@@ -123,6 +146,20 @@ export default function ClientHistory({
           ))}
         </div>
       )}
+
+      {pages > 1 ? (
+        <div className="mt-4 flex items-center justify-between gap-2 border-t border-brand-line pt-3 text-xs" data-history-pages>
+          <button type="button" onClick={() => setPage(at - 1)} disabled={at === 1} className="btn btn-secondary !px-3 !py-1 !text-xs disabled:opacity-40">
+            {"←"} {labels.previous}
+          </button>
+          <span className="text-brand-graphite/60">
+            {at} {labels.of} {pages}
+          </span>
+          <button type="button" onClick={() => setPage(at + 1)} disabled={at === pages} className="btn btn-secondary !px-3 !py-1 !text-xs disabled:opacity-40">
+            {labels.next} {"→"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { BackLink, Card, Empty, PageHeader, Pill } from "@/components/ui";
 import { Breakdown, Figure, SERIES } from "@/components/charts";
 import PeriodPicker from "@/components/PeriodPicker";
 import { periodLabels } from "../labels";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 
 const day = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
@@ -14,7 +15,7 @@ const day = (value: Date | null | undefined) =>
 export default async function MarketingReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ period?: string; from?: string; to?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const { t } = await getTranslator();
@@ -27,6 +28,8 @@ export default async function MarketingReportPage({
   ]);
   /* Campaigns sent before texts moved to SMS still say WhatsApp. */
   const byWhatsapp = await sentByWhatsapp(campaigns.map((row) => row.campaign.id));
+  /* The list of campaigns twenty five at a time; the figures above count them all. */
+  const shown = pageOf(campaigns, params, 25);
 
   const byChannel = new Map<string, { handled: number; failed: number }>();
   for (const row of messages) {
@@ -133,7 +136,7 @@ export default async function MarketingReportPage({
                 </tr>
               </thead>
               <tbody>
-                {campaigns.map((row) => (
+                {shown.rows.map((row) => (
                   <tr key={row.campaign.id}>
                     <td>
                       <Link
@@ -180,6 +183,7 @@ export default async function MarketingReportPage({
             </table>
           </div>
         )}
+        <Pagination basePath="/reports/marketing" params={params} info={shown.info} labels={pageWords(t)} />
       </Card>
     </>
   );

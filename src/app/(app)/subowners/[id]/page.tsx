@@ -1,5 +1,6 @@
 import { shownCode } from "@/lib/choices";
 import LogoUpload from "./LogoUpload";
+import PartyInvoices from "@/components/PartyInvoices";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
@@ -218,6 +219,8 @@ export default async function SubownerPage({ params }: { params: Promise<{ id: s
               },
             ]}
           />
+
+          <PartyInvoices kind="COMPANY" id={id} t={t} locale={locale} />
 
           <Card title={t("subowners.papers")}>
             <div className="space-y-3 text-sm" data-company-papers>

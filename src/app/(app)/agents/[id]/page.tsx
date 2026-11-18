@@ -21,6 +21,8 @@ import { TITLES, titleWord } from "@/lib/titles";
 import ProfileCard from "@/components/ProfileCard";
 import DeleteRecord from "@/components/DeleteRecord";
 import DocumentList from "@/components/DocumentList";
+import PartyInvoices from "@/components/PartyInvoices";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 import ConfirmButton from "@/components/ConfirmButton";
 import { whatGoesWithAgent } from "@/lib/deletes";
 import { agentCampaignChannel } from "@/lib/textChannel";
@@ -44,8 +46,15 @@ import {
 const day = (value: Date | null | undefined) =>
   value ? new Date(value).toISOString().slice(0, 10) : "";
 
-export default async function AgentPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AgentPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ salesPage?: string; paidPage?: string; openedPage?: string }>;
+}) {
   const { id } = await params;
+  const pages = await searchParams;
   const { locale, t } = await getTranslator();
 
   const found = await db.select().from(agents).where(eq(agents.id, id)).limit(1);
@@ -80,6 +89,11 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
 
   /* The two papers filed against every commission line on this page. */
   const papers = await papersFor(sales.flatMap((sale) => sale.lines.map((line) => line.id)));
+
+  /* Every list on the page ten at a time, each with its own page numbers; the figures above count them all. */
+  const salesShown = pageOf(sales, pages, 10, "salesPage");
+  const paidShown = pageOf(paidOut, pages, 10, "paidPage");
+  const openedShown = pageOf(opened, pages, 10, "openedPage");
 
   return (
     <>
@@ -243,8 +257,11 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
           />
         </Card>
 
+        <PartyInvoices kind="AGENT" id={id} t={t} locale={locale} />
+
         <div className="space-y-4">
           {/* What he sold, and what each sale earns him. */}
+          <div id="agent-sales" className="scroll-mt-24">
           <Card title={t("agents.sales")}>
             {/*
               A sale recorded by hand, for the apartments whose contract was
@@ -295,7 +312,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
               <Empty message={t("agents.noSales")} />
             ) : (
               <div className="space-y-4">
-                {sales.map((sale) => (
+                {salesShown.rows.map((sale) => (
                   <div
                     key={sale.contract.id}
                     className="rounded border border-brand-line bg-white px-3 py-3"
@@ -709,8 +726,11 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 ))}
               </div>
             )}
+            <Pagination basePath={`/agents/${id}`} params={pages} pageKey="salesPage" anchor="agent-sales" info={salesShown.info} labels={pageWords(t)} />
           </Card>
+          </div>
 
+          <div id="agent-paid" className="scroll-mt-24">
           <Card title={t("agents.paidOut")}>
             <div className="mb-4">
               <Disclosure showLabel={t("agents.recordPayment")} hideLabel={t("common.cancel")}>
@@ -790,7 +810,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                   </tr>
                 </thead>
                 <tbody>
-                  {paidOut.map((p) => (
+                  {paidShown.rows.map((p) => (
                     <tr key={p.id}>
                       <td>{day(p.paidOn)}</td>
                       <td className="nowrap text-xs">{dayAndTime(p.createdAt, locale)}</td>
@@ -833,9 +853,12 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                 </tbody>
               </table>
             )}
+            <Pagination basePath={`/agents/${id}`} params={pages} pageKey="paidPage" anchor="agent-paid" info={paidShown.info} labels={pageWords(t)} />
           </Card>
+          </div>
 
           {opened.length > 0 ? (
+            <div id="agent-opened" className="scroll-mt-24">
             <Card title={t("agents.filesOpened")}>
               <table className="data" data-agent-files-opened>
                 <thead>
@@ -845,7 +868,7 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                   </tr>
                 </thead>
                 <tbody>
-                  {opened.map(({ link, title }) => (
+                  {openedShown.rows.map(({ link, title }) => (
                     <tr key={link.id}>
                       <td>
                         {link.campaignId ? (
@@ -866,7 +889,9 @@ export default async function AgentPage({ params }: { params: Promise<{ id: stri
                   ))}
                 </tbody>
               </table>
+              <Pagination basePath={`/agents/${id}`} params={pages} pageKey="openedPage" anchor="agent-opened" info={openedShown.info} labels={pageWords(t)} />
             </Card>
+            </div>
           ) : null}
 
           {/*

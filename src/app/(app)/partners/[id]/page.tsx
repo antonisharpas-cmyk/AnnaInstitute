@@ -7,20 +7,29 @@ import { BackLink, Card, PageHeader } from "@/components/ui";
 import DeleteRecord from "@/components/DeleteRecord";
 import PartnerForm from "../PartnerForm";
 import Offers from "./Offers";
-import PartnerInvoices from "./Invoices";
+import PartyInvoices from "@/components/PartyInvoices";
+import Pagination, { pageOf, pageWords } from "@/components/Pagination";
 import { offersOf } from "@/lib/partnerOffers";
 import { deletePartner, updatePartner } from "../actions";
 
 /** One partner, to change or take off the directory. */
 export const dynamic = "force-dynamic";
 
-export default async function PartnerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PartnerPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ offersPage?: string }>;
+}) {
+  const pages = await searchParams;
   await requireUser(["ADMIN"]);
   const { id } = await params;
   const partner = await partnerById(id);
   if (!partner) notFound();
   const { t, locale } = await getTranslator();
-  const offers = await offersOf(partner.id);
+  /* Their offers ten at a time, with the page numbers under them. */
+  const offersShown = pageOf(await offersOf(partner.id), pages, 10, "offersPage");
   const categories = await optionsFor("partnerCategory", t, { current: partner.category });
 
   return (
@@ -33,7 +42,7 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
         </Card>
         <Offers
           partnerId={partner.id}
-          offers={offers}
+          offers={offersShown.rows}
           locale={locale}
           labels={{
             title: t("offers.title"),
@@ -58,7 +67,8 @@ export default async function PartnerPage({ params }: { params: Promise<{ id: st
             noPrice: t("offers.noPrice"),
           }}
         />
-        <PartnerInvoices partnerId={partner.id} t={t} locale={locale} />
+        <Pagination basePath={`/partners/${partner.id}`} params={pages} pageKey="offersPage" info={offersShown.info} labels={pageWords(t)} />
+        <PartyInvoices kind="PARTNER" id={partner.id} t={t} locale={locale} />
         <DeleteRecord
           action={deletePartner.bind(null, partner.id)}
           label={t("partners.delete")}
