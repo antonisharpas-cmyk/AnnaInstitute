@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   agents,
@@ -13,6 +13,7 @@ import {
   units,
 } from "@/db/schema";
 import { getSessionUser } from "@/lib/auth";
+import { wordsMatch } from "@/lib/search";
 
 /**
  * One search for the whole CRM.
@@ -34,7 +35,6 @@ export async function GET(request: Request) {
   const query = (new URL(request.url).searchParams.get("q") ?? "").trim();
   if (query.length < 2) return NextResponse.json({ groups: [] });
 
-  const like = `%${query}%`;
 
   const [
     clientRows,
@@ -53,36 +53,27 @@ export async function GET(request: Request) {
       .where(
         and(
           isNull(clients.deletedAt),
-          or(
-            ilike(clients.firstName, like),
-            ilike(clients.lastName, like),
-            ilike(clients.email, like),
-            ilike(clients.phone, like),
-            ilike(clients.idNumber, like),
-            ilike(clients.secondFirstName, like),
-            ilike(clients.secondLastName, like),
-            ilike(clients.secondIdNumber, like),
-          ),
+          wordsMatch(query, [clients.firstName, clients.lastName, clients.email, clients.phone, clients.idNumber, clients.secondFirstName, clients.secondLastName, clients.secondIdNumber]),
         ),
       )
       .limit(LIMIT),
     db
       .select()
       .from(projects)
-      .where(or(ilike(projects.name, like), ilike(projects.location, like)))
+      .where(wordsMatch(query, [projects.name, projects.location]))
       .limit(LIMIT),
     db
       .select({ unit: units, project: projects })
       .from(units)
       .innerJoin(projects, eq(projects.id, units.projectId))
-      .where(ilike(units.code, like))
+      .where(wordsMatch(query, [units.code]))
       .limit(LIMIT),
     db
       .select({ contract: contracts, client: clients, unit: units })
       .from(contracts)
       .leftJoin(clients, eq(clients.id, contracts.clientId))
       .leftJoin(units, eq(units.id, contracts.unitId))
-      .where(ilike(contracts.reference, like))
+      .where(wordsMatch(query, [contracts.reference]))
       .limit(LIMIT),
     db
       .select()
@@ -90,40 +81,31 @@ export async function GET(request: Request) {
       .where(
         and(
           isNull(leads.deletedAt),
-          or(
-            ilike(leads.firstName, like),
-            ilike(leads.lastName, like),
-            ilike(leads.email, like),
-            ilike(leads.phone, like),
-          ),
+          wordsMatch(query, [leads.firstName, leads.lastName, leads.email, leads.phone]),
         ),
       )
       .limit(LIMIT),
     db
       .select()
       .from(agents)
-      .where(or(ilike(agents.name, like), ilike(agents.company, like), ilike(agents.email, like)))
+      .where(wordsMatch(query, [agents.name, agents.company, agents.email]))
       .limit(LIMIT),
     db
       .select()
       .from(subowners)
       .where(
-        or(
-          ilike(subowners.name, like),
-          ilike(subowners.company, like),
-          ilike(subowners.contactName, like),
-        ),
+        wordsMatch(query, [subowners.name, subowners.company, subowners.contactName]),
       )
       .limit(LIMIT),
     db
       .select()
       .from(expenses)
-      .where(or(ilike(expenses.supplier, like), ilike(expenses.reference, like)))
+      .where(wordsMatch(query, [expenses.supplier, expenses.reference]))
       .limit(LIMIT),
     db
       .select()
       .from(partners)
-      .where(or(ilike(partners.name, like), ilike(partners.email, like), ilike(partners.mobile, like)))
+      .where(wordsMatch(query, [partners.name, partners.email, partners.mobile]))
       .limit(LIMIT),
   ]);
 

@@ -71,7 +71,7 @@ export default function CommandPalette({
     return idle
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) => item.title.toLowerCase().includes(needle)),
+        items: group.items.filter((item) => needle.split(/\s+/).every((word) => item.title.toLowerCase().includes(word))),
       }))
       .filter((group) => group.items.length > 0);
   }, [idle, query]);

@@ -1,5 +1,6 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { wordsMatch } from "@/lib/search";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { constructorPayments, constructorProjects, constructors, documents, projects } from "@/db/schema";
 import { toCents } from "@/lib/money";
@@ -20,12 +21,7 @@ export type ConstructorStatus = (typeof CONSTRUCTOR_STATUSES)[number];
 export async function listConstructors(query = "") {
   const q = query.trim();
   const where: SQL | undefined = q
-    ? (or(
-        ilike(constructors.name, `%${q}%`),
-        ilike(constructors.company, `%${q}%`),
-        ilike(constructors.email, `%${q}%`),
-        ilike(constructors.phone, `%${q}%`),
-      ) as SQL)
+    ? (wordsMatch(q, [constructors.name, constructors.company, constructors.email, constructors.phone]) as SQL)
     : undefined;
   return db
     .select({

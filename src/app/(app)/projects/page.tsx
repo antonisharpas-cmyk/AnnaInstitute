@@ -1,9 +1,10 @@
+import { wordsMatch } from "@/lib/search";
 import { optionsFor, shownCode } from "@/lib/choices";
 import { choiceFilter } from "@/lib/choices/filter";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { projects, subowners, units } from "@/db/schema";
 import { getTranslator, type MessageKey } from "@/i18n";
@@ -77,7 +78,7 @@ export default async function ProjectsPage({
   const parts: SQL[] = [];
   if (query) {
     parts.push(
-      or(ilike(projects.name, `%${query}%`), ilike(projects.location, `%${query}%`)) as SQL,
+      wordsMatch(query, [projects.name, projects.location]) as SQL,
     );
   }
   const wanted = choiceFilter(projects.status, projects.statusChoice, many(status), [

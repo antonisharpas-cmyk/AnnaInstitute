@@ -1,7 +1,8 @@
 import "server-only";
+import { wordsMatch } from "@/lib/search";
 import { englishWord, isCustom } from "@/lib/choices";
 import { readFile } from "node:fs/promises";
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, lt, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   clients,
@@ -816,16 +817,8 @@ export async function listIssued(filters: IssuedFilters) {
   /* The buyers' papers only: an invoice to a partner lives under Company. */
   const parts: SQL[] = [isNull(issuedDocuments.expenseId)];
   if (filters.query) {
-    const like = `%${filters.query}%`;
     parts.push(
-      or(
-        ilike(clients.firstName, like),
-        ilike(clients.lastName, like),
-        sql`concat(${clients.firstName}, ' ', ${clients.lastName}) ilike ${like}`,
-        ilike(issuedDocuments.number, like),
-        ilike(contracts.reference, like),
-        ilike(units.code, like),
-      ) as SQL,
+      wordsMatch(filters.query, [clients.firstName, clients.lastName, issuedDocuments.number, contracts.reference, units.code]) as SQL,
     );
   }
   if (filters.from) parts.push(gte(issuedDocuments.issuedOn, new Date(`${filters.from}T00:00:00`)));

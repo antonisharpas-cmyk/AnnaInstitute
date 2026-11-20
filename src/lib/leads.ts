@@ -1,4 +1,5 @@
 import "server-only";
+import { wordsMatch } from "@/lib/search";
 import { choiceFilter } from "@/lib/choices/filter";
 import {
   and,
@@ -287,14 +288,7 @@ export async function listLeads({
   if (!handledView) filters.push(ne(leads.status, "CONVERTED") as SQL);
   if (query) {
     filters.push(
-      or(
-        ilike(leads.firstName, `%${query}%`),
-        ilike(leads.lastName, `%${query}%`),
-        ilike(leads.email, `%${query}%`),
-        ilike(leads.phone, `%${query}%`),
-        ilike(leads.message, `%${query}%`),
-        ilike(leads.projectName, `%${query}%`),
-      ) as SQL,
+      wordsMatch(query, [leads.firstName, leads.lastName, leads.email, leads.phone, leads.message, leads.projectName]) as SQL,
     );
   }
   /**

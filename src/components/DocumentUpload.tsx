@@ -99,7 +99,9 @@ export default function DocumentUpload({
   const matches = useMemo(() => {
     const q = term.trim().toLowerCase();
     if (!q) return apartments;
-    return apartments.filter((a) => `${a.projectName} ${a.code}`.toLowerCase().includes(q));
+    /* Every word typed, in any order: "uno 101" and "101 uno" find the same apartment. */
+    const words = q.split(/\s+/);
+    return apartments.filter((a) => words.every((word) => `${a.projectName} ${a.code}`.toLowerCase().includes(word)));
   }, [apartments, term]);
 
   // Changing the type puts back anything the previous type had asked for.

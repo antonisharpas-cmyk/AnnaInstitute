@@ -1,5 +1,6 @@
+import { wordsMatch } from "@/lib/search";
 import Link from "next/link";
-import { and, asc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, commissions } from "@/db/schema";
 import { getTranslator } from "@/i18n";
@@ -28,12 +29,7 @@ export default async function AgentsPage({
   const filters: SQL[] = [];
   if (query) {
     filters.push(
-      or(
-        ilike(agents.name, `%${query}%`),
-        ilike(agents.company, `%${query}%`),
-        ilike(agents.email, `%${query}%`),
-        ilike(agents.phone, `%${query}%`),
-      ) as SQL,
+      wordsMatch(query, [agents.name, agents.company, agents.email, agents.phone]) as SQL,
     );
   }
   /* Both ticked is everybody, which is the same as neither. */

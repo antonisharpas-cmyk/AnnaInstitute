@@ -30,7 +30,9 @@ export default function UnitPicker({
   const matches = useMemo(() => {
     const q = term.trim().toLowerCase();
     if (!q) return units;
-    return units.filter((one) => one.label.toLowerCase().includes(q));
+    /* Every word typed, in any order. */
+    const words = q.split(/\s+/);
+    return units.filter((one) => words.every((word) => one.label.toLowerCase().includes(word)));
   }, [units, term]);
 
   const toggle = (id: string) =>

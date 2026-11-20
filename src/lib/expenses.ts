@@ -1,6 +1,7 @@
 import "server-only";
+import { wordsMatch } from "@/lib/search";
 import { choiceFilter } from "@/lib/choices/filter";
-import { and, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { expenseLines, expenses, projects } from "@/db/schema";
 import { toCents } from "./money";
@@ -67,11 +68,7 @@ export async function listExpenses({
   const filters: SQL[] = [];
   if (query) {
     filters.push(
-      or(
-        ilike(expenses.supplier, `%${query}%`),
-        ilike(expenses.reference, `%${query}%`),
-        ilike(expenses.description, `%${query}%`),
-      ) as SQL,
+      wordsMatch(query, [expenses.supplier, expenses.reference, expenses.description]) as SQL,
     );
   }
   /*

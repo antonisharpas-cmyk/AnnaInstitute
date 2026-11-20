@@ -1,5 +1,6 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { wordsMatch } from "@/lib/search";
+import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
   projectPartners,
@@ -34,13 +35,7 @@ export async function listSubowners({
   const filters: SQL[] = [];
   if (query) {
     filters.push(
-      or(
-        ilike(subowners.name, `%${query}%`),
-        ilike(subowners.company, `%${query}%`),
-        ilike(subowners.contactName, `%${query}%`),
-        ilike(subowners.email, `%${query}%`),
-        ilike(subowners.phone, `%${query}%`),
-      ) as SQL,
+      wordsMatch(query, [subowners.name, subowners.company, subowners.contactName, subowners.email, subowners.phone]) as SQL,
     );
   }
   /* Both ticked is every company, which is the same as neither. */

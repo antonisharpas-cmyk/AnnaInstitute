@@ -1,6 +1,7 @@
 import "server-only";
+import { wordsMatch } from "@/lib/search";
 import { choiceFilter } from "@/lib/choices/filter";
-import { and, asc, desc, eq, gte, ilike, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { agents, appointments, clients, leads, partners, projects, teamMembers } from "@/db/schema";
 import { englishWord } from "@/lib/choices";
@@ -162,17 +163,7 @@ export async function listAppointments(filter: AppointmentFilter & { limit?: num
   const query = (filter.q ?? "").trim();
   if (query) {
     parts.push(
-      or(
-        ilike(appointments.place, `%${query}%`),
-        ilike(clients.firstName, `%${query}%`),
-        ilike(clients.lastName, `%${query}%`),
-        ilike(leads.firstName, `%${query}%`),
-        ilike(leads.lastName, `%${query}%`),
-        ilike(agents.name, `%${query}%`),
-        ilike(partners.name, `%${query}%`),
-        ilike(partners.company, `%${query}%`),
-        ilike(appointments.otherName, `%${query}%`),
-      ) as SQL,
+      wordsMatch(query, [appointments.place, clients.firstName, clients.lastName, leads.firstName, leads.lastName, agents.name, partners.name, partners.company, appointments.otherName]) as SQL,
     );
   }
 

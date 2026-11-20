@@ -1,6 +1,7 @@
 import "server-only";
+import { wordsMatch } from "@/lib/search";
 import { choiceFilter } from "@/lib/choices/filter";
-import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { many } from "@/lib/filters";
 import {
@@ -329,13 +330,7 @@ export async function listContracts(options?: {
   const query = options?.query?.trim();
   if (query) {
     filters.push(
-      or(
-        ilike(contracts.reference, `%${query}%`),
-        ilike(clients.firstName, `%${query}%`),
-        ilike(clients.lastName, `%${query}%`),
-        ilike(units.code, `%${query}%`),
-        ilike(projects.name, `%${query}%`),
-      ) as SQL,
+      wordsMatch(query, [contracts.reference, clients.firstName, clients.lastName, units.code, projects.name]) as SQL,
     );
   }
   const wanted = choiceFilter(contracts.status, contracts.statusChoice, many(options?.status), [

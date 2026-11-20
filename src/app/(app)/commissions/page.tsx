@@ -1,3 +1,4 @@
+import { textMatches } from "@/lib/search";
 import Link from "next/link";
 import { getTranslator } from "@/i18n";
 import { formatAmount, formatPercent, toCents } from "@/lib/money";
@@ -100,7 +101,8 @@ export default async function CommissionsPage({
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
-    return haystack.includes(query);
+    /* Every word typed, in any order: "Michalis Athanasiades" or the other way round. */
+    return textMatches(query, haystack);
   });
 
   const rows = matching.slice(offset, offset + perPage);

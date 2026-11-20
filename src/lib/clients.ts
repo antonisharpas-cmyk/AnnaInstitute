@@ -1,7 +1,8 @@
 import "server-only";
+import { wordsMatch } from "@/lib/search";
 import { choiceFilter } from "@/lib/choices/filter";
 import { LIST_BY_KEY } from "@/lib/choices/lists";
-import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { many } from "@/lib/filters";
 import { clientNotes, clients, contracts, leadNotes, leads, projects, units, users, type UnitStatus } from "@/db/schema";
@@ -138,16 +139,16 @@ export function clientFilters({
 
   if (query) {
     parts.push(
-      or(
-        ilike(clients.firstName, `%${query}%`),
-        ilike(clients.lastName, `%${query}%`),
-        ilike(clients.email, `%${query}%`),
-        ilike(clients.phone, `%${query}%`),
-        sql`concat(${clients.firstName}, ' ', ${clients.lastName}) ilike ${`%${query}%`}`,
-        /* The second buyer is found by their own name too. */
-        sql`concat(${clients.secondFirstName}, ' ', ${clients.secondLastName}) ilike ${`%${query}%`}`,
-        ilike(clients.secondEmail, `%${query}%`),
-      ) as SQL,
+      /* The second buyer is found by their own name too. */
+      wordsMatch(query, [
+        clients.firstName,
+        clients.lastName,
+        clients.email,
+        clients.phone,
+        clients.secondFirstName,
+        clients.secondLastName,
+        clients.secondEmail,
+      ]) as SQL,
     );
   }
   /**
