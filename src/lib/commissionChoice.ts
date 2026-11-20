@@ -7,30 +7,30 @@ import { normalizeAmount, parseAmount } from "@/lib/money";
  *   RATE      another rate for this contract alone
  *   FIXED     a fixed amount before VAT, whatever the price
  *
- * And whether the agent is paid in cash, which asks for no invoice, no
- * receipt and no letter. Shared by the contract form and the agent's page.
+ * Or no commission at all on this sale, with the agent still named on it.
+ * Shared by the contract form and the agent's page.
  */
 export type CommissionMode = "STANDARD" | "RATE" | "FIXED";
 
 export function commissionFromForm(formData: FormData): {
   commissionRate: string | null;
   commissionFixed: string | null;
-  commissionInCash: boolean;
+  noCommission: boolean;
 } {
   const mode = String(formData.get("commissionMode") ?? "STANDARD") as CommissionMode;
-  const inCash = String(formData.get("commissionInCash") ?? "") === "on";
+  const noCommission = String(formData.get("noCommission") ?? "") === "on";
   if (mode === "RATE") {
     const typed = String(formData.get("commissionRate") ?? "").replace(",", ".").trim();
     const rate = Number(typed);
     if (typed !== "" && Number.isFinite(rate) && rate >= 0) {
-      return { commissionRate: rate.toFixed(3), commissionFixed: null, commissionInCash: inCash };
+      return { commissionRate: rate.toFixed(3), commissionFixed: null, noCommission };
     }
   }
   if (mode === "FIXED") {
     const fixed = normalizeAmount(String(formData.get("commissionFixed") ?? ""));
-    if (fixed && parseAmount(fixed) > 0) return { commissionRate: null, commissionFixed: fixed, commissionInCash: inCash };
+    if (fixed && parseAmount(fixed) > 0) return { commissionRate: null, commissionFixed: fixed, noCommission };
   }
-  return { commissionRate: null, commissionFixed: null, commissionInCash: inCash };
+  return { commissionRate: null, commissionFixed: null, noCommission };
 }
 
 /** The choice a stored contract stands for, for the form to open on. */

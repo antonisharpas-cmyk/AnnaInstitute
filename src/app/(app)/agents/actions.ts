@@ -265,8 +265,6 @@ export async function recordCommissionPayment(formData: FormData) {
       .update(commissions)
       .set({
         status: paid >= due ? "PAID" : paid > 0 ? "PARTIALLY_PAID" : "PENDING",
-        /* Paid in cash there are no papers to wait for, so paid in full is finished. */
-        ...(rows[0]?.inCash ? { completedAt: paid >= due ? new Date() : null } : {}),
         updatedAt: new Date(),
       })
       .where(eq(commissions.id, commissionId));
@@ -320,13 +318,11 @@ export async function addExtra(contractId: string, formData: FormData) {
   if (!contract.agentId) throw new Error("This sale has no agent on it yet.");
 
   const [who] = await db.select({ vatRate: agents.vatRate }).from(agents).where(eq(agents.id, contract.agentId)).limit(1);
-  /* Paid in cash, the extra is in cash too, with no VAT on it. */
-  const vatRate = contract.commissionInCash ? 0 : vatRateFrom(formData.get("vatRate"), Number(who?.vatRate ?? 19));
+  const vatRate = vatRateFrom(formData.get("vatRate"), Number(who?.vatRate ?? 19));
 
   await db.insert(commissions).values({
     contractId,
     agentId: contract.agentId,
-    inCash: contract.commissionInCash,
     kind: "EXTRA",
     label,
     baseAmount: "0.00",
@@ -411,8 +407,7 @@ export async function payLine(commissionId: string, agentId: string, formData: F
 
   await db
     .update(commissions)
-    /* Paid in cash there are no papers to wait for, so paid is finished. */
-    .set({ status: "PAID", ...(line.inCash ? { completedAt: new Date() } : {}), updatedAt: new Date() })
+    .set({ status: "PAID", updatedAt: new Date() })
     .where(eq(commissions.id, commissionId));
 
   await recordAudit({
@@ -456,7 +451,7 @@ export async function setLineVatRate(commissionId: string, agentId: string, form
 
 /**
  * What was agreed on one sale, apart from the agent's usual rate: another
- * rate, a fixed amount before VAT, and whether it is paid in cash. The same
+ * rate, a fixed amount before VAT, or no commission on this sale. The same
  * choice as on the contract form; the agent's own rate when nothing is set.
  */
 export async function setSaleRate(contractId: string, agentId: string, formData: FormData) {
@@ -480,7 +475,7 @@ export async function setSaleRate(contractId: string, agentId: string, formData:
         : agreed.commissionRate
           ? `${agreed.commissionRate}% on this sale`
           : "the agent's own rate"
-    }${agreed.commissionInCash ? ", paid in cash" : ""}`,
+    }${agreed.noCommission ? ", no commission" : ""}`,
     userId: user.id,
     userEmail: user.email,
   });

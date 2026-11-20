@@ -856,13 +856,6 @@ export async function letterForCommission(contractId: string): Promise<void> {
     });
   };
 
-  /*
-   * Paid in cash: there is no invoice to ask the agent for, so the letter does
-   * not go. Nothing is written down either, so that a contract changed back to
-   * an invoice later still sends its letter then.
-   */
-  if (line.contract.commissionInCash) return;
-
   const template = await templateByKey("agent_commission");
   if (!template) return;
   if (!template.isActive) {

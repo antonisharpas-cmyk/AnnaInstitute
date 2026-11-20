@@ -82,8 +82,6 @@ export default async function AgentPage({
     /* The agreement signed with them, every version kept. */
     db.select().from(documents).where(eq(documents.agentId, id)).orderBy(desc(documents.createdAt)),
   ]);
-  /* The lines paid in cash, whose payments have no receipt. */
-  const cashLines = new Set(sales.flatMap((sale) => sale.lines.filter((l) => l.inCash).map((l) => l.id)));
 
   const goes = await whatGoesWithAgent(id);
 
@@ -335,14 +333,6 @@ export default async function AgentPage({
                         </div>
                         <div className="mt-1 text-xs text-brand-graphite/60">
                           {t("agents.soldFor")} {formatAmount(sale.soldCents, locale)}
-                          {/* The cash is half of what the agent sold, so it is
-                              named here rather than left for somebody to find
-                              on the contract. */}
-                          {sale.value.cashCents > 0
-                            ? ` ${t("common.and")} ${formatAmount(sale.value.cashCents, locale)} ${t(
-                                "commissions.inCash",
-                              )}`
-                            : ""}
                           {sale.listPriceCents > 0
                             ? ` . ${t("agents.listedAt")} ${formatAmount(sale.listPriceCents, locale)}`
                             : ""}
@@ -354,7 +344,7 @@ export default async function AgentPage({
                         </div>
                       </div>
 
-                      {/* What was agreed on this sale alone: another rate, a fixed amount, or paid in cash. */}
+                      {/* What was agreed on this sale alone: another rate, a fixed amount, or no commission. */}
                       <form
                         action={setSaleRate.bind(null, sale.contract.id, id)}
                         className="w-full max-w-sm space-y-2"
@@ -368,7 +358,7 @@ export default async function AgentPage({
                             mode: commissionModeOf(sale.contract),
                             rate: sale.contract.commissionRate ? String(Number(sale.contract.commissionRate)) : "",
                             fixed: sale.contract.commissionFixed ? String(Number(sale.contract.commissionFixed)) : "",
-                            inCash: sale.contract.commissionInCash,
+                            noCommission: sale.contract.noCommission,
                           }}
                           locale={locale}
                           labels={{
@@ -377,12 +367,11 @@ export default async function AgentPage({
                             otherRate: t("commission.otherRate"),
                             fixed: t("commission.fixed"),
                             beforeVat: t("commission.beforeVat"),
-                            inCash: t("commission.inCash"),
-                            inCashHint: t("commission.inCashHint"),
+                            noCommission: t("commission.none"),
+                            noCommissionHint: t("commission.noneHint"),
                             fixedPreview: t("commission.fixedPreview"),
                             of: t("common.of"),
                             vatTail: t("commission.vatTail"),
-                            cashTail: t("commission.cashTail"),
                           }}
                         />
                         <button type="submit" className="btn btn-secondary !px-3 !py-1 !text-xs">
@@ -394,6 +383,10 @@ export default async function AgentPage({
                     {sale.contract.status === "CANCELLED" && sale.lines.length === 0 ? (
                       <p className="mt-3 rounded border border-dashed border-brand-line bg-brand-surface p-3 text-sm font-semibold text-[color:var(--color-negative)]">
                         {t("agents.saleCancelled")}
+                      </p>
+                    ) : sale.lines.length === 0 && sale.contract.noCommission ? (
+                      <p className="mt-3 rounded border border-dashed border-brand-line bg-brand-surface p-3 text-sm text-brand-graphite/70" data-no-commission-sale>
+                        {t("commission.noneOnSale")}
                       </p>
                     ) : sale.lines.length === 0 ? (
                       /*
@@ -412,15 +405,7 @@ export default async function AgentPage({
                               ? `${t("commissions.fixedAmount")} . ${formatAmount(due.amountCents, locale)}`
                               : `${formatPercent(due.rate, locale)} ${t("common.of")} ${formatAmount(due.fullCents, locale)} . ${formatAmount(due.amountCents, locale)}`;
                           })()}
-                          {sale.contract.commissionInCash ? ` . ${t("commissions.paidInCash")}` : ""}
                         </p>
-                        {sale.value.cashCents > 0 ? (
-                          <p className="text-xs text-brand-graphite/70">
-                            {formatAmount(sale.value.priceCents, locale)}{" "}
-                            {t("commissions.onTheContract")}{" "}
-                            {formatAmount(sale.value.cashCents, locale)} {t("commissions.inCash")}
-                          </p>
-                        ) : null}
                         <p className="mt-1 text-xs text-brand-graphite/70">
                           {t("commissions.notYetEarned")}
                         </p>
@@ -454,7 +439,7 @@ export default async function AgentPage({
                           <span className="font-semibold">{formatAmount(sale.paidTotalCents, locale)}</span>
                           <span className="text-xs text-brand-graphite/60"> {t("vat.withVatShort")}</span>
                         </span>
-                        {sale.lines.every((l) => papers.get(l.id)?.complete || (l.inCash && l.outstandingCents <= 0)) ? (
+                        {sale.lines.every((l) => papers.get(l.id)?.complete) ? (
                           <Pill tone="good">{t("commissions.completed")}</Pill>
                         ) : sale.lines.every((l) => l.status === "CANCELLED") ? (
                           <Pill tone="bad">{t("commissions.cancelled")}</Pill>
@@ -505,9 +490,6 @@ export default async function AgentPage({
                                     ? t("commissions.fixedAmount")
                                     : formatPercent(line.rate, locale)
                                   : ""}
-                                {line.inCash ? (
-                                  <div className="text-xs font-semibold text-brand-graphite/70">{t("commissions.paidInCash")}</div>
-                                ) : null}
                               </td>
                               <td className="ctr">{formatAmount(line.amountCents, locale)}</td>
                               <td className="ctr">
@@ -536,8 +518,8 @@ export default async function AgentPage({
                                   they do rather than a second story told by the
                                   payments.
                                 */}
-                                <Pill tone={papers.get(line.id)?.complete || (line.inCash && line.outstandingCents <= 0) ? "good" : "warn"}>
-                                  {papers.get(line.id)?.complete || (line.inCash && line.outstandingCents <= 0)
+                                <Pill tone={papers.get(line.id)?.complete ? "good" : "warn"}>
+                                  {papers.get(line.id)?.complete
                                     ? t("commissions.completed")
                                     : t("commissions.notCompleted")}
                                 </Pill>
@@ -632,23 +614,10 @@ export default async function AgentPage({
                                   locale,
                                 )} = ${formatAmount(line.totalCents, locale)}`
                           }
-                          madeUpOf={
-                            line.kind === "RATE" && sale.value.cashCents > 0
-                              ? `${formatAmount(sale.value.priceCents, locale)} ${t(
-                                  "commissions.onTheContract",
-                                )} ${formatAmount(sale.value.cashCents, locale)} ${t(
-                                  "commissions.inCash",
-                                )}`
-                              : null
-                          }
+                          madeUpOf={null}
                           generatedOn={`${dayAndTime(line.generatedAt, locale)} . ${t("commissions.onFirstPayment")}`}
                           completedOn={dayAndTime(line.completedAt, locale) || null}
                           waitingFor={missing}
-                          inCash={
-                            line.inCash
-                              ? { note: t("commissions.cashRecord"), paid: line.outstandingCents <= 0 }
-                              : undefined
-                          }
                           upload={async (kind, formData) => {
                             "use server";
                             await uploadCommissionPaper(line.id, id, kind, formData);
@@ -827,17 +796,12 @@ export default async function AgentPage({
                             The receipt for this payment. It opens to be read,
                             and the email goes only from there, on a button.
                           */}
-                          {/* Paid in cash there is no receipt to make or send. */}
-                          {p.commissionId && cashLines.has(p.commissionId) ? (
-                            <span className="text-xs text-brand-graphite/60">{t("commissions.paidInCash")}</span>
-                          ) : (
-                            <Link
-                              href={`/agents/${id}/receipt/${p.id}`}
-                              className="btn btn-secondary !px-2 !py-1 !text-xs"
-                            >
-                              {t("receipts.open")}
-                            </Link>
-                          )}
+                          <Link
+                            href={`/agents/${id}/receipt/${p.id}`}
+                            className="btn btn-secondary !px-2 !py-1 !text-xs"
+                          >
+                            {t("receipts.open")}
+                          </Link>
                           <form action={deleteCommissionPayment.bind(null, p.id, id)}>
                             <button
                               type="submit"

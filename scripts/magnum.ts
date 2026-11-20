@@ -1156,8 +1156,8 @@ async function main() {
       await ask(
         `insert into contracts
            (id, reference, kind, unit_id, client_id, net_price, vat_rate,
-            cash_amount, schedule_type, status, notes)
-         values ($1, $2, 'SALE', $3, $4, $5, $6, $7, 'STANDARD', 'DRAFT', $8)`,
+            schedule_type, status, notes)
+         values ($1, $2, 'SALE', $3, $4, $5, $6, 'STANDARD', 'DRAFT', $7)`,
         [
           newId(),
           `${building.short} ${flat.code}`,
@@ -1165,7 +1165,6 @@ async function main() {
           clientId,
           price.toFixed(2),
           (flat.vatRate ?? 19).toFixed(3),
-          flat.cash === undefined ? null : flat.cash.toFixed(2),
           flat.contractNote ?? null,
         ],
       );

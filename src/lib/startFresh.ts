@@ -46,8 +46,6 @@ const CLEARED: { table: string; what: string; where?: string }[] = [
   { table: "commission_payments", what: "commission payments" },
   { table: "commissions", what: "commissions" },
   { table: "refunds", what: "refunds and penalties" },
-  { table: "cash_receipts", what: "cash received" },
-  { table: "cash_entries", what: "cash book entries" },
   { table: "vat_changes", what: "VAT changes" },
   { table: "change_requests", what: "change requests" },
   { table: "payments", what: "payments" },

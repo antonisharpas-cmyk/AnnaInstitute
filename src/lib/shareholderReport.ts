@@ -12,10 +12,9 @@ import type { Range } from "@/lib/reports";
  * Every figure is money that moved, on the day it moved, VAT included, so the
  * columns add up to what is left: the Net Revenue.
  *
- *   in   money received from buyers, cash received from buyers, other income
- *        received on our invoices, other cash received
+ *   in   money received from buyers, other income received on our invoices
  *   out  VAT credited back to buyers, refunds, delay penalties, payments to the
- *        constructor, commissions paid to agents, expenses paid, other cash paid
+ *        constructor, commissions paid to agents, expenses paid
  *
  * VAT. Buyers' payments, invoices under Company and the money paid back to
  * buyers are recorded as the money itself, VAT included. A payment to an
@@ -30,7 +29,6 @@ import type { Range } from "@/lib/reports";
 
 export const LEDGER_COLUMNS = [
   "received",
-  "cash",
   "credits",
   "refunds",
   "penalties",
@@ -38,8 +36,6 @@ export const LEDGER_COLUMNS = [
   "commissions",
   "income",
   "expenses",
-  "cashIncome",
-  "cashExpenses",
 ] as const;
 
 export type LedgerColumn = (typeof LEDGER_COLUMNS)[number];
@@ -48,7 +44,6 @@ export type Ledger = Record<LedgerColumn, number>;
 /** Which way each column counts: money in is positive, money out negative. */
 export const LEDGER_SIGN: Record<LedgerColumn, 1 | -1> = {
   received: 1,
-  cash: 1,
   credits: -1,
   refunds: -1,
   penalties: -1,
@@ -56,8 +51,6 @@ export const LEDGER_SIGN: Record<LedgerColumn, 1 | -1> = {
   commissions: -1,
   income: 1,
   expenses: -1,
-  cashIncome: 1,
-  cashExpenses: -1,
 };
 
 const empty = (): Ledger => Object.fromEntries(LEDGER_COLUMNS.map((one) => [one, 0])) as Ledger;
@@ -74,15 +67,11 @@ type Movement = { projectId: string; at: Date; column: LedgerColumn; cents: numb
 async function movements(range: Range): Promise<Movement[]> {
   const { from, to } = range;
   const between = (column: string) => sql`${sql.raw(column)} >= ${from} and ${sql.raw(column)} <= ${to}`;
-  const [buyers, cash, back, builders, agents, company, loose] = await Promise.all([
+  const [buyers, back, builders, agents, company] = await Promise.all([
     run(sql`
       select u.project_id, pm.paid_on as at, pm.amount
       from payments pm join contracts c on c.id = pm.contract_id join units u on u.id = c.unit_id
       where pm.kind = 'PAYMENT' and ${between("pm.paid_on")}`),
-    run(sql`
-      select u.project_id, r.received_on as at, r.amount
-      from cash_receipts r join contracts c on c.id = r.contract_id join units u on u.id = c.unit_id
-      where ${between("r.received_on")}`),
     run(sql`
       select u.project_id, r.paid_on as at, r.amount, r.purpose
       from refunds r join contracts c on c.id = r.contract_id join units u on u.id = c.unit_id
@@ -110,11 +99,6 @@ async function movements(range: Range): Promise<Movement[]> {
       join expenses e on e.id = ep.expense_id
       left join expense_lines l on l.expense_id = e.id
       where coalesce(l.project_id, e.project_id) is not null and ${between("ep.paid_on")}`),
-    /* Cash paid and received outside the invoices, for a development. */
-    run(sql`
-      select c.project_id, c.entry_date as at, c.amount, c.direction
-      from cash_entries c
-      where c.project_id is not null and ${between("c.entry_date")}`),
   ]);
 
   const out: Movement[] = [];
@@ -127,12 +111,10 @@ async function movements(range: Range): Promise<Movement[]> {
     }
   };
   add(buyers, () => "received");
-  add(cash, () => "cash");
   add(back, (row) => (row.purpose === "VAT_CHANGE" ? "credits" : row.purpose === "PENALTY" ? "penalties" : "refunds"));
   add(builders, () => "constructors");
   add(agents, () => "commissions");
   add(company, (row) => (row.col === "expenses" ? "expenses" : "income"));
-  add(loose, (row) => (row.direction === "IN" ? "cashIncome" : "cashExpenses"));
   return out;
 }
 

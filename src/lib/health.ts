@@ -69,8 +69,8 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     migration: "0018",
   },
   {
-    probe: "select kind, cash_amount from contracts limit 1",
-    what: "the kind and cash_amount columns on contracts",
+    probe: "select kind from contracts limit 1",
+    what: "the kind column on contracts",
     migration: "0018",
   },
   {
@@ -249,11 +249,6 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     migration: "0040",
   },
   {
-    probe: "select id from cash_receipts limit 1",
-    what: "cash received against a contract",
-    migration: "0040",
-  },
-  {
     probe: "select logo_path, iban, next_invoice from subowners limit 1",
     what: "each company's own invoices, receipts and credit notes",
     migration: "0041",
@@ -424,11 +419,6 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     migration: "0074",
   },
   {
-    probe: "select party from cash_entries limit 1",
-    what: "the cash paid and received outside the invoices",
-    migration: "0075",
-  },
-  {
     probe: "select text_channel from clients limit 1",
     what: "how each client and lead is texted, SMS or WhatsApp",
     migration: "0076",
@@ -444,14 +434,14 @@ const NEEDS: { probe: string; what: string; migration: string }[] = [
     migration: "0080",
   },
   {
-    probe: "select commission_fixed, commission_in_cash from contracts limit 1",
-    what: "a fixed commission, or one paid in cash, on a contract",
+    probe: "select commission_fixed from contracts limit 1",
+    what: "a fixed commission on a contract",
     migration: "0081",
   },
   {
-    probe: "select in_cash from commissions limit 1",
-    what: "commissions paid in cash",
-    migration: "0081",
+    probe: "select no_commission from contracts limit 1",
+    what: "a sale with no commission, and cash taken out of the CRM",
+    migration: "0091",
   },
   {
     probe: "select client_id from client_notes limit 1",

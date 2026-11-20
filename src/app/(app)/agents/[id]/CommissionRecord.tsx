@@ -31,7 +31,6 @@ export default function CommissionRecord({
   generatedOn,
   completedOn,
   waitingFor,
-  inCash,
   upload,
   remove,
   labels,
@@ -41,14 +40,12 @@ export default function CommissionRecord({
   headline: string;
   /** "3% of 245,000, the full value of the property" */
   workedOut: string;
-  /** "225,000 on the contract and 20,000 in cash" */
+  /** A second line under how it was worked out, when there is one. */
   madeUpOf: string | null;
   generatedOn: string;
   completedOn: string | null;
   /** What is still missing, or null when nothing is. */
   waitingFor: string | null;
-  /** Paid in cash: no papers are asked for, and it is finished once paid. */
-  inCash?: { note: string; paid: boolean };
   upload: (kind: "AGENT_INVOICE" | "AGENT_RECEIPT", formData: FormData) => void | Promise<void>;
   remove: (documentId: string) => void | Promise<void>;
   labels: {
@@ -85,10 +82,10 @@ export default function CommissionRecord({
       <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <h4 className="text-sm font-semibold">{headline}</h4>
-          {inCash ? null : <p className="text-xs text-brand-graphite/70">{labels.record}</p>}
+          <p className="text-xs text-brand-graphite/70">{labels.record}</p>
         </div>
-        <Pill tone={papers.complete || inCash?.paid ? "good" : "warn"}>
-          {papers.complete || inCash?.paid ? labels.completed : labels.waiting}
+        <Pill tone={papers.complete ? "good" : "warn"}>
+          {papers.complete ? labels.completed : labels.waiting}
         </Pill>
       </header>
 
@@ -120,12 +117,7 @@ export default function CommissionRecord({
         read as two different sizes of thing, because the whole point of the
         pair is that the eye can tell at a glance which of the two is missing.
       */}
-      {inCash ? (
-        <p className="rounded border border-brand-line bg-brand-paper p-3 text-xs" data-cash-commission>
-          {inCash.note}
-        </p>
-      ) : (
-        <>
+      <>
           <div className="grid items-stretch gap-3 sm:grid-cols-2">
             {slots.map((slot) => (
               <div
@@ -187,8 +179,7 @@ export default function CommissionRecord({
           </div>
 
           {waitingFor ? <p className="mt-2 text-xs text-brand-graphite/70">{waitingFor}</p> : null}
-        </>
-      )}
+      </>
     </section>
   );
 }

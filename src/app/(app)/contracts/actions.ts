@@ -53,7 +53,6 @@ const detailsSchema = z.object({
   /** A sale, or land given in exchange for apartments. */
   kind: z.enum(["SALE", "LAND_EXCHANGE"]).default("SALE"),
   /** Money alongside the apartments, in either direction. */
-  cashAmount: z.string().optional(),
   /** The figure the deed states, when it is not the value of the agreement. */
   contractValue: z.string().optional(),
   /* What a land exchange is made of, and nothing a sale ever carries. */
@@ -144,8 +143,8 @@ function planFrom(lines: LineInput[], netCents: number): InstallmentPlanItem[] {
  * A land exchange is allowed to have no schedule at all, which is the normal
  * case: the owner of the plot is paid in apartments, so there are no
  * installments to collect and insisting on some that add up to the contract
- * value would be asking the office to invent them. A schedule typed in anyway,
- * for cash paid in stages, is checked exactly as a sale's would be.
+ * value would be asking the office to invent them. A schedule typed in anyway
+ * is checked exactly as a sale's would be.
  */
 function validated(
   formData: FormData,
@@ -287,7 +286,6 @@ function readDetails(formData: FormData) {
   const parsed = detailsSchema.parse({
     reference: formData.get("reference"),
     kind: kind.base,
-    cashAmount: normalizeAmount(String(formData.get("cashAmount") ?? "")),
     contractValue: normalizeAmount(String(formData.get("contractValue") ?? "")),
     plotDescription: formData.get("plotDescription") || undefined,
     plotReference: formData.get("plotReference") || undefined,
@@ -357,22 +355,16 @@ async function takeUnit(unitId: string | undefined, clientId: string, start: "NE
  *
  * Before a contract exists the price is the office's asking price, typed on the
  * apartment. Once there is one, the contract is the agreement and the apartment
- * follows it: the price before VAT and the cash beside it added together, which
- * is the figure a buyer would call the price. Two places holding two different
+ * follows it: the price before VAT on the contract. Two places holding two different
  * answers to the same question is how a price list and a contract end up
  * disagreeing in front of a buyer.
  */
-async function priceTheUnit(
-  unitId: string | undefined,
-  netPrice: string,
-  cashAmount: string | null,
-) {
+async function priceTheUnit(unitId: string | undefined, netPrice: string) {
   if (!unitId) return;
-  const together = toCents(netPrice) + toCents(cashAmount ?? "0");
 
   await db
     .update(units)
-    .set({ netPrice: fromCents(together), updatedAt: new Date() })
+    .set({ netPrice, updatedAt: new Date() })
     .where(eq(units.id, unitId));
 }
 
@@ -471,19 +463,10 @@ export async function createContract(
       /* What was agreed with the agent on this contract; nothing on a land exchange or without an agent. */
       ...(parsed.kind === "SALE" && parsed.agentId
         ? commissionFromForm(formData)
-        : { commissionRate: null, commissionFixed: null, commissionInCash: false }),
+        : { commissionRate: null, commissionFixed: null, noCommission: false }),
       contractDate: parsed.contractDate ? new Date(parsed.contractDate) : null,
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),
-      /**
-       * Cash counts on both kinds.
-       *
-       * On a sale it is the part of the agreed price that is not written on the
-       * contract, and the agent's commission is worked out on the two together.
-       * On a land exchange it is the money settling the difference against the
-       * apartments. Either way an empty field means none.
-       */
-      cashAmount: parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
       /* What the deed says, when that is its own number. */
       contractValue: parsed.contractValue ? fromCents(toCents(parsed.contractValue)) : null,
       /* Only a land exchange carries a plot and a share, and choosing a sale
@@ -505,11 +488,7 @@ export async function createContract(
   const contractId = inserted[0].id;
   await writeSchedule(contractId, netCents, rate, checked);
   await takeUnit(parsed.unitId, parsed.clientId);
-  await priceTheUnit(
-    parsed.unitId,
-    fromCents(netCents),
-    parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
-  );
+  await priceTheUnit(parsed.unitId, fromCents(netCents));
   if (parsed.kind === "LAND_EXCHANGE") {
     await setLandExchangeUnits(contractId, parsed.clientId, formData.getAll("unitIds").map(String));
   }
@@ -609,19 +588,10 @@ export async function updateContract(
       /* What was agreed with the agent on this contract; nothing on a land exchange or without an agent. */
       ...(parsed.kind === "SALE" && parsed.agentId
         ? commissionFromForm(formData)
-        : { commissionRate: null, commissionFixed: null, commissionInCash: false }),
+        : { commissionRate: null, commissionFixed: null, noCommission: false }),
       contractDate: parsed.contractDate ? new Date(parsed.contractDate) : null,
       netPrice: fromCents(netCents),
       vatRate: rate.toFixed(3),
-      /**
-       * Cash counts on both kinds.
-       *
-       * On a sale it is the part of the agreed price that is not written on the
-       * contract, and the agent's commission is worked out on the two together.
-       * On a land exchange it is the money settling the difference against the
-       * apartments. Either way an empty field means none.
-       */
-      cashAmount: parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
       /* What the deed says, when that is its own number. */
       contractValue: parsed.contractValue ? fromCents(toCents(parsed.contractValue)) : null,
       /* Only a land exchange carries a plot and a share, and choosing a sale
@@ -646,11 +616,7 @@ export async function updateContract(
     await releaseUnit(before.contract.unitId);
   }
   await takeUnit(parsed.unitId, parsed.clientId);
-  await priceTheUnit(
-    parsed.unitId,
-    fromCents(netCents),
-    parsed.cashAmount ? fromCents(toCents(parsed.cashAmount)) : null,
-  );
+  await priceTheUnit(parsed.unitId, fromCents(netCents));
   await setLandExchangeUnits(
     contractId,
     parsed.clientId,

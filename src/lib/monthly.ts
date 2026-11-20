@@ -9,8 +9,7 @@ import { toCents } from "@/lib/money";
  * One table the office reads across: how many people came in, how many
  * contracts were made and how far they got, and where the money went. Every
  * figure is counted in the month it happened in, so a row never changes once
- * the month is over, with one exception that says so: the cash still to come
- * is what was owed in cash at the end of that month.
+ * the month is over.
  *
  * Only the months something happened in are rows: a month with no lead, no
  * contract and no money is not shown, and is not offered in the filters
@@ -30,8 +29,6 @@ export const MONTHLY_COLUMNS = [
   "sold",
   "delivered",
   "paidNet",
-  "cashIn",
-  "cashOwed",
   "commissionMade",
   "commissionPaid",
   "incomePaid",
@@ -43,8 +40,6 @@ export type MonthlyColumn = (typeof MONTHLY_COLUMNS)[number];
 /** The columns that hold money, in cents; the rest are counts. */
 export const MONEY_COLUMNS: MonthlyColumn[] = [
   "paidNet",
-  "cashIn",
-  "cashOwed",
   "commissionMade",
   "commissionPaid",
   "incomePaid",
@@ -92,8 +87,6 @@ export async function monthlyRows(only: string[] | null): Promise<MonthlyRow[]> 
     contractRows,
     deliveredRows,
     paymentRows,
-    cashRows,
-    cashOwedRows,
     madeRows,
     paidAgentRows,
     companyRows,
@@ -119,18 +112,6 @@ export async function monthlyRows(only: string[] | null): Promise<MonthlyRow[]> 
       join contracts c on c.id = pm.contract_id
       left join installments i on i.id = pm.installment_id
       where pm.kind = 'PAYMENT' and pm.paid_on >= ${from} and pm.paid_on < ${to} and ${contractIn("pm.contract_id")}`),
-    run(sql`
-      select cr.received_on as at, cr.amount from cash_receipts cr
-      where cr.received_on >= ${from} and cr.received_on < ${to} and ${contractIn("cr.contract_id")}`),
-    /* For the cash still to come: what was agreed in cash, and every bit of it received, ever. */
-    run(sql`
-      select 'agreed' as what, coalesce(c.contract_date, c.created_at) as at, c.cash_amount as amount
-      from contracts c
-      where c.status <> 'CANCELLED' and c.kind = 'SALE' and coalesce(c.cash_amount, 0) > 0 and ${contractIn("c.id")}
-      union all
-      select 'received', cr.received_on, cr.amount
-      from cash_receipts cr join contracts c on c.id = cr.contract_id
-      where c.status <> 'CANCELLED' and c.kind = 'SALE' and ${contractIn("c.id")}`),
     /* Commission, and money paid to agents and constructors, with the VAT they charge on it. */
     run(sql`
       select cm.created_at as at, cm.total_amount as amount from commissions cm
@@ -183,7 +164,6 @@ export async function monthlyRows(only: string[] | null): Promise<MonthlyRow[]> 
   }
   for (const r of deliveredRows) add("delivered", r.at);
   for (const r of paymentRows) add("paidNet", r.at, cents(r.net));
-  for (const r of cashRows) add("cashIn", r.at, cents(r.amount));
   for (const r of madeRows) add("commissionMade", r.at, cents(r.amount));
   for (const r of paidAgentRows) add("commissionPaid", r.at, cents(r.amount));
   for (const r of companyRows) add(r.direction === "OUT" ? "incomePaid" : "expensePaid", r.at, cents(r.amount));
@@ -191,24 +171,12 @@ export async function monthlyRows(only: string[] | null): Promise<MonthlyRow[]> 
 
   const rows = [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
 
-  /* The cash still to come at the end of each month. */
-  for (const row of rows) {
-    const end = new Date(row.year, row.month, 1);
-    let owed = 0;
-    for (const r of cashOwedRows) {
-      if (!r.at || new Date(r.at as string) >= end) continue;
-      owed += r.what === "agreed" ? cents(r.amount) : -cents(r.amount);
-    }
-    row.cashOwed = owed;
-  }
-
   return rows;
 }
 
-/** The total of the rows shown. The cash still to come is a balance, so it is where it stands at the last row. */
+/** The total of the rows shown. */
 export function monthlyTotal(rows: MonthlyRow[]): MonthlyRow {
   const total = { key: "", year: 0, month: 0 } as MonthlyRow;
   for (const column of MONTHLY_COLUMNS) total[column] = rows.reduce((sum, row) => sum + row[column], 0);
-  total.cashOwed = rows.length > 0 ? rows[rows.length - 1].cashOwed : 0;
   return total;
 }

@@ -73,13 +73,6 @@ export default async function ApartmentSalesPage({
     { label: t("sales.beforeVat"), agreed: total.netAgreed, received: total.netReceived },
     { label: t("sales.vat"), agreed: total.grossAgreed - total.netAgreed, received: total.grossReceived - total.netReceived },
     { label: t("sales.withVat"), agreed: total.grossAgreed, received: total.grossReceived, strong: true },
-    { label: t("sales.cash"), agreed: total.cashAgreed, received: total.cashReceived },
-    {
-      label: t("sales.everything"),
-      agreed: total.grossAgreed + total.cashAgreed,
-      received: total.grossReceived + total.cashReceived,
-      strong: true,
-    },
   ];
 
   const byProject = developments
@@ -102,7 +95,7 @@ export default async function ApartmentSalesPage({
         exportHref={`/reports/export?report=apartments${query ? `&${query}` : ""}`}
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-sales-figures>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3" data-sales-figures>
         <Figure
           label={t("sales.apartments")}
           value={String(unitCount(null, null))}
@@ -117,12 +110,6 @@ export default async function ApartmentSalesPage({
           label={t("sales.receivedWithVat")}
           value={money(total.grossReceived)}
           hint={`${t("sales.outOf")} ${money(total.grossAgreed)} (${share(total.grossReceived, total.grossAgreed) || "0%"})`}
-        />
-        <Figure
-          label={t("sales.cashReceived")}
-          value={money(total.cashReceived)}
-          hint={`${t("sales.outOf")} ${money(total.cashAgreed)}`}
-          tone={total.overdue > 0 ? "warn" : undefined}
         />
       </div>
 
@@ -305,7 +292,6 @@ export default async function ApartmentSalesPage({
                     <th className="num">{t("sales.contracts")}</th>
                     <th className="num !whitespace-normal">{t("sales.beforeVat")}</th>
                     <th className="num !whitespace-normal">{t("sales.withVat")}</th>
-                    <th className="num !whitespace-normal">{t("sales.cash")}</th>
                     <th className="num !whitespace-normal">{t("sales.reducedVat")}</th>
                     <th className="num !whitespace-normal">{t("sales.penaltiesRefunds")}</th>
                     <th className="num !whitespace-normal">{t("sales.overdue")}</th>
@@ -333,12 +319,6 @@ export default async function ApartmentSalesPage({
                         {money(one.sum.grossReceived)}
                         <span className="block text-brand-graphite/60">
                           {t("sales.outOf")} {money(one.sum.grossAgreed)}
-                        </span>
-                      </td>
-                      <td className="num">
-                        {money(one.sum.cashReceived)}
-                        <span className="block text-brand-graphite/60">
-                          {t("sales.outOf")} {money(one.sum.cashAgreed)}
                         </span>
                       </td>
                       <td className="num">
@@ -371,7 +351,6 @@ export default async function ApartmentSalesPage({
                   <th>{t("sales.stageWord")}</th>
                   <th className="num !whitespace-normal">{t("sales.beforeVat")}</th>
                   <th className="num !whitespace-normal">{t("sales.withVat")}</th>
-                  <th className="num !whitespace-normal">{t("sales.cash")}</th>
                   <th>{t("sales.notes")}</th>
                 </tr>
               </thead>
@@ -410,18 +389,6 @@ export default async function ApartmentSalesPage({
                       <span className="block text-brand-graphite/60">
                         {t("sales.outOf")} {money(line.grossAgreed)}, {t("sales.vat")} {line.vatRate}%
                       </span>
-                    </td>
-                    <td className="num whitespace-nowrap">
-                      {line.cashAgreed > 0 || line.cashReceived > 0 ? (
-                        <>
-                          {money(line.cashReceived)}
-                          <span className="block text-brand-graphite/60">
-                            {t("sales.outOf")} {money(line.cashAgreed)}
-                          </span>
-                        </>
-                      ) : (
-                        ""
-                      )}
                     </td>
                     <td>
                       <div className="flex flex-wrap gap-1">

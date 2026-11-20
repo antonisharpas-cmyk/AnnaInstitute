@@ -35,7 +35,6 @@ const NEEDED_TABLES = [
   ["issued_documents", "0033"],
   ["refunds", "0034"],
   ["choices", "0036"],
-  ["cash_receipts", "0040"],
 ] as const;
 
 const NEEDED_COLUMNS = [
@@ -46,7 +45,6 @@ const NEEDED_COLUMNS = [
   ["leads", "agent_id", "0016"],
   ["units", "vat_rate", "0018"],
   ["contracts", "kind", "0018"],
-  ["contracts", "cash_amount", "0018"],
   ["documents", "commission_id", "0019"],
   ["commissions", "completed_at", "0019"],
   ["contracts", "share_percent", "0020"],

@@ -42,8 +42,6 @@ export type SaleLine = {
   netReceived: number;
   grossAgreed: number;
   grossReceived: number;
-  cashAgreed: number;
-  cashReceived: number;
   /** What the VAT would have been at the standard rate, less what it is: the saving the reduced rate gave. */
   vatSaved: number;
   refunds: number;
@@ -76,7 +74,7 @@ export async function unitsByStatus(only: string[] | null) {
 export async function saleLines(range: Range, only: string[] | null): Promise<SaleLine[]> {
   const ids = only === null ? null : only.length > 0 ? only : [""];
   const rows = await run(sql`
-    select c.id, c.reference, c.status, c.net_price, c.vat_rate, c.cash_amount,
+    select c.id, c.reference, c.status, c.net_price, c.vat_rate,
            c.reduced_vat_approved_on, c.standard_vat_rate,
            coalesce(c.contract_date, c.created_at) as made,
            u.code, u.status as unit_status, p.id as project_id, p.name as project,
@@ -87,7 +85,6 @@ export async function saleLines(range: Range, only: string[] | null): Promise<Sa
            (select sum(pm.amount * coalesce(i.net_amount / nullif(i.total_amount, 0), 100 / (100 + c.vat_rate)))
               from payments pm left join installments i on i.id = pm.installment_id
               where pm.contract_id = c.id and pm.kind = 'PAYMENT') as paid_net,
-           (select sum(r.amount) from cash_receipts r where r.contract_id = c.id) as cash_in,
            (select sum(r.amount) from refunds r where r.contract_id = c.id and r.purpose = 'REFUND') as refunded,
            (select sum(r.amount) from refunds r where r.contract_id = c.id and r.purpose = 'PENALTY') as penalised,
            (select count(*)::int from issued_documents d where d.contract_id = c.id and d.kind = 'CREDIT_NOTE' and d.voided_at is null) as credit_notes,
@@ -145,8 +142,6 @@ export async function saleLines(range: Range, only: string[] | null): Promise<Sa
       netReceived: cents(r.paid_net),
       grossAgreed,
       grossReceived,
-      cashAgreed: cents(r.cash_amount),
-      cashReceived: cents(r.cash_in),
       vatSaved,
       refunds: cents(r.refunded),
       penalties: cents(r.penalised),
@@ -169,8 +164,6 @@ export function addUp(lines: SaleLine[]) {
     netReceived: sum(standing, (l) => l.netReceived),
     grossAgreed: sum(standing, (l) => l.grossAgreed),
     grossReceived: sum(standing, (l) => l.grossReceived),
-    cashAgreed: sum(standing, (l) => l.cashAgreed),
-    cashReceived: sum(standing, (l) => l.cashReceived),
     overdue: sum(standing, (l) => l.overdueCents),
     reducedVat: standing.filter((l) => l.reducedVat).length,
     vatSaved: sum(standing, (l) => l.vatSaved),
@@ -179,7 +172,7 @@ export function addUp(lines: SaleLine[]) {
     creditNotes: sum(lines, (l) => l.creditNotes),
     creditNoteCents: sum(lines, (l) => l.creditNoteCents),
     /* Money that came in on contracts since cancelled, and what of it was paid back. */
-    cancelledReceived: sum(cancelled, (l) => l.grossReceived + l.cashReceived),
+    cancelledReceived: sum(cancelled, (l) => l.grossReceived),
     cancelledRefunded: sum(cancelled, (l) => l.refunds),
   };
 }

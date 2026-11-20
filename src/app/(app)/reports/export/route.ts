@@ -6,7 +6,6 @@ import { vatReport } from "@/lib/vatReport";
 import {
   ageing,
   cashByMonth,
-  cashEntryLines,
   commissionsAreOurs,
   costsByCategory,
   leadsBySource,
@@ -83,13 +82,13 @@ export async function GET(request: Request) {
         [
           "Development", "Apartment", "Contract", "Date", "Buyer", "Stage", "VAT rate",
           "Agreed before VAT", "Received before VAT", "Agreed with VAT", "Received with VAT",
-          "Cash agreed", "Cash received", "Reduced VAT", "VAT saved", "Penalties", "Refunds", "Credit notes", "Overdue",
+          "Reduced VAT", "VAT saved", "Penalties", "Refunds", "Credit notes", "Overdue",
         ],
         ...lines.map((line) => [
           line.project, line.unit, line.reference, line.date ? line.date.toISOString().slice(0, 10) : "", line.buyer,
           line.stage, line.vatRate,
           money(line.netAgreed), money(line.netReceived), money(line.grossAgreed), money(line.grossReceived),
-          money(line.cashAgreed), money(line.cashReceived), line.reducedVat ? "Yes" : "No", money(line.vatSaved),
+          line.reducedVat ? "Yes" : "No", money(line.vatSaved),
           money(line.penalties), money(line.refunds), line.creditNotes, money(line.overdueCents),
         ]),
       ];
@@ -179,28 +178,14 @@ export async function GET(request: Request) {
 
     case "costs": {
       const only = await projectsInScope(scope);
-      const [income, costs, cash] = await Promise.all([
+      const [income, costs] = await Promise.all([
         costsByCategory(range, only, "OUT"),
         costsByCategory(range, only, "IN"),
-        cashEntryLines(range, only),
       ]);
-      /* Cash paid and received outside the invoices, by category, paid in full. */
-      const cashBy = (incoming: boolean) => {
-        const by = new Map<string, { count: number; cents: number }>();
-        for (const row of cash.filter((one) => one.income === incoming)) {
-          const one = by.get(row.category) ?? { count: 0, cents: 0 };
-          one.count += 1;
-          one.cents += row.cents;
-          by.set(row.category, one);
-        }
-        return [...by.entries()];
-      };
       rows = [
         ["Which", "Category", "Lines", "Billed", "Still owed"],
         ...income.map((row) => ["Income", row.category, row.count, money(row.billedCents), money(row.owedCents)]),
         ...costs.map((row) => ["Expense", row.category, row.count, money(row.billedCents), money(row.owedCents)]),
-        ...cashBy(true).map(([category, row]) => ["Cash income", category, row.count, money(row.cents), money(0)]),
-        ...cashBy(false).map(([category, row]) => ["Cash expense", category, row.count, money(row.cents), money(0)]),
       ];
       break;
     }

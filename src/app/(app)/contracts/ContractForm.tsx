@@ -25,7 +25,6 @@ type ContractRecord = {
   kindChoice?: string | null;
   netPrice: string;
   vatRate: string;
-  cashAmount: string | null;
   contractValue: string | null;
   plotDescription: string | null;
   plotReference: string | null;
@@ -38,7 +37,7 @@ type ContractRecord = {
   /** What was agreed with the agent for this contract, when it is not their usual rate. */
   commissionRate?: string | null;
   commissionFixed?: string | null;
-  commissionInCash?: boolean;
+  noCommission?: boolean;
 };
 
 const day = (value: Date | null | undefined) =>
@@ -109,15 +108,12 @@ export default function ContractForm({
    *
    * Antiparochi is a different agreement, not a sale with odd numbers: the
    * owner of the plot is paid in apartments, the VAT is whatever that
-   * particular transaction attracts rather than the usual rate, and a sum of
-   * cash often settles the difference. So choosing it offers nought as the rate
-   * and asks for the cash, and choosing a sale puts the rate back and takes the
-   * question away, which is the whole difference between the two on this form.
+   * particular transaction attracts rather than the usual rate. So choosing it
+   * offers nought as the rate, and choosing a sale puts the rate back.
    */
   /* What was picked, which may be the office's own kind, and the built in kind it counts as. */
   const [picked, setPicked] = useState<string>(contract ? shownCode(contract.kind, contract.kindChoice) : "SALE");
   const kind: "SALE" | "LAND_EXCHANGE" = baseOf(picked) === "LAND_EXCHANGE" ? "LAND_EXCHANGE" : "SALE";
-  const [cash, setCash] = useState(whole(contract?.cashAmount ?? undefined));
 
   /*
    * The standard name, MA-MOQ-401, filled in as the buyer and the apartment
@@ -158,17 +154,6 @@ export default function ContractForm({
   /* The agent chosen, for their usual rate in the commission part below. */
   const [agentId, setAgentId] = useState(contract?.agentId ?? defaults?.agentId ?? "");
   const agentRate = agents.find((one) => one.id === agentId)?.rate ?? null;
-
-  /** The price and the cash added up, said out loud so nobody has to do it. */
-  const money = (value: string) => parseAmount(value) / 100;
-  const together = money(netPrice) + money(cash);
-  const fullValue =
-    money(cash) > 0
-      ? `${kind === "LAND_EXCHANGE" ? labels.togetherWithCash : labels.fullValue}: ${together.toLocaleString(
-          "en-GB",
-          { maximumFractionDigits: 2 },
-        )}`
-      : null;
 
   const chooseKind = (value: string) => {
     setPicked(value);
@@ -397,12 +382,12 @@ export default function ContractForm({
           <div className="sm:col-span-2">
             <CommissionChoice
               agentRate={agentRate}
-              baseCents={parseAmount(netPrice) + parseAmount(cash)}
+              baseCents={parseAmount(netPrice)}
               defaults={{
                 mode: commissionModeOf(contract),
                 rate: contract?.commissionRate ? String(Number(contract.commissionRate)) : "",
                 fixed: contract?.commissionFixed ? String(Number(contract.commissionFixed)) : "",
-                inCash: Boolean(contract?.commissionInCash),
+                noCommission: Boolean(contract?.noCommission),
               }}
               locale="en"
               labels={{
@@ -411,12 +396,11 @@ export default function ContractForm({
                 otherRate: labels.commissionOtherRate,
                 fixed: labels.commissionFixed,
                 beforeVat: labels.commissionBeforeVat,
-                inCash: labels.commissionInCash,
-                inCashHint: labels.commissionInCashHint,
+                noCommission: labels.commissionNone,
+                noCommissionHint: labels.commissionNoneHint,
                 fixedPreview: labels.commissionFixedPreview,
                 of: labels.commissionOf,
                 vatTail: labels.commissionVatTail,
-                cashTail: labels.commissionCashTail,
               }}
             />
           </div>
@@ -438,35 +422,6 @@ export default function ContractForm({
             className={vatLocked ? "input bg-brand-surface text-brand-graphite/70" : "input"}
           />
           {vatLocked ? <p className="mt-1 text-xs text-brand-graphite/60">{labels.vatLocked}</p> : null}
-        </div>
-
-        {/*
-          Cash belongs on both kinds, for different reasons.
-
-          On a sale it is the part of the agreed price that is not written on
-          the contract: 280,000 sold as 250,000 with 30,000 in cash. The agent
-          sold a 280,000 apartment either way, so the two figures together are
-          what the commission is worked out on and the form has to be able to
-          hold both. On a land exchange it is the money settling the difference
-          against the apartments.
-        */}
-        <div>
-          <label className="label" htmlFor="cashAmount">
-            {labels.cashAmount}
-          </label>
-          <input
-            id="cashAmount"
-            name="cashAmount"
-            value={cash}
-            onChange={(event) => setCash(event.target.value)}
-            inputMode="decimal"
-            placeholder="0"
-            className="input"
-          />
-          <p className="mt-1 text-xs text-brand-graphite/60">
-            {kind === "LAND_EXCHANGE" ? labels.cashAmountHint : labels.cashOnSaleHint}
-          </p>
-          {fullValue ? <p className="mt-1 text-xs font-semibold">{fullValue}</p> : null}
         </div>
 
         {editing ? (

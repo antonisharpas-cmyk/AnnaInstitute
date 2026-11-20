@@ -55,8 +55,8 @@ export const OFFERED_STATUSES = ["AVAILABLE"] as const;
  *
  * A sale is money for an apartment. A land exchange, antiparochi, is the older
  * arrangement this business is built on: the owner of the plot is paid in
- * apartments in the building that goes up on it, sometimes with a sum of cash
- * on top, and the VAT is whatever that particular transaction attracts rather
+ * apartments in the building that goes up on it, and the VAT is whatever that
+ * particular transaction attracts rather
  * than the usual rate. The two are different agreements, so the record says
  * which it is instead of leaving somebody to work it out from a nought.
  */
@@ -583,10 +583,11 @@ export const contracts = pgTable("contracts", {
    */
   commissionFixed: money("commission_fixed"),
   /**
-   * The agent is paid in cash on this contract: no invoice is asked of them,
-   * no receipt is made, no letter goes, and nothing is missing for it.
+   * No commission is earned on this contract, though an agent is named on it.
+   * Set on the sales whose commission used to be paid in cash, when cash left
+   * the CRM: the agent stays on the record and nothing is ever owed for it.
    */
-  commissionInCash: boolean("commission_in_cash").default(false).notNull(),
+  noCommission: boolean("no_commission").default(false).notNull(),
   contractDate: timestamp("contract_date", { withTimezone: true }),
   /** A sale, or land given in exchange for apartments. */
   kind: contractKindEnum("kind").default("SALE").notNull(),
@@ -611,16 +612,6 @@ export const contracts = pgTable("contracts", {
   reducedVatApprovedOn: timestamp("reduced_vat_approved_on", { withTimezone: true }),
   /** The approval itself, as the buyer sent it, uploaded with the approval. */
   reducedVatDocumentId: text("reduced_vat_document_id"),
-  /**
-   * Cash changing hands alongside the apartments.
-   *
-   * On a sale it is the part of the agreed price paid in cash rather than
-   * written on the contract, and the agent's commission is worked out on the
-   * two together. On a land exchange it is the sum that settles the difference
-   * between the land and the apartments, in either direction. Kept apart from
-   * the price so the contract can say plainly what was agreed.
-   */
-  cashAmount: money("cash_amount"),
   /**
    * The figure written on the contract itself.
    *
@@ -969,8 +960,6 @@ export const commissions = pgTable("commissions", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
   notes: text("notes"),
   /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
-  /** Paid in cash, as its contract says: no invoice, no receipt and no letter are expected of it. */
-  inCash: boolean("in_cash").default(false).notNull(),
   history: boolean("history").default(false).notNull(),
   createdAt: created(),
   updatedAt: updated(),
@@ -1694,37 +1683,6 @@ export const expensePayments = pgTable("expense_payments", {
   createdAt: created(),
 });
 
-/**
- * Money that changed hands in cash, outside the invoices.
- *
- * A record only: who, what for, which development and which of our companies,
- * how much and when. No invoice, no receipt, no VAT, and it never goes to the
- * accountant. IN is cash we received, OUT is cash we paid. The cash a buyer
- * pays beside their contract is not here: it is kept on the contract.
- */
-export const cashEntries = pgTable("cash_entries", {
-  id: id(),
-  /** IN, cash received; OUT, cash paid. */
-  direction: text("direction").notNull(),
-  entryDate: timestamp("entry_date", { withTimezone: true }).notNull(),
-  amount: money("amount").notNull(),
-  /** Who paid us, or who we paid, as the office writes it. */
-  party: text("party").notNull(),
-  /** What it was for: a category from the Builder's list, as on the invoices. */
-  category: text("category").default("OTHER").notNull(),
-  categoryChoice: text("category_choice"),
-  categoryOther: text("category_other"),
-  /** The development it belongs to, when it belongs to one. */
-  projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
-  /** Which of our companies: empty is One Eleven itself. */
-  ourCompanyId: text("our_company_id").default("").notNull(),
-  description: text("description"),
-  notes: text("notes"),
-  recordedByEmail: text("recorded_by_email"),
-  createdAt: created(),
-  updatedAt: updated(),
-});
-
 /* ---------------------------------------------------------------------------
    APPOINTMENTS
 
@@ -1827,29 +1785,6 @@ export const appointments = pgTable("appointments", {
   createdById: text("created_by_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: created(),
   updatedAt: updated(),
-});
-
-/**
- * Cash received against the cash part of a sale.
- *
- * The contract says how much of the price is paid in cash beside the figure on
- * the contract. This is the money as it actually arrives, a line at a time, so
- * the office can see what has come in and what is still to come. It is kept
- * apart from the payments on purpose: it carries no VAT, no invoice and no
- * receipt, and no automatic email goes out for it.
- */
-export const cashReceipts = pgTable("cash_receipts", {
-  id: id(),
-  contractId: text("contract_id")
-    .notNull()
-    .references(() => contracts.id, { onDelete: "cascade" }),
-  amount: money("amount").notNull(),
-  receivedOn: timestamp("received_on", { withTimezone: true }).notNull(),
-  note: text("note"),
-  recordedById: text("recorded_by_id").references(() => users.id, { onDelete: "set null" }),
-  /** Recorded while the office was entering its history: no papers, letters or alerts are expected of it. */
-  history: boolean("history").default(false).notNull(),
-  createdAt: created(),
 });
 
 /* ---------------------------------------------------------------------------

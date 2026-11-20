@@ -90,7 +90,6 @@ const STATUSES = ["AVAILABLE", "NEGOTIATION", "RESERVED", "SOLD", "DELIVERED"] a
 /** How each kind of payment is named, and which way the money went. */
 const MONEY_WORD: Record<MoneyKind, MessageKey> = {
   buyer: "dash.money.buyer",
-  cash: "dash.money.cash",
   agent: "dash.money.agent",
   income: "dash.money.income",
   expense: "dash.money.expense",
@@ -174,9 +173,8 @@ export default async function DashboardPage({
     /*
      * The money figures.
      *
-     * Collected is every payment from buyers, VAT included, cash apart: the
-     * cash part of a price has no VAT, no invoice and no receipt, so it is its
-     * own figure. Still to come is read on the contracts that stand only, so a
+     * Collected is every payment from buyers, VAT included. Still to come is
+     * read on the contracts that stand only, so a
      * cancelled reservation no longer counts as money the office is owed.
      */
     when(
@@ -204,20 +202,7 @@ export default async function DashboardPage({
               select sum(p.amount) from payments p
               join contracts c on c.id = p.contract_id
               where c.status <> 'CANCELLED' and ${contractInScope("p")}
-            ), 0) as paidStanding,
-              coalesce((
-              select sum(r.amount) from cash_receipts r where ${contractInScope("r")}
-            ), 0) as cashIn,
-              coalesce((
-              select sum(c.cash_amount) from contracts c
-              where c.status <> 'CANCELLED' and c.kind = 'SALE'
-              ${only === null ? sql`` : sql`and c.unit_id in (select u.id from units u where u.project_id in ${mine})`}
-            ), 0) as cashAgreed,
-              coalesce((
-              select sum(r.amount) from cash_receipts r
-              join contracts c on c.id = r.contract_id
-              where c.status <> 'CANCELLED' and c.kind = 'SALE' and ${contractInScope("r")}
-            ), 0) as cashInStanding`);
+            ), 0) as paidStanding`);
         const rows = (Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])) as Record<string, string | number>[];
         return rows.map((row) => ({
           collected: String(row.collected ?? "0"),
@@ -225,9 +210,6 @@ export default async function DashboardPage({
           monthCount: Number(row.monthcount ?? row.monthCount ?? 0),
           scheduledStanding: String(row.scheduledstanding ?? row.scheduledStanding ?? "0"),
           paidStanding: String(row.paidstanding ?? row.paidStanding ?? "0"),
-          cashIn: String(row.cashin ?? row.cashIn ?? "0"),
-          cashAgreed: String(row.cashagreed ?? row.cashAgreed ?? "0"),
-          cashInStanding: String(row.cashinstanding ?? row.cashInStanding ?? "0"),
         }));
       },
       [],
@@ -268,8 +250,6 @@ export default async function DashboardPage({
   const collected = toCents(money?.collected ?? "0");
   const thisMonth = toCents(money?.month ?? "0");
   const stillToCome = Math.max(0, toCents(money?.scheduledStanding ?? "0") - toCents(money?.paidStanding ?? "0"));
-  const cashIn = toCents(money?.cashIn ?? "0");
-  const cashToCome = Math.max(0, toCents(money?.cashAgreed ?? "0") - toCents(money?.cashInStanding ?? "0"));
   const late = groups.find((group) => group.kind === "late")?.count ?? 0;
   const waiting = groups.filter((group) => group.count > 0);
   const waitingTotal = attentionTotal(groups);
@@ -357,13 +337,6 @@ export default async function DashboardPage({
           count={{ amount: stillToCome / 100, locale, money: true }}
           hint={t("dash.outstandingHint")}
           tone={late > 0 ? "bad" : "teal"}
-          href="/reports/apartments"
-        />
-        <Stat
-          label={t("dash.cashReceived")}
-          value={formatAmount(cashIn, locale)}
-          count={{ amount: cashIn / 100, locale, money: true }}
-          hint={`${formatAmount(cashToCome, locale)} ${t("dash.cashToCome")}`}
           href="/reports/apartments"
         />
       </div>

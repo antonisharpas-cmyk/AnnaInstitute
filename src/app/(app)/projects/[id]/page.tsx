@@ -422,8 +422,8 @@ export default async function ProjectPage({
 
                             The apartment's price is what the office is asking
                             for it. How that price is made up, what part is
-                            before VAT, what rate applies to this buyer and what
-                            part is paid in cash, is a term of the contract
+                            before VAT and what rate applies to this buyer, is a
+                            term of the contract
                             rather than a property of the apartment, so it lives
                             there and this stays a single figure.
                           */}

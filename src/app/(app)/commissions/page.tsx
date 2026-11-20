@@ -52,8 +52,7 @@ export default async function CommissionsPage({
     const amount = toCents(row.line.amount);
     if (paid <= 0) return "PENDING";
     if (paid < amount) return "PARTIAL";
-    /* Paid in cash there are no papers to wait for: paid in full is finished. */
-    return papers.get(row.line.id)?.complete || row.line.inCash ? "COMPLETED" : "PAID";
+    return papers.get(row.line.id)?.complete ? "COMPLETED" : "PAID";
   };
 
   /* Two days, the second one included, read as the office's own days. */
@@ -288,9 +287,6 @@ export default async function CommissionsPage({
                               : `${formatPercent(Number(r.line.rate), locale)} ${t("common.of")} ${formatAmount(toCents(r.line.baseAmount), locale)}`}
                           </div>
                         ) : null}
-                        {r.line.inCash ? (
-                          <div className="text-xs font-semibold text-brand-graphite/70">{t("commissions.paidInCash")}</div>
-                        ) : null}
                       </td>
                       <td className="ctr nowrap">{formatAmount(toCents(r.line.amount), locale)}</td>
                       <td className="ctr nowrap">
@@ -310,14 +306,8 @@ export default async function CommissionsPage({
                         {r.paidAt ? dayAndTime(r.paidAt, locale) : ""}
                       </td>
                       <td className="nowrap text-xs">
-                        {r.line.inCash && !mine?.invoice && !mine?.receipt ? (
-                          <span className="text-brand-graphite/60">{t("commissions.cashNoPaper")}</span>
-                        ) : (
-                          <>
-                            <div className="whitespace-nowrap">{paper(mine?.invoice ?? null, t("commissions.agentInvoice"))}</div>
-                            <div className="whitespace-nowrap">{paper(mine?.receipt ?? null, t("commissions.agentReceipt"))}</div>
-                          </>
-                        )}
+                        <div className="whitespace-nowrap">{paper(mine?.invoice ?? null, t("commissions.agentInvoice"))}</div>
+                        <div className="whitespace-nowrap">{paper(mine?.receipt ?? null, t("commissions.agentReceipt"))}</div>
                       </td>
                       <td className="ctr">{pill(standing)}</td>
                     </tr>

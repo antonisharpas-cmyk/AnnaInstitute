@@ -6,8 +6,8 @@ import type { CommissionMode } from "@/lib/commissionChoice";
 
 /*
  * The agent's commission on one contract: their usual rate, another rate, or
- * a fixed amount before VAT, and whether it is paid in cash. Underneath, the
- * sum as it will come out, so nobody saves a figure they have not seen.
+ * a fixed amount before VAT, or none at all on this sale. Underneath, the sum
+ * as it will come out, so nobody saves a figure they have not seen.
  */
 export default function CommissionChoice({
   agentRate,
@@ -19,9 +19,9 @@ export default function CommissionChoice({
 }: {
   /** The agent's usual rate, or null when no agent is chosen yet. */
   agentRate: number | null;
-  /** The full value it is worked out on: the price and any cash agreed with it. */
+  /** What it is worked out on: the contract price before VAT. */
   baseCents: number;
-  defaults: { mode: CommissionMode; rate: string; fixed: string; inCash: boolean };
+  defaults: { mode: CommissionMode; rate: string; fixed: string; noCommission: boolean };
   compact?: boolean;
   locale: string;
   labels: Record<string, string>;
@@ -29,11 +29,12 @@ export default function CommissionChoice({
   const [mode, setMode] = useState<CommissionMode>(defaults.mode);
   const [rate, setRate] = useState(defaults.rate);
   const [fixed, setFixed] = useState(defaults.fixed);
-  const [inCash, setInCash] = useState(defaults.inCash);
+  const [none, setNone] = useState(defaults.noCommission);
 
   const money = (cents: number) => formatAmount(cents, locale);
   const typedRate = Number(rate.replace(",", "."));
   const preview = (() => {
+    if (none) return "";
     if (mode === "FIXED") {
       const cents = parseAmount(fixed);
       return cents > 0 ? `${labels.fixedPreview} ${money(cents)}` : "";
@@ -42,7 +43,7 @@ export default function CommissionChoice({
     if (r === null || !Number.isFinite(r) || baseCents <= 0) return "";
     return `${formatPercent(r, locale)} ${labels.of} ${money(baseCents)} = ${money(Math.round((baseCents * r) / 100))}`;
   })();
-  const tail = inCash ? labels.cashTail : labels.vatTail;
+  const tail = labels.vatTail;
 
   const small = compact ? "!py-1 !text-xs" : "";
   return (
@@ -93,10 +94,10 @@ export default function CommissionChoice({
           <span className="text-xs text-brand-graphite/60">{labels.beforeVat}</span>
         </label>
         <label className="mt-1 flex items-start gap-2 border-t border-brand-line pt-2">
-          <input type="checkbox" name="commissionInCash" checked={inCash} onChange={(event) => setInCash(event.target.checked)} className="mt-0.5" />
+          <input type="checkbox" name="noCommission" checked={none} onChange={(event) => setNone(event.target.checked)} className="mt-0.5" data-no-commission />
           <span>
-            {labels.inCash}
-            <span className="block text-xs text-brand-graphite/60">{labels.inCashHint}</span>
+            {labels.noCommission}
+            <span className="block text-xs text-brand-graphite/60">{labels.noCommissionHint}</span>
           </span>
         </label>
         {preview ? (

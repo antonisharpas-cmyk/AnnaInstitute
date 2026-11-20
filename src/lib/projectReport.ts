@@ -15,9 +15,7 @@ import { constructorOfProject } from "@/lib/constructors";
  *
  * The figures at the top, the constructor's contract and what has been paid on
  * it, every apartment with its buyer, where each buyer's payments stand, each
- * buyer's payments one by one, and the constructor's payments one by one. The
- * contract figures only: money agreed outside the contract, the cash, is left
- * out, as the office asked.
+ * buyer's payments one by one, and the constructor's payments one by one.
  */
 
 export type ProjectReport = Awaited<ReturnType<typeof projectReportData>>;
@@ -55,7 +53,7 @@ export async function projectReportData(projectId: string) {
     return {
       code: unit.code,
       beds: unit.bedrooms,
-      /* The price on the contract once there is one, which never includes the cash part. */
+      /* The price on the contract once there is one. */
       priceCents: contract ? toCents(contract.contract.netPrice) : toCents(unit.netPrice),
       status: unit.status,
       sold: sold(unit.status),

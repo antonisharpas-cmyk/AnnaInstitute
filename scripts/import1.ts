@@ -564,12 +564,11 @@ async function main() {
            and when they do not the office has to know rather than the script
            picking one. */
         const [contract] = await ask(
-          `select reference, net_price, cash_amount from contracts where unit_id = $1 limit 1`,
+          `select reference, net_price from contracts where unit_id = $1 limit 1`,
           [unitRow.id],
         );
         if (contract) {
-          const full =
-            Number(contract.net_price ?? 0) + Number((contract.cash_amount as string) ?? 0);
+          const full = Number(contract.net_price ?? 0);
           if (Math.abs(full - row.price) > 0.5) {
             asks.push(
               `${where}: the document says ${row.price.toLocaleString("en-GB")} and contract ${String(

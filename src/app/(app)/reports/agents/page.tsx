@@ -193,9 +193,7 @@ export default async function AgentsReportPage({
                   {lines.rows.map((row) => {
                     /* The agent's invoice is expected of every line that stands, the receipt once money was paid; nothing of history. */
                     const paper = (has: boolean, expected: boolean) =>
-                      row.inCash && !has ? (
-                        <span className="text-brand-graphite/60">{t("commissions.cashNoPaper")}</span>
-                      ) : has ? (
+                      has ? (
                         <Pill tone="good">{t("reports.paperIn")}</Pill>
                       ) : expected && !row.history ? (
                         <Pill tone="bad">{t("reports.paperMissing")}</Pill>
